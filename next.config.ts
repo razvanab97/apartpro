@@ -1,7 +1,10 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: 'https://lsmraxevzkmupaidianv.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_ACJ1clv28hJ1hXJAAxvbUA_kBlNHH0y',
+  },
+}
 
-export default nextConfig;
+export default nextConfig
