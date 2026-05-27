@@ -4,96 +4,130 @@ import { usePathname } from 'next/navigation'
 import { ReactNode } from 'react'
 import {
   LayoutDashboard, Building2, Users, CalendarCheck, Receipt,
-  FileText, Settings, CheckSquare, TrendingUp, LogOut
+  FileText, Settings, CheckSquare, TrendingUp, Sparkles
 } from 'lucide-react'
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/apartamente', label: 'Apartamente', icon: Building2 },
-  { href: '/proprietari', label: 'Proprietari', icon: Users },
-  { href: '/rezervari', label: 'Rezervări', icon: CalendarCheck },
-  { href: '/cheltuieli', label: 'Cheltuieli', icon: Receipt },
-  { href: '/deconturi', label: 'Deconturi', icon: TrendingUp },
-  { href: '/rapoarte', label: 'Rapoarte', icon: FileText },
-  { href: '/taskuri', label: 'Task-uri', icon: CheckSquare },
-  { href: '/setari', label: 'Setări', icon: Settings },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, group: 'Principal' },
+  { href: '/apartamente', label: 'Apartamente', icon: Building2, group: 'Principal' },
+  { href: '/proprietari', label: 'Proprietari', icon: Users, group: 'Principal' },
+  { href: '/rezervari', label: 'Rezervări', icon: CalendarCheck, group: 'Principal' },
+  { href: '/cheltuieli', label: 'Cheltuieli', icon: Receipt, group: 'Financiar' },
+  { href: '/deconturi', label: 'Deconturi', icon: TrendingUp, group: 'Financiar' },
+  { href: '/rapoarte', label: 'Rapoarte', icon: FileText, group: 'Financiar' },
+  { href: '/taskuri', label: 'Task-uri', icon: CheckSquare, group: 'Operațional' },
+  { href: '/setari', label: 'Setări', icon: Settings, group: 'Sistem' },
 ]
+
+const groups = ['Principal', 'Financiar', 'Operațional', 'Sistem']
 
 export default function Layout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
-      {/* Sidebar */}
-      <aside className="w-[220px] flex-shrink-0 flex flex-col border-r" style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}>
-        {/* Logo */}
-        <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="text-base font-bold" style={{ color: 'var(--text)' }}>🏢 ApartPro</div>
-          <div className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text3)' }}>v1.0 · MVP</div>
+      <aside style={{
+        width: 228,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        background: 'rgba(22,44,66,0.88)',
+        backdropFilter: 'blur(32px)',
+        WebkitBackdropFilter: 'blur(32px)',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 10,
+              background: 'rgba(46,118,163,0.35)',
+              border: '1px solid rgba(46,118,163,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16,
+            }}>🏢</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#EAF2F8', letterSpacing: -0.3 }}>ApartPro</div>
+              <div style={{ fontSize: 10, color: 'rgba(138,175,200,0.7)', marginTop: 1 }}>Regim hotelier · ERP</div>
+            </div>
+          </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {groups.map(group => {
+            const items = navItems.filter(i => i.group === group)
+            if (!items.length) return null
             return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150"
-                style={{
-                  background: active ? 'rgba(79,124,255,0.12)' : 'transparent',
-                  color: active ? 'var(--accent)' : 'var(--text2)',
-                }}
-              >
-                <Icon size={16} className="flex-shrink-0" />
-                {label}
-              </Link>
+              <div key={group}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: 'rgba(138,175,200,0.5)', textTransform: 'uppercase', letterSpacing: '0.9px', padding: '0 10px', marginBottom: 4 }}>
+                  {group}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {items.map(({ href, label, icon: Icon }) => {
+                    const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+                    return (
+                      <Link key={href} href={href} style={{
+                        display: 'flex', alignItems: 'center', gap: 9,
+                        padding: '8px 10px', borderRadius: 9,
+                        fontSize: 13,
+                        fontWeight: active ? 500 : 400,
+                        color: active ? '#7EC8E3' : 'rgba(138,175,200,0.75)',
+                        background: active ? 'rgba(46,118,163,0.22)' : 'transparent',
+                        border: active ? '1px solid rgba(46,118,163,0.25)' : '1px solid transparent',
+                        textDecoration: 'none',
+                        transition: 'all 0.12s',
+                      }}>
+                        <Icon size={15} style={{ flexShrink: 0 }} />
+                        {label}
+                      </Link>
+                    )
+                  })}
+                </div>
+              </div>
             )
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="px-2 py-3 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg" style={{ color: 'var(--text2)' }}>
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-              style={{ background: 'rgba(79,124,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(79,124,255,0.3)' }}
-            >
-              MA
-            </div>
+        <div style={{ padding: '10px 10px 14px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px', borderRadius: 9 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: '50%',
+              background: 'rgba(46,118,163,0.25)',
+              border: '1.5px solid rgba(46,118,163,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 600, color: '#7EC8E3', flexShrink: 0,
+            }}>MA</div>
             <div>
-              <div className="text-xs font-medium" style={{ color: 'var(--text)' }}>Administrator</div>
-              <div className="text-[10px]" style={{ color: 'var(--text3)' }}>ApartPro</div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: '#D6EAF3' }}>Administrator</div>
+              <div style={{ fontSize: 10, color: 'rgba(138,175,200,0.5)' }}>ApartPro</div>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-y-auto">
+      <main style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
     </div>
   )
 }
 
-// Page header component
-export function PageHeader({
-  title, subtitle, actions
-}: {
-  title: string; subtitle?: string; actions?: ReactNode
-}) {
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
-    <div
-      className="flex items-center justify-between px-6 py-4 border-b sticky top-0 z-10"
-      style={{ background: 'var(--bg2)', borderColor: 'var(--border)' }}
-    >
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '14px 24px',
+      background: 'rgba(250,240,230,0.65)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      borderBottom: '1px solid rgba(255,255,255,0.6)',
+      position: 'sticky', top: 0, zIndex: 10,
+    }}>
       <div>
-        <h1 className="text-base font-semibold" style={{ color: 'var(--text)' }}>{title}</h1>
-        {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--text3)' }}>{subtitle}</p>}
+        <h1 style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', letterSpacing: -0.2 }}>{title}</h1>
+        {subtitle && <p style={{ fontSize: 12, marginTop: 2, color: 'var(--text3)' }}>{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{actions}</div>}
     </div>
   )
 }

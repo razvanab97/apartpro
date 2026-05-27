@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp } from 'lucide-react'
 
-type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'cyan'
+type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'teal'
 
 const STATUS_COLOR: Record<string, BadgeColor> = { confirmata:'green', cerere:'amber', anulata:'red', finalizata:'blue' }
 const PLATA_COLOR: Record<string, BadgeColor> = { achitat:'green', avans:'amber', neplatit:'red' }
