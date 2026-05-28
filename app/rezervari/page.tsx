@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card } from '@/components/ui'
-import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 
 type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'teal'
 
@@ -162,7 +162,14 @@ export default function RezervariPage() {
                 <tbody>
                   {filtered.map(r => (
                     <tr key={r.id} onClick={() => openEdit(r)}>
-                      <td><span style={{ color: 'var(--text)', fontWeight: 500 }}>{r.nume_client}</span><br/><span style={{ fontSize: 11, color: 'var(--text3)' }}>{r.nr_persoane} pers</span></td>
+                      <td>
+                        <span style={{color:'var(--text)',fontWeight:500}}>{r.nume_client}</span>
+                        <br/>
+                        <span style={{fontSize:11,color:'var(--text3)'}}>
+                          {r.nr_persoane} pers
+                          {r.telefon_client && <span style={{color:'rgba(34,197,94,0.7)',marginLeft:6}}>{r.telefon_client}</span>}
+                        </span>
+                      </td>
                       <td style={{ color: 'var(--text)' }}>{r.apartament?.nume||'—'}</td>
                       <td><CanalBadge canal={r.canal}/></td>
                       <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.data_checkin}</td>
@@ -174,9 +181,28 @@ export default function RezervariPage() {
                       <td><Badge color={PLATA_COLOR[r.status_plata]||'gray'}>{STATUS_PLATA_LABEL[r.status_plata]||r.status_plata}</Badge></td>
                       <td><Badge color={DECONT_COLOR[r.status_decont]||'gray'}>{r.status_decont}</Badge></td>
                       <td onClick={e=>e.stopPropagation()}>
-                        <div className="flex gap-1">
+                        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                          {r.telefon_client && (
+                            <a
+                              href={`https://wa.me/${r.telefon_client.replace(/[^0-9]/g,'')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e=>e.stopPropagation()}
+                              title={`WhatsApp ${r.telefon_client}`}
+                              style={{
+                                display:'inline-flex',alignItems:'center',justifyContent:'center',
+                                width:28,height:28,borderRadius:7,
+                                background:'rgba(34,197,94,0.12)',
+                                border:'1px solid rgba(34,197,94,0.25)',
+                                color:'#4ADE80',textDecoration:'none',
+                                transition:'all 0.15s',
+                              }}
+                            >
+                              <MessageCircle size={13}/>
+                            </a>
+                          )}
                           <Button variant="ghost" size="sm" icon={<Edit2 size={13}/>} onClick={()=>openEdit(r)}/>
-                          <Button variant="ghost" size="sm" icon={<Trash2 size={13}/>} onClick={()=>setDeleteId(r.id)} className="hover:text-red-400"/>
+                          <Button variant="ghost" size="sm" icon={<Trash2 size={13}/>} onClick={()=>setDeleteId(r.id)}/>
                         </div>
                       </td>
                     </tr>
