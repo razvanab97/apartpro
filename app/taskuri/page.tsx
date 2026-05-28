@@ -70,7 +70,7 @@ export default function TaskuriPage() {
     <>
       <PageHeader title="Task-uri operaționale" subtitle={`${counts.de_facut} de făcut · ${counts.in_lucru} în lucru · ${counts.finalizat} finalizate`}
         actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={()=>{setEditing(empty);setOpen(true)}}>Task nou</Button>} />
-      <div className="p-6">
+      <div className="p-6" style={{ overflowY:"auto" }}>
         <div className="flex gap-2 mb-5">
           {[['','Toate'], ['de_facut','De făcut'], ['in_lucru','În lucru'], ['finalizat','Finalizat']].map(([v,l])=>(
             <button key={v} onClick={()=>setFilterStatus(v)}
