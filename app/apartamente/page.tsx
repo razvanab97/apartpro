@@ -266,7 +266,7 @@ export default function ApartamentePage() {
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Link Airbnb</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="airbnb.com/rooms/..."/></FormGroup>
-          <FormGroup></FormGroup>
+          <div></div>
         </FormRow>
         <FormGroup><label>Instrucțiuni check-in / cod acces</label><textarea value={editing.instructiuni_checkin||''} onChange={e=>setEditing({...editing,instructiuni_checkin:e.target.value})} rows={2} placeholder="Cutia cu chei, cod, etaj..."/></FormGroup>
         <FormGroup><label>Reguli apartament</label><textarea value={editing.reguli||''} onChange={e=>setEditing({...editing,reguli:e.target.value})} rows={2} placeholder="Nefumători, fără petreceri..."/></FormGroup>
