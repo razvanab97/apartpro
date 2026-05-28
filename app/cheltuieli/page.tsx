@@ -79,7 +79,7 @@ export default function CheltuieliPage() {
     <>
       <PageHeader title="Cheltuieli" subtitle={`${cheltuieli.length} cheltuieli înregistrate`}
         actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={()=>{setEditing(empty);setOpen(true)}}>Cheltuială nouă</Button>} />
-      <div className="p-6">
+      <div className="p-6" style={{ overflowY:"auto" }}>
         <div className="flex gap-3 mb-5 items-center flex-wrap">
           <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}>
             <option value="">Toate apartamentele</option>
