@@ -78,13 +78,13 @@ export default function Layout({ children }: { children: ReactNode }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 9px', borderRadius: 8 }}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(77,163,255,0.16)', border: '1.5px solid rgba(159,215,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#4DA3FF', flexShrink: 0 }}>MA</div>
             <div>
-              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Mihai Andrei</div>
+              <div style={{ fontSize: 11.5, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Razvan Abunei</div>
               <div style={{ fontSize: 9, color: 'rgba(159,215,255,0.35)', fontFamily: 'monospace' }}>ADMIN</div>
             </div>
           </div>
         </div>
       </aside>
-      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
     </div>
