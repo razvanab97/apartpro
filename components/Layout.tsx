@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import Chatbot from '@/components/Chatbot'
 import { usePathname } from 'next/navigation'
 import { ReactNode } from 'react'
 import {
@@ -87,6 +88,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <main style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
+      <Chatbot />
     </div>
   )
 }
