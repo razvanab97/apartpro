@@ -128,7 +128,7 @@ export default function RezervariPage() {
     <>
       <PageHeader title="Rezervări" subtitle={`${rezervari.length} rezervări totale`}
         actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Rezervare nouă</Button>} />
-      <div className="p-6">
+      <div className="p-6" style={{ overflowY:"auto" }}>
         {/* Filtre */}
         <div className="flex gap-3 mb-5">
           <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}>
