@@ -33,6 +33,8 @@ export default function RezervariPage() {
   const [filterCanal, setFilterCanal] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterApt, setFilterApt] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [showCalc, setShowCalc] = useState(false)
   const { toast, show } = useToast()
 
@@ -117,6 +119,8 @@ export default function RezervariPage() {
     if (filterCanal && r.canal !== filterCanal) return false
     if (filterStatus && r.status_rezervare !== filterStatus) return false
     if (filterApt && r.apartament_id !== filterApt) return false
+    if (dateFrom && r.data_checkin < dateFrom) return false
+    if (dateTo && r.data_checkin > dateTo) return false
     return true
   })
 
@@ -143,8 +147,31 @@ export default function RezervariPage() {
             <option value="">Toate statusurile</option>
             {Object.entries(STATUS_REZERVARE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
           </select>
-          {(filterCanal||filterStatus||filterApt) && (
-            <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('')}}>Resetează filtre</Button>
+          {/* Date range */}
+          <div style={{display:'flex',alignItems:'center',gap:6,background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.12)',borderRadius:9,padding:'4px 10px'}}>
+            <span style={{fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap'}}>Check-in</span>
+            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+              style={{fontSize:12,padding:'3px 6px',background:'transparent',border:'none',color:'#FFFFFF',width:120,outline:'none'}}/>
+            <span style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>→</span>
+            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+              style={{fontSize:12,padding:'3px 6px',background:'transparent',border:'none',color:'#FFFFFF',width:120,outline:'none'}}/>
+          </div>
+          {/* Quick presets */}
+          <div style={{display:'flex',gap:4}}>
+            {[
+              {label:'Azi', fn:()=>{const t=new Date().toISOString().split('T')[0];setDateFrom(t);setDateTo(t)}},
+              {label:'7 zile', fn:()=>{const t=new Date();const from=new Date(t);from.setDate(from.getDate()-7);setDateFrom(from.toISOString().split('T')[0]);setDateTo(t.toISOString().split('T')[0])}},
+              {label:'Luna', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth(),1);const to=new Date(t.getFullYear(),t.getMonth()+1,0);setDateFrom(from.toISOString().split('T')[0]);setDateTo(to.toISOString().split('T')[0])}},
+              {label:'Luna trecută', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth()-1,1);const to=new Date(t.getFullYear(),t.getMonth(),0);setDateFrom(from.toISOString().split('T')[0]);setDateTo(to.toISOString().split('T')[0])}},
+              {label:'An', fn:()=>{const y=new Date().getFullYear();setDateFrom(`${y}-01-01`);setDateTo(`${y}-12-31`)}},
+            ].map(({label,fn})=>(
+              <button key={label} onClick={fn} style={{fontSize:11,padding:'4px 9px',borderRadius:6,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(159,215,255,0.12)',color:'rgba(159,215,255,0.6)',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.12s'}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {(filterCanal||filterStatus||filterApt||dateFrom||dateTo) && (
+            <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('');setDateFrom('');setDateTo('')}}>✕ Reset</Button>
           )}
         </div>
 
