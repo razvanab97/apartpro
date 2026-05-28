@@ -20,9 +20,9 @@ export default function RapoartePage() {
   }, [])
 
   async function genereazaRaport() {
-    if (!selectedApt) { show('error','Selectează apartamentul'); return }
+    
     setLoading(true)
-    const apt = apartamente.find(a => a.id === selectedApt)
+    const apt = selectedApt ? apartamente.find(a => a.id === selectedApt) : null
     const primaZi = new Date(selectedAn, selectedLuna - 1, 1)
     const ultimaZi = new Date(selectedAn, selectedLuna, 0)
     const start = primaZi.toISOString().split('T')[0]
@@ -30,11 +30,9 @@ export default function RapoartePage() {
     const zileLuna = ultimaZi.getDate()
 
     const [{ data: rez }, { data: ch }, { data: dec }] = await Promise.all([
-      supabase.from('rezervari').select('*').eq('apartament_id', selectedApt)
-        .gte('data_checkin', start).lte('data_checkin', end)
-        .in('status_rezervare', ['confirmata','finalizata']).order('data_checkin'),
-      supabase.from('cheltuieli').select('*').eq('apartament_id', selectedApt).gte('data', start).lte('data', end),
-      supabase.from('deconturi').select('*').eq('apartament_id', selectedApt).eq('luna', selectedLuna).eq('an', selectedAn).maybeSingle(),
+      (selectedApt ? supabase.from('rezervari').select('*,apartament:apartamente(nume,nota)').eq('apartament_id', selectedApt) : supabase.from('rezervari').select('*,apartament:apartamente(nume,nota)')).gte('data_checkin', start).lte('data_checkin', end).in('status_rezervare', ['confirmata','finalizata']).order('data_checkin'),
+      (selectedApt ? supabase.from('cheltuieli').select('*,apartament:apartamente(nume)').eq('apartament_id', selectedApt) : supabase.from('cheltuieli').select('*,apartament:apartamente(nume)')).gte('data', start).lte('data', end),
+      selectedApt ? supabase.from('deconturi').select('*').eq('apartament_id', selectedApt) : supabase.from('deconturi').select('*').eq('luna', selectedLuna).eq('an', selectedAn).maybeSingle(),
     ])
 
     const rezervari = rez||[]
@@ -70,7 +68,7 @@ export default function RapoartePage() {
       doc.setTextColor(232, 237, 248)
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`${raport.apt.nume} · ${LUNI[raport.luna]} ${raport.an}`, margin, 23)
+      doc.text(`${raport.apt?.nume || 'Toate locațiile'} · ${LUNI[raport.luna]} ${raport.an}`, margin, 23)
       doc.setTextColor(90, 107, 138)
       doc.text(`Generat: ${new Date().toLocaleDateString('ro-RO')}`, margin, 30)
 
@@ -146,7 +144,7 @@ export default function RapoartePage() {
         ['- Comisioane platforme', `${raport.totalComPlatf.toLocaleString('ro-RO')} RON`, ''],
         ['- TVA / taxe platforme', `${raport.totalTva.toLocaleString('ro-RO')} RON`, ''],
         ['- Costuri operaționale', `${raport.totalCostOp.toLocaleString('ro-RO')} RON`, 'suportate de proprietar'],
-        ['- Comision administrare', `${raport.apt.comision_procent}%`, ''],
+        ['- Comision administrare', `${raport.apt?.comision_procent || 20}%`, ''],
       ]
       const decont = raport.dec
       if (decont) {
@@ -192,8 +190,9 @@ export default function RapoartePage() {
             <FormGroup>
               <label>Apartament</label>
               <select value={selectedApt} onChange={e=>setSelectedApt(e.target.value)}>
-                <option value="">— Selectează apartament —</option>
-                {apartamente.map(a=><option key={a.id} value={a.id}>{a.nume}</option>)}
+                <option value="">🏢 Toate locațiile</option>
+                <option disabled>──────────</option>
+                {apartamente.map(a=><option key={a.id} value={a.id}>{a.nota?`[${a.nota}] `:''}{a.nume}</option>)}
               </select>
             </FormGroup>
             <FormGroup>
@@ -215,7 +214,7 @@ export default function RapoartePage() {
         {raport && (
           <Card>
             <CardHeader>
-              <CardTitle>📋 {raport.apt.nume} · {LUNI[raport.luna]} {raport.an}</CardTitle>
+              <CardTitle>📋 {raport.apt?.nume || 'Toate locațiile'} · {LUNI[raport.luna]} {raport.an}</CardTitle>
               <Button variant="primary" onClick={exportPDF} loading={exporting} icon={<Download size={14}/>}>Export PDF</Button>
             </CardHeader>
 
@@ -272,7 +271,7 @@ export default function RapoartePage() {
               {raport.totalCostOp>0 && <div className="flex justify-between text-sm"><span style={{ color:'var(--text3)' }}>- Costuri operaționale</span><span className="font-mono" style={{ color:'var(--red)' }}>-{raport.totalCostOp.toLocaleString('ro-RO')} RON</span></div>}
               {raport.dec && (
                 <>
-                  <div className="flex justify-between text-sm border-t pt-2" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>- Comision administrare ({raport.apt.comision_procent}%)</span><span className="font-mono" style={{ color:'var(--red)' }}>-{Number(raport.dec.comision_administrator_valoare).toLocaleString('ro-RO')} RON</span></div>
+                  <div className="flex justify-between text-sm border-t pt-2" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>- Comision administrare ({raport.apt?.comision_procent || 20}%)</span><span className="font-mono" style={{ color:'var(--red)' }}>-{Number(raport.dec.comision_administrator_valoare).toLocaleString('ro-RO')} RON</span></div>
                   <div className="flex justify-between mt-2 p-3 rounded-xl" style={{ background:'rgba(45,212,160,0.08)', border:'1px solid rgba(45,212,160,0.2)' }}>
                     <span className="font-bold text-sm" style={{ color:'var(--text)' }}>= Net de virat proprietarului</span>
                     <span className="font-bold text-lg font-mono" style={{ color:'var(--green)' }}>{Number(raport.dec.suma_neta_proprietar).toLocaleString('ro-RO')} RON</span>
