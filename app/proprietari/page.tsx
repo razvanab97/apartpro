@@ -59,7 +59,7 @@ export default function ProprietariPage() {
     <>
       <PageHeader title="Proprietari" subtitle={`${proprietari.length} proprietari`}
         actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Proprietar nou</Button>} />
-      <div className="p-6">
+      <div className="p-6" style={{ overflowY:"auto" }}>
         {proprietari.length === 0 ? (
           <EmptyState icon={<Users size={48}/>} title="Niciun proprietar" desc="Adaugă proprietarii apartamentelor în administrare"
             action={<Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Adaugă proprietar</Button>}/>
