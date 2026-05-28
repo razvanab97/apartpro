@@ -123,7 +123,7 @@ export default function ApartamentePage() {
         }
       />
 
-      <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', height:'calc(100vh - 54px)', overflow:'hidden' }}>
+      <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', flex:1, minHeight:0 }}>
 
         {/* LEFT — list */}
         <div style={{ overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
