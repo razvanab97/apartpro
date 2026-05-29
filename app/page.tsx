@@ -115,8 +115,9 @@ export default function DashboardPage() {
 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
   const luna = format(new Date(), 'MMMM yyyy', { locale: ro })
+  // Grad ocupare = apartamente ocupate AZI / total apartamente active
   const gradOcupare = stats.apartamenteActive > 0
-    ? Math.round((stats.rezervariActive / stats.apartamenteActive) * 100)
+    ? Math.min(100, Math.round((stats.rezervariActive / stats.apartamenteActive) * 100))
     : 0
 
   // Panel styles
