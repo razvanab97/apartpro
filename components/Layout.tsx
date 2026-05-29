@@ -4,7 +4,7 @@ import Chatbot from '@/components/Chatbot'
 import { usePathname } from 'next/navigation'
 import { ReactNode, useState } from 'react'
 import {
-  LayoutDashboard, Building2, Users, CalendarCheck, Inbox, Sparkles,
+  LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
   Upload, RefreshCw, CalendarDays, Menu, X, ChevronRight
 } from 'lucide-react'
