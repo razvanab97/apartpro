@@ -37,6 +37,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [result, setResult] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   const [listening, setListening] = useState(false)
+  const [forcedBiz, setForcedBiz] = useState('')
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
 
@@ -71,7 +72,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input })
+        body: JSON.stringify({ text: input, forcedBiz })
       })
       const data = await res.json()
       const text = data.content?.[0]?.text || '{}'
@@ -97,7 +98,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       descriere: result.descriere || null,
       status: 'de_facut',
       prioritate: result.prioritate || 'normala',
-      business: result.business || null,
+      business: forcedBiz || result.business || null,
       persoana: result.persoana || null,
       data_limita: result.data_limita || null,
       impact_score: imp,
@@ -141,6 +142,37 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           <button onClick={onClose} style={{ background: 'rgba(159,215,255,0.08)', border: '1px solid rgba(159,215,255,0.15)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(159,215,255,0.6)' }}>
             <X size={14}/>
           </button>
+        </div>
+
+        {/* Business code shortcuts */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          {[
+            { code: '01', label: 'Apartamente', biz: 'Property Management', color: '#4DA3FF' },
+            { code: '02', label: 'Produse', biz: 'Marketplace', color: '#22C55E' },
+            { code: '03', label: 'Spălătorie', biz: 'Spalatorie', color: '#F59E0B' },
+            { code: '04', label: 'Personal', biz: 'Personal', color: '#C4B5FD' },
+            { code: '05', label: 'Admin', biz: 'Admin', color: '#94A3B8' },
+            { code: '06', label: 'Financiar', biz: 'Financiar', color: '#FCD34D' },
+          ].map(b => (
+            <button key={b.code} onClick={() => {
+              setInput(prev => {
+                const clean = prev.replace(/^\d{2}\s/, '')
+                return b.code + ' ' + clean
+              })
+              setForcedBiz(b.biz)
+            }} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              background: forcedBiz === b.biz ? `${b.color}25` : 'rgba(214,228,244,0.05)',
+              border: `1px solid ${forcedBiz === b.biz ? b.color + '60' : 'rgba(159,215,255,0.1)'}`,
+              color: forcedBiz === b.biz ? b.color : 'rgba(159,215,255,0.45)',
+              fontSize: 11, fontWeight: forcedBiz === b.biz ? 600 : 400, transition: 'all 0.12s',
+            }}>
+              <span style={{ fontFamily: 'monospace', fontSize: 10, opacity: 0.7 }}>{b.code}</span>
+              {b.label}
+            </button>
+          ))}
+          {forcedBiz && <button onClick={() => { setForcedBiz(''); setInput(prev => prev.replace(/^\d{2}\s/, '')) }} style={{ padding: '4px 8px', borderRadius: 6, background: 'transparent', border: '1px solid rgba(159,215,255,0.08)', color: 'rgba(159,215,255,0.3)', fontSize: 11, cursor: 'pointer' }}>✕</button>}
         </div>
 
         {/* Voice + textarea */}
@@ -226,7 +258,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
               {[
                 { l: 'Prioritate', v: result.prioritate || 'normala', c: PRIO_COLOR[result.prioritate] || '#94A3B8' },
-                { l: 'Business', v: result.business || '—', c: 'rgba(159,215,255,0.7)' },
+                { l: 'Business', v: forcedBiz || result.business || '—', c: forcedBiz ? '#4DA3FF' : 'rgba(159,215,255,0.7)' },
                 { l: 'Impact', v: `${Number(result.impact_score) || 5}/10`, c: '#4ADE80' },
                 { l: 'Efort', v: `${Number(result.effort_score) || 5}/10`, c: '#FCD34D' },
                 result.data_limita ? { l: 'Deadline', v: result.data_limita, c: '#F87171' } : null,
