@@ -98,8 +98,10 @@ export default function RapoartePage() {
   const [loading, setLoading] = useState(false)
   const [apartamente, setApartamente] = useState<any[]>([])
   const [selectedApt, setSelectedApt] = useState('')
-  const [selectedLuna, setSelectedLuna] = useState(new Date().getMonth() + 1)
-  const [selectedAn, setSelectedAn] = useState(new Date().getFullYear())
+  const [lunaStart, setLunaStart] = useState(new Date().getMonth() + 1)
+  const [anStart, setAnStart] = useState(new Date().getFullYear())
+  const [lunaEnd, setLunaEnd] = useState(new Date().getMonth() + 1)
+  const [anEnd, setAnEnd] = useState(new Date().getFullYear())
   const [comisionAB, setComisionAB] = useState(20)
   const [rezervari, setRezervari] = useState<any[]>([])
   const [generated, setGenerated] = useState(false)
@@ -112,8 +114,8 @@ export default function RapoartePage() {
 
   async function genereaza() {
     setLoading(true)
-    const primaZi = new Date(selectedAn, selectedLuna - 1, 1)
-    const ultimaZi = new Date(selectedAn, selectedLuna, 0)
+    const primaZi = new Date(anStart, lunaStart - 1, 1)
+    const ultimaZi = new Date(anEnd, lunaEnd, 0)
     const start = primaZi.toISOString().split('T')[0]
     const end = ultimaZi.toISOString().split('T')[0]
 
@@ -164,7 +166,8 @@ export default function RapoartePage() {
       doc.setTextColor(214, 228, 244)
       doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`${aptNume} | ${LUNI[selectedLuna-1]} ${selectedAn} | Comision AB Homes: ${comisionAB}%`, 14, 22)
+      const perioadaLabel = lunaStart === lunaEnd && anStart === anEnd ? `${LUNI[lunaStart-1]} ${anStart}` : `${LUNI[lunaStart-1]} ${anStart} — ${LUNI[lunaEnd-1]} ${anEnd}`
+      doc.text(`${aptNume} | ${perioadaLabel} | Comision AB Homes: ${comisionAB}%`, 14, 22)
 
       const rows = rezervari.map(r => {
         const c = calcRezervare(r, comisionAB)
@@ -211,7 +214,8 @@ export default function RapoartePage() {
         }
       })
 
-      doc.save(`Raport_${aptNume.replace(/[\[\] ]/g,'_')}_${selectedAn}_${String(selectedLuna).padStart(2,'0')}.pdf`)
+      const fileLabel = lunaStart === lunaEnd && anStart === anEnd ? `${anStart}_${String(lunaStart).padStart(2,'0')}` : `${anStart}_${String(lunaStart).padStart(2,'0')}-${anEnd}_${String(lunaEnd).padStart(2,'0')}`
+      doc.save(`Raport_${aptNume.replace(/[\[\] ]/g,'_')}_${fileLabel}.pdf`)
       show('success', 'PDF exportat!')
     } catch (e) {
       show('error', 'Eroare export PDF')
@@ -228,7 +232,7 @@ export default function RapoartePage() {
 
         {/* FILTERS */}
         <div style={{ ...panel, padding: '16px 20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1.5fr 1fr auto', gap: 12, alignItems: 'end' }}>
             <div>
               <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>Apartament / Locație</label>
               <select value={selectedApt} onChange={e => { setSelectedApt(e.target.value); const apt = apartamente.find(a => a.id === e.target.value); if (apt?.comision_procent) setComisionAB(apt.comision_procent) }}>
@@ -238,16 +242,26 @@ export default function RapoartePage() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>Luna</label>
-              <select value={selectedLuna} onChange={e => setSelectedLuna(Number(e.target.value))}>
-                {LUNI.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}
-              </select>
+              <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>De la</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <select value={lunaStart} onChange={e => setLunaStart(Number(e.target.value))} style={{ flex: 2 }}>
+                  {LUNI.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}
+                </select>
+                <select value={anStart} onChange={e => setAnStart(Number(e.target.value))} style={{ flex: 1 }}>
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
             </div>
             <div>
-              <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>An</label>
-              <select value={selectedAn} onChange={e => setSelectedAn(Number(e.target.value))}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
+              <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>Până la</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <select value={lunaEnd} onChange={e => setLunaEnd(Number(e.target.value))} style={{ flex: 2 }}>
+                  {LUNI.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}
+                </select>
+                <select value={anEnd} onChange={e => setAnEnd(Number(e.target.value))} style={{ flex: 1 }}>
+                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 5, display: 'block' }}>Comision AB Homes (%)</label>
@@ -303,7 +317,7 @@ export default function RapoartePage() {
           <div style={panel}>
             {rezervari.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'rgba(159,215,255,0.4)', fontSize: 13 }}>
-                Nicio rezervare în {LUNI[selectedLuna-1]} {selectedAn}
+                Nicio rezervare în perioada selectată
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
