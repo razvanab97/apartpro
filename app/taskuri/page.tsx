@@ -330,18 +330,37 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 /* ── TASK CARD ── */
 function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: Task) => void; onDelete: (id: string) => void; onMove: (id: string, s: Task['status']) => void }) {
   const sc = PRIO_COLOR[task.prioritate] || '#94A3B8'
-  const overdue = task.data_limita && task.data_limita < new Date().toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0]
+  const overdue = task.data_limita && task.data_limita < today
+  const daysLeft = task.data_limita ? Math.ceil((new Date(task.data_limita).getTime() - new Date(today).getTime()) / 86400000) : null
+  const isCriticalDeadline = daysLeft !== null && daysLeft <= 1
+  const isWarningDeadline = daysLeft !== null && daysLeft >= 2 && daysLeft <= 3
   return (
     <div onClick={() => onEdit(task)} style={{
       background: 'rgba(214,228,244,0.06)', border: `1px solid rgba(159,215,255,0.1)`,
-      borderLeft: `3px solid ${sc}`, borderRadius: 10, padding: '12px 12px 10px', cursor: 'pointer', transition: 'border-color 0.12s',
+      borderLeft: `3px solid ${overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc}`, borderRadius: 10, padding: '12px 12px 10px', cursor: 'pointer', transition: 'border-color 0.12s',
     }}>
       <div style={{ fontSize: 13, fontWeight: 500, color: '#FFFFFF', marginBottom: 5, lineHeight: 1.4 }}>{task.titlu}</div>
       {task.descriere && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginBottom: 7, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
         <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${sc}18`, color: sc, border: `1px solid ${sc}25` }}>{PRIO_LABEL[task.prioritate]}</span>
         {task.business && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.15)' }}>{task.business}</span>}
-        {task.data_limita && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: overdue ? 'rgba(239,68,68,0.15)' : 'rgba(148,163,184,0.1)', color: overdue ? '#F87171' : '#94A3B8', border: `1px solid ${overdue ? 'rgba(239,68,68,0.25)' : 'rgba(148,163,184,0.15)'}` }}>{overdue ? '⚠ ' : ''}{task.data_limita}</span>}
+        {task.data_limita && (() => {
+          const today = new Date().toISOString().split('T')[0]
+          const diff = Math.ceil((new Date(task.data_limita).getTime() - new Date(today).getTime()) / 86400000)
+          const isOverdue = diff < 0
+          const isCritical = diff >= 0 && diff <= 1  // azi sau maine = rosu
+          const isWarning = diff >= 2 && diff <= 3   // 2-3 zile = galben
+          const bg = isOverdue || isCritical ? 'rgba(239,68,68,0.18)' : isWarning ? 'rgba(245,158,11,0.18)' : 'rgba(148,163,184,0.1)'
+          const color = isOverdue || isCritical ? '#F87171' : isWarning ? '#FCD34D' : '#94A3B8'
+          const border = isOverdue || isCritical ? 'rgba(239,68,68,0.3)' : isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(148,163,184,0.15)'
+          const prefix = isOverdue ? '🔴 ' : isCritical ? '🔴 ' : isWarning ? '🟡 ' : '📅 '
+          return (
+            <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: bg, color, border: `1px solid ${border}` }}>
+              {prefix}{task.data_limita}
+            </span>
+          )
+        })()}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
         {/* Big check button - quick complete */}
