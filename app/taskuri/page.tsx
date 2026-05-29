@@ -412,6 +412,130 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
   )
 }
 
+
+/* ── TASK PROGRESS ── */
+function TaskProgress({ tasks }: { tasks: Task[] }) {
+  const [view, setView] = useState<'zi'|'saptamana'|'luna'>('zi')
+
+  const now = new Date()
+  const todayStr = now.toISOString().split('T')[0]
+
+  const startOfWeek = new Date(now)
+  startOfWeek.setDate(now.getDate() - ((now.getDay() + 6) % 7))
+  const weekStr = startOfWeek.toISOString().split('T')[0]
+
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+
+  const getStats = () => {
+    let relevant = tasks
+    if (view === 'zi') relevant = tasks.filter(t => t.created_at?.startsWith(todayStr) || (t.status === 'finalizat' && t.created_at?.startsWith(todayStr)))
+    else if (view === 'saptamana') relevant = tasks.filter(t => t.created_at >= weekStr)
+    else relevant = tasks.filter(t => t.created_at >= startOfMonth)
+
+    const total = relevant.length || 1
+    const done = relevant.filter(t => t.status === 'finalizat').length
+    const inProgress = relevant.filter(t => t.status === 'in_lucru').length
+    const urgent = tasks.filter(t => t.prioritate === 'urgenta' && t.status !== 'finalizat').length
+    const pct = Math.round((done / total) * 100)
+
+    // Streak - consecutive days with at least 1 task completed
+    return { total: relevant.length, done, inProgress, urgent, pct }
+  }
+
+  const { total, done, inProgress, urgent, pct } = getStats()
+
+  // XP-style level
+  const totalDone = tasks.filter(t => t.status === 'finalizat').length
+  const xp = totalDone * 10
+  const level = Math.floor(xp / 100) + 1
+  const xpInLevel = xp % 100
+  const levelEmoji = level >= 10 ? '🏆' : level >= 7 ? '💎' : level >= 5 ? '🥇' : level >= 3 ? '🥈' : '🥉'
+
+  return (
+    <div style={{
+      margin: '0 20px 0',
+      background: 'rgba(214,228,244,0.05)',
+      border: '1px solid rgba(159,215,255,0.1)',
+      borderRadius: 14, padding: '14px 18px',
+      display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
+    }}>
+      {/* XP Level */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ fontSize: 28, lineHeight: 1 }}>{levelEmoji}</div>
+        <div>
+          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 2 }}>Nivel {level}</div>
+          <div style={{ width: 80, height: 5, borderRadius: 3, background: 'rgba(159,215,255,0.1)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${xpInLevel}%`, background: 'linear-gradient(90deg,#4DA3FF,#7BC8FF)', borderRadius: 3, transition: 'width 0.5s ease' }}/>
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.3)', marginTop: 2 }}>{xp} XP · {xpInLevel}/100</div>
+        </div>
+      </div>
+
+      <div style={{ width: 1, height: 40, background: 'rgba(159,215,255,0.08)', flexShrink: 0 }}/>
+
+      {/* Period tabs */}
+      <div style={{ display: 'flex', gap: 4, background: 'rgba(14,27,43,0.4)', borderRadius: 8, padding: 3, flexShrink: 0 }}>
+        {(['zi','saptamana','luna'] as const).map(v => (
+          <button key={v} onClick={() => setView(v)} style={{
+            fontSize: 11, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', border: 'none',
+            background: view === v ? 'rgba(77,163,255,0.2)' : 'transparent',
+            color: view === v ? '#FFFFFF' : 'rgba(159,215,255,0.4)',
+            fontWeight: view === v ? 500 : 400,
+          }}>{v === 'zi' ? 'Azi' : v === 'saptamana' ? 'Săptămână' : 'Lună'}</button>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+          <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)' }}>{done}/{total} finalizate</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: pct === 100 ? '#4ADE80' : pct > 50 ? '#FCD34D' : '#4DA3FF' }}>{pct}%</span>
+        </div>
+        <div style={{ height: 8, borderRadius: 4, background: 'rgba(159,215,255,0.08)', overflow: 'hidden', position: 'relative' }}>
+          <div style={{
+            height: '100%', borderRadius: 4, transition: 'width 0.6s cubic-bezier(.34,1.56,.64,1)',
+            width: `${pct}%`,
+            background: pct === 100
+              ? 'linear-gradient(90deg,#22C55E,#4ADE80)'
+              : pct > 50
+                ? 'linear-gradient(90deg,#F59E0B,#FCD34D)'
+                : 'linear-gradient(90deg,#3B82F6,#4DA3FF)',
+          }}/>
+          {/* Shimmer effect */}
+          {pct > 0 && pct < 100 && (
+            <div style={{ position:'absolute', top:0, left:0, right:0, bottom:0, background:'linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.1) 50%,transparent 100%)', animation:'shimmer 2s infinite', backgroundSize:'200% 100%' }}/>
+          )}
+        </div>
+        {inProgress > 0 && <div style={{ fontSize: 10, color: 'rgba(77,163,255,0.6)', marginTop: 3 }}>{inProgress} în lucru</div>}
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+        {urgent > 0 && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'monospace' }}>{urgent}</div>
+            <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)' }}>urgente</div>
+          </div>
+        )}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#4ADE80', fontFamily: 'monospace' }}>{totalDone}</div>
+          <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)' }}>total ✓</div>
+        </div>
+      </div>
+
+      {pct === 100 && total > 0 && (
+        <div style={{ fontSize: 12, color: '#4ADE80', fontWeight: 600, animation: 'pulse 1s ease infinite' }}>
+          🎉 Toate gata!
+        </div>
+      )}
+
+      <style>{`
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+      `}</style>
+    </div>
+  )
+}
+
 /* ── MAIN PAGE ── */
 export default function TaskuriPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -501,6 +625,9 @@ export default function TaskuriPage() {
           </div>
         }
       />
+
+      {/* PROGRESS BAR SECTION */}
+      <TaskProgress tasks={tasks}/>
 
       {/* KANBAN */}
       {loading ? (
