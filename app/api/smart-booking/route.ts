@@ -12,28 +12,13 @@ async function sbFetch(path: string) {
   return res.json()
 }
 
-function buildDateMap() {
+function buildDateMap(): Record<string,string> {
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
   const add = (n: number) => { const d = new Date(now); d.setDate(now.getDate()+n); return fmt(d) }
-  const days = ['duminica','luni','marti','miercuri','joi','vineri','sambata']
-  const nextDays: Record<string,string> = {}
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(now); d.setDate(now.getDate()+i)
-    nextDays[days[d.getDay()]] = fmt(d)
-  }
-  // Next month days 1-31
-  const monthDays: Record<string,string> = {}
-  for (let day = 1; day <= 31; day++) {
-    const d = new Date(now)
-    if (day <= d.getDate()) d.setMonth(d.getMonth()+1) // next month if day already passed
-    d.setDate(day)
-    monthDays['pe ' + day] = fmt(d)
-    monthDays['pe ' + pad(day)] = fmt(d)
-    monthDays['' + day] = fmt(d)
-  }
-  return {
+  const dayNames = ['duminica','luni','marti','miercuri','joi','vineri','sambata']
+  const result: Record<string,string> = {
     today: fmt(now),
     tomorrow: add(1),
     dayAfterTomorrow: add(2),
@@ -46,9 +31,21 @@ function buildDateMap() {
     year: String(now.getFullYear()),
     month: pad(now.getMonth()+1),
     nextMonth: pad(now.getMonth()+2 > 12 ? 1 : now.getMonth()+2),
-    ...nextDays,
-    ...monthDays,
   }
+  // Next weekdays
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(now); d.setDate(now.getDate()+i)
+    result[dayNames[d.getDay()]] = fmt(d)
+  }
+  // Days of month
+  for (let day = 1; day <= 31; day++) {
+    const d = new Date(now)
+    if (day <= now.getDate()) d.setMonth(d.getMonth()+1)
+    d.setDate(day)
+    result['pe ' + day] = fmt(d)
+    result['pe ' + pad(day)] = fmt(d)
+  }
+  return result
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +65,7 @@ export async function POST(req: NextRequest) {
     '"poimaine" = ' + dm.dayAfterTomorrow,
     '"sapt viitoare"/"saptamana viitoare" = incepe ' + dm.in7days,
     '"luna asta" = pana la ' + dm.endOfMonth,
-    'Zilele saptamanii: luni=' + dm.luni + ', marti=' + dm.marti + ', miercuri=' + dm.miercuri + ', joi=' + dm.joi + ', vineri=' + dm.vineri + ', sambata=' + dm.sambata + ', duminica=' + dm.duminica,
+    'Zilele saptamanii: luni=' + dm['luni'] + ', marti=' + dm['marti'] + ', miercuri=' + dm['miercuri'] + ', joi=' + dm['joi'] + ', vineri=' + dm['vineri'] + ', sambata=' + dm['sambata'] + ', duminica=' + dm['duminica'],
     'Zile ale lunii: "pe 1"=' + dm['pe 1'] + ', "pe 5"=' + dm['pe 5'] + ', "pe 10"=' + dm['pe 10'] + ', "pe 15"=' + dm['pe 15'] + ', "pe 20"=' + dm['pe 20'] + ', "pe 25"=' + dm['pe 25'] + ', "pe 30"=' + dm['pe 30'],
     'Luna curenta=' + dm.month + ', luna viitoare=' + dm.nextMonth + ', anul=' + dm.year,
   ].join('\n')
