@@ -91,8 +91,12 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     setSaving(true)
     const imp = Number(result.impact_score) || 5
     const eff = Number(result.effort_score) || 5
+    // Fallback: daca AI nu a generat titlu, foloseste inputul original (primele 60 chars)
+    const titluFinal = (result.titlu && result.titlu !== 'Task nou' && result.titlu.length > 3)
+      ? result.titlu
+      : input.slice(0, 60)
     const { error } = await supabase.from('taskuri').insert({
-      titlu: result.titlu || 'Task nou',
+      titlu: titluFinal,
       descriere: result.descriere || null,
       status: 'de_facut',
       prioritate: result.prioritate || 'normala',
