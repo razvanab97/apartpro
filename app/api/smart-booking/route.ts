@@ -1,73 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY =  + GEMINI_KEY + 
+const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
 const VISION_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY
 
 export async function POST(req: NextRequest) {
-  const { text, imageBase64, imageType, apartamente, rezervari } = await req.json()
+  const { text, imageBase64, imageType, apartamente } = await req.json()
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Build context
   const aptsContext = (apartamente || []).map((a: any) =>
-    `- [${a.nota || '?'}] ${a.nume}: max ${a.capacitate_max || '?'} pers, ${a.pret_standard || '?'} RON/noapte, ${a.adresa || ''}`
+    '- [' + (a.nota || '?') + '] ' + a.nume + ': max ' + (a.capacitate_max || '?') + ' pers, ' + (a.pret_standard || '?') + ' RON/noapte, ' + (a.adresa || '')
   ).join('\n')
 
-  const prompt = `Ești un asistent AI pentru AB Homes Iași, o firmă de apartamente în regim hotelier.
+  const jsonTemplate = '{"nume_client":null,"telefon":null,"email":null,"data_checkin":"YYYY-MM-DD sau null","data_checkout":"YYYY-MM-DD sau null","nr_persoane":null,"nr_nopti":null,"buget":null,"preferinte":"ce a cerut","canal":"whatsapp|airbnb|booking|email|direct","limba":"ro|en|fr|de","urgenta":false,"apartamente_recomandate":[{"nota":"cod","nume":"nume apt","motiv":"de ce se potriveste","scor":8}],"raspuns_sugerat":"mesaj catre client","observatii":"alte detalii"}'
 
-Azi: ${today}
+  const promptLines = [
+    'Esti un asistent AI pentru AB Homes Iasi, firma de apartamente in regim hotelier.',
+    '',
+    'Azi: ' + today,
+    '',
+    'APARTAMENTE DISPONIBILE:',
+    aptsContext,
+    '',
+    'Analizeaza mesajul si extrage cererea de rezervare.',
+    'Returneaza STRICT JSON valid, fara text inainte sau dupa:',
+    jsonTemplate,
+    '',
+    'Reguli recomandare:',
+    '- Filtreaza dupa nr persoane si capacitate',
+    '- Potriveste zona mentionata (Palas, Copou, centru etc.)',
+    '- Considera bugetul mentionat',
+    '- Max 3 apartamente recomandate, sortate dupa scor',
+    '- Raspunsul sugerat sa fie in limba clientului, warm si profesional, max 3 randuri',
+    '- Pentru date: "15-18 iunie" -> checkin 2026-06-15, checkout 2026-06-18',
+    '',
+    'Mesaj de analizat:',
+  ]
 
-APARTAMENTE DISPONIBILE:
-${aptsContext}
+  const prompt = promptLines.join('\n') + '\n' + (text || '(mesaj din imagine)')
 
-Analizează mesajul de mai jos (poate fi de pe WhatsApp, Airbnb, Booking sau email) și extrage cererea de rezervare.
-
-Returnează STRICT JSON valid, fără text înainte sau după:
-{
-  "nume_client": "numele extras sau null",
-  "telefon": "telefonul extras sau null",
-  "email": "emailul extras sau null",
-  "data_checkin": "YYYY-MM-DD sau null",
-  "data_checkout": "YYYY-MM-DD sau null",
-  "nr_persoane": număr sau null,
-  "nr_nopti": număr sau null,
-  "buget": "bugetul menționat sau null",
-  "preferinte": "ce a cerut clientul: zonă, dotări, tip etc.",
-  "canal": "whatsapp|airbnb|booking|email|direct",
-  "limba": "ro|en|fr|de|other",
-  "urgenta": true sau false,
-  "apartamente_recomandate": [
-    {
-      "nota": "codul apartamentului",
-      "nume": "numele apartamentului",
-      "motiv": "de ce se potrivește în max 15 cuvinte",
-      "scor": număr 1-10
-    }
-  ],
-  "raspuns_sugerat": "un mesaj scurt de răspuns către client în limba lui, profesional și warm, max 3 rânduri",
-  "observatii": "alte detalii relevante extrase din mesaj"
-}
-
-Reguli recomandare apartamente:
-- Dacă menționează număr de persoane, filtrează după capacitate
-- Dacă menționează zonă (Palas, Copou, centru), recomandă apartamentele din acea zonă
-- Dacă menționează buget, prioritizează apartamentele în buget
-- Recomandă maxim 3 apartamente, sortate după potrivire
-- Dacă nu sunt suficiente detalii, recomandă top 3 după popularitate
-
-Mesaj de analizat:
-`
-
-  const parts: any[] = [{ text: prompt + (text || '(mesaj din imagine)') }]
+  const parts: any[] = [{ text: prompt }]
 
   if (imageBase64) {
+    parts[0].text = promptLines.join('\n') + '\n(vezi imaginea atasata)'
     parts.push({
       inline_data: {
         mime_type: imageType || 'image/jpeg',
         data: imageBase64,
       }
     })
-    parts[0].text = prompt + '(vezi imaginea atașată)'
   }
 
   const res = await fetch(VISION_URL, {
