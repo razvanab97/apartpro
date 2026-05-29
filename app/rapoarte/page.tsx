@@ -250,7 +250,7 @@ export default function RapoartePage() {
   return (
     <>
       <PageHeader title="Rapoarte" subtitle="Calcul comisioane și situație financiară"/>
-      <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto', flex:1 }}>
+      <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto', flex:1, minHeight:0 }}>
 
         {/* TIP RAPORT */}
         <div style={{ display:'flex', gap:8 }}>
