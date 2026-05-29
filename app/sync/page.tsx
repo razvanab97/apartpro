@@ -21,9 +21,20 @@ function fmt5star(iso: string): string {
 }
 
 function parse5star(s: string): string {
-  const months: Record<string,string> = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'}
+  if (!s) return ''
+  const months: Record<string,string> = {
+    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+    ianuarie:'01',februarie:'02',martie:'03',aprilie:'04',mai:'05',iunie:'06',
+    iulie:'07',august:'08',septembrie:'09',octombrie:'10',noiembrie:'11',decembrie:'12'
+  }
   const p = s.trim().split(' ')
-  if (p.length === 3) return `${p[2]}-${months[p[1]]||'01'}-${p[0].padStart(2,'0')}`
+  if (p.length === 3) {
+    const mon = months[p[1].toLowerCase().slice(0,3)] || months[p[1].toLowerCase()] || '01'
+    return `${p[2]}-${mon}-${p[0].padStart(2,'0')}`
+  }
+  // Already ISO format
+  if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10)
   return s
 }
 
@@ -110,8 +121,10 @@ export default function SyncPage() {
       for (const b of bookings) {
         try {
           // Date format: "29 Apr 2026"
-          const checkin = b.prima_zi ? parse5star(b.prima_zi) : b.checkin ? parse5star(b.checkin) : null
-          const checkout = b.ultima_zi ? parse5star(b.ultima_zi) : b.checkout ? parse5star(b.checkout) : null
+          const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
+          const checkoutRaw = b.ultima_zi || b.checkout || b.check_out || b.data_checkout || ''
+          const checkin = checkinRaw ? parse5star(checkinRaw) : null
+          const checkout = checkoutRaw ? parse5star(checkoutRaw) : null
           const numeClient = b.nume || b.name || b.guest_name || '—'
           const canal = parseCanal(b.sursa || b.canal || b.source || '')
           const telefon = b.telefon || b.phone || null
