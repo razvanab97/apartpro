@@ -36,7 +36,32 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [listening, setListening] = useState(false)
+  const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
+
+  function toggleVoice() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) { show('error', 'Browserul nu suportă dictare vocală'); return }
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'ro-RO'
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript
+      setInput(prev => prev ? prev + ' ' + transcript : transcript)
+    }
+    recognition.onend = () => setListening(false)
+    recognition.onerror = () => setListening(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
 
   async function classify() {
     if (!input.trim()) return
@@ -48,7 +73,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: input,
-          system: `Ești un sistem AI de clasificare pentru un antreprenor român care administrează: apartamente în regim hotelier (AB Homes Iași), marketplace, spălătorie.\n\nAnalizează textul și returnează DOAR un JSON valid:\n{"type":"task","titlu":"titlu scurt","descriere":"detalii","prioritate":"urgenta|normala|scazuta","business":"Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"motivul clasificarii"}`
+          system: `Ești un sistem AI de clasificare pentru Razvan Abunei, antreprenor român care administrează:\n- Property Management: apartamente în regim hotelier AB Homes Iași (Airy Palas, SkyNest, Newton Urban, Hideout, Cozy Studio, Vila Pacurari etc.)\n- Marketplace: vânzări online produse\n- Spălătorie: business de spălătorie\n- Personal: sarcini personale\n- Admin/Financiar: contabilitate, facturi, taxe\n\nReguli de clasificare automată a businessului:\n- Dacă menționează apartament, cameră, check-in, check-out, oaspete, Booking, Airbnb, proprietar → Property Management\n- Dacă menționează produs, comandă, livrare, stoc, marketplace → Marketplace\n- Dacă menționează mașina de spălat, ciclu, rufă → Spălătorie\n- Dacă menționează contabil, TVA, factură, ANAF, bancă → Financiar\n- Altfel → Personal sau Admin\n\nAnalizează și returnează DOAR JSON valid:\n{"type":"task","titlu":"titlu scurt max 60 chars","descriere":"detalii utile extrase","prioritate":"urgenta|normala|scazuta","business":"Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"1 fraza scurta"}`
         })
       })
       const data = await res.json()
@@ -117,19 +142,46 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           </button>
         </div>
 
-        {/* textarea */}
-        <textarea
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder={'Exemple:\n"Trebuie să sun furnizorul de prosoape săptămâna asta"\n"Idee: pachete weekend romantic la Airy Palas cu șampanie"\n"Reamintește-mi marți să trimit factura la Booking"'}
-          autoFocus
-          style={{
-            width: '100%', minHeight: 110, padding: '12px 14px',
-            background: 'rgba(214,228,244,0.07)', border: '1px solid rgba(159,215,255,0.15)',
-            borderRadius: 10, color: '#FFFFFF', fontSize: 13,
-            fontFamily: 'inherit', resize: 'vertical', outline: 'none', lineHeight: 1.6,
-          }}
-        />
+        {/* Voice + textarea */}
+        <div style={{ position: 'relative' }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder={'Exemple:\n"Trebuie să sun furnizorul de prosoape săptămâna asta"\n"Idee: pachete weekend romantic la Airy Palas cu șampanie"\n"Reamintește-mi marți să trimit factura la Booking"'}
+            autoFocus
+            style={{
+              width: '100%', minHeight: 110, padding: '12px 44px 12px 14px',
+              background: 'rgba(214,228,244,0.07)', border: '1px solid rgba(159,215,255,0.15)',
+              borderRadius: 10, color: '#FFFFFF', fontSize: 13,
+              fontFamily: 'inherit', resize: 'vertical', outline: 'none', lineHeight: 1.6,
+            }}
+          />
+          <button
+            onClick={toggleVoice}
+            title={listening ? 'Stop înregistrare' : 'Dictează cu vocea'}
+            style={{
+              position: 'absolute', top: 10, right: 10,
+              width: 30, height: 30, borderRadius: '50%',
+              background: listening ? 'rgba(239,68,68,0.25)' : 'rgba(77,163,255,0.15)',
+              border: `1px solid ${listening ? 'rgba(239,68,68,0.5)' : 'rgba(159,215,255,0.2)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', transition: 'all 0.15s',
+              color: listening ? '#F87171' : 'rgba(159,215,255,0.6)',
+            }}
+          >
+            {listening
+              ? <span style={{ width: 8, height: 8, borderRadius: 2, background: '#F87171', display: 'block' }}/>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            }
+          </button>
+          {listening && (
+            <div style={{ position: 'absolute', bottom: 8, right: 46, display: 'flex', alignItems: 'center', gap: 4 }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{ width: 3, borderRadius: 2, background: '#F87171', animation: `pulse 0.8s ease-in-out ${i*0.15}s infinite alternate`, height: 8+i*4 }}/>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <button
