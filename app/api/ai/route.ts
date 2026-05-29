@@ -1,23 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
+
 export async function POST(req: NextRequest) {
   const { text, system } = await req.json()
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      system: system,
-      messages: [{ role: 'user', content: text }],
-    }),
-  })
+  const prompt = system + '\n\nText de clasificat:\n' + text
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 600,
+        },
+      }),
+    }
+  )
 
   const data = await res.json()
-  return NextResponse.json(data)
+  const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+  
+  return NextResponse.json({
+    content: [{ text: generatedText }]
+  })
 }
