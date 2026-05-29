@@ -3,78 +3,68 @@ import { NextRequest, NextResponse } from 'next/server'
 const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
 
 const BIZ_CODES: Record<string, string> = {
-  '01': 'Property Management',
-  '02': 'Marketplace',
-  '03': 'Spalatorie',
-  '04': 'Personal',
-  '05': 'Admin',
-  '06': 'Financiar',
+  '01': 'Property Management', '02': 'Marketplace',
+  '03': 'Spalatorie', '04': 'Personal', '05': 'Admin', '06': 'Financiar',
 }
 
-function getDateMap() {
+function detectDate(text: string): string | null {
+  const t = text.toLowerCase()
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
-  const add = (days: number) => { const d = new Date(now); d.setDate(now.getDate()+days); return fmt(d) }
-  const days = ['duminica','luni','marti','miercuri','joi','vineri','sambata']
-  const nextDays: Record<string, string> = {}
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(now); d.setDate(now.getDate()+i)
-    nextDays[days[d.getDay()]] = fmt(d)
-  }
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth()+1, 0)
-  return {
-    today: fmt(now), tomorrow: add(1), in2days: add(2),
-    endOfWeek: add(7 - now.getDay()), in7days: add(7),
-    in14days: add(14), in30days: add(30), endOfMonth: fmt(endOfMonth),
-    ...nextDays,
-  }
-}
+  const add = (n: number) => { const d = new Date(now); d.setDate(now.getDate()+n); return fmt(d) }
 
-// Client-side date detection as fallback
-function detectDate(text: string, dateMap: Record<string, string>): string | null {
-  const t = text.toLowerCase()
-  if (/azi|astazi|astăzi|acum|azi/.test(t)) return dateMap.today
-  if (/mâine|maine/.test(t)) return dateMap.tomorrow
-  if (/poimâine|poimaine/.test(t)) return dateMap.in2days
-  if (/săptămâna asta|saptamana asta|această săptămână/.test(t)) return dateMap.endOfWeek
-  if (/săptămâna viitoare|saptamana viitoare/.test(t)) return dateMap.in7days
-  if (/2 săptămâni|2 saptamani/.test(t)) return dateMap.in14days
-  if (/luna asta|această lună|aceasta luna/.test(t)) return dateMap.endOfMonth
-  if (/luna viitoare|luna urmatoare/.test(t)) return dateMap.in30days
-  for (const [day, date] of Object.entries(dateMap)) {
-    if (['luni','marti','miercuri','joi','vineri','sambata','duminica'].includes(day) && t.includes(day)) return date
+  // Exact date formats: 31.05 / 31/05 / 31.05.2026 / 2026-05-31
+  const exactFull = t.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/)
+  if (exactFull) return `${exactFull[1]}-${pad(Number(exactFull[2]))}-${pad(Number(exactFull[3]))}`
+  const exactShort = t.match(/(\d{1,2})[./](\d{1,2})(?:[./](\d{4}))?/)
+  if (exactShort) {
+    const year = exactShort[3] || String(now.getFullYear())
+    return `${year}-${pad(Number(exactShort[2]))}-${pad(Number(exactShort[1]))}`
+  }
+
+  if (/\bazi\b|astazi|astăzi|\bacum\b/.test(t)) return fmt(now)
+  if (/\bmâine\b|\bmaine\b/.test(t)) return add(1)
+  if (/poimâine|poimaine/.test(t)) return add(2)
+  if (/săptămâna asta|saptamana asta/.test(t)) return add(7 - now.getDay())
+  if (/săptămâna viitoare|saptamana viitoare/.test(t)) return add(7)
+  if (/luna asta|această lună|aceasta luna/.test(t)) return fmt(new Date(now.getFullYear(), now.getMonth()+1, 0))
+  if (/luna viitoare/.test(t)) return add(30)
+
+  const weekdays: Record<string, number> = { luni:1, marti:2, miercuri:3, joi:4, vineri:5, sambata:6, duminica:0 }
+  for (const [day, dow] of Object.entries(weekdays)) {
+    if (t.includes(day)) { const diff = (dow - now.getDay() + 7) % 7 || 7; return add(diff) }
   }
   return null
 }
 
 export async function POST(req: NextRequest) {
   const { text, forcedBiz, forcedDate } = await req.json()
-  const dateMap = getDateMap()
 
-  // Client-side date detection first
-  const clientDate = forcedDate !== undefined ? forcedDate : detectDate(text, dateMap)
+  const detectedDate = detectDate(text)
+  const finalDate = (forcedDate !== undefined && forcedDate !== null && forcedDate !== '') ? forcedDate : detectedDate
 
   const codeMatch = text.match(/^(\d{2})\s+/)
-  const detectedBiz = codeMatch ? BIZ_CODES[codeMatch[1]] : null
-  const activeBiz = forcedBiz || detectedBiz
+  const activeBiz = forcedBiz || (codeMatch ? BIZ_CODES[codeMatch[1]] : null)
   const cleanText = codeMatch ? text.replace(/^\d{2}\s+/, '') : text
 
-  const prompt = [
+  const jsonTemplate = '{"titlu":"VERB infinitiv + obiect concis","descriere":"detalii","prioritate":"urgenta|normala|scazuta","business":"auto","data_limita":"PLACEHOLDER","impact_score":7,"effort_score":4,"persoana":null,"rationale":"motiv"}'
+
+  const promptLines = [
     'Esti asistentul AI al lui Razvan, antreprenor roman.',
-    activeBiz ? ('Business FORTAT: ' + activeBiz + ' — NU schimba!') : '',
+    activeBiz ? ('Business: ' + activeBiz + ' (nu schimba!)') : '',
     '',
-    'Transforma textul intr-un task profesional. JSON STRICT, fara alt text:',
-    '{"titlu":"VERB INFINITIV + obiect concret (ex: Plateste taxele ABXHOMES si AB Homes Invest)","descriere":"context relevant","prioritate":"urgenta|normala|scazuta","business":"categorie","data_limita":"' + (clientDate || 'null') + '","impact_score":7,"effort_score":4,"persoana":null,"rationale":"motiv scurt"}',
+    'Transforma textul intr-un task. Returneaza DOAR JSON:',
+    jsonTemplate,
     '',
-    'IMPORTANT titlu: NU copia textul original. Reformuleaza ca actiune clara cu verb (Plateste/Verifica/Suna/Trimite/Contacteaza etc)',
-    '',
-    activeBiz ? '' : 'Business (alege unul): apartament/Booking/Airbnb/cazare→Property Management | produs/comanda/stoc→Marketplace | spalat/rufa→Spalatorie | factura/TVA/contabil/taxe→Financiar | altceva→Personal',
-    '',
-    clientDate ? ('Data limita SETATA: ' + clientDate + ' — pune aceasta valoare in data_limita!') : 'Data: detecteaza din text (azi=' + dateMap.today + ', maine=' + dateMap.tomorrow + ') sau null',
+    'TITLU: NU copia textul. Reformuleaza cu verb actiune: Plateste/Mergi/Verifica/Suna/Trimite/Contacteaza',
+    activeBiz ? '' : 'BUSINESS: apartament/Booking/Airbnb→Property Management | produs→Marketplace | spalat→Spalatorie | factura/TVA/taxe→Financiar | altceva→Personal',
+    'DATA_LIMITA: pune exact ' + (finalDate ? finalDate : 'null'),
     '',
     'Text: ' + cleanText,
-  ].filter(Boolean).join('\n')
+  ]
+
+  const prompt = promptLines.filter(Boolean).join('\n')
 
   const res = await fetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY,
@@ -83,7 +73,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 400 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
       }),
     }
   )
@@ -95,8 +85,8 @@ export async function POST(req: NextRequest) {
   try {
     const parsed = JSON.parse(cleaned)
     if (activeBiz) parsed.business = activeBiz
-    // Always override date if client detected one
-    if (clientDate !== null && clientDate !== undefined) parsed.data_limita = clientDate || null
+    parsed.data_limita = finalDate || null
+    if (!parsed.titlu || parsed.titlu.length < 4) parsed.titlu = cleanText.slice(0, 60)
     return NextResponse.json({ content: [{ text: JSON.stringify(parsed) }] })
   } catch {
     return NextResponse.json({ content: [{ text: cleaned }] })
