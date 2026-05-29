@@ -101,6 +101,10 @@ export default function RezervariPage() {
       baza_calcul_comision: c.baza,
       comision_administrator: c.comision,
       suma_proprietar: c.suma_proprietar,
+      // Convert empty strings to null for UUID fields
+      apartament_id: editing.apartament_id || null,
+      proprietar_id: editing.proprietar_id || null,
+      rezervare_id: editing.rezervare_id || null,
     }
     delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at
 
