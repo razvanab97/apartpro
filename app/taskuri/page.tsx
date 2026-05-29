@@ -68,17 +68,19 @@ function BrainDump({ onTaskCreated }: { onTaskCreated: () => void }) {
   async function saveAsTask() {
     if (!result) return
     setSaving(true)
+    const imp = Number(result.impact_score) || 5
+    const eff = Number(result.effort_score) || 5
     const { error } = await supabase.from('taskuri').insert({
-      titlu: result.titlu,
-      descriere: result.descriere,
+      titlu: result.titlu || 'Task nou',
+      descriere: result.descriere || null,
       status: 'de_facut',
       prioritate: result.prioritate || 'normala',
-      business: result.business,
-      persoana: result.persoana,
-      data_limita: result.data_limita,
-      impact_score: result.impact_score,
-      effort_score: result.effort_score,
-      priority_score: Math.round((result.impact_score * 2 + (11 - result.effort_score)) / 3),
+      business: result.business || null,
+      persoana: result.persoana || null,
+      data_limita: result.data_limita || null,
+      impact_score: imp,
+      effort_score: eff,
+      priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
     })
     if (error) { show('error', error.message) }
     else { show('success', 'Task creat din Brain Dump!'); setOpen(false); setInput(''); setResult(null); onTaskCreated() }
@@ -158,12 +160,12 @@ function BrainDump({ onTaskCreated }: { onTaskCreated: () => void }) {
 
                 <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:6,marginBottom:14}}>
                   {[
-                    {l:'Prioritate', v:result.prioritate, c:PRIO_COLOR[result.prioritate as keyof typeof PRIO_COLOR]||'#94A3B8'},
+                    {l:'Prioritate', v:result.prioritate||'normala', c:PRIO_COLOR[(result.prioritate||'normala') as keyof typeof PRIO_COLOR]||'#94A3B8'},
                     {l:'Business', v:result.business||'—', c:'rgba(159,215,255,0.7)'},
-                    {l:'Impact', v:`${result.impact_score}/10`, c:'#4ADE80'},
-                    {l:'Efort', v:`${result.effort_score}/10`, c:'#FCD34D'},
-                    result.data_limita && {l:'Deadline', v:result.data_limita, c:'#F87171'},
-                    result.persoana && {l:'Persoană', v:result.persoana, c:'rgba(159,215,255,0.7)'},
+                    {l:'Impact', v:`${Number(result.impact_score)||5}/10`, c:'#4ADE80'},
+                    {l:'Efort', v:`${Number(result.effort_score)||5}/10`, c:'#FCD34D'},
+                    result.data_limita ? {l:'Deadline', v:result.data_limita, c:'#F87171'} : null,
+                    result.persoana ? {l:'Persoană', v:result.persoana, c:'rgba(159,215,255,0.7)'} : null,
                   ].filter(Boolean).map((item:any)=>(
                     <div key={item.l} style={{background:'rgba(14,27,43,0.4)',borderRadius:7,padding:'6px 10px'}}>
                       <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:2}}>{item.l}</div>
