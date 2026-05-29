@@ -222,7 +222,6 @@ export default function CheltuieliPage() {
                                 background:'transparent', cursor:'pointer',
                                 color: isPaid ? '#4ADE80' : 'rgba(159,215,255,0.35)',
                                 fontSize:14, flexShrink:0,
-                                borderLeft: isPaid ? '0.5px solid rgba(74,222,128,0.3)' : '0.5px solid rgba(159,215,255,0.1)',
                                 transition:'color .15s', opacity: isSaving ? 0.5 : 1,
                               }}
                             >
