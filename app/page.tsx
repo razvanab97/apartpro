@@ -406,7 +406,7 @@ export default function DashboardPage() {
                               style={{width:38,display:'flex',alignItems:'center',justifyContent:'center',
                                 background:isPaid?'rgba(74,222,128,0.15)':'rgba(100,160,255,0.06)',
                                 borderLeft:`1px solid ${dc.border}`,
-                                border:'none',borderLeft:`1px solid ${dc.border}`,
+                                borderLeft:`1px solid ${dc.border}`,
                                 cursor:'pointer',transition:'all .18s',opacity:isBusy?0.5:1}}
                             >
                               <div style={{width:22,height:22,borderRadius:'50%',
