@@ -22,6 +22,7 @@ const FISCAL_ROWS = [
 ]
 
 const AB_CODES = ['L99','EX59','GS08','HD02','L83','N32','NT9','L94','L88','CG40','C64','N33','VM07']
+const AB_EXTRA_NAMES = ['R99','Canta','Mircea']
 
 const DEF: Record<string,Record<string,number>> = {
   'L99':{chirie:2000,internet:50},'EX59':{chirie:1500,internet:45},
@@ -37,8 +38,8 @@ const DEF: Record<string,Record<string,number>> = {
   'Green Station':{chirie:2250,internet:70},'Hideout Rozelor':{chirie:2500},
   'Lazar Comfy':{chirie:2000},'Newton Urban':{chirie:3050,internet:65},
   'Peaceful Copou Retreat':{chirie:0},
-  'R99':{chirie:2500,internet:45},'Canta':{chirie:1400,internet:25},
-  'Mircea':{chirie:1400,internet:25,salubris:83},
+  'R99':{chirie:2624,internet:45},'Canta':{chirie:1400,internet:25},
+  'Mircea':{chirie:1522,internet:25,salubris:83},
 }
 function getDef(apt:any){ return DEF[apt.nota]||DEF[apt.nume]||null }
 
@@ -328,8 +329,9 @@ export default function CheltuieliPage(){
   const paidVal=allCheltuieli.filter(i=>i.status==='validat').reduce((s,i)=>s+Number(i.valoare),0)
   const pct=totalVal>0?Math.round(paidVal/totalVal*100):0
 
-  const abApts=apts.filter(a=>AB_CODES.includes(a.nota))
-  const extraApts=apts.filter(a=>!AB_CODES.includes(a.nota))
+  const abApts     =apts.filter(a=>AB_CODES.includes(a.nota))
+  const abExtraApts=apts.filter(a=>!AB_CODES.includes(a.nota)&&AB_EXTRA_NAMES.some(n=>a.nota===n||a.nume?.includes(n)))
+  const extraApts  =apts.filter(a=>!AB_CODES.includes(a.nota)&&!AB_EXTRA_NAMES.some(n=>a.nota===n||a.nume?.includes(n)))
 
   /* ── Pill cheltuiala ─────────────────────────────────────────────────── */
   function CostPill({label,val,due,paid,onToggle,onEdit,onDelete,busy}:{
@@ -565,6 +567,12 @@ export default function CheltuieliPage(){
           {abApts.length>0&&<>
             <span style={secLbl}>AB Homes — apartamente proprii</span>
             {abApts.map((apt,i)=><AptAccordion key={apt.id} apt={apt} last={i===abApts.length-1}/>)}
+          </>}
+
+          {/* AB fara cod */}
+          {abExtraApts.length>0&&<>
+            <span style={{...secLbl,marginTop:8}}>AB Homes — în curs de autorizare</span>
+            {abExtraApts.map((apt,i)=><AptAccordion key={apt.id} apt={apt} last={i===abExtraApts.length-1}/>)}
           </>}
 
           {/* Extra */}
