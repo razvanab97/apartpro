@@ -178,6 +178,26 @@ export default function SmartBookingPage() {
         {result && (
           <div style={{display:'flex',flexDirection:'column',gap:12,animation:'fadeIn 0.2s ease'}}>
 
+            {/* Availability strip */}
+            {(result.disponibile !== undefined) && (
+              <div style={{display:'flex',gap:10}}>
+                <div style={{flex:1,padding:'12px 16px',borderRadius:12,background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.2)',textAlign:'center'}}>
+                  <div style={{fontSize:24,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{result.disponibile}</div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>✓ Disponibile în perioadă</div>
+                </div>
+                <div style={{flex:1,padding:'12px 16px',borderRadius:12,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.15)',textAlign:'center'}}>
+                  <div style={{fontSize:24,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{result.indisponibile}</div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>✗ Ocupate în perioadă</div>
+                </div>
+                {result.nr_nopti && (
+                  <div style={{flex:1,padding:'12px 16px',borderRadius:12,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.2)',textAlign:'center'}}>
+                    <div style={{fontSize:24,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace'}}>{result.nr_nopti}</div>
+                    <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>nopți</div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Extracted info */}
             <div style={{...panel,padding:18}}>
               <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.5)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:12}}>Date extrase din mesaj</div>
