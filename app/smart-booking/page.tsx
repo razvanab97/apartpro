@@ -12,7 +12,7 @@ type Result = {
   canal?: string; limba?: string; urgenta?: boolean
   disponibile?: number; indisponibile?: number; indisponibile_apt?: string[]
   rezumat?: string
-  apartamente_recomandate?: { nota: string; nume: string; motiv: string; pret_total?: number; scor: number }[]
+  apartamente_recomandate?: { nota: string; nume: string; motiv: string; pret_noapte?: number; pret_total?: number; scor: number }[]
   raspuns_sugerat?: string; observatii?: string
 }
 
