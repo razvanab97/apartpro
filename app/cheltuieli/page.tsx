@@ -41,7 +41,18 @@ const DEF: Record<string,Record<string,number>> = {
   'R99':{chirie:2624,internet:45},'Canta':{chirie:1400,internet:25},
   'Mircea':{chirie:1522,internet:25,salubris:83},
 }
-function getDef(apt:any){ return DEF[apt.nota]||DEF[apt.nume]||null }
+function getDef(apt:any){
+  if(apt.nota&&DEF[apt.nota]) return DEF[apt.nota]
+  if(apt.nume&&DEF[apt.nume]) return DEF[apt.nume]
+  // partial match case-insensitive
+  const numeL=(apt.nume||'').toLowerCase()
+  const notaL=(apt.nota||'').toLowerCase()
+  for(const [k,v] of Object.entries(DEF)){
+    const kl=k.toLowerCase()
+    if(notaL===kl||numeL===kl||numeL.includes(kl)||notaL.includes(kl)) return v as Record<string,number>
+  }
+  return null
+}
 
 const pad=(n:number)=>String(n).padStart(2,'0')
 function dueDanger(due:string,paid:boolean):{color:string;glow?:string}{
@@ -330,8 +341,17 @@ export default function CheltuieliPage(){
   const pct=totalVal>0?Math.round(paidVal/totalVal*100):0
 
   const abApts     =apts.filter(a=>AB_CODES.includes(a.nota))
-  const abExtraApts=apts.filter(a=>!AB_CODES.includes(a.nota)&&AB_EXTRA_NAMES.some(n=>a.nota===n||a.nume?.includes(n)))
-  const extraApts  =apts.filter(a=>!AB_CODES.includes(a.nota)&&!AB_EXTRA_NAMES.some(n=>a.nota===n||a.nume?.includes(n)))
+  function isAbExtra(a:any){
+    if(AB_CODES.includes(a.nota)) return false
+    const nota=(a.nota||'').toLowerCase()
+    const nume=(a.nume||'').toLowerCase()
+    return AB_EXTRA_NAMES.some(n=>{
+      const nl=n.toLowerCase()
+      return nota===nl||nota.includes(nl)||nume===nl||nume.includes(nl)
+    })
+  }
+  const abExtraApts=apts.filter(a=>isAbExtra(a))
+  const extraApts  =apts.filter(a=>!AB_CODES.includes(a.nota)&&!isAbExtra(a))
 
   /* ── Pill cheltuiala ─────────────────────────────────────────────────── */
   function CostPill({label,val,due,paid,onToggle,onEdit,onDelete,busy}:{
