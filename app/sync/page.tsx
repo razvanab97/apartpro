@@ -93,36 +93,47 @@ export default function SyncPage() {
       const data = await resp.json()
       res.logs.push({ type:'info', msg: `Răspuns 5starDesk: ${JSON.stringify(data).slice(0,200)}` })
 
-      // 3. Find bookings array in response
-      const bookings = data.rezervari || data.bookings || data.camere || data.data || (Array.isArray(data) ? data : null)
+      // 3. Parse response - format 5starDesk: array direct
+      const bookings = Array.isArray(data) ? data : (data.rezervari || data.bookings || data.data || null)
 
       if (!bookings || !Array.isArray(bookings)) {
-        res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns complet: ${JSON.stringify(data).slice(0,500)}` })
+        res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns: ${JSON.stringify(data).slice(0,300)}` })
         setResult(res)
         setLoading(false)
         return
       }
 
       res.total = bookings.length
-      res.logs.push({ type:'info', msg: `${bookings.length} rezervări primite` })
+      res.logs.push({ type:'info', msg: `${bookings.length} rezervări primite de la 5starDesk` })
 
-      // 4. Process each booking
+      // 4. Process each booking - format real 5starDesk
       for (const b of bookings) {
         try {
-          const checkin = b.checkin ? parse5star(b.checkin) : b.data_checkin || b.check_in
-          const checkout = b.checkout ? parse5star(b.checkout) : b.data_checkout || b.check_out
-          const numeClient = b.name || b.nume || b.client || b.guest_name || '—'
-          const canal = parseCanal(b.canal || b.source || b.channel || '')
-          const telefon = b.phone || b.telefon || null
+          // Date format: "29 Apr 2026"
+          const checkin = b.prima_zi ? parse5star(b.prima_zi) : b.checkin ? parse5star(b.checkin) : null
+          const checkout = b.ultima_zi ? parse5star(b.ultima_zi) : b.checkout ? parse5star(b.checkout) : null
+          const numeClient = b.nume || b.name || b.guest_name || '—'
+          const canal = parseCanal(b.sursa || b.canal || b.source || '')
+          const telefon = b.telefon || b.phone || null
           const email = b.email || null
-          const pret = parseFloat(b.price || b.pret || b.total || '0') || 0
-          const idExtern = String(b.id || b.id_rezervare || b.booking_id || '')
+          const pret = parseFloat(b.pret_camera || b.price || b.total || '0') || 0
+          const pretExtra = parseFloat(b.pret_extra || '0') || 0
+          const totalPret = pret + pretExtra
+          const idExtern = String(b.id || b.id_rezervare || '')
+          const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
 
-          // Find apartment
-          const numeCamera = (b.room || b.camera || b.room_name || b.nume_camera || '').toLowerCase()
-          let aptId = null
-          for (const [key, id] of Object.entries(aptMap)) {
-            if (numeCamera.includes(key) || key.includes(numeCamera)) { aptId = id; break }
+          // Find apartment by id_camera or name
+          let aptId: string | null = null
+          // First try exact id_camera match in observatii
+          if (b.id_camera) {
+            const { data: aptByCamera } = await supabase.from('apartamente').select('id').eq('nota', b.id_camera).single()
+            if (aptByCamera) aptId = aptByCamera.id
+          }
+          // Fallback: fuzzy name match
+          if (!aptId) {
+            for (const [key, id] of Object.entries(aptMap)) {
+              if (numeCamera && (numeCamera.includes(key) || key.includes(numeCamera))) { aptId = id as string; break }
+            }
           }
 
           if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: dată lipsă` }); continue }
@@ -142,16 +153,21 @@ export default function SyncPage() {
           } else {
             const { error } = await supabase.from('rezervari').insert({
               apartament_id: aptId,
-              canal, nume_client: numeClient,
-              data_checkin: checkin, data_checkout: checkout,
-              suma_incasata: pret, valoare_bruta: pret, moneda: 'RON',
+              canal,
+              nume_client: numeClient,
+              data_checkin: checkin,
+              data_checkout: checkout,
+              suma_incasata: totalPret,
+              valoare_bruta: totalPret,
+              moneda: 'RON',
               telefon_client: telefon,
-              status_rezervare: 'confirmata', status_plata: pret>0?'achitat':'neplatit',
+              status_rezervare: b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata',
+              status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
               status_decont: 'nedecontat',
-              observatii: [numeCamera, idExtern].filter(Boolean).join(' | ') || null,
+              observatii: [b.camera || numeCamera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
             })
             if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
-            else { res.inserted++; res.logs.push({ type:'ok', msg: `✓ ${numeClient} (${checkin}→${checkout})${telefon?' 📞':''}${aptId?'':' ⚠️ apt necunoscut'}` }) }
+            else { res.inserted++; res.logs.push({ type:'ok', msg: `✓ ${numeClient} | ${checkin}→${checkout} | ${canal}${telefon?' 📞 '+telefon:''}${aptId?'':' ⚠️ apartament neidentificat'}` }) }
           }
         } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: `Eroare procesare: ${e.message}` }) }
       }
