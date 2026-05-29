@@ -173,7 +173,7 @@ export default function DashboardPage() {
         <Link href="/rezervari" style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:7, background:'rgba(77,163,255,0.85)', border:'1px solid rgba(159,215,255,0.35)', color:'#FFFFFF', fontSize:12, fontWeight:500, textDecoration:'none' }}>+ Rezervare nouă</Link>
       </div>
 
-      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12, flex:1, minHeight:0 }}>
+      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12, minHeight:0 }}>
 
         {/* KPI STRIP */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8 }}>
