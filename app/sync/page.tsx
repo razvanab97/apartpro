@@ -155,6 +155,45 @@ export default function SyncPage() {
     setResult({...res}); setLoading(false)
   }
 
+  async function fixApartamente() {
+    setLoading(true)
+    setResult(null)
+    const res: SyncResult = { total:0, inserted:0, updated:0, skipped:0, errors:0, logs:[] }
+    try {
+      const { data: apts } = await supabase.from('apartamente').select('id,nota,nume')
+      const { data: rezFaraApt } = await supabase.from('rezervari').select('id,observatii,nume_client,data_checkin').is('apartament_id', null)
+      res.total = rezFaraApt?.length || 0
+      res.logs.push({ type:'info', msg: `${res.total} rezervări fără apartament` })
+      if (!res.total) { res.logs.push({ type:'ok', msg: '✓ Toate rezervările au apartament asociat!' }); setResult({...res}); setLoading(false); return }
+      const idMap: Record<string,string> = {}
+      for (const r of rezFaraApt||[]) {
+        const m = (r.observatii||'').match(/^(\d+)/)
+        if (m) idMap[m[1]] = r.id
+      }
+      res.logs.push({ type:'info', msg: `${Object.keys(idMap).length} ID-uri 5starDesk găsite` })
+      const resp = await fetch('/api/fivestar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ actiune:'get_bookings', checkin:'01 Jan 2025', checkout:'31 Dec 2027' }) })
+      const data = await resp.json()
+      const bookings = Array.isArray(data) ? data : (data.rezervari || data.bookings || [])
+      res.logs.push({ type:'info', msg: `${bookings.length} rezervări de la 5starDesk` })
+      for (const b of bookings) {
+        const bId = String(b.id||'')
+        const rezId = idMap[bId]
+        if (!rezId) continue
+        const tipCamera = (b.tip_camera||'').trim()
+        const codeMatch = tipCamera.match(/Apartament\s+([A-Z0-9]+)/i)
+        if (!codeMatch) { res.logs.push({ type:'skip', msg: `ID ${bId}: tip_camera="${tipCamera}" — cod negăsit` }); continue }
+        const code = codeMatch[1].toUpperCase()
+        const apt = (apts||[]).find((a:any) => a.nota === code)
+        if (!apt) { res.logs.push({ type:'skip', msg: `Cod ${code} nu există în ERP` }); continue }
+        const { error } = await supabase.from('rezervari').update({ apartament_id: apt.id }).eq('id', rezId)
+        if (error) { res.errors++; res.logs.push({ type:'err', msg: `${b.nume}: ${error.message}` }) }
+        else { res.updated++; res.logs.push({ type:'ok', msg: `✓ ${b.nume} → [${code}] ${apt.nume}` }) }
+      }
+      res.logs.push({ type:'info', msg: `Done: ${res.updated} asociate, ${res.errors} erori, ${res.total - res.updated - res.errors} negăsite` })
+    } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: 'Eroare: '+e.message }) }
+    setResult({...res}); setLoading(false)
+  }
+
   async function syncRezervari() {
     setLoading(true)
     setResult(null)
@@ -322,6 +361,9 @@ export default function SyncPage() {
             </Button>
             <Button variant="secondary" onClick={testApi} loading={loading}>
               Test API
+            </Button>
+            <Button variant="secondary" onClick={fixApartamente} loading={loading} style={{background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',color:'#FCD34D'}}>
+              🔧 Fix apartamente
             </Button>
           </div>
         </div>
