@@ -71,22 +71,39 @@ export async function POST(req: NextRequest) {
   ].join('\n')
 
   const extractPrompt = [
-    'Extrage informatiile dintr-un mesaj de cerere cazare. Returneaza DOAR JSON valid:',
-    '{"nume_client":null,"telefon":null,"email":null,"data_checkin":"YYYY-MM-DD","data_checkout":"YYYY-MM-DD","nr_persoane":2,"buget_per_noapte":null,"preferinte":null,"canal":"whatsapp","limba":"ro","urgenta":false,"observatii":null}',
+    'Esti un modul AI avansat de analiza (Data Extractor) integrat intr-un sistem ERP pentru regim hotelier.',
+    'Rolul tau este sa citesti mesajele primite de la potentiali clienti, sa extragi informatiile cheie de rezervare si sa le structurezi intr-un obiect JSON standard.',
     '',
-    'REFERINTA DATE (foloseste valorile EXACTE din lista):',
+    'DATA CURENTA: ' + today,
+    '',
+    'REFERINTA DATE (foloseste valorile EXACTE):',
     dateRef,
     '',
-    'REGULI CRITICE:',
-    '- Daca mesajul zice "azi" pentru checkin, data_checkin = ' + dm.today,
-    '- Daca zice "maine" pentru checkin, data_checkin = ' + dm.tomorrow,
-    '- Daca zice "pe 15", calculeaza: daca 15 < ziua de azi (' + today.split('-')[2] + '), e luna viitoare; altfel luna curenta',
-    '- "2 nopti" sau "2 zile" inseamna checkout = checkin + 2',
-    '- "weekend" = checkin vineri, checkout duminica',
-    '- Daca e mentionat doar checkin fara checkout si "X nopti", calculeaza checkout',
-    '- Daca nu stii checkout dar stii nr nopti: checkout = checkin + nr_nopti',
-    '- canal: daca mesajul pare de pe WhatsApp=whatsapp, Airbnb=airbnb, Booking=booking, altfel=direct',
-    '- limba: detecteaza limba mesajului',
+    'Analizeaza textul si extrage:',
+    '1. phone_number: numarul de telefon al clientului (sau null)',
+    '2. check_in: data intrare YYYY-MM-DD (daca lipseste anul, foloseste 2026)',
+    '3. check_out: data iesire YYYY-MM-DD (daca se specifica nr nopti, calculeaza)',
+    '4. nights: nr total nopti (calculeaza daca ai ambele date)',
+    '5. guests_adults: nr adulti (implicit 1)',
+    '6. guests_children: nr copii (implicit 0)',
+    '7. total_guests: adulti + copii',
+    '8. preferences: preferinte speciale (parcare, etaj, animale, zona, ora checkin) - tablou gol daca nu exista',
+    '9. raw_summary: o fraza scurta care rezuma cererea',
+    '10. nume_client: numele clientului daca e mentionat (sau null)',
+    '11. email: emailul daca e mentionat (sau null)',
+    '12. buget_per_noapte: bugetul mentionat (sau null)',
+    '13. canal: whatsapp|airbnb|booking|email|direct (detecteaza din context)',
+    '14. limba: ro|en|fr|de|other',
+    '',
+    'REGULI STRICTE:',
+    '- Raspunde EXCLUSIV cu obiectul JSON valid. Nu adauga text inainte sau dupa.',
+    '- "weekend-ul viitor" = vineri ' + dm['vineri'] + ' pana duminica ' + dm['duminica'],
+    '- "azi" = ' + today + ', "maine" = ' + dm.tomorrow + ', "poimaine" = ' + dm.dayAfterTomorrow,
+    '- "pe 15" = ' + dm['pe 15'] + ', "pe 20" = ' + dm['pe 20'] + ', "pe 1" = ' + dm['pe 1'],
+    '- Daca lipsesc informatii critice, seteaza null',
+    '',
+    'Format JSON cerut:',
+    '{"booking_data":{"phone_number":null,"check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","nights":1,"guests_adults":1,"guests_children":0,"total_guests":1,"preferences":[],"raw_summary":"rezumat","nume_client":null,"email":null,"buget_per_noapte":null,"canal":"whatsapp","limba":"ro"}}',
     '',
     'Mesaj de analizat:',
     text || '(din imagine)',
@@ -109,7 +126,28 @@ export async function POST(req: NextRequest) {
   const extractData = await extractRes.json()
   const extractRaw = extractData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
   let extracted: any = {}
-  try { extracted = JSON.parse(extractRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()) } catch {}
+  try {
+    const parsed = JSON.parse(extractRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim())
+    // Handle both {booking_data:{...}} and flat {...}
+    const bd = parsed.booking_data || parsed
+    extracted = {
+      nome_client: bd.nume_client || null,
+      telefon: bd.phone_number || null,
+      email: bd.email || null,
+      data_checkin: bd.check_in || null,
+      data_checkout: bd.check_out || null,
+      nr_persoane: bd.total_guests || ((bd.guests_adults||1) + (bd.guests_children||0)),
+      buget_per_noapte: bd.buget_per_noapte || null,
+      preferinte: Array.isArray(bd.preferences) ? bd.preferences.join(', ') : (bd.preferences || null),
+      canal: bd.canal || 'whatsapp',
+      limba: bd.limba || 'ro',
+      urgenta: false,
+      observatii: bd.raw_summary || null,
+      guests_adults: bd.guests_adults || 1,
+      guests_children: bd.guests_children || 0,
+      nights_raw: bd.nights || null,
+    }
+  } catch {}
 
   // Check availability
   let available: any[] = []
@@ -138,7 +176,7 @@ export async function POST(req: NextRequest) {
 
   const nopti = extracted.data_checkin && extracted.data_checkout
     ? Math.ceil((new Date(extracted.data_checkout).getTime() - new Date(extracted.data_checkin).getTime()) / 86400000)
-    : null
+    : extracted.nights_raw || null
 
   // Build recommendation prompt
   const availCtx = available.length > 0
