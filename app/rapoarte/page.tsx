@@ -84,6 +84,9 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r:
           {fmt(brut)}
           {isProRata && <span title={`${proRataPct}% din ${fmt(brutTotal)} RON total`} style={{ display:'block', fontSize:9, color:'rgba(245,158,11,0.7)', fontFamily:'sans-serif' }}>{proRataPct}% pro-rată</span>}
         </td>
+        <td style={{ padding:'9px 12px', fontFamily:'monospace', fontSize:11, color:'rgba(159,215,255,0.55)', textAlign:'right' }}>
+          {nopti > 0 ? fmt(Math.round(brutTotal / nopti * 100)/100) : '—'}
+        </td>
         <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>{totalPlatforma > 0 ? `-${fmt(totalPlatforma)}` : '—'}</td>
         <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(netDupaPlatforme)}</td>
         {tipRaport === 'cu_comision' && <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(comisionABVal)}</td>}
@@ -181,8 +184,9 @@ export default function RapoartePage() {
     acc.netPlatforme += net
     acc.comisionAB += comAB
     acc.netFinal += net - comAB
+    acc.totalNopti += Number(r.nr_nopti || 0)
     return acc
-  }, { brut:0, com:0, tva:0, platforma:0, netPlatforme:0, comisionAB:0, netFinal:0 })
+  }, { brut:0, com:0, tva:0, platforma:0, netPlatforme:0, comisionAB:0, netFinal:0, totalNopti:0 })
 
   const aptNume = selectedApts.length === 0 ? 'Toate locațiile' : selectedApts.length === 1 ? (apartamente.find(a=>a.id===selectedApts[0])?.nota ? `[${apartamente.find(a=>a.id===selectedApts[0])?.nota}] ${apartamente.find(a=>a.id===selectedApts[0])?.nume}` : apartamente.find(a=>a.id===selectedApts[0])?.nume || '?') : `${selectedApts.length} locații`
 
@@ -350,9 +354,10 @@ export default function RapoartePage() {
 
         {/* TOTALS */}
         {generated && (
-          <div style={{ display:'grid', gridTemplateColumns: tipRaport==='cu_comision' ? 'repeat(5,1fr)' : 'repeat(4,1fr)', gap:8 }}>
+          <div style={{ display:'grid', gridTemplateColumns: tipRaport==='cu_comision' ? 'repeat(6,1fr)' : 'repeat(5,1fr)', gap:8 }}>
             {[
               { label:'Total brut', value:fmt(totals.brut), color:'#FFFFFF', sub:`${rezervari.length} rez.` },
+              { label:'Medie / zi', value: totals.totalNopti>0 ? fmt(Math.round(totals.brut/totals.totalNopti*100)/100)+' RON' : '—', color:'rgba(159,215,255,0.8)', sub:`${totals.totalNopti} nopți totale` },
               { label:'Com. platforme + TVA', value:`-${fmt(totals.platforma)}`, color:'#F87171', sub:'Airbnb 15% / Booking 17% + TVA 21%' },
               { label:'Net după platforme', value:fmt(totals.netPlatforme), color:'#FCD34D', sub:'baza de calcul' },
               ...(tipRaport==='cu_comision' ? [{ label:`Com. AB Homes ${comisionAB}%`, value:`-${fmt(totals.comisionAB)}`, color:'#F87171', sub:'din net platforme' }] : []),
@@ -377,7 +382,7 @@ export default function RapoartePage() {
                 <table style={{ width:'100%', borderCollapse:'collapse' }}>
                   <thead style={{ background:'rgba(14,27,43,0.6)' }}>
                     <tr>
-                      {['Client','Perioadă','N','Canal', ...(showAptCol?['Apt']:[]), 'Brut','Com.Platf','Net Platf', ...(tipRaport==='cu_comision'?[`Com.AB ${comisionAB}%`]:[]), 'Net Final',''].map(h=>(
+                      {['Client','Perioadă','N','Canal', ...(showAptCol?['Apt']:[]), 'Brut','€/zi','Com.Platf','Net Platf', ...(tipRaport==='cu_comision'?[`Com.AB ${comisionAB}%`]:[]), 'Net Final',''].map(h=>(
                         <th key={h} style={{ padding:'8px 12px', textAlign: ['Brut','Com.Platf','Net Platf',`Com.AB ${comisionAB}%`,'Net Final'].includes(h)?'right':'left', fontSize:10, fontWeight:600, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'0.5px', borderBottom:'1px solid rgba(159,215,255,0.1)', whiteSpace:'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -387,9 +392,13 @@ export default function RapoartePage() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'rgba(14,27,43,0.5)' }}>
-                      <td colSpan={showAptCol?4:3} style={{ padding:'10px 12px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>TOTAL — {rezervari.length} rezervări</td>
+                      <td colSpan={showAptCol?4:3} style={{ padding:'10px 12px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>TOTAL — {rezervari.length} rez. · {totals.totalNopti} nopți</td>
                       <td/>
                       <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#FFFFFF', textAlign:'right' }}>{fmt(totals.brut)}</td>
+                      <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'rgba(159,215,255,0.7)', textAlign:'right' }}>
+                        {totals.totalNopti > 0 ? fmt(Math.round(totals.brut / totals.totalNopti * 100)/100) : '—'}
+                        <span style={{ display:'block', fontSize:9, color:'rgba(159,215,255,0.35)', fontFamily:'sans-serif' }}>medie/zi</span>
+                      </td>
                       <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totals.platforma)}</td>
                       <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#FCD34D', textAlign:'right' }}>{fmt(totals.netPlatforme)}</td>
                       {tipRaport==='cu_comision' && <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totals.comisionAB)}</td>}
