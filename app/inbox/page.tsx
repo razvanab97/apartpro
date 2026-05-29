@@ -56,10 +56,16 @@ export default function InboxPage() {
   async function load() {
     setLoading(true)
     const [{ data: c }, { data: a }] = await Promise.all([
-      supabase.from('cereri_rezervare').select('*,apartament:apartamente(id,nume,nota)').order('created_at', { ascending: false }),
+      supabase.from('cereri_rezervare').select('*').order('created_at', { ascending: false }),
       supabase.from('apartamente').select('id,nume,nota').order('nota'),
     ])
-    setCereri((c||[]) as any)
+    // Attach apartment data manually
+    const aptMap = Object.fromEntries((a||[]).map(x => [x.id, x]))
+    const cereriWithApt = (c||[]).map((r: any) => ({
+      ...r,
+      apartament: r.apartament_id ? aptMap[r.apartament_id] : null
+    }))
+    setCereri(cereriWithApt as any)
     setApts(a||[])
     setLoading(false)
   }
