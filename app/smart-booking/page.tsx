@@ -237,7 +237,7 @@ export default function SmartBookingPage() {
                 </div>
                 <div style={{display:'flex',flexDirection:'column',gap:8}}>
                   {result.apartamente_recomandate.map((apt,i)=>{
-                    const aptData = apts.find(a=>a.nota===apt.nota)
+                    // price data comes from API result directly
                     const isTop = i === 0
                     return (
                       <div key={apt.nota} style={{
@@ -257,7 +257,7 @@ export default function SmartBookingPage() {
                           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
                             <span style={{fontSize:13,fontWeight:600,color:'#FFFFFF'}}>{apt.nume}</span>
                             {apt.nota && <span style={{fontSize:10,padding:'1px 6px',borderRadius:4,background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontFamily:'monospace'}}>{apt.nota}</span>}
-                            {aptData?.pret_standard && <span style={{fontSize:11,color:'#4ADE80'}}>{aptData.pret_standard} RON/n</span>}
+                            {apt.pret_noapte && <span style={{fontSize:11,color:'#4ADE80'}}>{apt.pret_noapte} RON/n</span>}{apt.pret_total && <span style={{fontSize:11,color:'#FCD34D',marginLeft:4}}>= {apt.pret_total} RON total</span>}
                           </div>
                           <div style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{apt.motiv}</div>
                         </div>
