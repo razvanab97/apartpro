@@ -22,6 +22,34 @@ function calcComision(brut: number, canal: string) {
   return { com, tva, total: com + tva }
 }
 
+// Calculate pro-rated amount for the selected period
+function calcProRata(r: any, periodStart: string, periodEnd: string): number {
+  const checkin = r.data_checkin
+  const checkout = r.data_checkout
+  const brutTotal = Number(r.suma_incasata || 0)
+  const nopti = Number(r.nr_nopti || 1)
+  // Pro-rata: only count nights within the selected period
+  const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : brutTotal
+  const isProRata = brut !== brutTotal && brutTotal > 0
+  const proRataPct = brutTotal > 0 ? Math.round(brut/brutTotal*100) : 100
+  const nopti = Number(r.nr_nopti || 1)
+  if (nopti === 0) return brut
+
+  // Overlap between reservation and period
+  const overlapStart = checkin > periodStart ? checkin : periodStart
+  const overlapEnd = checkout < periodEnd ? checkout : periodEnd
+
+  const overlapDays = Math.ceil(
+    (new Date(overlapEnd).getTime() - new Date(overlapStart).getTime()) / 86400000
+  )
+
+  if (overlapDays <= 0) return 0
+  if (overlapDays >= nopti) return brut // fully within period
+
+  // Pro-rata
+  return Math.round((brut / nopti * overlapDays) * 100) / 100
+}
+
 function fmt(n: number) {
   return n.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -36,7 +64,7 @@ function CanalBadge({ canal }: { canal: string }) {
   return <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:5, fontSize:10, fontWeight:600, fontFamily:'monospace', ...(s[canal] || s.direct) }}>{l[canal] || canal}</span>
 }
 
-function RezervareRow({ r, tipRaport, comisionAB }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number }) {
+function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string }) {
   const [open, setOpen] = useState(false)
   const brut = Number(r.suma_incasata || 0)
   const { com, tva, total: totalPlatforma } = calcComision(brut, r.canal)
@@ -52,7 +80,10 @@ function RezervareRow({ r, tipRaport, comisionAB }: { r: any; tipRaport: 'cu_com
         <td style={{ padding:'9px 12px', textAlign:'center', fontSize:11, color:'rgba(214,228,244,0.6)' }}>{r.nr_nopti}</td>
         <td style={{ padding:'9px 12px' }}><CanalBadge canal={r.canal}/></td>
         {r.apartament && <td style={{ padding:'9px 12px', fontSize:11, color:'rgba(159,215,255,0.5)' }}>{r.apartament.nota ? `[${r.apartament.nota}]` : r.apartament.nume}</td>}
-        <td style={{ padding:'9px 12px', fontFamily:'monospace', fontWeight:600, color:'#FFFFFF', textAlign:'right' }}>{fmt(brut)}</td>
+        <td style={{ padding:'9px 12px', fontFamily:'monospace', fontWeight:600, color:'#FFFFFF', textAlign:'right' }}>
+          {fmt(brut)}
+          {isProRata && <span title={`${proRataPct}% din ${fmt(brutTotal)} RON total`} style={{ display:'block', fontSize:9, color:'rgba(245,158,11,0.7)', fontFamily:'sans-serif' }}>{proRataPct}% pro-rată</span>}
+        </td>
         <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>{totalPlatforma > 0 ? `-${fmt(totalPlatforma)}` : '—'}</td>
         <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(netDupaPlatforme)}</td>
         {tipRaport === 'cu_comision' && <td style={{ padding:'9px 12px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(comisionABVal)}</td>}
@@ -96,6 +127,8 @@ export default function RapoartePage() {
   const [comisionAB, setComisionAB] = useState(20)
   const [rezervari, setRezervari] = useState<any[]>([])
   const [generated, setGenerated] = useState(false)
+  const [periodStart, setPeriodStart] = useState('')
+  const [periodEnd, setPeriodEnd] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [activeTab, setActiveTab] = useState<'rezervari'|'fiscal'>('rezervari')
@@ -116,9 +149,11 @@ export default function RapoartePage() {
     const start = primaZi.toISOString().split('T')[0]
     const end = ultimaZi.toISOString().split('T')[0]
 
+    // Fetch all reservations that OVERLAP with the period (not just checkin in period)
     let q = supabase.from('rezervari')
       .select('*, apartament:apartamente(id,nume,nota)')
-      .gte('data_checkin', start).lte('data_checkin', end)
+      .lte('data_checkin', end)    // checkin before period end
+      .gt('data_checkout', start)   // checkout after period start
       .in('status_rezervare', ['confirmata', 'finalizata'])
       .in('canal', selectedPlatforme)
       .order('data_checkin')
@@ -127,12 +162,15 @@ export default function RapoartePage() {
 
     const { data } = await q
     setRezervari(data || [])
+    setPeriodStart(start)
+    setPeriodEnd(end)
     setGenerated(true)
     setLoading(false)
   }
 
   const totals = rezervari.reduce((acc, r) => {
-    const brut = Number(r.suma_incasata || 0)
+    // Use pro-rata for reservations that span across period boundary
+    const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : Number(r.suma_incasata || 0)
     const { com, tva, total } = calcComision(brut, r.canal)
     const net = brut - total
     const comAB = tipRaport === 'cu_comision' ? net * (comisionAB / 100) : 0
@@ -345,7 +383,7 @@ export default function RapoartePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={comisionAB}/>)}
+                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={comisionAB} periodStart={periodStart} periodEnd={periodEnd}/>)}
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'rgba(14,27,43,0.5)' }}>
