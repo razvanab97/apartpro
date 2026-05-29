@@ -159,7 +159,24 @@ export default function RezervariPage() {
   return (
     <>
       <PageHeader title="Rezervări" subtitle={`${rezervari.length} rezervări totale`}
-        actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Rezervare nouă</Button>} />
+        actions={
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            {selected.size > 0 && (
+              <>
+                <span style={{fontSize:12,color:'rgba(159,215,255,0.6)',background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:7,padding:'5px 10px',fontWeight:500}}>
+                  {selected.size} selectate
+                </span>
+                <button onClick={()=>setSelected(new Set())} style={{fontSize:11,padding:'5px 10px',borderRadius:7,background:'transparent',border:'1px solid rgba(159,215,255,0.15)',color:'rgba(159,215,255,0.5)',cursor:'pointer'}}>
+                  Deselectează
+                </button>
+                <button onClick={()=>setShowBulkConfirm(true)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.35)',color:'#F87171',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <Trash2 size={13}/> Șterge {selected.size}
+                </button>
+              </>
+            )}
+            <Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Rezervare nouă</Button>
+          </div>
+        } />
       <div className="p-6" style={{ overflowY:"auto" }}>
         {/* Filtre */}
         <div className="flex gap-3 mb-5">
