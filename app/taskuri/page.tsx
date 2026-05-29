@@ -47,33 +47,17 @@ function BrainDump({ onTaskCreated }: { onTaskCreated: () => void }) {
     setLoading(true)
     setResult(null)
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 600,
-          system: `Ești un sistem AI de clasificare pentru un antreprenor român care administrează: apartamente în regim hotelier (AB Homes Iași), marketplace, spălătorie.
-
-Analizează textul și returnează DOAR un JSON valid (fără markdown, fără explicații):
-{
-  "type": "task|proiect|idee|nota|reminder|oportunitate",
-  "titlu": "titlu scurt max 60 chars",
-  "descriere": "detalii relevante extrase",
-  "prioritate": "urgenta|normala|scazuta",
-  "business": "Property Management|Marketplace|Spălătorie|Personal|Admin|Financiar",
-  "data_limita": "YYYY-MM-DD sau null",
-  "impact_score": 1-10,
-  "effort_score": 1-10,
-  "persoana": "persoana menționată sau null",
-  "rationale": "de ce această clasificare, max 20 cuvinte"
-}`,
-          messages: [{ role: 'user', content: input }]
+          text: input,
+          system: `Ești un sistem AI de clasificare pentru un antreprenor român care administrează: apartamente în regim hotelier (AB Homes Iași), marketplace, spălătorie.\n\nAnalizează textul și returnează DOAR un JSON valid (fără markdown, fără explicații):\n{\n  "type": "task|proiect|idee|nota|reminder|oportunitate",\n  "titlu": "titlu scurt max 60 chars",\n  "descriere": "detalii relevante extrase",\n  "prioritate": "urgenta|normala|scazuta",\n  "business": "Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar",\n  "data_limita": "YYYY-MM-DD sau null",\n  "impact_score": 5,\n  "effort_score": 5,\n  "persoana": null,\n  "rationale": "de ce aceasta clasificare"\n}`
         })
       })
       const data = await res.json()
       const text = data.content?.[0]?.text || '{}'
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+      const parsed = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g, '').trim())
       setResult(parsed)
     } catch (e) {
       show('error', 'Eroare la clasificare AI')
