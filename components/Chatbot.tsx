@@ -87,19 +87,18 @@ export default function Chatbot() {
       const context = await getContext()
       const history = messages.slice(-6).map(m => ({ role: m.role, content: m.content }))
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 500,
           system: context,
-          messages: [...history, { role: 'user', content: userMsg }]
+          history: history,
+          message: userMsg,
         })
       })
 
       const data = await res.json()
-      const reply = data.content?.[0]?.text || 'Îmi pare rău, nu am putut procesa întrebarea. Te rog să mă contactezi pe WhatsApp.'
+      const reply = data.reply || 'Îmi pare rău, nu am putut procesa întrebarea. Te rog să mă contactezi pe WhatsApp.'
 
       setMessages(prev => [...prev, { role: 'assistant', content: reply, ts: new Date() }])
       if (!open) setUnread(n => n + 1)
