@@ -30,6 +30,9 @@ export default function RezervariPage() {
   const [editing, setEditing] = useState<any>(emptyRez)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string|null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false)
   const [filterCanal, setFilterCanal] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterApt, setFilterApt] = useState('')
@@ -128,6 +131,31 @@ export default function RezervariPage() {
 
   if (loading) return (<><PageHeader title="Rezervări" /><PageLoading /></>)
 
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map(r => r.id)))
+    }
+  }
+
+  async function bulkDelete() {
+    setBulkDeleting(true)
+    const ids = Array.from(selected)
+    const { error } = await supabase.from('rezervari').delete().in('id', ids)
+    if (error) { show('error', error.message) }
+    else { show('success', `${ids.length} rezervări șterse`); setSelected(new Set()); load() }
+    setBulkDeleting(false); setShowBulkConfirm(false)
+  }
+
   return (
     <>
       <PageHeader title="Rezervări" subtitle={`${rezervari.length} rezervări totale`}
@@ -182,13 +210,28 @@ export default function RezervariPage() {
             <div style={{ overflowX: 'auto' }}>
               <table>
                 <thead><tr>
+                  <th style={{width:36,paddingRight:0}} onClick={e=>e.stopPropagation()}>
+                    <input type="checkbox"
+                      checked={filtered.length > 0 && selected.size === filtered.length}
+                      ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < filtered.length }}
+                      onChange={toggleAll}
+                      style={{cursor:'pointer',width:15,height:15,accentColor:'#4DA3FF'}}
+                    />
+                  </th>
                   <th>Client</th><th>Apartament</th><th>Canal</th>
                   <th>Check-in</th><th>Check-out</th><th>Nopți</th>
                   <th>Sumă</th><th>Proprietar</th><th>Status</th><th>Plată</th><th>Decont</th><th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(r => (
-                    <tr key={r.id} onClick={() => openEdit(r)}>
+                    <tr key={r.id} onClick={() => openEdit(r)} style={{background: selected.has(r.id) ? 'rgba(77,163,255,0.08)' : undefined}}>
+                      <td style={{paddingRight:0,width:36}} onClick={e=>e.stopPropagation()}>
+                        <input type="checkbox"
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleSelect(r.id)}
+                          style={{cursor:'pointer',width:15,height:15,accentColor:'#4DA3FF'}}
+                        />
+                      </td>
                       <td>
                         <span style={{color:'var(--text)',fontWeight:500}}>{r.nume_client}</span>
                         <br/>
@@ -370,6 +413,22 @@ export default function RezervariPage() {
 
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={deleteRez}
         title="Șterge rezervare" message="Sigur vrei să ștergi această rezervare?" />
+      {/* Bulk delete confirm */}
+      {showBulkConfirm && (
+        <div onClick={()=>setShowBulkConfirm(false)} style={{position:'fixed',inset:0,zIndex:60,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(6,14,26,0.8)',backdropFilter:'blur(8px)'}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'rgba(14,27,43,0.96)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:16,padding:'28px',width:360,textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,0.5)'}}>
+            <div style={{fontSize:32,marginBottom:12}}>🗑️</div>
+            <div style={{fontSize:16,fontWeight:600,color:'#FFFFFF',marginBottom:8}}>Șterge {selected.size} rezervări?</div>
+            <div style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:24}}>Această acțiune nu poate fi anulată.</div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setShowBulkConfirm(false)} style={{flex:1,padding:'10px',borderRadius:10,background:'transparent',border:'1px solid rgba(159,215,255,0.15)',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>Anulează</button>
+              <button onClick={bulkDelete} disabled={bulkDeleting} style={{flex:1,padding:'10px',borderRadius:10,background:'rgba(239,68,68,0.2)',border:'1px solid rgba(239,68,68,0.4)',color:'#F87171',fontSize:13,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:7}}>
+                {bulkDeleting ? 'Se șterge...' : <><Trash2 size={14}/> Șterge definitiv</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <Toast toast={toast}/>
     </>
   )
