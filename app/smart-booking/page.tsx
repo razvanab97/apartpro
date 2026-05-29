@@ -8,9 +8,11 @@ import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, I
 type Result = {
   nume_client?: string; telefon?: string; email?: string
   data_checkin?: string; data_checkout?: string; nr_persoane?: number
-  nr_nopti?: number; buget?: string; preferinte?: string
+  nr_nopti?: number; buget?: string; buget_per_noapte?: string; preferinte?: string
   canal?: string; limba?: string; urgenta?: boolean
-  apartamente_recomandate?: { nota: string; nume: string; motiv: string; scor: number }[]
+  disponibile?: number; indisponibile?: number; indisponibile_apt?: string[]
+  rezumat?: string
+  apartamente_recomandate?: { nota: string; nume: string; motiv: string; pret_total?: number; scor: number }[]
   raspuns_sugerat?: string; observatii?: string
 }
 
