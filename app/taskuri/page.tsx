@@ -155,11 +155,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             { code: '06', label: 'Financiar', biz: 'Financiar', color: '#FCD34D' },
           ].map(b => (
             <button key={b.code} onClick={() => {
-              setInput(prev => {
-                const clean = prev.replace(/^\d{2}\s/, '')
-                return b.code + ' ' + clean
-              })
-              setForcedBiz(b.biz)
+              setForcedBiz(prev => prev === b.biz ? '' : b.biz)
             }} style={{
               display: 'flex', alignItems: 'center', gap: 5,
               padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
