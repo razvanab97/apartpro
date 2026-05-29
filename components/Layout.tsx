@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { ReactNode } from 'react'
 import {
   LayoutDashboard, Building2, Users, CalendarCheck,
-  Receipt, FileText, Settings, CheckSquare, TrendingUp, Upload, RefreshCw
+  Receipt, FileText, Settings, CheckSquare, TrendingUp, Upload, RefreshCw, CalendarDays
 } from 'lucide-react'
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/apartamente', icon: Building2, label: 'Apartamente', group: 'P' },
   { href: '/proprietari', icon: Users, label: 'Proprietari', group: 'P' },
   { href: '/rezervari', icon: CalendarCheck, label: 'Rezervări', group: 'P' },
+  { href: '/calendar', icon: CalendarDays, label: 'Calendar', group: 'P' },
   { href: '/import', icon: Upload, label: 'Import Excel', group: 'P' },
   { href: '/sync', icon: RefreshCw, label: 'Sync 5starDesk', group: 'P' },
   { href: '/cheltuieli', icon: Receipt, label: 'Cheltuieli', group: 'F' },
