@@ -4,7 +4,7 @@ import Chatbot from '@/components/Chatbot'
 import { usePathname } from 'next/navigation'
 import { ReactNode, useState } from 'react'
 import {
-  LayoutDashboard, Building2, Users, CalendarCheck,
+  LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
   Upload, RefreshCw, CalendarDays, Menu, X, ChevronRight
 } from 'lucide-react'
@@ -12,6 +12,7 @@ import {
 const navItems = [
   { href: '/',            icon: LayoutDashboard, label: 'Dashboard',      group: 'P', bottom: true },
   { href: '/rezervari',   icon: CalendarCheck,   label: 'Rezervări',      group: 'P', bottom: true },
+  { href: '/inbox',       icon: Inbox,           label: 'Inbox Cereri',   group: 'P', bottom: false },
   { href: '/calendar',    icon: CalendarDays,    label: 'Calendar',       group: 'P', bottom: true },
   { href: '/taskuri',     icon: CheckSquare,     label: 'Task-uri',       group: 'O', bottom: true },
   { href: '/apartamente', icon: Building2,       label: 'Apartamente',    group: 'P', bottom: false },
