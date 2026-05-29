@@ -73,7 +73,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: input,
-          system: `Ești un sistem AI de clasificare pentru Razvan Abunei, antreprenor român care administrează:\n- Property Management: apartamente în regim hotelier AB Homes Iași (Airy Palas, SkyNest, Newton Urban, Hideout, Cozy Studio, Vila Pacurari etc.)\n- Marketplace: vânzări online produse\n- Spălătorie: business de spălătorie\n- Personal: sarcini personale\n- Admin/Financiar: contabilitate, facturi, taxe\n\nReguli de clasificare automată a businessului:\n- Dacă menționează apartament, cameră, check-in, check-out, oaspete, Booking, Airbnb, proprietar → Property Management\n- Dacă menționează produs, comandă, livrare, stoc, marketplace → Marketplace\n- Dacă menționează mașina de spălat, ciclu, rufă → Spălătorie\n- Dacă menționează contabil, TVA, factură, ANAF, bancă → Financiar\n- Altfel → Personal sau Admin\n\nAnalizează și returnează DOAR JSON valid:\n{"type":"task","titlu":"titlu scurt max 60 chars","descriere":"detalii utile extrase","prioritate":"urgenta|normala|scazuta","business":"Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"1 fraza scurta"}`
+          system: `Ești un asistent AI pentru Razvan Abunei, antreprenor român. Businessurile lui:\n- Property Management: AB Homes Iași (apartamente: Airy Palas, SkyNest, Newton Urban, Hideout, Cozy Studio, Vila Pacurari, Lazar Comfy, Green Station etc.)\n- Marketplace: vânzări online produse\n- Spălătorie: business spălătorie\n- Personal/Admin/Financiar: rest\n\nReguli business auto-detectat:\n- apartament/cameră/check-in/checkout/oaspete/Booking/Airbnb/proprietar → Property Management\n- produs/comandă/livrare/stoc → Marketplace\n- spălat/mașină spălat/rufă → Spălătorie\n- contabil/TVA/factură/ANAF/bancă → Financiar\n- altceva → Personal\n\nSarcina ta:\n1. Reformulează inputul ca un task clar cu verb de acțiune la infinitiv (ex: "Suna furnizorul de prosoape", "Verifica disponibilitatea Airy Palas", "Trimite factura la Booking")\n2. Titlul să fie concis, specific, acționabil — max 60 caractere\n3. Descrierea să adauge context util extras din text\n\nReturnează DOAR JSON valid fără markdown:\n{"type":"task","titlu":"Verb + obiect specific","descriere":"context extras","prioritate":"urgenta|normala|scazuta","business":"Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"1 fraza scurta"}`
         })
       })
       const data = await res.json()
@@ -223,7 +223,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
               {result.rationale && <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>— {result.rationale}</span>}
             </div>
 
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF', marginBottom: 4 }}>{result.titlu}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF', marginBottom: 4 }}>{result.titlu || input.slice(0,60)}</div>
             {result.descriere && <div style={{ fontSize: 12, color: 'rgba(214,228,244,0.6)', marginBottom: 12, lineHeight: 1.5 }}>{result.descriere}</div>}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
@@ -283,9 +283,46 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
         {task.data_limita && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: overdue ? 'rgba(239,68,68,0.15)' : 'rgba(148,163,184,0.1)', color: overdue ? '#F87171' : '#94A3B8', border: `1px solid ${overdue ? 'rgba(239,68,68,0.25)' : 'rgba(148,163,184,0.15)'}` }}>{overdue ? '⚠ ' : ''}{task.data_limita}</span>}
       </div>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-        {task.status !== 'de_facut' && <button onClick={() => onMove(task.id, 'de_facut')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(245,158,11,0.1)', color: '#FCD34D', border: '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>← De făcut</button>}
-        {task.status !== 'in_lucru' && <button onClick={() => onMove(task.id, 'in_lucru')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.2)', cursor: 'pointer' }}>În lucru</button>}
-        {task.status !== 'finalizat' && <button onClick={() => onMove(task.id, 'finalizat')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(34,197,94,0.1)', color: '#4ADE80', border: '1px solid rgba(34,197,94,0.2)', cursor: 'pointer' }}>✓ Done</button>}
+        {/* Big check button - quick complete */}
+        {task.status !== 'finalizat' && (
+          <button
+            onClick={() => onMove(task.id, 'finalizat')}
+            title="Marchează ca finalizat"
+            style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              background: 'rgba(34,197,94,0.1)', border: '1.5px solid rgba(34,197,94,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: '#4ADE80', transition: 'all 0.15s',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+        )}
+        {task.status === 'finalizat' && (
+          <button
+            onClick={() => onMove(task.id, 'de_facut')}
+            title="Redeschide task"
+            style={{
+              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              background: 'rgba(34,197,94,0.25)', border: '1.5px solid rgba(34,197,94,0.5)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: '#4ADE80', transition: 'all 0.15s',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+        )}
+        {/* In lucru toggle */}
+        {task.status === 'de_facut' && (
+          <button onClick={() => onMove(task.id, 'in_lucru')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.2)', cursor: 'pointer' }}>
+            ▶ Începe
+          </button>
+        )}
+        {task.status === 'in_lucru' && (
+          <button onClick={() => onMove(task.id, 'de_facut')} style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(245,158,11,0.1)', color: '#FCD34D', border: '1px solid rgba(245,158,11,0.2)', cursor: 'pointer' }}>
+            ⏸ Pauză
+          </button>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
           <button onClick={() => onEdit(task)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', padding: 2, display: 'flex' }}><Edit2 size={12}/></button>
           <button onClick={() => onDelete(task.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239,68,68,0.5)', padding: 2, display: 'flex' }}><Trash2 size={12}/></button>
