@@ -86,7 +86,7 @@ function RezervareRow({ r, tipRaport, comisionAB }: { r: any; tipRaport: 'cu_com
 
 export default function RapoartePage() {
   const [apartamente, setApartamente] = useState<any[]>([])
-  const [selectedApt, setSelectedApt] = useState('')
+  const [selectedApts, setSelectedApts] = useState<string[]>([])
   const [lunaStart, setLunaStart] = useState(new Date().getMonth() + 1)
   const [anStart, setAnStart] = useState(new Date().getFullYear())
   const [lunaEnd, setLunaEnd] = useState(new Date().getMonth() + 1)
@@ -98,6 +98,7 @@ export default function RapoartePage() {
   const [generated, setGenerated] = useState(false)
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [activeTab, setActiveTab] = useState<'rezervari'|'fiscal'>('rezervari')
   const { toast, show } = useToast()
 
   useEffect(() => {
@@ -122,7 +123,7 @@ export default function RapoartePage() {
       .in('canal', selectedPlatforme)
       .order('data_checkin')
 
-    if (selectedApt) q = q.eq('apartament_id', selectedApt)
+    if (selectedApts.length > 0) q = q.in('apartament_id', selectedApts)
 
     const { data } = await q
     setRezervari(data || [])
@@ -145,7 +146,7 @@ export default function RapoartePage() {
     return acc
   }, { brut:0, com:0, tva:0, platforma:0, netPlatforme:0, comisionAB:0, netFinal:0 })
 
-  const aptNume = selectedApt ? (apartamente.find(a => a.id === selectedApt)?.nota ? `[${apartamente.find(a => a.id === selectedApt)?.nota}] ${apartamente.find(a => a.id === selectedApt)?.nume}` : apartamente.find(a => a.id === selectedApt)?.nume) : 'Toate locațiile'
+  const aptNume = selectedApts.length === 0 ? 'Toate locațiile' : selectedApts.length === 1 ? (apartamente.find(a=>a.id===selectedApts[0])?.nota ? `[${apartamente.find(a=>a.id===selectedApts[0])?.nota}] ${apartamente.find(a=>a.id===selectedApts[0])?.nume}` : apartamente.find(a=>a.id===selectedApts[0])?.nume || '?') : `${selectedApts.length} locații`
 
   async function exportPDF() {
     if (!generated || rezervari.length === 0) return
@@ -203,7 +204,7 @@ export default function RapoartePage() {
   }
 
   const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14 }
-  const showAptCol = !selectedApt
+  const showAptCol = selectedApts.length !== 1
 
   return (
     <>
@@ -233,14 +234,29 @@ export default function RapoartePage() {
 
         {/* FILTERS */}
         <div style={{ ...panel, padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr auto', gap:10, alignItems:'end' }}>
-            <div>
-              <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>Apartament</label>
-              <select value={selectedApt} onChange={e => { setSelectedApt(e.target.value); const a = apartamente.find(x => x.id===e.target.value); if (a?.comision_procent) setComisionAB(a.comision_procent) }}>
-                <option value="">🏢 Toate locațiile</option>
-                <option disabled>──────────</option>
-                {apartamente.map(a => <option key={a.id} value={a.id}>{a.nota?`[${a.nota}] `:''}{a.nume}</option>)}
-              </select>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:10, alignItems:'end' }}>
+            <div style={{ gridColumn:'1 / -1' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>Locații ({selectedApts.length === 0 ? 'toate' : selectedApts.length + ' selectate'})</label>
+                <div style={{ display:'flex', gap:6 }}>
+                  <button onClick={() => setSelectedApts([])} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>Toate</button>
+                  <button onClick={() => setSelectedApts(apartamente.map(a=>a.id))} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'transparent', border:'1px solid rgba(159,215,255,0.12)', color:'rgba(159,215,255,0.4)', cursor:'pointer' }}>Selectează toate</button>
+                </div>
+              </div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {apartamente.map(a => (
+                  <button key={a.id} onClick={() => setSelectedApts(prev => prev.includes(a.id) ? prev.filter(x=>x!==a.id) : [...prev, a.id])} style={{
+                    fontSize:11, padding:'4px 10px', borderRadius:7, cursor:'pointer',
+                    background: selectedApts.includes(a.id) ? 'rgba(77,163,255,0.18)' : 'rgba(214,228,244,0.05)',
+                    border: `1px solid ${selectedApts.includes(a.id) ? 'rgba(77,163,255,0.4)' : 'rgba(159,215,255,0.1)'}`,
+                    color: selectedApts.includes(a.id) ? '#FFFFFF' : 'rgba(159,215,255,0.45)',
+                    fontWeight: selectedApts.includes(a.id) ? 600 : 400,
+                    transition:'all 0.12s',
+                  }}>
+                    {a.nota ? <><span style={{fontSize:9,color:selectedApts.includes(a.id)?'#7BC8FF':'rgba(159,215,255,0.3)',fontFamily:'monospace',marginRight:4}}>{a.nota}</span></> : null}{a.nume}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>De la</label>
@@ -349,6 +365,131 @@ export default function RapoartePage() {
           </div>
         )}
       </div>
+      {/* TVA / FISCAL TAB */}
+      {generated && rezervari.length > 0 && (
+        <div style={{ padding:'0 20px 20px' }}>
+          <div style={{ display:'flex', gap:4, marginBottom:12, background:'rgba(14,27,43,0.4)', borderRadius:10, padding:4, width:'fit-content' }}>
+            {([['rezervari','📋 Rezervări'],['fiscal','📊 Situație Fiscală']] as [string,string][]).map(([k,l])=>(
+              <button key={k} onClick={()=>setActiveTab(k as any)} style={{ fontSize:12, padding:'6px 16px', borderRadius:7, border:'none', cursor:'pointer', fontWeight:activeTab===k?600:400, background:activeTab===k?'rgba(77,163,255,0.2)':'transparent', color:activeTab===k?'#FFFFFF':'rgba(159,215,255,0.45)', outline:activeTab===k?'1px solid rgba(77,163,255,0.3)':'none' }}>{l}</button>
+            ))}
+          </div>
+
+          {activeTab === 'fiscal' && (() => {
+            // Per platform breakdown
+            const byPlatform = PLATFORME.map(p => {
+              const rezP = rezervari.filter(r => r.canal === p.key || (p.key==='direct' && ['direct','whatsapp','telefon','site'].includes(r.canal)))
+              const brut = rezP.reduce((s,r)=>s+Number(r.suma_incasata||0),0)
+              const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(Number(r.suma_incasata||0),r.canal); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
+              return { ...p, brut, com, tva, total, nr: rezP.length }
+            }).filter(p => p.nr > 0)
+
+            const totalBrut = totals.brut
+            const totalCom = totals.com
+            const totalTVA = totals.tva
+            const totalPlatforme = totals.platforma
+            const totalComAB = totals.comisionAB
+            const netFinal = totals.netFinal
+
+            return (
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {/* Per platform */}
+                <div style={{ ...panel, overflow:'hidden' }}>
+                  <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(159,215,255,0.08)', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'0.6px' }}>Detaliu comisioane pe platformă</div>
+                  <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                    <thead style={{ background:'rgba(14,27,43,0.5)' }}>
+                      <tr>
+                        {['Platformă','Nr. rez.','Brut total','Com. platformă','TVA 21%','Total dedus','Net după'].map(h=>(
+                          <th key={h} style={{ padding:'8px 14px', textAlign:h==='Platformă'||h==='Nr. rez.'?'left':'right', fontSize:10, fontWeight:600, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'0.5px', borderBottom:'1px solid rgba(159,215,255,0.08)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byPlatform.map(p=>(
+                        <tr key={p.key}>
+                          <td style={{ padding:'9px 14px' }}>
+                            <span style={{ fontSize:12, fontWeight:600, color: p.key==='airbnb'?'#F87171':p.key==='booking'?'#7BC8FF':'#4ADE80' }}>{p.label}</span>
+                            {p.comPct > 0 && <span style={{ fontSize:10, color:'rgba(159,215,255,0.35)', marginLeft:6 }}>{p.comPct*100}%</span>}
+                          </td>
+                          <td style={{ padding:'9px 14px', fontSize:12, color:'rgba(214,228,244,0.6)' }}>{p.nr}</td>
+                          <td style={{ padding:'9px 14px', fontFamily:'monospace', fontWeight:600, color:'#FFFFFF', textAlign:'right' }}>{fmt(p.brut)}</td>
+                          <td style={{ padding:'9px 14px', fontFamily:'monospace', color: p.com>0?'#F87171':'rgba(159,215,255,0.3)', textAlign:'right' }}>{p.com>0?`-${fmt(p.com)}`:'—'}</td>
+                          <td style={{ padding:'9px 14px', fontFamily:'monospace', color: p.tva>0?'#F87171':'rgba(159,215,255,0.3)', textAlign:'right' }}>{p.tva>0?`-${fmt(p.tva)}`:'—'}</td>
+                          <td style={{ padding:'9px 14px', fontFamily:'monospace', color:'#F87171', fontWeight:600, textAlign:'right' }}>{p.total>0?`-${fmt(p.total)}`:'—'}</td>
+                          <td style={{ padding:'9px 14px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(p.brut-p.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background:'rgba(14,27,43,0.4)' }}>
+                        <td style={{ padding:'10px 14px', fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)' }}>TOTAL</td>
+                        <td style={{ padding:'10px 14px', fontSize:12, color:'rgba(214,228,244,0.6)' }}>{rezervari.length}</td>
+                        <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#FFFFFF', textAlign:'right' }}>{fmt(totalBrut)}</td>
+                        <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totalCom)}</td>
+                        <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totalTVA)}</td>
+                        <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totalPlatforme)}</td>
+                        <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#FCD34D', textAlign:'right' }}>{fmt(totalBrut-totalPlatforme)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Summary boxes */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+                  <div style={{ ...panel, padding:16, borderColor:'rgba(239,68,68,0.2)' }}>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:6 }}>📤 TVA intracomunitar de plată</div>
+                    <div style={{ fontSize:24, fontWeight:700, color:'#F87171', fontFamily:'monospace' }}>{fmt(totalTVA)} RON</div>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.3)', marginTop:4 }}>21% din comisioanele Airbnb + Booking</div>
+                    <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:4 }}>
+                      {byPlatform.filter(p=>p.tva>0).map(p=>(
+                        <div key={p.key} style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+                          <span style={{ color:'rgba(159,215,255,0.5)' }}>{p.label}</span>
+                          <span style={{ color:'#F87171', fontFamily:'monospace' }}>{fmt(p.tva)} RON</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ ...panel, padding:16, borderColor:'rgba(245,158,11,0.2)' }}>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:6 }}>💸 Comisioane platforme plătite</div>
+                    <div style={{ fontSize:24, fontWeight:700, color:'#FCD34D', fontFamily:'monospace' }}>{fmt(totalCom)} RON</div>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.3)', marginTop:4 }}>Fără TVA</div>
+                    <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:4 }}>
+                      {byPlatform.filter(p=>p.com>0).map(p=>(
+                        <div key={p.key} style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+                          <span style={{ color:'rgba(159,215,255,0.5)' }}>{p.label} ({p.comPct*100}%)</span>
+                          <span style={{ color:'#FCD34D', fontFamily:'monospace' }}>{fmt(p.com)} RON</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ ...panel, padding:16, borderColor:'rgba(77,163,255,0.2)' }}>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:6 }}>✓ Venit net AB Homes</div>
+                    <div style={{ fontSize:24, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{fmt(totalComAB)} RON</div>
+                    <div style={{ fontSize:11, color:'rgba(159,215,255,0.3)', marginTop:4 }}>Comision administrare {comisionAB}%</div>
+                    <div style={{ marginTop:10, padding:'8px', background:'rgba(14,27,43,0.4)', borderRadius:7 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>Total brut</span>
+                        <span style={{ color:'#FFFFFF', fontFamily:'monospace' }}>{fmt(totalBrut)}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>- Platforme+TVA</span>
+                        <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(totalPlatforme)}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>- Com. AB Homes</span>
+                        <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(totalComAB)}</span>
+                      </div>
+                      <div style={{ borderTop:'1px solid rgba(159,215,255,0.1)', paddingTop:4, display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700 }}>
+                        <span style={{ color:'rgba(159,215,255,0.6)' }}>Net proprietari</span>
+                        <span style={{ color:'#4ADE80', fontFamily:'monospace' }}>{fmt(netFinal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+      )}
       <Toast toast={toast}/>
     </>
   )
