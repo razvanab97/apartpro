@@ -104,9 +104,29 @@ export default function SyncPage() {
         const rezId = idMap[bId]
         if (!rezId) continue
         const tipCamera = (b.tip_camera||'').trim()
-        const codeMatch = tipCamera.match(/Apartament\s+([A-Z0-9]+)/i)
-        if (!codeMatch) { res.logs.push({ type:'skip', msg: `ID ${bId}: tip_camera="${tipCamera}" — cod negăsit` }); continue }
-        const code = codeMatch[1].toUpperCase()
+        const numarCamera = (b.numar_camera||'').trim()
+        
+        // Manual mapping for exceptions + standard format
+        const EXCEPTION_MAP: Record<string,string> = {
+          'Vila07': 'VM07',
+          'Apartament 40': 'CG40',
+          'Apartament 64': 'C64',
+          'Apartament 59': 'EX59',
+          'SkyPort Retreat': 'C64',
+          'Peaceful Copou Retreat': 'CG40',
+          'Cozy Studio': 'EX59',
+          'MV07': 'VM07',
+        }
+        
+        let code = EXCEPTION_MAP[tipCamera] || EXCEPTION_MAP[numarCamera] || null
+        
+        if (!code) {
+          // Standard format: "Apartament L94" -> "L94"
+          const codeMatch = tipCamera.match(/Apartament\s+([A-Z0-9]+)/i)
+          if (codeMatch) code = codeMatch[1].toUpperCase()
+        }
+        
+        if (!code) { res.logs.push({ type:'skip', msg: `ID ${bId}: tip_camera="${tipCamera}" / numar="${numarCamera}" — cod negăsit` }); continue }
         const apt = (apts||[]).find((a:any) => a.nota === code)
         if (!apt) { res.logs.push({ type:'skip', msg: `Cod ${code} nu există în ERP` }); continue }
         const { error } = await supabase.from('rezervari').update({ apartament_id: apt.id }).eq('id', rezId)
