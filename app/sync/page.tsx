@@ -89,7 +89,12 @@ export default function SyncPage() {
       // 1. Get apartments
       const { data: apts } = await supabase.from('apartamente').select('id,nume,nota')
       const aptMap: Record<string,string> = {}
-      for (const a of apts||[]) { if (a.nota) aptMap[a.nota.toLowerCase()] = a.id; aptMap[a.nume.toLowerCase()] = a.id }
+      for (const a of apts||[]) {
+        if (a.nota) aptMap[a.nota.toLowerCase()] = a.id
+        aptMap[a.nume.toLowerCase()] = a.id
+        // Also map without spaces/special chars
+        aptMap[a.nume.toLowerCase().replace(/\s+/g,'')] = a.id
+      }
 
       // 2. Call get_bookings
       const resp = await fetch('/api/fivestar', {
@@ -177,10 +182,14 @@ export default function SyncPage() {
               status_rezervare: b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata',
               status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
               status_decont: 'nedecontat',
-              observatii: [b.camera || numeCamera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
+              observatii: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
             })
             if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
-            else { res.inserted++; res.logs.push({ type:'ok', msg: `✓ ${numeClient} | ${checkin}→${checkout} | ${canal}${telefon?' 📞 '+telefon:''}${aptId?'':' ⚠️ apartament neidentificat'}` }) }
+            else {
+            res.inserted++
+            const aptName = aptId ? ((apts||[]).find((a:any)=>a.id===aptId)?.nota || aptId.slice(0,8)) : '⚠️ NECUNOSCUT'
+            res.logs.push({ type: aptId?'ok':'skip', msg: `${aptId?'✓':'⚠'} ${numeClient} | ${checkin}→${checkout} | ${canal} | ${aptName}${telefon?' 📞':''}` })
+          }
           }
         } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: `Eroare procesare: ${e.message}` }) }
       }
