@@ -156,18 +156,26 @@ export default function SyncPage() {
 
           if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: dată lipsă` }); continue }
 
-          // Check if exists
-          const { data: existing } = await supabase.from('rezervari')
-            .select('id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+          // Check if exists - use 5starDesk ID (stored in observatii) OR nume+checkin
+          const { data: existingById } = await supabase.from('rezervari')
+            .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
+          
+          const { data: existingByName } = !existingById?.length ? await supabase.from('rezervari')
+            .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            : { data: null }
+
+          const existing = existingById?.length ? existingById : existingByName
 
           if (existing && existing.length > 0) {
-            // Update phone if missing
-            if (telefon) {
-              await supabase.from('rezervari').update({ telefon_client: telefon, apartament_id: aptId||undefined })
-                .eq('id', existing[0].id).is('telefon_client', null)
+            // Update phone + apartment if missing
+            const updates: any = {}
+            if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
+            if (aptId && !existing[0].apartament_id) updates.apartament_id = aptId
+            if (Object.keys(updates).length > 0) {
+              await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
             }
             res.skipped++
-            res.logs.push({ type:'skip', msg: `${numeClient} (${checkin}) — deja există` })
+            res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat':''}` })
           } else {
             const { error } = await supabase.from('rezervari').insert({
               apartament_id: aptId,
