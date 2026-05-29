@@ -73,7 +73,19 @@ export default function InboxPage() {
   async function save() {
     if (!editing.nume_client) { show('error','Adaugă numele clientului'); return }
     setSaving(true)
-    const payload = { ...editing, apartament_id: editing.apartament_id || null, telefon: editing.telefon || null, data_checkin: editing.data_checkin || null, data_checkout: editing.data_checkout || null }
+    // Explicit payload - only DB columns, no joined objects
+    const payload = {
+      nume_client: editing.nume_client,
+      telefon: editing.telefon || null,
+      canal: editing.canal || 'whatsapp',
+      apartament_id: editing.apartament_id || null,
+      data_checkin: editing.data_checkin || null,
+      data_checkout: editing.data_checkout || null,
+      nr_persoane: editing.nr_persoane || null,
+      mesaj: editing.mesaj || null,
+      status: editing.status || 'noua',
+      prioritate: editing.prioritate || 'normala',
+    }
     const { error } = editing.id
       ? await supabase.from('cereri_rezervare').update(payload).eq('id', editing.id)
       : await supabase.from('cereri_rezervare').insert(payload)
