@@ -26,12 +26,7 @@ function calcComision(brut: number, canal: string) {
 function calcProRata(r: any, periodStart: string, periodEnd: string): number {
   const checkin = r.data_checkin
   const checkout = r.data_checkout
-  const brutTotal = Number(r.suma_incasata || 0)
-  const nopti = Number(r.nr_nopti || 1)
-  // Pro-rata: only count nights within the selected period
-  const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : brutTotal
-  const isProRata = brut !== brutTotal && brutTotal > 0
-  const proRataPct = brutTotal > 0 ? Math.round(brut/brutTotal*100) : 100
+  // pro-rata already calculated above
   const nopti = Number(r.nr_nopti || 1)
   if (nopti === 0) return brut
 
@@ -66,7 +61,11 @@ function CanalBadge({ canal }: { canal: string }) {
 
 function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string }) {
   const [open, setOpen] = useState(false)
-  const brut = Number(r.suma_incasata || 0)
+  const brutTotal = Number(r.suma_incasata || 0)
+  const nopti = Number(r.nr_nopti || 1)
+  const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : brutTotal
+  const isProRata = brut !== brutTotal && brutTotal > 0
+  const proRataPct = brutTotal > 0 ? Math.round(brut/brutTotal*100) : 100
   const { com, tva, total: totalPlatforma } = calcComision(brut, r.canal)
   const netDupaPlatforme = brut - totalPlatforma
   const comisionABVal = tipRaport === 'cu_comision' ? netDupaPlatforme * (comisionAB / 100) : 0
