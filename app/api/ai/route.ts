@@ -25,9 +25,5 @@ export async function POST(req: NextRequest) {
 
   const data = await res.json()
   const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-  
-  // Return in same format as Anthropic API so frontend works unchanged
-  return NextResponse.json({
-    content: [{ text: generatedText }]
-  })
+  return NextResponse.json({ content: [{ text: generatedText }] })
 }
