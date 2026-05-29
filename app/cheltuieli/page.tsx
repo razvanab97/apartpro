@@ -307,7 +307,6 @@ export default function CheltuieliPage(){
           title={isPaid?'Marchează neplătit':'Marchează plătit'}
           style={{
             width:40,display:'flex',alignItems:'center',justifyContent:'center',
-            borderLeft:`1px solid ${isPaid?'rgba(74,222,128,0.25)':'rgba(159,215,255,0.08)'}`,
             background:isPaid?'rgba(74,222,128,0.12)':'rgba(159,215,255,0.04)',
             borderTop:'none',borderRight:'none',borderBottom:'none',
             borderLeft:`1px solid ${isPaid?'rgba(74,222,128,0.25)':'rgba(159,215,255,0.08)'}`,
