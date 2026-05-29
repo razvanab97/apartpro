@@ -38,8 +38,11 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [saving, setSaving] = useState(false)
   const [listening, setListening] = useState(false)
   const [forcedBiz, setForcedBiz] = useState('')
+  const [forcedDate, setForcedDate] = useState('')
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
+
+  function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate('') }
 
   function toggleVoice() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -72,7 +75,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input, forcedBiz })
+        body: JSON.stringify({ text: input, forcedBiz, forcedDate })
       })
       const data = await res.json()
       const text = data.content?.[0]?.text || '{}'
@@ -100,7 +103,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       prioritate: result.prioritate || 'normala',
       business: forcedBiz || result.business || null,
       persoana: result.persoana || null,
-      data_limita: result.data_limita || null,
+      data_limita: forcedDate !== '' ? (forcedDate || null) : (result.data_limita || null),
       impact_score: imp,
       effort_score: eff,
       priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
@@ -171,6 +174,39 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           {forcedBiz && <button onClick={() => { setForcedBiz(''); setInput(prev => prev.replace(/^\d{2}\s/, '')) }} style={{ padding: '4px 8px', borderRadius: 6, background: 'transparent', border: '1px solid rgba(159,215,255,0.08)', color: 'rgba(159,215,255,0.3)', fontSize: 11, cursor: 'pointer' }}>✕</button>}
         </div>
 
+        {/* Timeline quick select */}
+        <div style={{ display: 'flex', gap: 5, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)', marginRight: 2 }}>Când:</span>
+          {[
+            { label: 'Azi', days: 0 },
+            { label: 'Mâine', days: 1 },
+            { label: 'Săpt. asta', days: 5 },
+            { label: 'Săpt. viit.', days: 7 },
+            { label: 'Luna asta', days: -1 },
+            { label: 'Fără', days: -99 },
+          ].map(t => {
+            const getDate = () => {
+              if (t.days === -99) return ''
+              if (t.days === -1) {
+                const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().split('T')[0]
+              }
+              const d = new Date(); d.setDate(d.getDate()+t.days); return d.toISOString().split('T')[0]
+            }
+            const val = getDate()
+            return (
+              <button key={t.label} onClick={() => setForcedDate(val)} style={{
+                fontSize: 11, padding: '3px 9px', borderRadius: 6, cursor: 'pointer',
+                background: forcedDate === val && val !== '' ? 'rgba(77,163,255,0.2)' : (forcedDate === '' && val === '' ? 'rgba(148,163,184,0.15)' : 'rgba(214,228,244,0.05)'),
+                border: `1px solid ${forcedDate === val ? 'rgba(77,163,255,0.4)' : 'rgba(159,215,255,0.1)'}`,
+                color: forcedDate === val ? '#7BC8FF' : 'rgba(159,215,255,0.4)',
+                transition: 'all 0.12s',
+              }}>{t.label}</button>
+            )
+          })}
+          <input type="date" value={forcedDate} onChange={e => setForcedDate(e.target.value)}
+            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'rgba(14,27,43,0.5)', border: '1px solid rgba(159,215,255,0.12)', color: forcedDate ? '#7BC8FF' : 'rgba(159,215,255,0.3)', width: 130 }}/>
+        </div>
+
         {/* Voice + textarea */}
         <div style={{ position: 'relative' }}>
           <textarea
@@ -230,7 +266,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
               : <><Sparkles size={14}/> Clasifică cu AI</>
             }
           </button>
-          <button onClick={() => { setInput(''); setResult(null) }} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: '1px solid rgba(159,215,255,0.12)', color: 'rgba(159,215,255,0.5)', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={resetAll} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: '1px solid rgba(159,215,255,0.12)', color: 'rgba(159,215,255,0.5)', fontSize: 13, cursor: 'pointer' }}>
             Șterge
           </button>
         </div>
@@ -257,7 +293,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
                 { l: 'Business', v: forcedBiz || result.business || '—', c: forcedBiz ? '#4DA3FF' : 'rgba(159,215,255,0.7)' },
                 { l: 'Impact', v: `${Number(result.impact_score) || 5}/10`, c: '#4ADE80' },
                 { l: 'Efort', v: `${Number(result.effort_score) || 5}/10`, c: '#FCD34D' },
-                result.data_limita ? { l: 'Deadline', v: result.data_limita, c: '#F87171' } : null,
+                { l: 'Deadline', v: forcedDate || result.data_limita || '—', c: forcedDate || result.data_limita ? '#F87171' : 'rgba(159,215,255,0.3)' },
                 result.persoana ? { l: 'Persoană', v: result.persoana, c: '#C4B5FD' } : null,
               ].filter(Boolean).map((item: any) => (
                 <div key={item.l} style={{ background: 'rgba(14,27,43,0.5)', borderRadius: 7, padding: '7px 10px' }}>
