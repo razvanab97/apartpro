@@ -340,7 +340,7 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:6}}>
+          <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:320,overflowY:'auto'}}>
             {/* Apartamente */}
             {apts.map(apt=>{
               const items=getAptCheltuieli(apt.id)
