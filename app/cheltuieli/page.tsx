@@ -43,6 +43,19 @@ const DEF: Record<string,Record<string,number>> = {
 function getDef(apt:any){ return DEF[apt.nota]||DEF[apt.nume]||null }
 
 const pad=(n:number)=>String(n).padStart(2,'0')
+function dueDanger(due:string,paid:boolean):{color:string;glow?:string}{
+  if(paid)return{color:'rgba(74,222,128,0.45)'}
+  // due format: "dd/mm"
+  const parts=due.split('/')
+  if(parts.length!==2)return{color:'rgba(100,160,255,0.35)'}
+  const now=new Date()
+  const d=new Date(now.getFullYear(),parseInt(parts[1])-1,parseInt(parts[0]))
+  const diff=Math.ceil((d.getTime()-now.getTime())/(1000*60*60*24))
+  if(diff<=0)return{color:'#F87171',glow:'0 0 6px rgba(248,113,113,0.5)'}
+  if(diff<=3)return{color:'#F87171',glow:'0 0 6px rgba(248,113,113,0.4)'}
+  if(diff<=7)return{color:'#FCD34D',glow:'0 0 6px rgba(252,211,77,0.35)'}
+  return{color:'rgba(100,160,255,0.35)'}
+}
 const LUNI=['','Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
 
 /* ── stiluri shared ───────────────────────────────────────────────────── */
@@ -331,7 +344,11 @@ export default function CheltuieliPage(){
             {val>0?val.toLocaleString('ro-RO'):'—'}
             <span style={{fontSize:11,fontWeight:400,marginLeft:4,color:paid?'rgba(74,222,128,0.7)':'rgba(159,215,255,0.5)'}}>RON</span>
           </div>
-          <div style={{fontSize:10,color:paid?'rgba(74,222,128,0.45)':'rgba(100,160,255,0.35)',marginTop:4}}>scad. {due}</div>
+          {(()=>{const ds=dueDanger(due,paid);return(
+            <div style={{fontSize:10,marginTop:4,color:ds.color,fontWeight:ds.glow?600:400,...(ds.glow?{textShadow:ds.glow}:{})}}>
+              scad. {due}{!paid&&ds.color==='#F87171'?' ⚠':!paid&&ds.color==='#FCD34D'?' ●':''}
+            </div>
+          )})()}
         </div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{display:'flex',gap:4}}>
