@@ -71,10 +71,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: input,
-          system: `Ești un asistent AI pentru Razvan Abunei, antreprenor român. Businessurile lui:\n- Property Management: AB Homes Iași (apartamente: Airy Palas, SkyNest, Newton Urban, Hideout, Cozy Studio, Vila Pacurari, Lazar Comfy, Green Station etc.)\n- Marketplace: vânzări online produse\n- Spălătorie: business spălătorie\n- Personal/Admin/Financiar: rest\n\nReguli business auto-detectat:\n- apartament/cameră/check-in/checkout/oaspete/Booking/Airbnb/proprietar → Property Management\n- produs/comandă/livrare/stoc → Marketplace\n- spălat/mașină spălat/rufă → Spălătorie\n- contabil/TVA/factură/ANAF/bancă → Financiar\n- altceva → Personal\n\nSarcina ta:\n1. Reformulează inputul ca un task clar cu verb de acțiune la infinitiv (ex: "Suna furnizorul de prosoape", "Verifica disponibilitatea Airy Palas", "Trimite factura la Booking")\n2. Titlul să fie concis, specific, acționabil — max 60 caractere\n3. Descrierea să adauge context util extras din text\n\nReturnează DOAR JSON valid fără markdown:\n{"type":"task","titlu":"Verb + obiect specific","descriere":"context extras","prioritate":"urgenta|normala|scazuta","business":"Property Management|Marketplace|Spalatorie|Personal|Admin|Financiar","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"1 fraza scurta"}`
-        })
+        body: JSON.stringify({ text: input })
       })
       const data = await res.json()
       const text = data.content?.[0]?.text || '{}'
