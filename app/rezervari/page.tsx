@@ -87,7 +87,7 @@ export default function RezervariPage() {
   }, [editing, apartamente])
 
   async function save() {
-    if (!editing.apartament_id) { show('error','Selectează apartamentul'); return }
+    // apartament_id is optional - can be set later
     if (!editing.nume_client) { show('error','Completează numele clientului'); return }
     if (!editing.data_checkin || !editing.data_checkout) { show('error','Completează datele'); return }
     if (editing.data_checkout <= editing.data_checkin) { show('error','Data checkout trebuie să fie după check-in'); return }
