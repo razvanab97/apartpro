@@ -206,11 +206,13 @@ export default function SmartBookingPage() {
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:8}}>
                 {[
                   {l:'Client', v:result.nume_client, c:'#FFFFFF'},
-                  {l:'Telefon', v:result.telefon, c:'#4ADE80'},
+                  {l:'Telefon / WA', v:result.telefon, c:'#4ADE80'},
                   {l:'Email', v:result.email, c:'#7BC8FF'},
                   {l:'Check-in', v:result.data_checkin, c:'#FCD34D'},
                   {l:'Check-out', v:result.data_checkout, c:'#FCD34D'},
-                  {l:'Persoane', v:result.nr_persoane ? `${result.nr_persoane} pers.` : null, c:'rgba(214,228,244,0.7)'},
+                  {l:'Adulți', v:(result as any).guests_adults ? `${(result as any).guests_adults} adulți` : null, c:'rgba(214,228,244,0.7)'},
+                  {l:'Copii', v:(result as any).guests_children > 0 ? `${(result as any).guests_children} copii` : null, c:'#FCD34D'},
+                  {l:'Total oaspeți', v:result.nr_persoane ? `${result.nr_persoane} pers.` : null, c:'#FFFFFF'},
                   {l:'Nopți', v:result.nr_nopti ? `${result.nr_nopti} nopți` : null, c:'rgba(214,228,244,0.7)'},
                   {l:'Buget', v:result.buget, c:'#4ADE80'},
                   {l:'Canal', v:result.canal, c:'rgba(159,215,255,0.7)'},
