@@ -104,9 +104,8 @@ export default function RezervariPage() {
       // Convert empty strings to null for UUID fields
       apartament_id: editing.apartament_id || null,
       proprietar_id: editing.proprietar_id || null,
-      rezervare_id: editing.rezervare_id || null,
     }
-    delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at
+    delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at; delete payload.rezervare_id
 
     const { error } = editing.id
       ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
