@@ -26,7 +26,7 @@ function calcComision(brut: number, canal: string) {
 function calcProRata(r: any, periodStart: string, periodEnd: string): number {
   const checkin = r.data_checkin
   const checkout = r.data_checkout
-  // pro-rata already calculated above
+  const brut = Number(r.suma_incasata || 0)
   const nopti = Number(r.nr_nopti || 1)
   if (nopti === 0) return brut
 
