@@ -13,6 +13,7 @@ type Task = {
   prioritate: 'urgenta' | 'normala' | 'scazuta'
   business?: string
   persoana?: string
+  telefon_persoana?: string
   data_limita?: string
   impact_score?: number
   effort_score?: number
@@ -28,7 +29,7 @@ const COLS: { key: Task['status']; label: string; color: string }[] = [
 const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
 const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 const BIZ = ['Property Management', 'Marketplace', 'Spălătorie', 'Personal', 'Admin', 'Financiar', 'Alt business']
-const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5 }
+const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '' }
 
 /* ── BRAIN DUMP MODAL ── */
 function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -689,6 +690,7 @@ export default function TaskuriPage() {
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Persoană</label><input value={editing.persoana || ''} onChange={e => setEditing({ ...editing, persoana: e.target.value })} placeholder="Nume..."/></FormGroup>
+          <FormGroup><label>Telefon/WA persoană</label><input value={(editing as any).telefon_persoana || ''} onChange={e=>setEditing({...editing,telefon_persoana:e.target.value} as any)} placeholder="+40 7xx xxx xxx"/></FormGroup>
           <FormGroup><label>Dată limită</label><input type="date" value={editing.data_limita || ''} onChange={e => setEditing({ ...editing, data_limita: e.target.value })}/></FormGroup>
         </FormRow>
         <FormRow cols={2}>
