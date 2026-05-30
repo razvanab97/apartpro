@@ -98,11 +98,24 @@ export default function DashboardPage() {
   const [rezervariCurente,setRezervariCurente]=useState<any[]>([])
   const [cheltuieli,setCheltuieli]=useState<any[]>([])
   const [lenjerii,setLenjerii]=useState<Record<string,number>>({})
+  const [coAziCur,setCoAziCur]=useState<any[]>([])
+  const [ciAziCur,setCiAziCur]=useState<any[]>([])
   const [prognoza,setPrognoza]=useState({incasariLV:0,cheltuieliLC:0})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
 
   useEffect(()=>{loadData()},[])
+  useEffect(()=>{loadCuratenie()},[])
+
+  async function loadCuratenie(){
+    const today=new Date().toISOString().split('T')[0]
+    const [{data:co},{data:ci}]=await Promise.all([
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today),
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today),
+    ])
+    setCoAziCur(co||[])
+    setCiAziCur(ci||[])
+  }
 
   const now=new Date()
   const luna=now.getMonth()+1
@@ -208,9 +221,9 @@ export default function DashboardPage() {
   function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
   function waEchipaCuratenie(){
     const azi = new Date().toLocaleDateString('ro-RO')
-    const linii = checkoutAzi.map((co:any)=>{
+    const linii = coAziCur.map((co:any)=>{
       const apt = co.apartament
-      const ciMatch = checkinAzi.find((ci:any)=>ci.apartament?.id===apt?.id)
+      const ciMatch = ciAziCur.find((ci:any)=>ci.apartament?.id===apt?.id)
       const pers = Number(ciMatch?.nr_persoane||co.nr_persoane||1)
       const len = lenjerii[co.id] ?? nrLenjerii(pers)
       const aptStr = (apt?.nota?'['+apt.nota+'] ':'') + (apt?.nume||'')
@@ -398,7 +411,7 @@ export default function DashboardPage() {
                 <LogOut size={12} color="#C084FC"/>
                 <span style={{...panelTitle,color:'#C084FC'}}>Check-out astăzi</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
+              <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{coAziCur.length}</span>
             </div>
             <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
               {checkoutAzi.length===0
@@ -499,11 +512,11 @@ export default function DashboardPage() {
             </button>
           </div>
           <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
-            {checkoutAzi.length===0
+            {coAziCur.length===0
               ? <div style={{padding:'10px 4px',fontSize:12,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
-              : checkoutAzi.map((co:any, idx:number)=>{
+              : coAziCur.map((co:any, idx:number)=>{
                   const apt = co.apartament
-                  const ciMatch = checkinAzi.find((ci:any)=>ci.apartament?.id===apt?.id)
+                  const ciMatch = ciAziCur.find((ci:any)=>ci.apartament?.id===apt?.id)
                   const pers = Number(ciMatch?.nr_persoane||co.nr_persoane||1)
                   const lenDef = nrLenjerii(pers)
                   const len = lenjerii[co.id] ?? lenDef
@@ -534,10 +547,10 @@ export default function DashboardPage() {
                   )
                 })
             }
-            {checkoutAzi.length===0 && checkinAzi.length>0 && (
+            {coAziCur.length===0 && ciAziCur.length>0 && (
               <div style={{padding:'6px 4px',fontSize:11,color:'rgba(159,215,255,0.35)'}}>
                 Check-in azi ({checkinAzi.length} ap.) — lenjerii necesare:
-                {checkinAzi.map((ci:any)=>{
+                {ciAziCur.map((ci:any)=>{
                   const pers=Number(ci.nr_persoane||1)
                   return <span key={ci.id} style={{marginLeft:6,fontSize:11,color:'#7BC8FF'}}>{ci.apartament?.nota||ci.apartament?.nume}: {nrLenjerii(pers)}len</span>
                 })}
