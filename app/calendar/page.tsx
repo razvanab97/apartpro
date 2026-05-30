@@ -60,7 +60,7 @@ export default function CalendarPage() {
         .order('data_checkin'),
     ])
     setApts(a || [])
-    setRezAll((r || []) as Rez[])
+    setRezAll((r || []) as unknown as Rez[])
     setLoading(false)
   }
 
