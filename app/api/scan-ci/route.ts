@@ -7,22 +7,12 @@ export async function POST(req: NextRequest) {
     const { base64Data, mimeType } = await req.json()
     if (!base64Data) return NextResponse.json({ error: 'No image' }, { status: 400 })
 
-    const prompt = `Ești expert în citirea actelor de identitate românești și europene.
-Analizează cu atenție această imagine a unui act de identitate (buletin, carte de identitate, pașaport).
-Extrage EXACT urmatoarele informatii vizibile:
-- Numele complet al persoanei (SURNAME/Prenume + Name/Nume)
-- CNP-ul (seria si numarul sau codul numeric personal - 13 cifre)
-- Data nasterii
-- Cetatenia/nationalitatea
-- Adresa (daca e vizibila)
+    const prompt = `Esti expert in citirea actelor de identitate. Din aceasta imagine extrage:
+- Numele complet (Prenume Nume)
+- CNP-ul (13 cifre)
+Raspunde STRICT doar cu JSON, fara nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123"}`
 
-IMPORTANT: 
-- Combina corect prenumele si numele in ordinea obisnuita: Prenume Nume
-- Daca numele e scris cu majuscule pe act, converteste la forma normala (ex: POPESCU ION -> Ion Popescu)
-- Returneaza DOAR un obiect JSON valid, fara text suplimentar, fara markdown, fara backtick-uri
-- Formatul exact: {"nume":"Prenume Nume","cnp":"1234567890123","data_nasterii":"DD.MM.YYYY","cetatenie":"Romana","adresa":"strada, nr, oras"}`
-
-    const res = await fetch(
+    const geminiResp = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
@@ -34,39 +24,39 @@ IMPORTANT:
               { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Data } }
             ]
           }],
-          generationConfig: { temperature: 0, maxOutputTokens: 512 }
+          generationConfig: { temperature: 0, maxOutputTokens: 256 }
         })
       }
     )
 
-    const data = await res.json()
+    const geminiData = await geminiResp.json()
 
-    if (!res.ok) {
-      return NextResponse.json({ error: data?.error?.message || 'Gemini error', raw: data }, { status: 500 })
+    // Returnam tot raspunsul pentru debug
+    if (!geminiResp.ok) {
+      return NextResponse.json({
+        success: false,
+        error: geminiData?.error?.message || 'Gemini API error',
+        status: geminiResp.status,
+        geminiData
+      }, { status: 200 })
     }
 
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    
-    // clean any markdown artifacts
-    const cleaned = raw
-      .replace(/```json/gi, '')
-      .replace(/```/g, '')
-      .replace(/^\s*\n/gm, '')
-      .trim()
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
+    // Curata si parseaza
+    const cleaned = rawText.replace(/```json/gi,'').replace(/```/g,'').trim()
     let parsed: any = {}
+
     try {
-      // try direct parse
       parsed = JSON.parse(cleaned)
     } catch {
-      // try to extract JSON object from text
-      const match = cleaned.match(/\{[\s\S]*\}/)
+      const match = cleaned.match(/\{[^}]+\}/)
       if (match) {
-        try { parsed = JSON.parse(match[0]) } catch { parsed = {} }
+        try { parsed = JSON.parse(match[0]) } catch {}
       }
     }
 
-    // normalize name
+    // Normalizeaza numele
     if (parsed.nume) {
       parsed.nume = parsed.nume
         .split(' ')
@@ -75,17 +65,14 @@ IMPORTANT:
         .trim()
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       nume: parsed.nume || '',
       cnp: parsed.cnp || '',
-      data_nasterii: parsed.data_nasterii || '',
-      cetatenie: parsed.cetatenie || '',
-      adresa: parsed.adresa || '',
-      raw: cleaned
+      raw: rawText
     })
 
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ success: false, error: e.message }, { status: 200 })
   }
 }
