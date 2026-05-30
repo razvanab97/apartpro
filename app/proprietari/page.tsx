@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase, Proprietar } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog } from '@/components/ui'
-import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2 } from 'lucide-react'
+import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, MessageCircle } from 'lucide-react'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 
