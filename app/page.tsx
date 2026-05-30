@@ -183,7 +183,8 @@ export default function DashboardPage() {
   // Curatenie: apartamente cu checkout SAU checkin azi (necesita curatenie)
   const curatenjeAzi=[
     ...checkoutAzi.map(r=>({...r,tip:'checkout'})),
-    ...checkinAzi.filter(r=>!checkoutAzi.find(co=>co.apartament?.id===r.apartament?.id)).map(r=>({...r,tip:'checkin'})),
+    ...checkinAzi.filter(r=>!checkoutAzi.find((co:any)=>co.apartament?.id===r.apartament?.id)).map(r=>({...r,tip:'checkin'})),
+    ...rezervariCurente.filter((r:any)=>!checkoutAzi.find((co:any)=>co.id===r.id)&&!checkinAzi.find((ci:any)=>ci.id===r.id)).map((r:any)=>({...r,tip:'activ'})),
   ]
   function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
   function waEchipaCuratenie(){
@@ -420,7 +421,6 @@ export default function DashboardPage() {
         </div>{/* end outer flex */}
 
         {/* ══ CURĂȚENIE ASTĂZI ══ */}
-        {curatenjeAzi.length>0&&(
         <div style={panel}>
           <div style={panelHdr}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -434,7 +434,9 @@ export default function DashboardPage() {
             </button>
           </div>
           <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
-            {curatenjeAzi.map(r=>{
+            {curatenjeAzi.length===0
+              ? <div style={{fontSize:11,color:'rgba(159,215,255,0.25)',padding:'8px 4px',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
+              : curatenjeAzi.map((r:any)=>{
               const apt=r.apartament; const pers=r.nr_persoane||1
               const lenDefault=nrLenjerii(pers)
               const len=lenjerii[r.id]??lenDefault
@@ -453,14 +455,14 @@ export default function DashboardPage() {
                     } style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
                     <span style={{fontSize:13,fontWeight:700,color:'#FCD34D',minWidth:16,textAlign:'center'}}>{len}</span>
                     <button onClick={()=>setLenjerii(l=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))} style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-                    <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:r.tip==='checkout'?'rgba(248,113,113,0.12)':'rgba(74,222,128,0.12)',color:r.tip==='checkout'?'#F87171':'#4ADE80',fontWeight:600}}>{r.tip==='checkout'?'CO':'CI'}</span>
+                    <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:r.tip==='checkout'?'rgba(248,113,113,0.12)':r.tip==='activ'?'rgba(77,163,255,0.12)':'rgba(74,222,128,0.12)',color:r.tip==='checkout'?'#F87171':r.tip==='activ'?'#7BC8FF':'#4ADE80',fontWeight:600}}>{r.tip==='checkout'?'CO':r.tip==='checkin'?'CI':'ACT'}</span>
                   </div>
                 </div>
               )
             })}
+            }
           </div>
         </div>
-        )}
 
         {/* ROW GRAFICE */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}}>
