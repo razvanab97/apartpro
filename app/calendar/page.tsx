@@ -130,26 +130,25 @@ export default function CalendarPage() {
     const { count: totalRez } = await supabase.from('rezervari').select('*',{count:'exact',head:true})
     const nrRez = `ABH-${100 + (totalRez || 0)}`
 
-    const payload: any = {
+    // Folosim doar coloanele confirmate din schema
+    const { data: saved, error } = await supabase.from('rezervari').insert({
       apartament_id: newRez.aptId,
       nume_client: newRez.nume,
+      telefon_client: newRez.telefon || null,
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
+      nr_nopti: nopti > 0 ? nopti : null,
+      nr_persoane: 1,
+      suma_incasata: parseFloat(newRez.pret) || 0,
+      valoare_bruta: parseFloat(newRez.pret) || 0,
+      moneda: 'RON',
       canal: 'intern',
       status_rezervare: 'confirmata',
+      status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
       observatii: `${nrRez}${newRez.cnp?' | CNP: '+newRez.cnp:''}`,
-    }
-    if(newRez.telefon) payload.telefon_client = newRez.telefon
-    if(nopti > 0) payload.nr_nopti = nopti
-    if(newRez.pret) {
-      payload.suma_incasata = parseFloat(newRez.pret)
-      payload.status_plata = 'achitat'
-    } else {
-      payload.status_plata = 'neachitat'
-    }
+    }).select().single()
 
-    const { data: saved, error } = await supabase.from('rezervari').insert(payload).select().single()
     setSaving(false)
     if(error){
       setSaveError(error.message)
