@@ -20,6 +20,7 @@ const navItems = [
   { href: '/import',      icon: Upload,          label: 'Import Excel',   group: 'P', bottom: false },
   { href: '/sync',        icon: RefreshCw,       label: 'Sync 5starDesk', group: 'P', bottom: false },
   { href: '/cheltuieli',  icon: Receipt,         label: 'Cheltuieli',     group: 'F', bottom: false },
+  { href: '/facturi',      icon: FileStack,       label: 'Facturi',        group: 'F', bottom: false },
   { href: '/deconturi',   icon: TrendingUp,      label: 'Deconturi',      group: 'F', bottom: false },
   { href: '/rapoarte',    icon: FileText,        label: 'Rapoarte',       group: 'F', bottom: false },
   { href: '/setari',      icon: Settings,        label: 'Setări',         group: 'S', bottom: false },
