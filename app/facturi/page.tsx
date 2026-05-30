@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Toast, useToast, Modal, FormGroup, FormRow } from '@/components/ui'
-import { Upload, FileText, Check, Trash2, Eye, Plus, Loader, AlertCircle, Building2 } from 'lucide-react'
+import { Toast, useToast } from '@/components/ui'
+import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle } from 'lucide-react'
 
 const FURNIZORI_LIST = [
   'E.ON Curent','E.ON Gaz','Urbica','TermoService','Salubris',
