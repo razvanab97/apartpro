@@ -236,7 +236,7 @@ export default function DashboardPage() {
         <Link href="/rezervari" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.85)',border:'1px solid rgba(159,215,255,0.35)',color:'#FFFFFF',fontSize:12,fontWeight:500,textDecoration:'none'}}>+ Rezervare nouă</Link>
       </div>
 
-      <div style={{flex:1,overflow:'auto',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
 
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
@@ -261,8 +261,8 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* ══ SECTIUNEA OASPETI AZI ══ */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+        {/* ══ OASPETI AZI — grid 2x2 ══ */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
 
           {/* CHECK-IN AZI */}
           <div style={panel}>
@@ -298,6 +298,55 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* REZERVARI ACTIVE ACUM */}
+          <div style={panel}>
+            <div style={panelHdr}>
+              <div style={{display:'flex',alignItems:'center',gap:7}}>
+                <BedDouble size={12} color="#7BC8FF"/>
+                <span style={{...panelTitle,color:'#7BC8FF'}}>Rezervări în curs</span>
+                <span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(123,200,255,0.1)',padding:'1px 7px',borderRadius:10}}>{rezervariCurente.length}</span>
+              </div>
+              <Link href="/rezervari" style={{fontSize:9,color:'#4DA3FF',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
+            </div>
+            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:7}}>
+              {rezervariCurente.length===0
+                ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Nicio rezervare activă acum</div>
+                :rezervariCurente.map((r:any)=>{
+                  const apt=r.apartament
+                  const phone=r.telefon_client||''
+                  const noptiRamase=Math.ceil((new Date(r.data_checkout).getTime()-new Date().getTime())/(1000*60*60*24))
+                  return(
+                    <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:'rgba(20,35,58,0.6)',border:'1px solid rgba(123,200,255,0.15)',borderRadius:9}}>
+                      <div style={{width:32,height:32,borderRadius:8,background:'rgba(123,200,255,0.12)',border:'1px solid rgba(123,200,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:13,fontWeight:700,color:'#7BC8FF'}}>
+                        {(r.nume_client||'?')[0].toUpperCase()}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF',marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nume_client}</div>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
+                          {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 5px',borderRadius:4,flexShrink:0}}>{apt.nota}</span>}
+                          <span style={{fontSize:11,color:'rgba(159,215,255,0.45)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt?.nume}</span>
+                          <span style={{fontSize:10,fontWeight:500,color:noptiRamase<=1?'#F87171':noptiRamase<=2?'#FCD34D':'rgba(74,222,128,0.7)',flexShrink:0}}>
+                            {noptiRamase<=0?'CO azi':noptiRamase===1?'1n rămasă':`${noptiRamase}n rămase`}
+                          </span>
+                        </div>
+                        {phone&&<div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginTop:2,display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</div>}
+                      </div>
+                      {phone&&<div style={{display:'flex',gap:5,flexShrink:0}}>
+                        <a href={`tel:${phone}`} style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(123,200,255,0.25)',background:'rgba(123,200,255,0.08)',color:'#7BC8FF',textDecoration:'none'}}>
+                          <Phone size={13}/>
+                        </a>
+                        <a href={waLink(phone,`Bună ziua, ${r.nume_client}! Vă contactăm de la AB Homes Iași. `)} target="_blank" rel="noreferrer"
+                          style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(74,222,128,0.25)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',textDecoration:'none'}}>
+                          <MessageCircle size={13}/>
+                        </a>
+                      </div>}
+                    </div>
+                  )
+                })
+              }
+            </div>
+          </div>
+
           {/* DISPONIBILE AZI */}
           <div style={panel}>
             <div style={panelHdr}>
@@ -307,71 +356,20 @@ export default function DashboardPage() {
               </div>
               <span style={{fontSize:10,fontWeight:600,color:'#4ADE80',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{libereAzi.length}</span>
             </div>
-            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:6}}>
+            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:5}}>
               {libereAzi.length===0
                 ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Toate apartamentele sunt ocupate 🎉</div>
                 :libereAzi.map(a=>(
-                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'9px 12px',background:'rgba(74,222,128,0.05)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:9}}>
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'rgba(74,222,128,0.05)',border:'1px solid rgba(74,222,128,0.12)',borderRadius:8}}>
                     {a.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>{a.nota}</span>}
-                    <span style={{fontSize:13,fontWeight:500,color:'#E8F4FF',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.nume}</span>
-                    <div style={{width:7,height:7,borderRadius:'50%',background:'#4ADE80',boxShadow:'0 0 5px rgba(74,222,128,0.6)',flexShrink:0}}/>
+                    <span style={{fontSize:12,fontWeight:500,color:'#E8F4FF',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.nume}</span>
+                    <div style={{width:6,height:6,borderRadius:'50%',background:'#4ADE80',boxShadow:'0 0 4px rgba(74,222,128,0.6)',flexShrink:0}}/>
                   </div>
                 ))
               }
             </div>
           </div>
-        </div>
 
-        {/* ── OASPETI ACTIVI ACUM ── */}
-        <div style={panel}>
-          <div style={panelHdr}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <BedDouble size={12} color="#7BC8FF"/>
-              <span style={{...panelTitle,color:'#7BC8FF'}}>Oaspeți activi acum</span>
-              <span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(123,200,255,0.1)',padding:'1px 7px',borderRadius:10}}>{rezervariCurente.length}</span>
-            </div>
-            <Link href="/rezervari" style={{fontSize:9,color:'#4DA3FF',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
-          </div>
-          <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
-            {rezervariCurente.length===0
-              ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Nicio rezervare activă în acest moment</div>
-              :rezervariCurente.map((r:any)=>{
-                const apt=r.apartament
-                const phone=r.telefon_client||''
-                const noptiRamase=Math.ceil((new Date(r.data_checkout).getTime()-new Date().getTime())/(1000*60*60*24))
-                return(
-                  <div key={r.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:'rgba(20,35,58,0.6)',border:'1px solid rgba(123,200,255,0.15)',borderRadius:10,flexWrap:'wrap' as const}}>
-                    <div style={{width:36,height:36,borderRadius:10,background:'rgba(123,200,255,0.12)',border:'1px solid rgba(123,200,255,0.25)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:14,fontWeight:700,color:'#7BC8FF'}}>
-                      {(r.nume_client||'?')[0].toUpperCase()}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',marginBottom:2}}>{r.nume_client}</div>
-                      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' as const}}>
-                        {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{apt.nota}</span>}
-                        <span style={{fontSize:11,color:'rgba(159,215,255,0.5)'}}>{apt?.nume}</span>
-                        {phone&&<span style={{fontSize:11,color:'rgba(159,215,255,0.4)',display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</span>}
-                        <span style={{fontSize:10,fontWeight:500,color:noptiRamase<=1?'#F87171':noptiRamase<=2?'#FCD34D':'rgba(74,222,128,0.7)'}}>
-                          {noptiRamase<=0?'CO azi':noptiRamase===1?'1 noapte rămasă':`${noptiRamase} nopți rămase`}
-                        </span>
-                        <span style={{fontSize:10,color:'rgba(159,215,255,0.25)'}}>CO: {r.data_checkout?.slice(5)}</span>
-                      </div>
-                    </div>
-                    <div style={{display:'flex',gap:6,flexShrink:0}}>
-                      {phone&&<>
-                        <a href={`tel:${phone}`} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:7,border:'1px solid rgba(123,200,255,0.25)',background:'rgba(123,200,255,0.08)',color:'#7BC8FF',fontSize:11,fontWeight:600,textDecoration:'none'}}>
-                          <Phone size={11}/>Sună
-                        </a>
-                        <a href={waLink(phone,`Bună ziua, ${r.nume_client}! Vă contactăm de la AB Homes Iași în legătură cu rezervarea dumneavoastră. `)} target="_blank" rel="noreferrer"
-                          style={{display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:7,border:'1px solid rgba(74,222,128,0.25)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:11,fontWeight:600,textDecoration:'none'}}>
-                          <MessageCircle size={11}/>WhatsApp
-                        </a>
-                      </>}
-                    </div>
-                  </div>
-                )
-              })
-            }
-          </div>
         </div>
 
         {/* ROW GRAFICE */}
