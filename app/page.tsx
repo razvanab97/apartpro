@@ -236,7 +236,7 @@ export default function DashboardPage() {
         <Link href="/rezervari" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.85)',border:'1px solid rgba(159,215,255,0.35)',color:'#FFFFFF',fontSize:12,fontWeight:500,textDecoration:'none'}}>+ Rezervare nouă</Link>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px',display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>
 
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
@@ -261,8 +261,9 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* ══ OASPETI AZI — grid 2x2 ══ */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        {/* ══ OASPETI AZI ══ */}
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
 
           {/* CHECK-IN AZI */}
           <div style={panel}>
@@ -347,7 +348,9 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* DISPONIBILE AZI */}
+        </div>{/* end 3-col grid */}
+
+          {/* DISPONIBILE AZI - linie completa jos */}
           <div style={panel}>
             <div style={panelHdr}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
@@ -356,21 +359,21 @@ export default function DashboardPage() {
               </div>
               <span style={{fontSize:10,fontWeight:600,color:'#4ADE80',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{libereAzi.length}</span>
             </div>
-            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:5}}>
+            <div style={{padding:'8px 10px',display:'flex',flexWrap:'wrap',gap:6}}>
               {libereAzi.length===0
-                ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Toate apartamentele sunt ocupate 🎉</div>
+                ?<div style={{padding:'8px',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Toate apartamentele sunt ocupate 🎉</div>
                 :libereAzi.map(a=>(
-                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'rgba(74,222,128,0.05)',border:'1px solid rgba(74,222,128,0.12)',borderRadius:8}}>
-                    {a.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>{a.nota}</span>}
-                    <span style={{fontSize:12,fontWeight:500,color:'#E8F4FF',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.nume}</span>
-                    <div style={{width:6,height:6,borderRadius:'50%',background:'#4ADE80',boxShadow:'0 0 4px rgba(74,222,128,0.6)',flexShrink:0}}/>
+                  <div key={a.id} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',background:'rgba(74,222,128,0.07)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20}}>
+                    {a.nota&&<span style={{fontSize:10,fontWeight:700,color:'var(--accent-blue)',fontFamily:'monospace'}}>{a.nota}</span>}
+                    <span style={{fontSize:11,fontWeight:500,color:'rgba(214,228,244,0.85)'}}>{a.nume}</span>
+                    <div style={{width:5,height:5,borderRadius:'50%',background:'#4ADE80',boxShadow:'0 0 3px rgba(74,222,128,0.7)',flexShrink:0}}/>
                   </div>
                 ))
               }
             </div>
           </div>
 
-        </div>
+        </div>{/* end outer flex */}
 
         {/* ROW GRAFICE */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}}>
