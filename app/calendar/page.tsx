@@ -168,9 +168,11 @@ export default function CalendarPage() {
       if (data.success) {
         if (data.nume) setNewRez(r => ({ ...r, nume: data.nume }))
         if (data.cnp)  setNewRez(r => ({ ...r, cnp: data.cnp }))
-        if (!data.nume && !data.cnp) setCiError('Nu s-au putut extrage datele. Completează manual.')
+        if (!data.nume && !data.cnp) {
+          setCiError('Nu s-au extras date. Răspuns AI: ' + (data.raw||'gol'))
+        }
       } else {
-        setCiError(data.error || 'Eroare extragere. Completează manual.')
+        setCiError((data.error||'Eroare') + (data.raw?' | '+data.raw:''))
       }
     } catch(e: any) {
       setCiError('Eroare conexiune: ' + e.message)
