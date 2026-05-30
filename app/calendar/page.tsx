@@ -8,6 +8,7 @@ type Rez = {
   id: string; nume_client: string; telefon_client?: string
   data_checkin: string; data_checkout: string
   canal: string; status_rezervare: string; nr_nopti?: number
+  suma_incasata?: number; observatii?: string
   apartament?: any
 }
 type Apt = { id: string; nume: string; nota: string | null }
