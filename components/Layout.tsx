@@ -156,7 +156,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       )}
 
       {/* ── MAIN CONTENT ── */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }} className="main-content">
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minWidth: 0 }} className="main-content">
         {children}
       </main>
 
