@@ -189,19 +189,12 @@ export default function DashboardPage() {
   function waEchipaCuratenie(){
     const linii=curatenjeAzi.map(r=>{
       const apt=r.apartament; const pers=r.nr_persoane||1; const len=lenjerii[r.id]??nrLenjerii(pers)
-      return `🏠 ${apt?.nota||''} ${apt?.nume||''}
-   👥 ${pers} oaspeți | 🛏 ${len} lenjerii
-   📍 ${apt?.adresa||'—'}`
-    }).join('
-
-')
-    const msg=`*Curățenie ${new Date().toLocaleDateString('ro-RO')}*
-
-${linii}
-
-Mulțumesc! 🙏`
+      return '\uD83C\uDFE0 '+(apt?.nota||'')+' '+(apt?.nume||'')+'\n   \uD83D\uDC65 '+pers+' oas | \uD83D\uDECF '+len+' len\n   \uD83D\uDCCD '+(apt?.adresa||'\u2014')
+    }).join('\n\n')
+    const data=new Date().toLocaleDateString('ro-RO')
+    const msg='*Curatenie '+data+'*\n\n'+linii+'\n\nMultumesc!'
     const nr='40749558705'
-    window.open(\`https://wa.me/\${nr}?text=\${encodeURIComponent(msg)}\`,'_blank')
+    window.open('https://wa.me/'+nr+'?text='+encodeURIComponent(msg),'_blank')
   }
 
   // plati scadente
