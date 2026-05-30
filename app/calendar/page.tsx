@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader } from 'lucide-react'
@@ -48,9 +48,12 @@ export default function CalendarPage() {
   // panel lateral
   const [panel, setPanel] = useState<'info'|'new'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
-  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'' })
+  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'' })
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
+  const [ciScanning, setCiScanning] = useState(false)
+  const [ciPreview, setCiPreview] = useState<string|null>(null)
+  const ciRef = useRef<HTMLInputElement>(null)
 
   const today     = new Date().toISOString().split('T')[0]
   const todayDay  = new Date().getDate()
@@ -87,7 +90,7 @@ export default function CalendarPage() {
 
   function prevMonth(){ if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1); clearSel() }
   function nextMonth(){ if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1); clearSel() }
-  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null) }
+  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null) }
 
   const isCurrentMonth  = month===todayMon && year===todayYear
   const occupiedToday   = isCurrentMonth ? apts.filter(a=>getRez(a.id,todayDay)).length : 0
@@ -104,7 +107,8 @@ export default function CalendarPage() {
   function openNewRez(aptId:string, from:number, to:number){
     const ci = isoDate(year,month,from)
     const co = isoDate(year,month,to+1)
-    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co })
+    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'' })
+    setCiPreview(null)
     setPanel('new')
   }
 
@@ -124,7 +128,7 @@ export default function CalendarPage() {
       status_rezervare: 'confirmata',
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
-      observatii: 'Rezervare internă — Cherry/Comfy (nu sync 5starDesk)',
+      observatii: `Rezervare internă — Cherry/Comfy (nu sync 5starDesk)${newRez.cnp?' | CNP: '+newRez.cnp:''}`.trim(),
     })
     setSaving(false)
     if(!error){
@@ -132,6 +136,43 @@ export default function CalendarPage() {
       await load()
       setTimeout(()=>{ setSaveOk(false); setPanel(null); clearSel() }, 1500)
     }
+  }
+
+  // Scanare buletin cu Gemini
+  async function scanCI(file: File) {
+    setCiScanning(true)
+    const b64 = await new Promise<string>((res, rej) => {
+      const r = new FileReader()
+      r.onload = () => res((r.result as string).split(',')[1])
+      r.onerror = rej
+      r.readAsDataURL(file)
+    })
+    setCiPreview(URL.createObjectURL(file))
+    try {
+      const resp = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { text: 'Ești expert în citirea actelor de identitate românești. Extrage din această imagine: nume complet, CNP (dacă e vizibil), data nașterii, cetățenia, adresa (dacă e vizibilă). Răspunde DOAR cu JSON valid fără markdown: {"nume":"","cnp":"","data_nasterii":"","cetatenie":"","adresa":""}' },
+              { inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } }
+            ]}],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 256 }
+          })
+        }
+      )
+      const data = await resp.json()
+      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+      const clean = raw.replace(/```json|```/g,'').trim()
+      const parsed = JSON.parse(clean)
+      if (parsed.nume) setNewRez(r => ({ ...r, nume: parsed.nume }))
+      if (parsed.cnp)  setNewRez(r => ({ ...r, cnp: parsed.cnp || '' }))
+    } catch(e) {
+      console.error('CI scan error', e)
+    }
+    setCiScanning(false)
   }
 
   // panel info zi
@@ -410,12 +451,46 @@ export default function CalendarPage() {
                   </div>
                 )}
 
+                {/* Scan CI */}
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Buletin / Pașaport</div>
+                  <input ref={ciRef} type="file" accept="image/*,.pdf" onChange={e=>e.target.files?.[0]&&scanCI(e.target.files[0])} style={{ display:'none' }}/>
+                  <button onClick={()=>ciRef.current?.click()} disabled={ciScanning}
+                    style={{ width:'100%',padding:'10px',borderRadius:8,border:'1px dashed rgba(124,58,237,0.4)',background:ciScanning?'rgba(124,58,237,0.1)':'rgba(124,58,237,0.06)',color:ciScanning?'#A78BFA':'rgba(167,139,250,0.65)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'all .15s' }}>
+                    {ciScanning
+                      ? <><Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se scanează...</>
+                      : ciPreview
+                      ? <><Check size={14} color="#4ADE80"/><span style={{ color:'#4ADE80' }}>Scanat — click pentru alt document</span></>
+                      : <>📷 Fotografiază / încarcă buletin</>
+                    }
+                  </button>
+                  {ciPreview && !ciScanning && (
+                    <div style={{ marginTop:8,borderRadius:7,overflow:'hidden',border:'1px solid rgba(124,58,237,0.25)',maxHeight:120,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.3)' }}>
+                      <img src={ciPreview} alt="CI preview" style={{ maxWidth:'100%',maxHeight:120,objectFit:'contain' }}/>
+                    </div>
+                  )}
+                  {ciPreview && !ciScanning && (
+                    <div style={{ marginTop:5,fontSize:10,color:'rgba(74,222,128,0.7)',display:'flex',alignItems:'center',gap:4 }}>
+                      <Check size={10}/>Nume extras automat din buletin
+                    </div>
+                  )}
+                </div>
+
                 {/* Nume */}
                 <div style={{ marginBottom:10 }}>
                   <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Nume client *</div>
                   <input value={newRez.nume} onChange={e=>setNewRez({...newRez,nume:e.target.value})} placeholder="ex. Ion Popescu"
                     style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
                 </div>
+
+                {/* CNP */}
+                {newRez.cnp && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>CNP</div>
+                    <input value={newRez.cnp} onChange={e=>setNewRez({...newRez,cnp:e.target.value})} placeholder="1234567890123"
+                      style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',fontFamily:'monospace' }}/>
+                  </div>
+                )}
 
                 {/* Telefon */}
                 <div style={{ marginBottom:10 }}>
