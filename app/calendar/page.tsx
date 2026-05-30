@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader } from 'lucide-react'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
