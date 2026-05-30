@@ -170,13 +170,13 @@ export default function DashboardPage() {
     const todayFmt = todayStr
     const [{ data: coData }, { data: ciData }] = await Promise.all([
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .select('id,nume_client,nr_persoane,status_rezervare,apartament:apartamente(id,nume,nota,adresa)')
         .eq('data_checkout', todayFmt)
-        .in('status_rezervare', ['confirmata','finalizata']),
+        .neq('status_rezervare', 'anulata'),
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .select('id,nume_client,nr_persoane,status_rezervare,apartament:apartamente(id,nume,nota,adresa)')
         .eq('data_checkin', todayFmt)
-        .in('status_rezervare', ['confirmata','finalizata']),
+        .neq('status_rezervare', 'anulata'),
     ])
     setCuratenieBruta({ co: coData||[], ci: ciData||[] })
     setLoading(false)
