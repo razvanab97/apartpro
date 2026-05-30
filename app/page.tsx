@@ -114,6 +114,14 @@ export default function DashboardPage() {
 
   async function loadData(){
     setLoading(true)
+    // Curatenie - PRIMUL query, independent
+    const today0=new Date().toISOString().split('T')[0]
+    const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0),
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0),
+    ])
+    setCoAziCur(coCur0||[])
+    setCiAziCur(ciCur0||[])
     const primaZiLuna=format(new Date(an,luna-1,1),'yyyy-MM-dd')
     const ultimaZiLuna=format(new Date(an,luna,0),'yyyy-MM-dd')
     // VM07 si CG40 - singurele apartamente cu comision AB
@@ -184,14 +192,6 @@ export default function DashboardPage() {
       .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
-    // Curatenie - query direct, fara filtre
-    const today2=new Date().toISOString().split('T')[0]
-    const [{data:coCur},{data:ciCur}]=await Promise.all([
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today2),
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today2),
-    ])
-    setCoAziCur(coCur||[])
-    setCiAziCur(ciCur||[])
     setLoading(false)
   }
 
