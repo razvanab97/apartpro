@@ -89,7 +89,7 @@ function msgCheckout(r:any){
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [loading,setLoading]=useState(true)
-  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0})
+  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
   const [rezervariRecente,setRezervariRecente]=useState<any[]>([])
   const [checkinAzi,setCheckinAzi]=useState<any[]>([])
   const [checkoutAzi,setCheckoutAzi]=useState<any[]>([])
@@ -111,26 +111,46 @@ export default function DashboardPage() {
   async function loadData(){
     setLoading(true)
     const primaZiLuna=format(new Date(an,luna-1,1),'yyyy-MM-dd')
+    const ultimaZiLuna=format(new Date(an,luna,0),'yyyy-MM-dd')
     const [
-      {count:apCount},{count:rezCount},{data:rezLuna},
+      {count:apCount},{count:rezAziCount},{data:rezLuna},
       {data:ciAzi},{data:coAzi},{data:recente},{data:deconturi},{count:taskCount},
       {data:aptData},{data:chData},{data:actRez},
     ]=await Promise.all([
+      // apartamente active
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
-      supabase.from('rezervari').select('*',{count:'exact',head:true}).in('status_rezervare',['confirmata','finalizata']).gte('data_checkout',todayStr),
-      supabase.from('rezervari').select('suma_incasata,comision_administrator').gte('data_checkin',primaZiLuna).in('status_rezervare',['confirmata','finalizata']),
+      // rezervari active ACUM (checkin<=azi, checkout>azi)
+      supabase.from('rezervari').select('*',{count:'exact',head:true}).in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr),
+      // incasari luna curenta (checkin in luna curenta)
+      supabase.from('rezervari').select('suma_incasata,canal').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
+      // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').eq('data_checkin',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkin'),
+      // checkout azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').eq('data_checkout',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkout'),
+      // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
+      // deconturi neplatite
       supabase.from('deconturi').select('*').in('status',['draft','aprobat']),
+      // taskuri urgente
       supabase.from('taskuri').select('*',{count:'exact',head:true}).eq('prioritate','urgenta').eq('status','de_facut'),
+      // apartamente
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
+      // cheltuieli luna curenta
       supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`),
+      // rezervari active acum cu detalii
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
     ])
+    // incasari = suma din rezervarile cu checkin in luna curenta
     const inc=rezLuna?.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)||0
-    const com=rezLuna?.reduce((s:number,r:any)=>s+Number(r.comision_administrator||0),0)||0
-    setStats({apartamenteActive:apCount||0,rezervariActive:rezCount||0,incasariLuna:inc,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0})
+    // comisioane AB Homes = 20% din net (calculat ca 20% din suma_incasata pentru simplitate)
+    // real: suma_incasata - comision_platforma = net, din net 20% = comision AB
+    const comAirbnb=rezLuna?.filter((r:any)=>r.canal==='airbnb').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.85*0.20,0)||0
+    const comBooking=rezLuna?.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.83*0.20,0)||0
+    const comDirect=rezLuna?.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.20,0)||0
+    const com=Math.round(comAirbnb+comBooking+comDirect)
+    // grad ocupare = rezervari active azi / apartamente active
+    const gradOcupareReal=apCount&&rezAziCount?Math.round((rezAziCount/apCount)*100):0
+    setStats({apartamenteActive:apCount||0,rezervariActive:rezAziCount||0,incasariLuna:inc,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -165,7 +185,7 @@ export default function DashboardPage() {
     return item?.status!=='validat'&&daysUntil(ft.due,luna,an)<=14
   })
   const totalScadente=apts.reduce((s,a)=>s+getAptCheltuieli(a.id).length,0)+fiscalScadente.length
-  const gradOcupare=stats.apartamenteActive>0?Math.min(100,Math.round((stats.rezervariActive/stats.apartamenteActive)*100)):0
+  const gradOcupare=stats.gradOcupare||0
   const lunaLabel=format(now,'MMMM yyyy',{locale:ro})
   const pctCh=cheltuieli.length>0?Math.round(cheltuieli.filter(c=>c.status==='validat').length/cheltuieli.length*100):0
 
@@ -242,7 +262,7 @@ export default function DashboardPage() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
           {[
             {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
-            {label:'REZERVĂRI ACTIVE',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:'în curs'},
+            {label:'REZERVĂRI ACTIVE',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:'cazate acum'},
             {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${stats.incasariLuna.toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:'RON'},
             {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
             {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${stats.rezervariActive}/${stats.apartamenteActive} ap.`},
