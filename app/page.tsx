@@ -220,7 +220,7 @@ export default function DashboardPage() {
       return aptStr+'\n   '+clientStr+'\n   Lenjerii: '+len
     }).join('\n\n')
     const msg = 'Curatenie '+azi+'\n\n'+linii+'\n\nMultumesc!'
-    const nr = '40749558705'
+    const nr = '40756942108'
     window.open('https://wa.me/'+nr+'?text='+encodeURIComponent(msg),'_blank')
   }
 
