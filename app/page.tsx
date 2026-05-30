@@ -98,6 +98,7 @@ export default function DashboardPage() {
   const [rezervariCurente,setRezervariCurente]=useState<any[]>([])
   const [cheltuieli,setCheltuieli]=useState<any[]>([])
   const [lenjerii,setLenjerii]=useState<Record<string,number>>({})
+  const [curatenieBruta,setCuratenieBruta]=useState<{co:any[];ci:any[]}>({co:[],ci:[]})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
 
@@ -165,6 +166,19 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
+    // Query dedicat curatenie cu toate campurile necesare
+    const todayFmt = todayStr
+    const [{ data: coData }, { data: ciData }] = await Promise.all([
+      supabase.from('rezervari')
+        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .eq('data_checkout', todayFmt)
+        .in('status_rezervare', ['confirmata','finalizata']),
+      supabase.from('rezervari')
+        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .eq('data_checkin', todayFmt)
+        .in('status_rezervare', ['confirmata','finalizata']),
+    ])
+    setCuratenieBruta({ co: coData||[], ci: ciData||[] })
     setLoading(false)
   }
 
@@ -180,12 +194,21 @@ export default function DashboardPage() {
   const ocupateIds=new Set(rezervariActive.map((r:any)=>r.apartament_id))
   const libereAzi=apts.filter(a=>!ocupateIds.has(a.id))
 
-  // Curatenie: apartamente cu checkout SAU checkin azi (necesita curatenie)
-  const curatenjeAzi=[
-    ...checkoutAzi.map(r=>({...r,tip:'checkout'})),
-    ...checkinAzi.filter(r=>!checkoutAzi.find((co:any)=>co.apartament?.id===r.apartament?.id)).map(r=>({...r,tip:'checkin'})),
-    ...rezervariCurente.filter((r:any)=>!checkoutAzi.find((co:any)=>co.id===r.id)&&!checkinAzi.find((ci:any)=>ci.id===r.id)).map((r:any)=>({...r,tip:'activ'})),
-  ]
+  // Curatenie: CO azi + CI azi, cu logica de asociere pe apartament
+  // Daca acelasi apartament are si CO si CI azi = curatenie intre sejururi (tip: 'co_ci')
+  // Daca doar CO = curatenie dupa plecare (tip: 'checkout')
+  // Daca doar CI = pregatire pentru sosire (tip: 'checkin')
+  const coIds = new Set(curatenieBruta.co.map((r:any)=>r.apartament?.id))
+  const ciIds = new Set(curatenieBruta.ci.map((r:any)=>r.apartament?.id))
+  const curatenjeAzi: any[] = []
+  // CO fara CI = curatenie simpla
+  curatenieBruta.co.forEach((r:any)=>{
+    curatenjeAzi.push({...r, tip: ciIds.has(r.apartament?.id)?'co_ci':'checkout'})
+  })
+  // CI fara CO = doar pregatire
+  curatenieBruta.ci.forEach((r:any)=>{
+    if(!coIds.has(r.apartament?.id)) curatenjeAzi.push({...r, tip:'checkin'})
+  })
   function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
   function waEchipaCuratenie(){
     const linii=curatenjeAzi.map(r=>{
@@ -441,7 +464,7 @@ export default function DashboardPage() {
                   const pers=Number(r.nr_persoane)||1
                   const lenDefault=nrLenjerii(pers)
                   const len=lenjerii[r.id]??lenDefault
-                  const isOut=r.tip==='checkout'
+                  const isOut=r.tip==='checkout'||r.tip==='co_ci'
                   const isAct=r.tip==='activ'
                   const accentCol=isOut?'#F87171':isAct?'#7BC8FF':'#4ADE80'
                   const bgCol=isOut?'rgba(248,113,113,0.06)':isAct?'rgba(77,163,255,0.06)':'rgba(74,222,128,0.06)'
@@ -463,7 +486,7 @@ export default function DashboardPage() {
                         <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))}
                           style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
                         <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:bgCol,border:'1px solid '+bdCol,color:accentCol,fontWeight:700,marginLeft:2}}>
-                          {isOut?'CO':isAct?'ACT':'CI'}
+                          {r.tip==='co_ci'?'CO→CI':r.tip==='checkout'?'CO':r.tip==='checkin'?'CI':'ACT'}
                         </span>
                       </div>
                     </div>
