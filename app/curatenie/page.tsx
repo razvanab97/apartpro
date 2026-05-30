@@ -103,10 +103,7 @@ export default function CuratenePage() {
             <ChevronRight size={16}/>
           </button>
           <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
-            style={{background:'rgba(77,163,255,0.08)',border:'0.5px solid rgba(77,163,255,0.2)',borderRadius:7,color:'#7BC8FF',fontSize:12,padding:'6px 8px',cursor:'pointer',width:36,opacity:0}}
-            id="datepicker"/>
-          <button onClick={()=>document.getElementById('datepicker')?.click()}
-            style={{...s.lenBtn,fontSize:16}}>📅</button>
+            style={{background:'rgba(77,163,255,0.08)',border:'0.5px solid rgba(77,163,255,0.2)',borderRadius:7,color:'#7BC8FF',fontSize:13,padding:'6px 8px',cursor:'pointer'}}/>
         </div>
 
         {/* Butoane actiuni */}
