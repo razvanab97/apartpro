@@ -5,6 +5,17 @@ import { PageHeader } from '@/components/Layout'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
 function nrLen(p:number){ return Math.ceil(p/2) }
+function nrLenSmart(r:any){
+  let p = Number(r.nr_persoane)||0
+  // daca nr_persoane e 0 sau 1 (default), estimeaza din valoare_bruta/nr_nopti
+  if(p<=1 && r.valoare_bruta && r.nr_nopti){
+    const pretNoapte = Number(r.valoare_bruta)/Number(r.nr_nopti)
+    // ~100 RON/persoana/noapte estimativ
+    p = Math.max(2, Math.round(pretNoapte/100))
+  }
+  if(p<=1) p=2 // minim 2 persoane ca default
+  return nrLen(p)
+}
 
 function fmtDate(iso:string){
   const d=new Date(iso+'T12:00:00')
@@ -26,17 +37,17 @@ export default function CuratenePage() {
     setLen({})
     const [{data:coData},{data:ciData}] = await Promise.all([
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente(id,nume,nota,adresa)')
         .eq('data_checkout', date),
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)')
+        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente(id,nume,nota,adresa)')
         .eq('data_checkin', date),
     ])
     setCo(coData||[])
     setCi(ciData||[])
     // init lenjerii din CI
     const init:Record<string,number>={}
-    ;(ciData||[]).forEach((r:any)=>{ init[r.apartament?.id]=nrLen(Number(r.nr_persoane)||2) })
+    ;(ciData||[]).forEach((r:any)=>{ init[r.apartament?.id]=nrLenSmart(r) })
     setLen(init)
     setLoading(false)
   }
@@ -55,7 +66,7 @@ export default function CuratenePage() {
 
   function waEchipa(){
     const linii=locatii.map(({apt,ciRez})=>{
-      const l=len[apt?.id]??(ciRez?nrLen(Number(ciRez.nr_persoane)||2):1)
+      const l=len[apt?.id]??(ciRez?nrLenSmart(ciRez):1)
       const aptStr=(apt?.nota?apt.nota+' - ':'')+apt?.nume
       const ciStr=ciRez?` | CI: ${ciRez.nume_client} (${ciRez.nr_persoane||'?'} pers)`:''
       return `${aptStr}${ciStr} → ${l} lenjerii`
@@ -121,7 +132,7 @@ export default function CuratenePage() {
 
         {!loading&&locatii.map(({apt,coRez,ciRez},idx)=>{
           const aptId=apt?.id||String(idx)
-          const lenDef=ciRez?nrLen(Number(ciRez.nr_persoane)||2):1
+          const lenDef=ciRez?nrLenSmart(ciRez):1
           const l=len[aptId]??lenDef
           const isCOCI=!!(coRez&&ciRez), isCIonly=!!(!coRez&&ciRez)
           const col=isCOCI?'#F87171':isCIonly?'#4ADE80':'#FCD34D'
@@ -134,7 +145,7 @@ export default function CuratenePage() {
                   <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>
                 </div>
-                {ciRez&&<div style={{fontSize:12,color:'#4ADE80'}}>↙ {ciRez.nume_client} · {ciRez.nr_persoane||'?'} pers.</div>}
+                {ciRez&&<div style={{fontSize:12,color:'#4ADE80'}}>↙ {ciRez.nume_client} · {Number(ciRez.nr_persoane)>1?ciRez.nr_persoane:'~'+((nrLenSmart(ciRez)*2))} pers.</div>}
                 {!ciRez&&coRez&&<div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Eliberare — fără check-in</div>}
               </div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
