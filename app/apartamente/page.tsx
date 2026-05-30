@@ -21,35 +21,72 @@ function CopyBtn({ text }: { text: string }) {
 
 function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
-  const [ch, setCh] = useState(apt.pret_standard||0)
-  const [ut, setUt] = useState(300)
-  const [al, setAl] = useState(100)
-  const [zl, setZl] = useState(new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate())
-  const tot = Number(ch)+Number(ut)+Number(al)
-  const pz = Math.round(tot/zl)
-  const min = Math.round(pz*1.2)
+  const [chirie, setChirie] = useState(apt.pret_standard||0)
+  const [utilitati, setUtilitati] = useState(300)
+  const [internet, setInternet] = useState(60)
+  const [admin, setAdmin] = useState(100)
+  const [alteFix, setAlteFix] = useState(0)
+  const [curatenie, setCuratenie] = useState(200)
+  const [consumabile, setConsumabile] = useState(100)
+  const [lenjerii, setLenjerii] = useState(80)
+  const [altVar, setAltVar] = useState(0)
+  const [zile, setZile] = useState(20)
+  const totalFix = Number(chirie)+Number(utilitati)+Number(internet)+Number(admin)+Number(alteFix)
+  const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
+  const totalLuna = totalFix+totalVar
+  const costN = zile>0?Math.round(totalLuna/zile):0
+  const p10=Math.round(costN*1.10), p20=Math.round(costN*1.20), p30=Math.round(costN*1.30)
+  const pBooking=Math.round(p20/0.83), pAirbnb=Math.round(p20/0.85), pDirect=p20
+  const inp: React.CSSProperties={width:'100%',background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,color:'#fff',fontSize:12,padding:'5px 8px',outline:'none'}
+  const lbl: React.CSSProperties={fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase' as const,letterSpacing:'.05em'}
   return (
-    <div style={{ borderTop:'1px solid rgba(159,215,255,0.07)', marginTop:12, paddingTop:10 }}>
-      <button onClick={()=>setOpen(!open)} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'rgba(159,215,255,0.45)', background:'none', border:'none', cursor:'pointer', padding:0, width:'100%' }}>
-        <Calculator size={11}/><span>Calculator preț minim</span>
+    <div style={{ borderTop:'1px solid rgba(159,215,255,0.07)', marginTop:12, paddingTop:12 }}>
+      <button onClick={()=>setOpen(!open)} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', color:'rgba(159,215,255,0.5)', fontSize:11, width:'100%' }}>
+        <Calculator size={11}/><span>Calculator preț & rentabilitate</span>
         <span style={{ marginLeft:'auto' }}>{open?<ChevronUp size={10}/>:<ChevronDown size={10}/>}</span>
       </button>
       {open && (
-        <div style={{ marginTop:8 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:8 }}>
-            {([['Chirie',ch,setCh],['Utilități',ut,setUt],['Altele',al,setAl],['Zile',zl,setZl]] as [string,number,any][]).map(([l,v,s])=>(
-              <div key={l}>
-                <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:2 }}>{l} (RON)</div>
-                <input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={{ fontSize:11, padding:'4px 7px', background:'rgba(14,27,43,0.7)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:5, color:'#fff', width:'100%' }}/>
-              </div>
+        <div style={{ marginTop:10 }}>
+          <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli fixe / lună</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
+            {([['Chirie',chirie,setChirie],['Utilități',utilitati,setUtilitati],['Internet',internet,setInternet],['Administrare',admin,setAdmin],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
+              <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
             ))}
           </div>
-          <div style={{ background:'rgba(77,163,255,0.07)', border:'1px solid rgba(77,163,255,0.14)', borderRadius:7, padding:'8px 10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div>
-              <div style={{ fontSize:10, color:'rgba(159,215,255,0.45)' }}>{tot.toLocaleString('ro-RO')} RON/lună · {pz} RON/zi</div>
-              <div style={{ fontSize:11, color:'#4DA3FF', marginTop:2 }}>Preț minim recomandat</div>
+          <div style={{ fontSize:10, fontWeight:600, color:'rgba(252,211,77,0.7)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli variabile / lună</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
+            {([['Curățenie',curatenie,setCuratenie],['Consumabile',consumabile,setConsumabile],['Lenjerii',lenjerii,setLenjerii],['Altele var.',altVar,setAltVar]] as any[]).map(([l,v,s])=>(
+              <div key={l}><div style={lbl}>{l}</div><input type="number" onChange={e=>s(Number(e.target.value))} value={v} style={inp}/></div>
+            ))}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
+            <div><div style={lbl}>Zile ocupate/lună</div><input type="number" value={zile} onChange={e=>setZile(Number(e.target.value))} style={inp}/></div>
+            <div style={{ background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,padding:'5px 8px',display:'flex',flexDirection:'column',justifyContent:'center' }}>
+              <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>TOTAL/LUNĂ</div>
+              <div style={{ fontSize:13, fontWeight:700, color:'#7BC8FF', fontFamily:'monospace' }}>{totalLuna.toLocaleString('ro-RO')} RON</div>
             </div>
-            <div style={{ fontSize:18, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{min} RON</div>
+          </div>
+          <div style={{ background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:8,padding:'10px 12px',marginBottom:10 }}>
+            <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6 }}>Cost/noapte · Prețuri recomandate</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
+              {([['Cost',costN,'rgba(159,215,255,0.5)'],['+10%',p10,'#7BC8FF'],['+20%',p20,'#4DA3FF'],['+30%',p30,'#4ADE80']] as any[]).map(([l,v,col])=>(
+                <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'6px 8px',textAlign:'center' as const }}>
+                  <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:8,padding:'10px 12px' }}>
+            <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6 }}>Preț de listat pentru {p20} RON net</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:5 }}>
+              {([['Booking -17%',pBooking,'#60A5FA'],['Airbnb -15%',pAirbnb,'#F87171'],['Direct',pDirect,'#4ADE80']] as any[]).map(([l,v,col])=>(
+                <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'6px 8px',textAlign:'center' as const }}>
+                  <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:15, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
