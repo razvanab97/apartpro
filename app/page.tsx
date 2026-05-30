@@ -498,64 +498,73 @@ export default function DashboardPage() {
         </div>{/* end outer flex */}
 
         {/* ══ CURĂȚENIE ASTĂZI ══ */}
-        <div style={{background:'rgba(214,228,244,0.05)',border:'0.5px solid rgba(159,215,255,0.1)',borderTop:'2px solid #EF9F27',borderRadius:10,overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'0.5px solid rgba(159,215,255,0.07)'}}>
+        <div style={{background:'rgba(214,228,244,0.05)',border:'1px solid rgba(239,159,39,0.4)',borderTop:'3px solid #EF9F27',borderRadius:10,overflow:'hidden',marginBottom:4}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.6)',borderBottom:'1px solid rgba(159,215,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:13}}>🧹</span>
-              <span style={{fontSize:11,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
-              <span style={{fontSize:11,fontWeight:600,background:'rgba(239,159,39,0.12)',color:'#EF9F27',padding:'1px 8px',borderRadius:20}}>
-                {checkoutAzi.length}
-              </span>
+              <span style={{fontSize:14}}>🧹</span>
+              <span style={{fontSize:11,fontWeight:600,color:'#EF9F27',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
+              <span style={{fontSize:11,fontWeight:700,background:'rgba(239,159,39,0.2)',color:'#EF9F27',padding:'1px 8px',borderRadius:20,border:'1px solid rgba(239,159,39,0.4)'}}>{coAziCur.length} CO · {ciAziCur.length} CI</span>
             </div>
-            <button onClick={waEchipaCuratenie} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'0.5px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:12,fontWeight:500,cursor:'pointer'}}>
+            <button onClick={waEchipaCuratenie} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
               <MessageCircle size={13}/>WA echipă
             </button>
           </div>
           <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
-            {coAziCur.length===0
-              ? <div style={{padding:'10px 4px',fontSize:12,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
-              : coAziCur.map((co:any, idx:number)=>{
-                  const apt = co.apartament
-                  const ciMatch = ciAziCur.find((ci:any)=>ci.apartament?.id===apt?.id)
-                  const pers = Number(ciMatch?.nr_persoane||co.nr_persoane||1)
-                  const lenDef = nrLenjerii(pers)
-                  const len = lenjerii[co.id] ?? lenDef
-                  return (
-                    <div key={co.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',border:`0.5px solid ${ciMatch?'rgba(248,113,113,0.2)':'rgba(159,215,255,0.1)'}`,background:ciMatch?'rgba(248,113,113,0.05)':'rgba(255,255,255,0.02)',borderRadius:8}}>
-                      {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:500,color:'rgba(214,228,244,0.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{apt?.nume||'—'}</div>
-                        <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginTop:1}}>
-                          {ciMatch
-                            ? <><span style={{color:'#F87171'}}>CO: {co.nume_client}</span>{' → '}<span style={{color:'#4ADE80'}}>CI: {ciMatch.nume_client}</span></>
-                            : <span style={{color:'#F87171'}}>CO: {co.nume_client}</span>
-                          }
-                        </div>
-                      </div>
-                      <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
-                        <BedDouble size={13} color="rgba(159,215,255,0.4)"/>
-                        <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:Math.max(1,(l[co.id]??lenDef)-1)}))}
-                          style={{width:22,height:22,borderRadius:4,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
-                        <span style={{fontSize:14,fontWeight:500,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
-                        <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:(l[co.id]??lenDef)+1}))}
-                          style={{width:22,height:22,borderRadius:4,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-                      </div>
-                      <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,color:ciMatch?'#F87171':'#FCD34D',background:ciMatch?'rgba(248,113,113,0.1)':'rgba(252,211,77,0.1)',border:`0.5px solid ${ciMatch?'rgba(248,113,113,0.25)':'rgba(252,211,77,0.25)'}`,flexShrink:0}}>
-                        {ciMatch?'CO→CI':'CO'}
-                      </span>
-                    </div>
-                  )
-                })
-            }
-            {coAziCur.length===0 && ciAziCur.length>0 && (
-              <div style={{padding:'6px 4px',fontSize:11,color:'rgba(159,215,255,0.35)'}}>
-                Check-in azi ({checkinAzi.length} ap.) — lenjerii necesare:
-                {ciAziCur.map((ci:any)=>{
-                  const pers=Number(ci.nr_persoane||1)
-                  return <span key={ci.id} style={{marginLeft:6,fontSize:11,color:'#7BC8FF'}}>{ci.apartament?.nota||ci.apartament?.nume}: {nrLenjerii(pers)}len</span>
-                })}
+            {coAziCur.length===0 && ciAziCur.length===0 && (
+              <div style={{padding:'10px',fontSize:12,color:'rgba(159,215,255,0.4)'}}>
+                Nicio curățenie azi (CO: {coAziCur.length}, CI: {ciAziCur.length})
               </div>
             )}
+            {coAziCur.map((co:any, idx:number)=>{
+              const apt=co.apartament
+              const ciMatch=ciAziCur.find((ci:any)=>ci.apartament?.id===apt?.id)
+              const pers=Number(ciMatch?.nr_persoane||co.nr_persoane||2)
+              const lenDef=nrLenjerii(pers)
+              const len=lenjerii[co.id]??lenDef
+              return(
+                <div key={co.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:ciMatch?'rgba(248,113,113,0.06)':'rgba(252,211,77,0.04)',border:`1px solid ${ciMatch?'rgba(248,113,113,0.2)':'rgba(252,211,77,0.15)'}`,borderRadius:8}}>
+                  {apt?.nota&&<span style={{fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.15)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{apt?.nume||co.id}</div>
+                    <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:1}}>
+                      {ciMatch
+                        ?<><span style={{color:'#F87171'}}>CO: {co.nume_client}</span>{' → '}<span style={{color:'#4ADE80'}}>CI: {ciMatch.nume_client}</span></>
+                        :<span style={{color:'#FCD34D'}}>CO: {co.nume_client}</span>
+                      }
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+                    <BedDouble size={12} color="rgba(159,215,255,0.4)"/>
+                    <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:Math.max(1,(l[co.id]??lenDef)-1)}))} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                    <span style={{fontSize:14,fontWeight:700,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
+                    <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:(l[co.id]??lenDef)+1}))} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                  </div>
+                  <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:ciMatch?'#F87171':'#FCD34D',background:ciMatch?'rgba(248,113,113,0.12)':'rgba(252,211,77,0.1)',flexShrink:0}}>{ciMatch?'CO→CI':'CO'}</span>
+                </div>
+              )
+            })}
+            {ciAziCur.filter((ci:any)=>!coAziCur.find((co:any)=>co.apartament?.id===ci.apartament?.id)).map((ci:any,idx:number)=>{
+              const apt=ci.apartament
+              const pers=Number(ci.nr_persoane||2)
+              const lenDef=nrLenjerii(pers)
+              const len=lenjerii[ci.id]??lenDef
+              return(
+                <div key={ci.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:'rgba(74,222,128,0.04)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:8}}>
+                  {apt?.nota&&<span style={{fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.15)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{apt?.nume||ci.id}</div>
+                    <div style={{fontSize:11,color:'#4ADE80',marginTop:1}}>CI: {ci.nume_client}</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+                    <BedDouble size={12} color="rgba(159,215,255,0.4)"/>
+                    <button onClick={()=>setLenjerii((l:any)=>({...l,[ci.id]:Math.max(1,(l[ci.id]??lenDef)-1)}))} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                    <span style={{fontSize:14,fontWeight:700,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
+                    <button onClick={()=>setLenjerii((l:any)=>({...l,[ci.id]:(l[ci.id]??lenDef)+1}))} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                  </div>
+                  <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:'#4ADE80',background:'rgba(74,222,128,0.1)',flexShrink:0}}>CI</span>
+                </div>
+              )
+            })}
           </div>
         </div>
 
