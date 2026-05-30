@@ -29,6 +29,12 @@ const DAYS_RO = ['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminic
 function daysInMonth(y:number,m:number){ return new Date(y,m+1,0).getDate() }
 function isoDate(y:number,m:number,d:number){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` }
 function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7 }
+function waLink(phone:string, msg:string){
+  const clean=phone.replace(/\D/g,'')
+  const nr=clean.startsWith('0')?'4'+clean:clean
+  return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
+}
+
 function nightsBetween(a:string,b:string){ return Math.round((new Date(b).getTime()-new Date(a).getTime())/(1000*60*60*24)) }
 
 export default function CalendarPage() {
@@ -51,6 +57,8 @@ export default function CalendarPage() {
   const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'' })
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
+  const [lastNrRez, setLastNrRez] = useState<string|null>(null)
+  const [lastSaved, setLastSaved] = useState<any>(null)
   const [ciScanning, setCiScanning] = useState(false)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const [ciError, setCiError] = useState<string|null>(null)
@@ -117,7 +125,13 @@ export default function CalendarPage() {
     if(!newRez.aptId || !newRez.nume || !newRez.checkin || !newRez.checkout){return}
     setSaving(true)
     const nopti = nightsBetween(newRez.checkin, newRez.checkout)
-    const { error } = await supabase.from('rezervari').insert({
+
+    // Generare numar rezervare automat: ABH-100, ABH-101, ...
+    const { count: totalRez } = await supabase
+      .from('rezervari').select('*', { count: 'exact', head: true })
+    const nrRez = `ABH-${100 + (totalRez || 0)}`
+
+    const { data: saved, error } = await supabase.from('rezervari').insert({
       apartament_id: newRez.aptId,
       nume_client: newRez.nume,
       telefon_client: newRez.telefon || null,
@@ -129,13 +143,15 @@ export default function CalendarPage() {
       status_rezervare: 'confirmata',
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
-      observatii: `Rezervare internă — Cherry/Comfy (nu sync 5starDesk)${newRez.cnp?' | CNP: '+newRez.cnp:''}`.trim(),
-    })
+      observatii: `${nrRez} | Rezervare internă${newRez.cnp?' | CNP: '+newRez.cnp:''}`.trim(),
+    }).select().single()
     setSaving(false)
-    if(!error){
+    if(!error && saved){
       setSaveOk(true)
+      setLastNrRez(nrRez)
+      setLastSaved(saved)
       await load()
-      setTimeout(()=>{ setSaveOk(false); setPanel(null); clearSel() }, 1500)
+      setTimeout(()=>{ setSaveOk(false); setPanel(null); clearSel(); setLastNrRez(null); setLastSaved(null) }, 4000)
     }
   }
 
@@ -525,8 +541,35 @@ export default function CalendarPage() {
                   {saving ? <Loader size={16} style={{ animation:'spin 1s linear infinite' }}/> : saveOk ? <><Check size={16}/>Salvat!</> : <><Plus size={16}/>Salvează rezervarea</>}
                 </button>
 
-                <div style={{ marginTop:12,padding:'8px 10px',background:'rgba(124,58,237,0.06)',border:'1px solid rgba(124,58,237,0.15)',borderRadius:7,fontSize:10,color:'rgba(167,139,250,0.6)',lineHeight:1.5 }}>
-                  Rezervarea se salvează cu canal <strong>intern</strong> și nu se trimite în 5starDesk. Apare în calendar și rapoarte.
+                {/* Confirmare dupa salvare */}
+                {saveOk && lastNrRez && (
+                  <div style={{ marginTop:10, padding:'12px', background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.3)', borderRadius:10 }}>
+                    <div style={{ fontSize:11, color:'rgba(74,222,128,0.6)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.06em' }}>Rezervare salvată</div>
+                    <div style={{ fontSize:18, fontWeight:700, color:'#4ADE80', marginBottom:8, fontFamily:'monospace' }}>{lastNrRez}</div>
+                    {newRez.telefon && (
+                      <a href={waLink(newRez.telefon, `Bună ziua, ${newRez.nume}! 👋
+
+Vă confirmăm rezervarea la *${apts.find(a=>a.id===newRez.aptId)?.nume||'apartament'}*.
+
+📋 *Nr. rezervare:* ${lastNrRez}
+📅 *Check-in:* ${newRez.checkin}
+📅 *Check-out:* ${newRez.checkout}
+🌙 *Nopți:* ${nightsBetween(newRez.checkin,newRez.checkout)}
+💰 *Total:* ${newRez.pret||0} RON
+
+Vă vom trimite detaliile de acces în ziua sosirii.
+
+Echipa AB Homes Iași`)}
+                        target="_blank" rel="noreferrer"
+                        style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:8, background:'rgba(37,211,102,0.15)', border:'1px solid rgba(37,211,102,0.35)', color:'#4ADE80', textDecoration:'none', fontSize:13, fontWeight:700 }}>
+                        <MessageCircle size={15}/>Trimite confirmare WhatsApp
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ marginTop:10,padding:'8px 10px',background:'rgba(124,58,237,0.06)',border:'1px solid rgba(124,58,237,0.15)',borderRadius:7,fontSize:10,color:'rgba(167,139,250,0.6)',lineHeight:1.5 }}>
+                  Canal <strong>intern</strong> — nu se trimite în 5starDesk.
                 </div>
               </div>
             )}
