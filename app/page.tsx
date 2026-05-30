@@ -98,7 +98,6 @@ export default function DashboardPage() {
   const [rezervariCurente,setRezervariCurente]=useState<any[]>([])
   const [cheltuieli,setCheltuieli]=useState<any[]>([])
   const [lenjerii,setLenjerii]=useState<Record<string,number>>({})
-  const [curatenieBruta,setCuratenieBruta]=useState<{co:any[];ci:any[]}>({co:[],ci:[]})
   const [prognoza,setPrognoza]=useState({incasariLV:0,cheltuieliLC:0})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
@@ -131,9 +130,9 @@ export default function DashboardPage() {
       // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
       // checkin azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkin'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite
@@ -167,19 +166,7 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
-    // Query dedicat curatenie cu toate campurile necesare
-    const todayFmt = todayStr
-    const [{ data: coData }, { data: ciData }] = await Promise.all([
-      supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,status_rezervare,apartament:apartamente(id,nume,nota,adresa)')
-        .eq('data_checkout', todayFmt)
-        .neq('status_rezervare', 'anulata'),
-      supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,status_rezervare,apartament:apartamente(id,nume,nota,adresa)')
-        .eq('data_checkin', todayFmt)
-        .neq('status_rezervare', 'anulata'),
-    ])
-    setCuratenieBruta({ co: coData||[], ci: ciData||[] })
+
     // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
     const lunaVitoare = luna===12 ? 1 : luna+1
     const anLV = luna===12 ? an+1 : an
@@ -210,21 +197,15 @@ export default function DashboardPage() {
   const ocupateIds=new Set(rezervariActive.map((r:any)=>r.apartament_id))
   const libereAzi=apts.filter(a=>!ocupateIds.has(a.id))
 
-  // Curatenie: CO azi + CI azi, cu logica de asociere pe apartament
-  // Daca acelasi apartament are si CO si CI azi = curatenie intre sejururi (tip: 'co_ci')
-  // Daca doar CO = curatenie dupa plecare (tip: 'checkout')
-  // Daca doar CI = pregatire pentru sosire (tip: 'checkin')
-  const coIds = new Set(curatenieBruta.co.map((r:any)=>r.apartament?.id))
-  const ciIds = new Set(curatenieBruta.ci.map((r:any)=>r.apartament?.id))
-  const curatenjeAzi: any[] = []
-  // CO fara CI = curatenie simpla
-  curatenieBruta.co.forEach((r:any)=>{
-    curatenjeAzi.push({...r, tip: ciIds.has(r.apartament?.id)?'co_ci':'checkout'})
-  })
-  // CI fara CO = doar pregatire
-  curatenieBruta.ci.forEach((r:any)=>{
-    if(!coIds.has(r.apartament?.id)) curatenjeAzi.push({...r, tip:'checkin'})
-  })
+  // Curatenie: CO azi + CI azi direct din state
+  const _coAptIds = new Set(checkoutAzi.map((r:any)=>r.apartament?.id).filter(Boolean))
+  const _ciAptIds = new Set(checkinAzi.map((r:any)=>r.apartament?.id).filter(Boolean))
+  const curatenjeAzi: any[] = [
+    // Apartamente cu CO azi — marcate CO→CI daca au si CI in aceeasi zi
+    ...checkoutAzi.map((r:any)=>({...r, tip: _ciAptIds.has(r.apartament?.id)?'co_ci':'checkout'})),
+    // Apartamente cu CI azi dar FARA CO (nu apar deja sus)
+    ...checkinAzi.filter((r:any)=>!_coAptIds.has(r.apartament?.id)).map((r:any)=>({...r, tip:'checkin'})),
+  ]
   function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
   function waEchipaCuratenie(){
     const linii=curatenjeAzi.map(r=>{
