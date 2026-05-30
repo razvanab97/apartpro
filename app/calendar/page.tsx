@@ -138,37 +138,27 @@ export default function CalendarPage() {
     }
   }
 
-  // Scanare buletin cu Gemini
+  // Scanare buletin cu Gemini via API route
   async function scanCI(file: File) {
     setCiScanning(true)
-    const b64 = await new Promise<string>((res, rej) => {
-      const r = new FileReader()
-      r.onload = () => res((r.result as string).split(',')[1])
-      r.onerror = rej
-      r.readAsDataURL(file)
-    })
     setCiPreview(URL.createObjectURL(file))
+    const b64 = await new Promise<string>((res, rej) => {
+      const reader = new FileReader()
+      reader.onload = () => res((reader.result as string).split(',')[1])
+      reader.onerror = rej
+      reader.readAsDataURL(file)
+    })
     try {
-      const resp = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [
-              { text: 'Ești expert în citirea actelor de identitate românești. Extrage din această imagine: nume complet, CNP (dacă e vizibil), data nașterii, cetățenia, adresa (dacă e vizibilă). Răspunde DOAR cu JSON valid fără markdown: {"nume":"","cnp":"","data_nasterii":"","cetatenie":"","adresa":""}' },
-              { inline_data: { mime_type: file.type || 'image/jpeg', data: b64 } }
-            ]}],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 256 }
-          })
-        }
-      )
+      const resp = await fetch('/api/scan-ci', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data: b64, mimeType: file.type || 'image/jpeg' })
+      })
       const data = await resp.json()
-      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-      const clean = raw.replace(/```json|```/g,'').trim()
-      const parsed = JSON.parse(clean)
-      if (parsed.nume) setNewRez(r => ({ ...r, nume: parsed.nume }))
-      if (parsed.cnp)  setNewRez(r => ({ ...r, cnp: parsed.cnp || '' }))
+      if (data.success) {
+        if (data.nume) setNewRez(r => ({ ...r, nume: data.nume }))
+        if (data.cnp)  setNewRez(r => ({ ...r, cnp: data.cnp }))
+      }
     } catch(e) {
       console.error('CI scan error', e)
     }
