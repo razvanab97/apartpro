@@ -215,7 +215,7 @@ export default function DashboardPage() {
     const ciMatch = checkinAzi.find((ci:any)=>ci.apartament?.id===co.apartament?.id)
     return { ...co, ciClient: ciMatch, tip: ciMatch?'co_ci':'checkout' }
   })
-  function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
+  function nrLenjerii(nrPers:number){ return Math.max(1,nrPers-1) }
   function waEchipaCuratenie(){
     const azi = new Date().toLocaleDateString('ro-RO')
     const linii = coAziCur.map((co:any)=>{
