@@ -305,6 +305,14 @@ export default function DashboardPage() {
 
   return(
     <>
+      <style>{`
+        @media (max-width: 768px) {
+          .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
+          .guest-grid { grid-template-columns: 1fr !important; }
+          .grafice-grid { display: none !important; }
+          .prognoza-card { display: none !important; }
+        }
+      `}</style>
       {/* TOP BAR */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 20px',background:'rgba(14,27,43,0.65)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(159,215,255,0.08)',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:20}}>
@@ -321,7 +329,7 @@ export default function DashboardPage() {
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>
 
         {/* KPI STRIP */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="kpi-grid">
           {[
             {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
             {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
@@ -343,6 +351,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        <div className="prognoza-card">
         {/* ══ PROGNOZA LUNA VIITOARE ══ */}
         {(()=>{
           const pct=prognoza.cheltuieliLC>0?Math.min(100,Math.round((prognoza.incasariLV/prognoza.cheltuieliLC)*100)):0
@@ -379,10 +388,11 @@ export default function DashboardPage() {
           )
         })()}
 
+        </div>
         {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="guest-grid">
 
           {/* CHECK-IN AZI */}
           <div style={panel}>
@@ -574,7 +584,7 @@ export default function DashboardPage() {
 
 
         {/* ROW GRAFICE */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}} className="grafice-grid">
           {/* REVENUE */}
           <div style={panel}>
             <div style={panelHdr}>
