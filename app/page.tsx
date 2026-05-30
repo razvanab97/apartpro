@@ -482,7 +482,7 @@ export default function DashboardPage() {
         <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'0.5px solid rgba(159,215,255,0.1)',borderTop:'2px solid #EF9F27',borderRadius:10,overflow:'hidden'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'0.5px solid rgba(159,215,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <Brush size={13} color="#EF9F27"/>
+              <Sparkles size={13} color="#EF9F27"/>
               <span style={{fontSize:11,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
               <span style={{fontSize:11,fontWeight:600,background:'rgba(239,159,39,0.12)',color:'#EF9F27',padding:'1px 8px',borderRadius:20}}>{curatenjeAzi.length}</span>
             </div>
