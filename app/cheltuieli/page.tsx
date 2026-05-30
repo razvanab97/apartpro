@@ -207,10 +207,10 @@ export default function CheltuieliPage(){
     setSaving(null)
   }
 
-  async function commitCell(){
+  async function commitCell(valOverride?:string){
     if(!editCell)return
     const {aptId,col}=editCell
-    const val=parseFloat(editVal)||0
+    const val=parseFloat(valOverride!==undefined?valOverride:editVal)||0
     const colDef=UTIL_COLS.find(c=>c.key===col)!
     const dateStr=`${an}-${pad(luna)}-${pad(colDef.due)}`
     const existing=util[aptId]?.[col]
@@ -294,9 +294,9 @@ export default function CheltuieliPage(){
     setSaving(null)
   }
 
-  async function commitFisc(){
+  async function commitFisc(valOverride?:string){
     if(!editFisc)return
-    const val=parseFloat(editFiscVal)||0
+    const val=parseFloat(valOverride!==undefined?valOverride:editFiscVal)||0
     const ft=FISCAL_ROWS.find(f=>f.key===editFisc)!
     const existing=fiscal[editFisc]
     setSaving('fisc')
@@ -398,20 +398,24 @@ export default function CheltuieliPage(){
   }
 
   /* ── Inline edit pill ────────────────────────────────────────────────── */
-  function EditPill({label,due,onSave,onCancel}:{label:string;due:string;onSave:(v:string)=>void;onCancel:()=>void}){
-    const [v,setV]=useState('')
+  function EditPill({label,due,onSave,onCancel,initialVal}:{label:string;due:string;onSave:(v:string)=>void;onCancel:()=>void;initialVal?:string}){
+    const [v,setV]=useState(initialVal||'')
     const ref=useRef<HTMLInputElement>(null)
-    useEffect(()=>{setTimeout(()=>ref.current?.focus(),30)},[])
+    useEffect(()=>{setTimeout(()=>{ref.current?.focus();ref.current?.select()},30)},[])
+    function handleSave(){
+      if(!v||parseFloat(v)<=0){return}
+      onSave(v)
+    }
     return(
       <div style={{...pillBase(false),minWidth:130,flex:'1 1 130px'}}>
         <div style={{fontSize:11,fontWeight:500,color:'rgba(100,160,255,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
         <input ref={ref} type="number" value={v} onChange={e=>setV(e.target.value)}
-          onKeyDown={e=>{if(e.key==='Enter')onSave(v);if(e.key==='Escape')onCancel()}}
-          placeholder="0 RON" style={{...inpStyle,marginBottom:8}} min={0}/>
+          onKeyDown={e=>{if(e.key==='Enter')handleSave();if(e.key==='Escape')onCancel()}}
+          placeholder="ex: 1850" style={{...inpStyle,marginBottom:8,fontSize:15,fontWeight:500}} min={0}/>
         <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginBottom:10}}>scad. {due}</div>
         <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>onSave(v)} disabled={saving==='cell'} style={{flex:1,background:'rgba(77,163,255,0.2)',border:'1px solid rgba(77,163,255,0.4)',borderRadius:7,color:'#7BC8FF',fontSize:12,padding:'5px',cursor:'pointer',fontWeight:500}}>
-            {saving==='cell'?'...':'Salvează'}
+          <button onClick={handleSave} style={{flex:1,background:'rgba(77,163,255,0.25)',border:'1px solid rgba(77,163,255,0.5)',borderRadius:7,color:'#7BC8FF',fontSize:12,padding:'7px',cursor:'pointer',fontWeight:600}}>
+            ✓ Salvează
           </button>
           <button onClick={onCancel} style={{background:'rgba(159,215,255,0.05)',border:'1px solid rgba(159,215,255,0.12)',borderRadius:7,color:'rgba(159,215,255,0.4)',fontSize:12,padding:'5px 8px',cursor:'pointer'}}>
             <X size={12}/>
@@ -473,8 +477,9 @@ export default function CheltuieliPage(){
 
                 if(isEdit) return(
                   <EditPill key={col.key} label={col.label} due={due}
-                    onSave={v=>{setEditVal(v);setTimeout(commitCell,0)}}
+                    onSave={v=>commitCell(v)}
                     onCancel={()=>{setEditCell(null);setEditVal('')}}
+                    initialVal={val>0?String(val):''}
                   />
                 )
                 return(
@@ -639,7 +644,7 @@ export default function CheltuieliPage(){
                 const isEdit=editFisc===ft.key
                 if(isEdit) return(
                   <EditPill key={ft.key} label={ft.label} due={`${ft.due}/${pad(luna)}`}
-                    onSave={v=>{setEditFiscVal(v);setTimeout(commitFisc,0)}}
+                    onSave={v=>commitFisc(v)}
                     onCancel={()=>{setEditFisc(null);setEditFiscVal('')}}
                   />
                 )
