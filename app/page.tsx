@@ -130,9 +130,9 @@ export default function DashboardPage() {
       // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
       // checkin azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite
