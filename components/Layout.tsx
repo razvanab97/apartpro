@@ -196,6 +196,16 @@ export default function Layout({ children }: { children: ReactNode }) {
           .mobile-header { display: flex !important; }
           .mobile-bottom-nav { display: flex !important; }
           .main-content { padding-top: 52px; padding-bottom: 72px; }
+          @media (max-width: 768px) {
+            .desktop-sidebar { display: none !important; }
+            .mobile-header { display: flex !important; }
+            .mobile-bottom-nav { display: flex !important; }
+          }
+          @media (min-width: 769px) {
+            .mobile-header { display: none !important; }
+            .mobile-bottom-nav { display: none !important; }
+            .main-content { padding-top: 0 !important; padding-bottom: 0 !important; }
+          }
         }
         @keyframes slideIn { from { transform: translateX(-100%) } to { transform: translateX(0) } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: translateY(0) } }
