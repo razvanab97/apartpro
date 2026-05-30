@@ -126,7 +126,7 @@ export default function DashboardPage() {
       supabase.from('taskuri').select('*',{count:'exact',head:true}).eq('prioritate','urgenta').eq('status','de_facut'),
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
       supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`),
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gte('data_checkout',todayStr).order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
     ])
     const inc=rezLuna?.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)||0
     const com=rezLuna?.reduce((s:number,r:any)=>s+Number(r.comision_administrator||0),0)||0
