@@ -86,6 +86,11 @@ export default function ApartamentePage() {
   function openNew(){ setEditing(empty); setEditOpen(true) }
   function openEdit(a:Apartament){ setEditing({...a}); setEditOpen(true) }
 
+  async function toggleAptStatus(id:string, newStatus:string){
+    await supabase.from('apartamente').update({status:newStatus}).eq('id',id)
+    setApts((list:any[])=>list.map(a=>a.id===id?{...a,status:newStatus}:a))
+  }
+
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
     setSaving(true)
@@ -135,7 +140,7 @@ export default function ApartamentePage() {
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>AB Homes · {myApts.length}</div>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
-                    {myApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)}/>)}
+                    {myApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
                   </div>
                 </div>
               )}
@@ -143,7 +148,7 @@ export default function ApartamentePage() {
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>Alte locații · {otherApts.length}</div>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
-                    {otherApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)}/>)}
+                    {otherApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
                   </div>
                 </div>
               )}
@@ -312,22 +317,24 @@ export default function ApartamentePage() {
   )
 }
 
-function MiniCard({ a, selected, onClick }: { a:any; selected:boolean; onClick:()=>void }) {
+function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void }) {
   const sc = SC[a.status]||'#94A3B8'
+  const isActiv = a.status === 'activ'
   return (
-    <div onClick={onClick} style={{
-      padding:'10px 12px',
-      background: selected ? 'rgba(77,163,255,0.12)' : 'rgba(214,228,244,0.04)',
-      border: selected ? '1px solid rgba(77,163,255,0.35)' : '1px solid rgba(159,215,255,0.08)',
-      borderRadius:9, cursor:'pointer', transition:'all 0.12s',
-      borderLeft: `3px solid ${selected ? '#4DA3FF' : sc+'50'}`,
-    }}>
+    <div style={{ padding:'10px 12px', background: selected?'rgba(77,163,255,0.12)':'rgba(214,228,244,0.04)', border: selected?'1px solid rgba(77,163,255,0.35)':'1px solid rgba(159,215,255,0.08)', borderRadius:9, transition:'all 0.12s', borderLeft:`3px solid ${selected?'#4DA3FF':sc+'50'}`, opacity:isActiv?1:0.5 }}>
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-        {a.nota && <span style={{ fontSize:10, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace', background:'rgba(77,163,255,0.12)', padding:'1px 6px', borderRadius:4 }}>{a.nota}</span>}
-        <span style={{ fontSize:7, padding:'1px 5px', borderRadius:10, background:`${sc}15`, color:sc, border:`1px solid ${sc}20` }}>{a.status}</span>
+        <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:6, flex:1, cursor:'pointer', minWidth:0 }}>
+          {a.nota && <span style={{ fontSize:10, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace', background:'rgba(77,163,255,0.12)', padding:'1px 6px', borderRadius:4, flexShrink:0 }}>{a.nota}</span>}
+          <span style={{ fontSize:7, padding:'1px 5px', borderRadius:10, background:`${sc}15`, color:sc, border:`1px solid ${sc}20`, flexShrink:0 }}>{a.status}</span>
+        </div>
+        <button onClick={e=>{e.stopPropagation();onToggle?.(a.id,isActiv?'inactiv':'activ')}} title={isActiv?'Dezactivează':'Activează'} style={{ flexShrink:0, width:32, height:18, borderRadius:9, background:isActiv?'rgba(74,222,128,0.2)':'rgba(159,215,255,0.07)', border:`1px solid ${isActiv?'rgba(74,222,128,0.4)':'rgba(159,215,255,0.15)'}`, cursor:'pointer', position:'relative', padding:0, transition:'all .2s' }}>
+          <div style={{ position:'absolute', top:2, left:isActiv?14:2, width:12, height:12, borderRadius:'50%', background:isActiv?'#4ADE80':'rgba(159,215,255,0.3)', transition:'all .2s', boxShadow:isActiv?'0 0 4px rgba(74,222,128,0.6)':'none' }}/>
+        </button>
       </div>
-      <div style={{ fontSize:12, fontWeight:500, color:'#FFFFFF', lineHeight:1.3, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</div>
-      <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.zona || a.adresa}</div>
+      <div onClick={onClick} style={{ cursor:'pointer' }}>
+        <div style={{ fontSize:12, fontWeight:500, color:'#FFFFFF', lineHeight:1.3, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</div>
+        <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.zona || a.adresa}</div>
+      </div>
     </div>
   )
 }
