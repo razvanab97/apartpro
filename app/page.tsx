@@ -207,13 +207,20 @@ export default function DashboardPage() {
   })
   function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
   function waEchipaCuratenie(){
-    const linii=curatenjeAzi.map(r=>{
-      const apt=r.apartament; const pers=r.nr_persoane||1; const len=lenjerii[r.id]??nrLenjerii(pers)
-      return '\uD83C\uDFE0 '+(apt?.nota||'')+' '+(apt?.nume||'')+'\n   \uD83D\uDC65 '+pers+' oas | \uD83D\uDECF '+len+' len\n   \uD83D\uDCCD '+(apt?.adresa||'\u2014')
+    const azi = new Date().toLocaleDateString('ro-RO')
+    const linii = checkoutAzi.map((co:any)=>{
+      const apt = co.apartament
+      const ciMatch = checkinAzi.find((ci:any)=>ci.apartament?.id===apt?.id)
+      const pers = Number(ciMatch?.nr_persoane||co.nr_persoane||1)
+      const len = lenjerii[co.id] ?? nrLenjerii(pers)
+      const aptStr = (apt?.nota?'['+apt.nota+'] ':'') + (apt?.nume||'')
+      const clientStr = ciMatch
+        ? 'CO: '+co.nume_client+' | CI: '+ciMatch.nume_client
+        : 'CO: '+co.nume_client
+      return aptStr+'\n   '+clientStr+'\n   Lenjerii: '+len
     }).join('\n\n')
-    const data=new Date().toLocaleDateString('ro-RO')
-    const msg='*Curatenie '+data+'*\n\n'+linii+'\n\nMultumesc!'
-    const nr='40749558705'
+    const msg = 'Curatenie '+azi+'\n\n'+linii+'\n\nMultumesc!'
+    const nr = '40749558705'
     window.open('https://wa.me/'+nr+'?text='+encodeURIComponent(msg),'_blank')
   }
 
