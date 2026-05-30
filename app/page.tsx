@@ -99,6 +99,7 @@ export default function DashboardPage() {
   const [cheltuieli,setCheltuieli]=useState<any[]>([])
   const [lenjerii,setLenjerii]=useState<Record<string,number>>({})
   const [curatenieBruta,setCuratenieBruta]=useState<{co:any[];ci:any[]}>({co:[],ci:[]})
+  const [prognoza,setPrognoza]=useState({incasariLV:0,cheltuieliLC:0})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
 
@@ -179,6 +180,21 @@ export default function DashboardPage() {
         .neq('status_rezervare', 'anulata'),
     ])
     setCuratenieBruta({ co: coData||[], ci: ciData||[] })
+    // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
+    const lunaVitoare = luna===12 ? 1 : luna+1
+    const anLV = luna===12 ? an+1 : an
+    const primaLV = `${anLV}-${String(lunaVitoare).padStart(2,'0')}-01`
+    const ultimaLV = `${anLV}-${String(lunaVitoare).padStart(2,'0')}-${new Date(anLV,lunaVitoare,0).getDate()}`
+    const { data: rezLV } = await supabase.from('rezervari')
+      .select('suma_incasata')
+      .gte('data_checkin', primaLV).lte('data_checkin', ultimaLV)
+      .neq('status_rezervare','anulata')
+    const incLV = (rezLV||[]).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
+    // Cheltuieli luna curenta (din tabelul cheltuieli)
+    const { data: chLC } = await supabase.from('cheltuieli')
+      .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
+    const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
+    setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
     setLoading(false)
   }
 
@@ -235,6 +251,7 @@ export default function DashboardPage() {
   const totalScadente=apts.reduce((s,a)=>s+getAptCheltuieli(a.id).length,0)+fiscalScadente.length
   const gradOcupare=stats.gradOcupare||0
   const lunaLabel=format(now,'MMMM yyyy',{locale:ro})
+  const lunaVitoareLabel=format(new Date(an,luna,1),'MMMM yyyy',{locale:ro})
   const pctCh=cheltuieli.length>0?Math.round(cheltuieli.filter(c=>c.status==='validat').length/cheltuieli.length*100):0
 
   /* ── stiluri ─────────────────────────────────────────────────────────── */
@@ -328,6 +345,55 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+
+        {/* ══ PROGNOZA LUNA VIITOARE ══ */}
+        {(()=>{
+          const pct = prognoza.cheltuieliLC>0 ? Math.min(100,Math.round((prognoza.incasariLV/prognoza.cheltuieliLC)*100)) : 0
+          const deficit = prognoza.cheltuieliLC - prognoza.incasariLV
+          const color = pct>=100?'#4ADE80':pct>=70?'#FCD34D':pct>=40?'#F97316':'#F87171'
+          const lvShort = lunaVitoareLabel.split(' ')[0]
+          const lcShort = lunaLabel.split(' ')[0]
+          return(
+          <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:`1px solid ${color}30`,borderTop:`2px solid ${color}`,borderRadius:10,padding:'12px 16px'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:12}}>📊</span>
+                <span style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.8px'}}>Prognoză acoperire cheltuieli</span>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{lcShort} → {lvShort}</span>
+                <span style={{fontSize:16,fontWeight:700,color,fontFamily:'monospace'}}>{pct}%</span>
+              </div>
+            </div>
+            {/* bara progres */}
+            <div style={{height:8,background:'rgba(159,215,255,0.08)',borderRadius:4,overflow:'hidden',marginBottom:10}}>
+              <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${color}99,${color})`,borderRadius:4,transition:'width 0.8s ease'}}/>
+            </div>
+            {/* cifre */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>Rezervări {lvShort}</div>
+                <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{prognoza.incasariLV.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON confirmate</div>
+              </div>
+              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>Cheltuieli {lcShort}</div>
+                <div style={{fontSize:16,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{prognoza.cheltuieliLC.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON total</div>
+              </div>
+              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>{deficit>0?'Deficit':'Surplus'}</div>
+                <div style={{fontSize:16,fontWeight:700,color,fontFamily:'monospace'}}>{Math.abs(deficit).toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON {deficit>0?'lipsă':'disponibil'}</div>
+              </div>
+            </div>
+            {pct<100&&pct>0&&<div style={{marginTop:8,fontSize:10,color:'rgba(159,215,255,0.35)',fontStyle:'italic'}}>
+              Mai sunt necesare {deficit.toLocaleString('ro-RO')} RON rezervări în {lvShort} pentru acoperirea cheltuielilor din {lcShort}
+            </div>}
+            {pct===0&&<div style={{marginTop:8,fontSize:10,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio rezervare confirmată pentru {lvShort} încă</div>}
+          </div>
+          )
+        })()}
 
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
