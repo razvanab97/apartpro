@@ -348,53 +348,41 @@ export default function DashboardPage() {
 
         {/* ══ PROGNOZA LUNA VIITOARE ══ */}
         {(()=>{
-          const pct = prognoza.cheltuieliLC>0 ? Math.min(100,Math.round((prognoza.incasariLV/prognoza.cheltuieliLC)*100)) : 0
-          const deficit = prognoza.cheltuieliLC - prognoza.incasariLV
-          const color = pct>=100?'#4ADE80':pct>=70?'#FCD34D':pct>=40?'#F97316':'#F87171'
-          const lvShort = lunaVitoareLabel.split(' ')[0]
-          const lcShort = lunaLabel.split(' ')[0]
+          const pct=prognoza.cheltuieliLC>0?Math.min(100,Math.round((prognoza.incasariLV/prognoza.cheltuieliLC)*100)):0
+          const deficit=prognoza.cheltuieliLC-prognoza.incasariLV
+          const color=pct>=100?'#4ADE80':pct>=70?'#FCD34D':pct>=40?'#F97316':'#F87171'
+          const lvShort=lunaVitoareLabel.split(' ')[0]
+          const lcShort=lunaLabel.split(' ')[0]
           return(
-          <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:`1px solid ${color}30`,borderTop:`2px solid ${color}`,borderRadius:10,padding:'12px 16px'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontSize:12}}>📊</span>
-                <span style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.8px'}}>Prognoză acoperire cheltuieli</span>
+            <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',border:`1px solid ${color}25`,borderTop:`2px solid ${color}`,borderRadius:10,padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto auto',alignItems:'center',gap:14}}>
+              <div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2}}>Prognoză {lvShort}</div>
+                <div style={{fontSize:22,fontWeight:700,color,fontFamily:'monospace',lineHeight:1}}>{pct}%</div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginTop:2}}>{deficit>0?`-${deficit.toLocaleString('ro-RO')} deficit`:`+${Math.abs(deficit).toLocaleString('ro-RO')} surplus`}</div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
-                <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{lcShort} → {lvShort}</span>
-                <span style={{fontSize:16,fontWeight:700,color,fontFamily:'monospace'}}>{pct}%</span>
+              <div>
+                <div style={{height:6,background:'rgba(159,215,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:4}}>
+                  <div style={{height:'100%',width:`${pct}%`,background:color,borderRadius:3,transition:'width 0.8s ease'}}/>
+                </div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                  {pct<100?`Mai necesari ${deficit.toLocaleString('ro-RO')} RON în ${lvShort}`:`Cheltuielile din ${lcShort} sunt acoperite ✓`}
+                </div>
               </div>
-            </div>
-            {/* bara progres */}
-            <div style={{height:8,background:'rgba(159,215,255,0.08)',borderRadius:4,overflow:'hidden',marginBottom:10}}>
-              <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${color}99,${color})`,borderRadius:4,transition:'width 0.8s ease'}}/>
-            </div>
-            {/* cifre */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>Rezervări {lvShort}</div>
-                <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{prognoza.incasariLV.toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON confirmate</div>
+              <div style={{textAlign:'right' as const}}>
+                <div style={{fontSize:9,color:'rgba(74,222,128,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Rezervări {lvShort}</div>
+                <div style={{fontSize:14,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{prognoza.incasariLV.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON</div>
               </div>
-              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>Cheltuieli {lcShort}</div>
-                <div style={{fontSize:16,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{prognoza.cheltuieliLC.toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON total</div>
-              </div>
-              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>{deficit>0?'Deficit':'Surplus'}</div>
-                <div style={{fontSize:16,fontWeight:700,color,fontFamily:'monospace'}}>{Math.abs(deficit).toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>RON {deficit>0?'lipsă':'disponibil'}</div>
+              <div style={{textAlign:'right' as const}}>
+                <div style={{fontSize:9,color:'rgba(248,113,113,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Cheltuieli {lcShort}</div>
+                <div style={{fontSize:14,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{prognoza.cheltuieliLC.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON</div>
               </div>
             </div>
-            {pct<100&&pct>0&&<div style={{marginTop:8,fontSize:10,color:'rgba(159,215,255,0.35)',fontStyle:'italic'}}>
-              Mai sunt necesare {deficit.toLocaleString('ro-RO')} RON rezervări în {lvShort} pentru acoperirea cheltuielilor din {lcShort}
-            </div>}
-            {pct===0&&<div style={{marginTop:8,fontSize:10,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio rezervare confirmată pentru {lvShort} încă</div>}
-          </div>
           )
         })()}
 
+        {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
