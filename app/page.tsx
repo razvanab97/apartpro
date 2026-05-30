@@ -97,6 +97,7 @@ export default function DashboardPage() {
   const [rezervariActive,setRezervariActive]=useState<any[]>([])
   const [rezervariCurente,setRezervariCurente]=useState<any[]>([])
   const [cheltuieli,setCheltuieli]=useState<any[]>([])
+  const [lenjerii,setLenjerii]=useState<Record<string,number>>({})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
 
@@ -128,9 +129,9 @@ export default function DashboardPage() {
       // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
       // checkin azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').eq('data_checkin',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkin'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').eq('data_checkout',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).in('status_rezervare',['confirmata','finalizata']).order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite
@@ -178,6 +179,30 @@ export default function DashboardPage() {
   // apartamente ocupate azi
   const ocupateIds=new Set(rezervariActive.map((r:any)=>r.apartament_id))
   const libereAzi=apts.filter(a=>!ocupateIds.has(a.id))
+
+  // Curatenie: apartamente cu checkout SAU checkin azi (necesita curatenie)
+  const curatenjeAzi=[
+    ...checkoutAzi.map(r=>({...r,tip:'checkout'})),
+    ...checkinAzi.filter(r=>!checkoutAzi.find(co=>co.apartament?.id===r.apartament?.id)).map(r=>({...r,tip:'checkin'})),
+  ]
+  function nrLenjerii(nrPers:number){ return nrPers<=2?1:nrPers<=4?2:nrPers<=6?3:4 }
+  function waEchipaCuratenie(){
+    const linii=curatenjeAzi.map(r=>{
+      const apt=r.apartament; const pers=r.nr_persoane||1; const len=lenjerii[r.id]??nrLenjerii(pers)
+      return `🏠 ${apt?.nota||''} ${apt?.nume||''}
+   👥 ${pers} oaspeți | 🛏 ${len} lenjerii
+   📍 ${apt?.adresa||'—'}`
+    }).join('
+
+')
+    const msg=`*Curățenie ${new Date().toLocaleDateString('ro-RO')}*
+
+${linii}
+
+Mulțumesc! 🙏`
+    const nr='40749558705'
+    window.open(\`https://wa.me/\${nr}?text=\${encodeURIComponent(msg)}\`,'_blank')
+  }
 
   // plati scadente
   function getAptCheltuieli(aptId:string){
@@ -400,6 +425,49 @@ export default function DashboardPage() {
           </div>
 
         </div>{/* end outer flex */}
+
+        {/* ══ CURĂȚENIE ASTĂZI ══ */}
+        {curatenjeAzi.length>0&&(
+        <div style={panel}>
+          <div style={panelHdr}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:14}}>🧹</span>
+              <span style={{...panelTitle,color:'#FCD34D'}}>Curățenie astăzi</span>
+              <span style={{fontSize:10,fontWeight:600,color:'#FCD34D',background:'rgba(252,211,77,0.1)',padding:'1px 7px',borderRadius:10}}>{curatenjeAzi.length}</span>
+            </div>
+            <button onClick={waEchipaCuratenie}
+              style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'1px solid rgba(37,211,102,0.3)',background:'rgba(37,211,102,0.08)',color:'#4ADE80',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+              <MessageCircle size={12}/>WA Echipă
+            </button>
+          </div>
+          <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
+            {curatenjeAzi.map(r=>{
+              const apt=r.apartament; const pers=r.nr_persoane||1
+              const lenDefault=nrLenjerii(pers)
+              const len=lenjerii[r.id]??lenDefault
+              return(
+                <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:r.tip==='checkout'?'rgba(248,113,113,0.06)':'rgba(74,222,128,0.06)',border:`1px solid ${r.tip==='checkout'?'rgba(248,113,113,0.15)':'rgba(74,222,128,0.15)'}`,borderRadius:9,flexWrap:'wrap' as const}}>
+                  <div style={{flexShrink:0}}>
+                    <span style={{fontSize:9,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace'}}>{apt?.nota||'—'}</span>
+                  </div>
+                  <div style={{flex:1,minWidth:120}}>
+                    <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</div>
+                    <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{apt?.adresa||''} · {pers} oaspeți</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.5)'}}>🛏</span>
+                    <button onClick={()=>setLenjerii(l=>({...l,[r.id]:Math.max(1,(l[r.id]??lenDefault)-1)}))
+                    } style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+                    <span style={{fontSize:13,fontWeight:700,color:'#FCD34D',minWidth:16,textAlign:'center'}}>{len}</span>
+                    <button onClick={()=>setLenjerii(l=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))} style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+                    <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:r.tip==='checkout'?'rgba(248,113,113,0.12)':'rgba(74,222,128,0.12)',color:r.tip==='checkout'?'#F87171':'#4ADE80',fontWeight:600}}>{r.tip==='checkout'?'CO':'CI'}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        )}
 
         {/* ROW GRAFICE */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}}>
