@@ -421,11 +421,11 @@ export default function DashboardPage() {
         </div>{/* end outer flex */}
 
         {/* ══ CURĂȚENIE ASTĂZI ══ */}
-        <div style={panel}>
-          <div style={panelHdr}>
+        <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:10,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'1px solid rgba(159,215,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:14}}>🧹</span>
-              <span style={{...panelTitle,color:'#FCD34D'}}>Curățenie astăzi</span>
+              <span style={{fontSize:13}}>🧹</span>
+              <span style={{fontSize:10,fontWeight:600,color:'rgba(252,211,77,0.7)',textTransform:'uppercase',letterSpacing:'0.8px'}}>Curățenie astăzi</span>
               <span style={{fontSize:10,fontWeight:600,color:'#FCD34D',background:'rgba(252,211,77,0.1)',padding:'1px 7px',borderRadius:10}}>{curatenjeAzi.length}</span>
             </div>
             <button onClick={waEchipaCuratenie}
@@ -435,33 +435,44 @@ export default function DashboardPage() {
           </div>
           <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
             {curatenjeAzi.length===0
-              ? <div style={{fontSize:11,color:'rgba(159,215,255,0.25)',padding:'8px 4px',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
-              : curatenjeAzi.map((r:any)=>{
-              const apt=r.apartament; const pers=r.nr_persoane||1
-              const lenDefault=nrLenjerii(pers)
-              const len=lenjerii[r.id]??lenDefault
-              return(
-                <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:r.tip==='checkout'?'rgba(248,113,113,0.06)':'rgba(74,222,128,0.06)',border:`1px solid ${r.tip==='checkout'?'rgba(248,113,113,0.15)':'rgba(74,222,128,0.15)'}`,borderRadius:9,flexWrap:'wrap' as const}}>
-                  <div style={{flexShrink:0}}>
-                    <span style={{fontSize:9,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace'}}>{apt?.nota||'—'}</span>
-                  </div>
-                  <div style={{flex:1,minWidth:120}}>
-                    <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</div>
-                    <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{apt?.adresa||''} · {pers} oaspeți</div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
-                    <span style={{fontSize:10,color:'rgba(159,215,255,0.5)'}}>🛏</span>
-                    <button onClick={()=>setLenjerii(l=>({...l,[r.id]:Math.max(1,(l[r.id]??lenDefault)-1)}))
-                    } style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
-                    <span style={{fontSize:13,fontWeight:700,color:'#FCD34D',minWidth:16,textAlign:'center'}}>{len}</span>
-                    <button onClick={()=>setLenjerii(l=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))} style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.6)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-                    <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:r.tip==='checkout'?'rgba(248,113,113,0.12)':r.tip==='activ'?'rgba(77,163,255,0.12)':'rgba(74,222,128,0.12)',color:r.tip==='checkout'?'#F87171':r.tip==='activ'?'#7BC8FF':'#4ADE80',fontWeight:600}}>{r.tip==='checkout'?'CO':r.tip==='checkin'?'CI':'ACT'}</span>
-                  </div>
-                </div>
-              )
-            })}
+              ? <div style={{padding:'10px 4px',fontSize:11,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
+              : curatenjeAzi.map((r:any,idx:number)=>{
+                  const apt=r.apartament
+                  const pers=Number(r.nr_persoane)||1
+                  const lenDefault=nrLenjerii(pers)
+                  const len=lenjerii[r.id]??lenDefault
+                  const isOut=r.tip==='checkout'
+                  const isAct=r.tip==='activ'
+                  const accentCol=isOut?'#F87171':isAct?'#7BC8FF':'#4ADE80'
+                  const bgCol=isOut?'rgba(248,113,113,0.06)':isAct?'rgba(77,163,255,0.06)':'rgba(74,222,128,0.06)'
+                  const bdCol=isOut?'rgba(248,113,113,0.15)':isAct?'rgba(77,163,255,0.15)':'rgba(74,222,128,0.15)'
+                  return(
+                    <div key={r.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:bgCol,border:'1px solid '+bdCol,borderRadius:9,flexWrap:'wrap' as const}}>
+                      <div style={{flexShrink:0}}>
+                        {apt?.nota&&<span style={{fontSize:9,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace'}}>{apt.nota}</span>}
+                      </div>
+                      <div style={{flex:1,minWidth:100}}>
+                        <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</div>
+                        <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{apt?.adresa||''}{apt?.adresa&&' · '}{pers} oaspeți</div>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
+                        <span style={{fontSize:11}}>🛏</span>
+                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:Math.max(1,(l[r.id]??lenDefault)-1)}))}
+                          style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>−</button>
+                        <span style={{fontSize:14,fontWeight:700,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
+                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))}
+                          style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+                        <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:bgCol,border:'1px solid '+bdCol,color:accentCol,fontWeight:700,marginLeft:2}}>
+                          {isOut?'CO':isAct?'ACT':'CI'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })
+            }
           </div>
         </div>
+
 
         {/* ROW GRAFICE */}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}}>
