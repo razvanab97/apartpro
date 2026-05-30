@@ -88,7 +88,7 @@ export default function ApartamentePage() {
 
   async function toggleAptStatus(id:string, newStatus:string){
     await supabase.from('apartamente').update({status:newStatus}).eq('id',id)
-    setApts((list:any[])=>list.map(a=>a.id===id?{...a,status:newStatus}:a))
+    setApartamente((list:any[])=>list.map(a=>a.id===id?{...a,status:newStatus}:a))
   }
 
   async function save(){
