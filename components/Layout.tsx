@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
   Upload, RefreshCw, CalendarDays, Menu, X, ChevronRight
-} , Zap , Zap } from 'lucide-react'
+, Zap } from 'lucide-react'
 
 const navItems = [
   { href: '/',            icon: LayoutDashboard, label: 'Dashboard',      group: 'P', bottom: true },
