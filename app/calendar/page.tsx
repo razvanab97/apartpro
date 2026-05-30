@@ -8,7 +8,7 @@ type Rez = {
   id: string; nume_client: string; telefon_client?: string
   data_checkin: string; data_checkout: string
   canal: string; status_rezervare: string; nr_nopti?: number
-  apartament?: { id: string; nume: string; nota: string | null }
+  apartament?: any
 }
 type Apt = { id: string; nume: string; nota: string | null }
 
@@ -60,7 +60,7 @@ export default function CalendarPage() {
         .order('data_checkin'),
     ])
     setApts(a || [])
-    setRezAll((r || []) as unknown as Rez[])
+    setRezAll((r as any) || [])
     setLoading(false)
   }
 
