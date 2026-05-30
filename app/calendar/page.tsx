@@ -60,6 +60,9 @@ export default function CalendarPage() {
   const [lastNrRez, setLastNrRez] = useState<string|null>(null)
   const [lastSaved, setLastSaved] = useState<any>(null)
   const [saveError, setSaveError] = useState<string|null>(null)
+  const [editRez, setEditRez] = useState<any>(null)
+  const [editForm, setEditForm] = useState({nume:'',telefon:'',checkin:'',checkout:'',pret:'',observatii:''})
+  const [editSaving, setEditSaving] = useState(false)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const ciRef = useRef<HTMLInputElement>(null)
 
@@ -130,17 +133,13 @@ export default function CalendarPage() {
     const { count: totalRez } = await supabase.from('rezervari').select('*',{count:'exact',head:true})
     const nrRez = `ABH-${100 + (totalRez || 0)}`
 
-    // Folosim doar coloanele confirmate din schema
     const { data: saved, error } = await supabase.from('rezervari').insert({
       apartament_id: newRez.aptId,
       nume_client: newRez.nume,
       telefon_client: newRez.telefon || null,
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
-      nr_persoane: 1,
       suma_incasata: parseFloat(newRez.pret) || 0,
-      valoare_bruta: parseFloat(newRez.pret) || 0,
-      moneda: 'RON',
       canal: 'intern',
       status_rezervare: 'confirmata',
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
@@ -158,6 +157,22 @@ export default function CalendarPage() {
       await load()
       setTimeout(()=>{ setSaveOk(false); setPanel(null); clearSel(); setLastNrRez(null); setLastSaved(null) }, 4000)
     }
+  }
+
+  async function saveEdit(){
+    if(!editRez) return
+    setEditSaving(true)
+    const { error } = await supabase.from('rezervari').update({
+      nume_client: editForm.nume,
+      telefon_client: editForm.telefon||null,
+      data_checkin: editForm.checkin,
+      data_checkout: editForm.checkout,
+      suma_incasata: parseFloat(editForm.pret)||0,
+      observatii: editForm.observatii||null,
+    }).eq('id', editRez.id)
+    setEditSaving(false)
+    if(!error){ setEditRez(null); setTooltip(null); await load() }
+    else alert('Eroare: '+error.message)
   }
 
   // Doar preview foto buletin
@@ -546,7 +561,7 @@ Echipa AB Homes Iași`)}
               </div>
             ))}
           </div>
-          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
             <div style={{ display:'flex',alignItems:'center',gap:8 }}>
               <div style={{ width:10,height:10,borderRadius:3,background:cs(tooltip.rez.canal).bg }}/>
               <span style={{ fontSize:12,color:'rgba(214,228,244,0.6)',textTransform:'capitalize' }}>{tooltip.rez.canal}</span>
@@ -554,10 +569,52 @@ Echipa AB Homes Iași`)}
             </div>
             {tooltip.rez.telefon_client&&(
               <a href={`https://wa.me/${tooltip.rez.telefon_client.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener"
-                style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,background:'rgba(37,211,102,0.15)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',textDecoration:'none',fontSize:12,fontWeight:600 }}>
+                style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 8px',borderRadius:7,background:'rgba(37,211,102,0.15)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',textDecoration:'none',fontSize:12,fontWeight:600 }}>
                 <MessageCircle size={13}/> WA
               </a>
             )}
+          </div>
+          <button onClick={()=>{
+            setEditRez(tooltip.rez)
+            setEditForm({nume:tooltip.rez.nume_client||'',telefon:tooltip.rez.telefon_client||'',checkin:tooltip.rez.data_checkin||'',checkout:tooltip.rez.data_checkout||'',pret:String(tooltip.rez.suma_incasata||''),observatii:tooltip.rez.observatii||''})
+            setTooltip(null)
+          }} style={{ width:'100%',padding:'7px',borderRadius:7,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer' }}>
+            ✏️ Editează rezervarea
+          </button>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editRez&&(
+        <div onClick={()=>setEditRez(null)} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center' }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:340,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:14,padding:'20px' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16 }}>
+              <span style={{ fontSize:14,fontWeight:700,color:'#7BC8FF' }}>Editează rezervare</span>
+              <button onClick={()=>setEditRez(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',fontSize:18,lineHeight:1 }}>✕</button>
+            </div>
+            {([['Nume client','nume','text','Ion Popescu'],['Telefon','telefon','text','+40 7xx'],['Check-in','checkin','date',''],['Check-out','checkout','date',''],['Preț (RON)','pret','number','0']] as [string,string,string,string][]).map(([lbl,key,type,ph])=>(
+              <div key={key} style={{ marginBottom:10 }}>
+                <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.06em' }}>{lbl}</div>
+                <input type={type} value={(editForm as any)[key]} placeholder={ph}
+                  onChange={e=>setEditForm(f=>({...f,[key]:e.target.value}))}
+                  style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+              </div>
+            ))}
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.06em' }}>Observații</div>
+              <input value={editForm.observatii} onChange={e=>setEditForm(f=>({...f,observatii:e.target.value}))}
+                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+            </div>
+            <div style={{ display:'flex',gap:8 }}>
+              <button onClick={saveEdit} disabled={editSaving}
+                style={{ flex:1,padding:'10px',borderRadius:9,border:'none',background:'rgba(77,163,255,0.8)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6 }}>
+                {editSaving?<><Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se salvează...</>:<><Check size={14}/>Salvează</>}
+              </button>
+              <button onClick={()=>setEditRez(null)}
+                style={{ padding:'10px 16px',borderRadius:9,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:13,cursor:'pointer' }}>
+                Anulează
+              </button>
+            </div>
           </div>
         </div>
       )}
