@@ -59,6 +59,7 @@ export default function CalendarPage() {
   const [saveOk, setSaveOk] = useState(false)
   const [lastNrRez, setLastNrRez] = useState<string|null>(null)
   const [lastSaved, setLastSaved] = useState<any>(null)
+  const [saveError, setSaveError] = useState<string|null>(null)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const ciRef = useRef<HTMLInputElement>(null)
 
@@ -97,7 +98,7 @@ export default function CalendarPage() {
 
   function prevMonth(){ if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1); clearSel() }
   function nextMonth(){ if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1); clearSel() }
-  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null) }
+  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null);setSaveError(null) }
 
   const isCurrentMonth  = month===todayMon && year===todayYear
   const occupiedToday   = isCurrentMonth ? apts.filter(a=>getRez(a.id,todayDay)).length : 0
@@ -122,29 +123,37 @@ export default function CalendarPage() {
   async function saveRez(){
     if(!newRez.aptId || !newRez.nume || !newRez.checkin || !newRez.checkout){return}
     setSaving(true)
+    setSaveError(null)
     const nopti = nightsBetween(newRez.checkin, newRez.checkout)
 
-    // Generare numar rezervare automat: ABH-100, ABH-101, ...
-    const { count: totalRez } = await supabase
-      .from('rezervari').select('*', { count: 'exact', head: true })
+    // Numar rezervare automat
+    const { count: totalRez } = await supabase.from('rezervari').select('*',{count:'exact',head:true})
     const nrRez = `ABH-${100 + (totalRez || 0)}`
 
-    const { data: saved, error } = await supabase.from('rezervari').insert({
+    const payload: any = {
       apartament_id: newRez.aptId,
       nume_client: newRez.nume,
-      telefon_client: newRez.telefon || null,
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
-      nr_nopti: nopti,
-      suma_incasata: parseFloat(newRez.pret)||0,
       canal: 'intern',
       status_rezervare: 'confirmata',
-      status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
-      observatii: `${nrRez} | Rezervare internă${newRez.cnp?' | CNP: '+newRez.cnp:''}`.trim(),
-    }).select().single()
+      observatii: `${nrRez}${newRez.cnp?' | CNP: '+newRez.cnp:''}`,
+    }
+    if(newRez.telefon) payload.telefon_client = newRez.telefon
+    if(nopti > 0) payload.nr_nopti = nopti
+    if(newRez.pret) {
+      payload.suma_incasata = parseFloat(newRez.pret)
+      payload.status_plata = 'achitat'
+    } else {
+      payload.status_plata = 'neachitat'
+    }
+
+    const { data: saved, error } = await supabase.from('rezervari').insert(payload).select().single()
     setSaving(false)
-    if(!error && saved){
+    if(error){
+      setSaveError(error.message)
+    } else if(saved){
       setSaveOk(true)
       setLastNrRez(nrRez)
       setLastSaved(saved)
@@ -512,6 +521,11 @@ Echipa AB Homes Iași`)}
                   </div>
                 )}
 
+                {saveError && (
+                  <div style={{ marginTop:8,padding:'8px 10px',background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:7,fontSize:11,color:'#F87171' }}>
+                    ⚠ {saveError}
+                  </div>
+                )}
                 <div style={{ marginTop:10,padding:'8px 10px',background:'rgba(124,58,237,0.06)',border:'1px solid rgba(124,58,237,0.15)',borderRadius:7,fontSize:10,color:'rgba(167,139,250,0.6)',lineHeight:1.5 }}>
                   Canal <strong>intern</strong> — nu se trimite în 5starDesk.
                 </div>
