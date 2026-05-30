@@ -137,7 +137,6 @@ export default function CalendarPage() {
       telefon_client: newRez.telefon || null,
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
-      nr_nopti: nopti > 0 ? nopti : null,
       nr_persoane: 1,
       suma_incasata: parseFloat(newRez.pret) || 0,
       valoare_bruta: parseFloat(newRez.pret) || 0,
