@@ -53,6 +53,7 @@ export default function CalendarPage() {
   const [saveOk, setSaveOk] = useState(false)
   const [ciScanning, setCiScanning] = useState(false)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
+  const [ciError, setCiError] = useState<string|null>(null)
   const ciRef = useRef<HTMLInputElement>(null)
 
   const today     = new Date().toISOString().split('T')[0]
@@ -90,7 +91,7 @@ export default function CalendarPage() {
 
   function prevMonth(){ if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1); clearSel() }
   function nextMonth(){ if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1); clearSel() }
-  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null) }
+  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null);setCiError(null) }
 
   const isCurrentMonth  = month===todayMon && year===todayYear
   const occupiedToday   = isCurrentMonth ? apts.filter(a=>getRez(a.id,todayDay)).length : 0
@@ -138,10 +139,19 @@ export default function CalendarPage() {
     }
   }
 
-  // Scanare buletin cu Gemini via API route
-  async function scanCI(file: File) {
-    setCiScanning(true)
+  // Step 1: arata preview
+  function scanCI(file: File) {
     setCiPreview(URL.createObjectURL(file))
+    setCiError(null)
+    ;(window as any).__ciFile = file
+  }
+
+  // Step 2: buton "Extrage date" apeleaza API
+  async function extractFromCI() {
+    const file = (window as any).__ciFile
+    if (!file) return
+    setCiScanning(true)
+    setCiError(null)
     const b64 = await new Promise<string>((res, rej) => {
       const reader = new FileReader()
       reader.onload = () => res((reader.result as string).split(',')[1])
@@ -158,9 +168,12 @@ export default function CalendarPage() {
       if (data.success) {
         if (data.nume) setNewRez(r => ({ ...r, nume: data.nume }))
         if (data.cnp)  setNewRez(r => ({ ...r, cnp: data.cnp }))
+        if (!data.nume && !data.cnp) setCiError('Nu s-au putut extrage datele. Completează manual.')
+      } else {
+        setCiError(data.error || 'Eroare extragere. Completează manual.')
       }
-    } catch(e) {
-      console.error('CI scan error', e)
+    } catch(e: any) {
+      setCiError('Eroare conexiune: ' + e.message)
     }
     setCiScanning(false)
   }
@@ -444,25 +457,34 @@ export default function CalendarPage() {
                 {/* Scan CI */}
                 <div style={{ marginBottom:12 }}>
                   <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Buletin / Pașaport</div>
-                  <input ref={ciRef} type="file" accept="image/*,.pdf" onChange={e=>e.target.files?.[0]&&scanCI(e.target.files[0])} style={{ display:'none' }}/>
-                  <button onClick={()=>ciRef.current?.click()} disabled={ciScanning}
-                    style={{ width:'100%',padding:'10px',borderRadius:8,border:'1px dashed rgba(124,58,237,0.4)',background:ciScanning?'rgba(124,58,237,0.1)':'rgba(124,58,237,0.06)',color:ciScanning?'#A78BFA':'rgba(167,139,250,0.65)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'all .15s' }}>
-                    {ciScanning
-                      ? <><Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se scanează...</>
-                      : ciPreview
-                      ? <><Check size={14} color="#4ADE80"/><span style={{ color:'#4ADE80' }}>Scanat — click pentru alt document</span></>
-                      : <>📷 Fotografiază / încarcă buletin</>
-                    }
-                  </button>
-                  {ciPreview && !ciScanning && (
-                    <div style={{ marginTop:8,borderRadius:7,overflow:'hidden',border:'1px solid rgba(124,58,237,0.25)',maxHeight:120,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(0,0,0,0.3)' }}>
-                      <img src={ciPreview} alt="CI preview" style={{ maxWidth:'100%',maxHeight:120,objectFit:'contain' }}/>
+                  <input ref={ciRef} type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&scanCI(e.target.files[0])} style={{ display:'none' }}/>
+                  
+                  {/* Preview imagine */}
+                  {ciPreview && (
+                    <div style={{ marginBottom:8,borderRadius:8,overflow:'hidden',border:'1px solid rgba(124,58,237,0.3)',background:'rgba(0,0,0,0.4)',display:'flex',flexDirection:'column' }}>
+                      <img src={ciPreview} alt="CI" style={{ width:'100%',maxHeight:160,objectFit:'contain' }}/>
+                      <div style={{ display:'flex',gap:6,padding:'8px' }}>
+                        <button onClick={()=>ciRef.current?.click()}
+                          style={{ flex:1,padding:'6px',borderRadius:6,border:'1px solid rgba(159,215,255,0.2)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:11,cursor:'pointer' }}>
+                          Schimbă
+                        </button>
+                        <button onClick={extractFromCI} disabled={ciScanning}
+                          style={{ flex:2,padding:'6px',borderRadius:6,border:'none',background:ciScanning?'rgba(124,58,237,0.4)':'rgba(124,58,237,0.8)',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:5 }}>
+                          {ciScanning
+                            ? <><Loader size={11} style={{ animation:'spin 1s linear infinite' }}/>Se extrage...</>
+                            : <><Plus size={11}/>Extrage date</>
+                          }
+                        </button>
+                      </div>
+                      {ciError && <div style={{ padding:'0 8px 8px',fontSize:10,color:'#F87171' }}>{ciError}</div>}
                     </div>
                   )}
-                  {ciPreview && !ciScanning && (
-                    <div style={{ marginTop:5,fontSize:10,color:'rgba(74,222,128,0.7)',display:'flex',alignItems:'center',gap:4 }}>
-                      <Check size={10}/>Nume extras automat din buletin
-                    </div>
+                  
+                  {!ciPreview && (
+                    <button onClick={()=>ciRef.current?.click()}
+                      style={{ width:'100%',padding:'10px',borderRadius:8,border:'1px dashed rgba(124,58,237,0.35)',background:'rgba(124,58,237,0.06)',color:'rgba(167,139,250,0.7)',fontSize:12,fontWeight:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8 }}>
+                      📷 Fotografiază / încarcă buletin
+                    </button>
                   )}
                 </div>
 
