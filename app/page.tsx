@@ -479,51 +479,56 @@ export default function DashboardPage() {
         </div>{/* end outer flex */}
 
         {/* ══ CURĂȚENIE ASTĂZI ══ */}
-        <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:10,overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'1px solid rgba(159,215,255,0.07)'}}>
+        <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'0.5px solid rgba(159,215,255,0.1)',borderTop:'2px solid #EF9F27',borderRadius:10,overflow:'hidden'}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'0.5px solid rgba(159,215,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontSize:13}}>🧹</span>
-              <span style={{fontSize:10,fontWeight:600,color:'rgba(252,211,77,0.7)',textTransform:'uppercase',letterSpacing:'0.8px'}}>Curățenie astăzi</span>
-              <span style={{fontSize:10,fontWeight:600,color:'#FCD34D',background:'rgba(252,211,77,0.1)',padding:'1px 7px',borderRadius:10}}>{curatenjeAzi.length}</span>
+              <Brush size={13} color="#EF9F27"/>
+              <span style={{fontSize:11,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
+              <span style={{fontSize:11,fontWeight:600,background:'rgba(239,159,39,0.12)',color:'#EF9F27',padding:'1px 8px',borderRadius:20}}>{curatenjeAzi.length}</span>
             </div>
-            <button onClick={waEchipaCuratenie}
-              style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'1px solid rgba(37,211,102,0.3)',background:'rgba(37,211,102,0.08)',color:'#4ADE80',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-              <MessageCircle size={12}/>WA Echipă
+            <button onClick={waEchipaCuratenie} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'0.5px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:12,fontWeight:500,cursor:'pointer'}}>
+              <MessageCircle size={13}/>WA echipă
             </button>
           </div>
           <div style={{padding:'8px 12px',display:'flex',flexDirection:'column',gap:6}}>
             {curatenjeAzi.length===0
-              ? <div style={{padding:'10px 4px',fontSize:11,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
+              ? <div style={{padding:'10px 4px',fontSize:12,color:'rgba(159,215,255,0.25)',fontStyle:'italic'}}>Nicio curățenie programată astăzi</div>
               : curatenjeAzi.map((r:any,idx:number)=>{
                   const apt=r.apartament
                   const pers=Number(r.nr_persoane)||1
-                  const lenDefault=nrLenjerii(pers)
-                  const len=lenjerii[r.id]??lenDefault
-                  const isOut=r.tip==='checkout'||r.tip==='co_ci'
-                  const isAct=r.tip==='activ'
-                  const accentCol=isOut?'#F87171':isAct?'#7BC8FF':'#4ADE80'
-                  const bgCol=isOut?'rgba(248,113,113,0.06)':isAct?'rgba(77,163,255,0.06)':'rgba(74,222,128,0.06)'
-                  const bdCol=isOut?'rgba(248,113,113,0.15)':isAct?'rgba(77,163,255,0.15)':'rgba(74,222,128,0.15)'
+                  const lenDef=nrLenjerii(pers)
+                  const len=lenjerii[r.id]??lenDef
+                  const isCOCI=r.tip==='co_ci'
+                  const isCI=r.tip==='checkin'
+                  const tipColor=isCOCI?'#F87171':isCI?'#4ADE80':'#F87171'
+                  const tipBg=isCOCI?'rgba(248,113,113,0.1)':isCI?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.08)'
+                  const bdColor=isCOCI?'rgba(248,113,113,0.2)':isCI?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)'
+                  // find CI client for CO→CI rows
+                  const ciClient=isCOCI?checkinAzi.find((ci:any)=>ci.apartament?.id===apt?.id):null
                   return(
-                    <div key={r.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:bgCol,border:'1px solid '+bdCol,borderRadius:9,flexWrap:'wrap' as const}}>
-                      <div style={{flexShrink:0}}>
-                        {apt?.nota&&<span style={{fontSize:9,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace'}}>{apt.nota}</span>}
-                      </div>
-                      <div style={{flex:1,minWidth:100}}>
-                        <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</div>
-                        <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{apt?.adresa||''}{apt?.adresa&&' · '}{pers} oaspeți</div>
+                    <div key={r.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',border:`0.5px solid ${bdColor}`,background:tipBg,borderRadius:8}}>
+                      {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:500,color:'rgba(214,228,244,0.9)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt?.nume||'—'}</div>
+                        <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginTop:1}}>
+                          {isCOCI
+                            ? <><span style={{color:'#F87171'}}>CO: {r.nume_client}</span>{' → '}<span style={{color:'#4ADE80'}}>CI: {ciClient?.nume_client||'—'}</span></>
+                            : <span style={{color:tipColor}}>{isCI?'CI':'CO'}: {r.nume_client}</span>
+                          }
+                          {' · '}{pers} oaspeți
+                        </div>
                       </div>
                       <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
-                        <span style={{fontSize:11}}>🛏</span>
-                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:Math.max(1,(l[r.id]??lenDefault)-1)}))}
-                          style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>−</button>
-                        <span style={{fontSize:14,fontWeight:700,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
-                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:(l[r.id]??lenDefault)+1}))}
-                          style={{width:22,height:22,borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(159,215,255,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
-                        <span style={{fontSize:9,padding:'2px 6px',borderRadius:5,background:bgCol,border:'1px solid '+bdCol,color:accentCol,fontWeight:700,marginLeft:2}}>
-                          {r.tip==='co_ci'?'CO→CI':r.tip==='checkout'?'CO':r.tip==='checkin'?'CI':'ACT'}
-                        </span>
+                        <BedDouble size={13} color="rgba(159,215,255,0.4)"/>
+                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:Math.max(1,(l[r.id]??lenDef)-1)}))}
+                          style={{width:22,height:22,borderRadius:4,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>−</button>
+                        <span style={{fontSize:14,fontWeight:500,color:'#FCD34D',minWidth:18,textAlign:'center' as const}}>{len}</span>
+                        <button onClick={()=>setLenjerii((l:any)=>({...l,[r.id]:(l[r.id]??lenDef)+1}))}
+                          style={{width:22,height:22,borderRadius:4,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
                       </div>
+                      <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,background:tipBg,border:`0.5px solid ${bdColor}`,color:tipColor,flexShrink:0}}>
+                        {isCOCI?'CO→CI':isCI?'CI':'CO'}
+                      </span>
                     </div>
                   )
                 })
