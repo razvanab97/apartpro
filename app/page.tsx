@@ -105,17 +105,6 @@ export default function DashboardPage() {
   const [toggling,setToggling]=useState<string|null>(null)
 
   useEffect(()=>{loadData()},[])
-  useEffect(()=>{loadCuratenie()},[])
-
-  async function loadCuratenie(){
-    const today=new Date().toISOString().split('T')[0]
-    const [{data:co},{data:ci}]=await Promise.all([
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today),
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today),
-    ])
-    setCoAziCur(co||[])
-    setCiAziCur(ci||[])
-  }
 
   const now=new Date()
   const luna=now.getMonth()+1
@@ -195,6 +184,14 @@ export default function DashboardPage() {
       .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
+    // Curatenie - query direct, fara filtre
+    const today2=new Date().toISOString().split('T')[0]
+    const [{data:coCur},{data:ciCur}]=await Promise.all([
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today2),
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today2),
+    ])
+    setCoAziCur(coCur||[])
+    setCiAziCur(ciCur||[])
     setLoading(false)
   }
 
