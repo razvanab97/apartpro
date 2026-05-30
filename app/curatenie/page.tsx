@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus } from 'lucide-react'
 
-function nrLen(p:number){ return Math.max(1,p-1) }
+function nrLen(p:number){ return Math.ceil(p/2) }
 
 export default function CuratenePage() {
   const [co, setCo] = useState<any[]>([])
