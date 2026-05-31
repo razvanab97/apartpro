@@ -568,9 +568,7 @@ export default function RapoartePage() {
         </div>
       )}
       {/* ══ CALCULATOR DECONTAT PROPRIETAR ══ */}
-      {generated && rezervari.length > 0 && (
-        <CalculatorDecontat netFinal={totals.netFinal} perioada={`${periodStart} — ${periodEnd}`}/>
-      )}
+      <CalculatorDecontat netFinal={generated ? totals.netFinal : 0} perioada={periodStart && periodEnd ? `${periodStart} — ${periodEnd}` : 'Generează raportul pentru a vedea suma netă'}/>
       <Toast toast={toast}/>
     </div>
   )
