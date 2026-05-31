@@ -146,12 +146,19 @@ export default function CheltuieliPage(){
 
   async function load(){
     setLoading(true)
-    const [{data:aptData},{data:chData}]=await Promise.all([
+    const prevLuna = luna===1?12:luna-1
+    const prevAn   = luna===1?an-1:an
+    const [{data:aptData},{data:chData},{data:chDataPrev}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status').order('nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
         .gte('data',`${an}-${pad(luna)}-01`)
         .lte('data',`${an}-${pad(luna)}-31`),
+      supabase.from('cheltuieli')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
+        .gte('data',`${prevAn}-${pad(prevLuna)}-01`)
+        .lte('data',`${prevAn}-${pad(prevLuna)}-31`)
+        .eq('status','nevalidat'),
     ])
     // Ensure AB_EXTRA_NAMES appear even if not in DB or inactive
     const loadedApts = aptData||[]
@@ -177,6 +184,16 @@ export default function CheltuieliPage(){
       } else if(c.categorie==='consumabile') cons.push(c)
       else if(c.categorie==='contabilitate') cont.push(c)
       else if(FISCAL_ROWS.find(f=>f.key===c.categorie)) fisc[c.categorie]=c
+    })
+    // Adauga intarziate din luna precedenta
+    ;(chDataPrev||[]).forEach((ch:any)=>{
+      if(ch.apartament_id && UTIL_KEYS.includes(ch.categorie)){
+        if(!u[ch.apartament_id])u[ch.apartament_id]={}
+        u[ch.apartament_id][ch.categorie+'__int']={...ch,_intarziat:true}
+      } else if(ch.apartament_id){
+        if(!ex[ch.apartament_id])ex[ch.apartament_id]=[]
+        ex[ch.apartament_id].unshift({...ch,_intarziat:true})
+      }
     })
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
     setLoading(false)
@@ -435,7 +452,16 @@ export default function CheltuieliPage(){
             {val>0?val.toLocaleString('ro-RO'):<span style={{fontSize:13,color:'rgba(100,160,255,0.3)'}}>—</span>}
             {val>0&&<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span>}
           </div>
-          <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginTop:4}}>scad. {due}</div>
+          {(()=>{
+            const today=new Date();today.setHours(0,0,0,0)
+            const [dd,mm]=(due||'').split('/')
+            const scad=dd&&mm?new Date(today.getFullYear(),Number(mm)-1,Number(dd)):null
+            const depasit=!paid&&scad&&scad<today
+            const aproape=!paid&&scad&&!depasit&&(scad.getTime()-today.getTime())<=3*86400000
+            return <div style={{fontSize:10,color:paid?'rgba(74,222,128,0.4)':depasit?'#F87171':aproape?'#FCD34D':'rgba(100,160,255,0.35)',marginTop:4,fontWeight:depasit||aproape?600:400}}>
+              {depasit?'⚠ depășit ':aproape?'⏰ ':''}{paid?'✓ ':''}{due?`scad. ${due}`:'—'}
+            </div>
+          })()}
         </div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
           <div style={{display:'flex',gap:4}}>
@@ -537,6 +563,31 @@ export default function CheltuieliPage(){
           <div style={{padding:'16px 4px 4px'}}>
             {/* pills utilități */}
             <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:aptExtras.length>0?12:0}}>
+              {/* Pills intarziate luna precedenta */}
+              {UTIL_COLS.map(col=>{
+                const it=util[apt.id]?.[col.key+'__int']
+                if(!it) return null
+                return(
+                  <div key={col.key+'_int'} style={{minWidth:130,flex:'1 1 130px',borderRadius:12,padding:'12px 14px',border:'1.5px solid rgba(248,113,113,0.45)',background:'rgba(248,113,113,0.07)',position:'relative' as const}}>
+                    <div style={{position:'absolute' as const,top:0,left:8,fontSize:8,fontWeight:700,color:'#F87171',background:'rgba(248,113,113,0.15)',padding:'1px 6px',borderRadius:'0 0 5px 5px',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>⚠ ÎNTÂRZIAT {it.data?.slice(0,7)}</div>
+                    <div style={{paddingTop:12}}>
+                      <div style={{fontSize:11,fontWeight:600,color:'rgba(248,113,113,0.7)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.04em'}}>{col.label}</div>
+                      <div style={{fontSize:17,fontWeight:700,color:'#F87171',letterSpacing:'-.3px'}}>{Number(it.valoare||0).toLocaleString('ro-RO')}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(248,113,113,0.5)'}}>RON</span></div>
+                      <div style={{fontSize:10,color:'rgba(248,113,113,0.45)',marginTop:3}}>scad. {it.data?.slice(8,10)}/{it.data?.slice(5,7)}</div>
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10,gap:4}}>
+                      <button onClick={()=>moveTolLuna(it,luna,an)} title="Mută în luna curentă"
+                        style={{fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer',flex:1}}>
+                        → Luna aceasta
+                      </button>
+                      <button onClick={async()=>{await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);load()}}
+                        style={{width:28,height:28,borderRadius:7,border:'1px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        <Check size={12} color="#F87171" strokeWidth={3}/>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
               {UTIL_COLS.map(col=>{
                 const item=util[apt.id]?.[col.key]
                 const isPaid=item?.status==='validat'
