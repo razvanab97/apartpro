@@ -241,6 +241,56 @@ export default function RapoartePage() {
         }
       })
       const period = `${anStart}_${String(lunaStart).padStart(2,'0')}${lunaStart!==lunaEnd||anStart!==anEnd?'-'+anEnd+'_'+String(lunaEnd).padStart(2,'0'):''}`
+      // ── CALCULATOR DECONTAT în PDF ──────────────────────────────────
+      const calcY = ((doc as any).lastAutoTable?.finalY || 150) + 14
+      doc.setFillColor(14,27,43); doc.rect(0, calcY-5, pageW, 8, 'F')
+      doc.setTextColor(252,211,77); doc.setFontSize(10); doc.setFont('helvetica','bold')
+      doc.text('CALCULATOR DECONTAT PROPRIETAR', 14, calcY)
+
+      const getN = (id:string) => {
+        const el = document.querySelector(`[data-pdf="${id}"]`) as HTMLInputElement
+        return el ? Number(el.value)||0 : 0
+      }
+      const contab = getN('contabilitate'); const curat = getN('curatenie')
+      const lenj = getN('lenjerii'); const prom = getN('promovare')
+      const chir = getN('chirie'); const cash = getN('incasat-cash')
+      const extraEls = document.querySelectorAll('[data-pdf-linie]')
+      const extras: {desc:string;val:number;tip:string}[] = []
+      extraEls.forEach(el => {
+        try { extras.push(JSON.parse((el as HTMLElement).dataset.pdfLinie||'{}')) } catch {}
+      })
+
+      const calcRows: [string,string][] = [
+        ['Net după platforme și comision AB', fmt(totals.netFinal)+' RON'],
+      ]
+      let scaz = 0
+      ;[['Contabilitate',contab],['Curățenie',curat],['Lenjerii',lenj],['Promovare',prom],['Chirie',chir],['Încasat cash (direct)',cash]].forEach(([l,v]:any)=>{
+        if(v>0){ calcRows.push([`  − ${l}`, `- ${fmt(v)} RON`]); scaz+=v }
+      })
+      extras.forEach(({desc,val,tip})=>{
+        if(val>0&&desc){
+          const s=tip==='scade'
+          calcRows.push([`  ${s?'−':'+'} ${desc}`,`${s?'- ':'+ '}${fmt(val)} RON`])
+          if(s) scaz+=val; else scaz-=val
+        }
+      })
+      const netProp = totals.netFinal - scaz
+      calcRows.push(['SUMĂ DE PLĂTIT PROPRIETARULUI', fmt(netProp)+' RON'])
+
+      autoTable(doc, {
+        startY: calcY+4, head:[['Descriere','Sumă']], body: calcRows,
+        styles:{ fontSize:8, cellPadding:3, textColor:[30,30,30], fillColor:[255,255,255] },
+        headStyles:{ fillColor:[30,50,90], textColor:[200,220,255], fontStyle:'bold' },
+        columnStyles:{ 0:{cellWidth:200}, 1:{cellWidth:60, halign:'right' as const} },
+        alternateRowStyles:{ fillColor:[248,250,255] },
+        didParseCell:(data:any)=>{
+          if(data.row.index===calcRows.length-1){
+            data.cell.styles.fillColor=[0,60,30]; data.cell.styles.textColor=[180,255,180]
+            data.cell.styles.fontStyle='bold'; data.cell.styles.fontSize=10
+          }
+        }
+      })
+
       doc.save(`Raport_${tipRaport}_${aptNume.replace(/[\[\] ]/g,'_')}_${period}.pdf`)
       show('success','PDF exportat!')
     } catch { show('error','Eroare export') }
@@ -635,13 +685,13 @@ function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada
               <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Încasat cash de proprietar</div>
               <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Proprietarul a primit direct → se scade din ce îi mai datorezi</div>
               <input type="number" min={0} value={incasatCash||''} placeholder="0"
-                onChange={e=>setIncasatCash(Number(e.target.value)||0)} style={inp}/>
+                onChange={e=>setIncasatCash(Number(e.target.value)||0)} data-pdf="incasat-cash" style={inp}/>
             </div>
             <div>
               <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Chirie plătită</div>
               <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Chiria lunară achitată proprietarului → se scade din total</div>
               <input type="number" min={0} value={chirie||''} placeholder="0"
-                onChange={e=>setChirie(Number(e.target.value)||0)} style={inp}/>
+                onChange={e=>setChirie(Number(e.target.value)||0)} data-pdf="chirie" style={inp}/>
             </div>
           </div>
         </div>
