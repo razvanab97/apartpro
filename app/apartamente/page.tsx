@@ -131,7 +131,7 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
     setSaving(true)
-    const p={ nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null }
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null }
     const { error } = editing.id ? await supabase.from('apartamente').update(p).eq('id',editing.id) : await supabase.from('apartamente').insert(p)
     if(error){ show('error',error.message); setSaving(false); return }
     show('success',editing.id?'Actualizat':'Adăugat')
@@ -234,6 +234,7 @@ export default function ApartamentePage() {
                 </div>
               )}
               {selected.link_booking && (
+                <div style={{ fontSize:10, color:"rgba(252,211,77,0.5)", marginBottom:2 }}>🏨 Booking.com</div>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <a href={selected.link_booking} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(34,197,94,0.1)', color:'#4ADE80', border:'1px solid rgba(34,197,94,0.18)', textDecoration:'none', flex:1 }}>
                     <MapPin size={10}/> Google Maps
@@ -267,6 +268,18 @@ export default function ApartamentePage() {
                 <div>
                   <div style={{ color:'rgba(159,215,255,0.4)', marginBottom:3 }}>Dotări</div>
                   <div style={{ fontSize:11, color:'rgba(214,228,244,0.6)', lineHeight:1.6 }}>{Array.isArray(selected.dotari)?selected.dotari.join(', '):selected.dotari}</div>
+                </div>
+              )}
+              {selected.mesaj_checkin && (
+                <div style={{ margin:'8px 0', padding:'10px 12px', background:'rgba(74,222,128,0.06)', border:'1px solid rgba(74,222,128,0.15)', borderRadius:8 }}>
+                  <div style={{ fontSize:10, color:'#4ADE80', fontWeight:600, marginBottom:4 }}>💬 Mesaj CI personalizat</div>
+                  <div style={{ fontSize:11, color:'rgba(214,228,244,0.65)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{selected.mesaj_checkin}</div>
+                </div>
+              )}
+              {selected.mesaj_checkout && (
+                <div style={{ margin:'8px 0', padding:'10px 12px', background:'rgba(192,132,252,0.06)', border:'1px solid rgba(192,132,252,0.15)', borderRadius:8 }}>
+                  <div style={{ fontSize:10, color:'#C084FC', fontWeight:600, marginBottom:4 }}>💬 Mesaj CO personalizat</div>
+                  <div style={{ fontSize:11, color:'rgba(214,228,244,0.65)', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{selected.mesaj_checkout}</div>
                 </div>
               )}
               {selected.instructiuni_checkin && (
@@ -337,11 +350,21 @@ export default function ApartamentePage() {
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Link Site</label><input value={editing.link_site||''} onChange={e=>setEditing({...editing,link_site:e.target.value})} placeholder="https://abhomesiasi.ro/..."/></FormGroup>
-          <FormGroup><label>Link Maps</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
+          <FormGroup><label>🏨 Link Booking.com</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
         </FormRow>
-        <FormGroup><label>Link Airbnb</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="airbnb.com/rooms/..."/></FormGroup>
+        <FormGroup><label>🏠 Link Airbnb</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="airbnb.com/rooms/..."/></FormGroup>
         <FormGroup><label>Instrucțiuni check-in</label><textarea value={editing.instructiuni_checkin||''} onChange={e=>setEditing({...editing,instructiuni_checkin:e.target.value})} rows={2}/></FormGroup>
         <FormGroup><label>Reguli</label><textarea value={editing.reguli||''} onChange={e=>setEditing({...editing,reguli:e.target.value})} rows={2}/></FormGroup>
+        <FormGroup>
+          <label>💬 Mesaj Check-in (WhatsApp)</label>
+          <textarea value={editing.mesaj_checkin||''} onChange={e=>setEditing({...editing,mesaj_checkin:e.target.value})}
+            rows={3} placeholder="Mesaj personalizat pentru această locație la check-in (lasă gol pentru mesajul global din Setări)"/>
+        </FormGroup>
+        <FormGroup>
+          <label>💬 Mesaj Check-out (WhatsApp)</label>
+          <textarea value={editing.mesaj_checkout||''} onChange={e=>setEditing({...editing,mesaj_checkout:e.target.value})}
+            rows={3} placeholder="Mesaj personalizat pentru check-out (lasă gol pentru mesajul global)"/>
+        </FormGroup>
         <div style={{ display:'flex', gap:10, marginTop:4 }}>
           <Button variant="primary" onClick={save} loading={saving} style={{ flex:1 }}>Salvează</Button>
           <Button variant="secondary" onClick={()=>setEditOpen(false)} style={{ flex:1 }}>Anulează</Button>
