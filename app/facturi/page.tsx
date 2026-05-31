@@ -56,8 +56,28 @@ export default function FacturiPage() {
   }, [])
 
   async function loadApts() {
-    const { data } = await supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume')
+    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa').eq('status','activ').order('nume')
     setApts(data || [])
+  }
+
+  // Auto-potrivire apartament dupa adresa din factura
+  function matchApartament(adresaFactura: string | null, aptList: any[]): string | null {
+    if (!adresaFactura || !aptList.length) return null
+    const af = adresaFactura.toLowerCase().replace(/[,.\-]/g,' ').replace(/\s+/g,' ').trim()
+    const keywords = af.split(' ').filter((w:string) => w.length > 3)
+    let bestMatch: {id:string; score:number} | null = null
+    for (const apt of aptList) {
+      const aptAddr = (apt.adresa || '').toLowerCase().replace(/[,.\-]/g,' ')
+      if (!aptAddr) continue
+      let score = 0
+      for (const kw of keywords) {
+        if (aptAddr.includes(kw)) score++
+      }
+      if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = { id: apt.id, score }
+      }
+    }
+    return bestMatch && bestMatch.score >= 2 ? bestMatch.id : null
   }
 
   async function loadSaved() {
@@ -105,10 +125,16 @@ export default function FacturiPage() {
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
 
+      const autoAptId = matchApartament(data.adresa_consum, apts)
       setFacturi(f => f.map(x => x.id === id ? {
         ...x, ...data, id, processing: false,
         base64Preview: previewUrl, mimeType, status: 'procesat' as const,
+        apartament_id: autoAptId,
       } : x))
+      if (autoAptId) {
+        const aptNume = apts.find(a => a.id === autoAptId)?.nume || ''
+        show('info', `Asociat automat cu ${aptNume} (dupa adresa)`)
+      }
     } catch (e: any) {
       setFacturi(f => f.map(x => x.id === id ? { ...x, processing: false, status: 'eroare' as const, furnizor: 'Eroare extragere' } : x))
       show('error', 'Eroare la procesare: ' + e.message)
