@@ -190,7 +190,7 @@ export default function RezervariPage() {
             placeholder="🔍 Caută client sau telefon..."
             style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(100,160,255,0.2)', background:'rgba(20,38,65,0.8)', color:'rgba(214,228,244,0.9)', fontSize:13, outline:'none', minWidth:220 }}
           />
-          <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}}>
+          <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}>
             <option value="">Toate apartamentele</option>
             {apartamente.map(a=><option key={a.id} value={a.id}>{a.nume}</option>)}
           </select>
