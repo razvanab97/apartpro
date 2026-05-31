@@ -59,7 +59,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const bottomItems = navItems.filter(i => i.bottom)
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ display: 'flex', height: '100dvh', overflow: 'auto', position: 'relative' }}>
 
       {/* ── DESKTOP SIDEBAR ── */}
       <aside style={{
