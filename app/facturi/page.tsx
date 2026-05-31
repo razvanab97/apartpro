@@ -195,7 +195,13 @@ export default function FacturiPage() {
     setSaving(f.id)
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
-    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
+    // Daca scadenta e depasita → salvam in luna curenta (azi)
+    // Daca scadenta e in viitor → pastram data originala
+    const scadentaOriginala = f.data_scadenta ? new Date(f.data_scadenta) : null
+    const scadentaDepasita = scadentaOriginala && scadentaOriginala < now
+    const dataScadenta = scadentaDepasita
+      ? `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}` // azi
+      : (f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`)
     // Mapeaza categoria facturii la col_key din UTIL_COLS pentru cheltuieli
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
