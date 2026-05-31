@@ -160,17 +160,28 @@ export default function CheltuieliPage(){
         .lte('data',`${prevAn}-${pad(prevLuna)}-31`)
         .eq('status','nevalidat'),
     ])
-    // Ensure AB_EXTRA_NAMES appear even if not in DB or inactive
+    // Ensure AB_EXTRA_NAMES apar in DB cu ID real (upsert daca lipsesc)
     const loadedApts = aptData||[]
-    const missingExtras = AB_EXTRA_NAMES.filter(name =>
+    const missingNames = AB_EXTRA_NAMES.filter(name =>
       !loadedApts.some((a:any) => {
         const nota=(a.nota||'').toLowerCase()
         const nume=(a.nume||'').toLowerCase()
         const nl=name.toLowerCase()
         return nota===nl||nota.includes(nl)||nume===nl||nume.includes(nl)
       })
-    ).map(name => ({ id:`virtual-${name}`, nome: name, nota: name, nume: name, status:'activ' }))
-    setApts([...loadedApts, ...missingExtras])
+    )
+    let extraApts: any[] = []
+    if(missingNames.length > 0){
+      // Insereaza in DB daca nu exista
+      const { data: inserted } = await supabase.from('apartamente')
+        .upsert(
+          missingNames.map(name => ({ nume: name, nota: name, status: 'activ', zona: 'AB Extra' })),
+          { onConflict: 'nota', ignoreDuplicates: false }
+        ).select('id,nume,nota,status')
+      extraApts = inserted || missingNames.map(name => ({ id:`virtual-${name}`, nota: name, nume: name, status:'activ' }))
+    }
+    const allApts = [...loadedApts, ...extraApts]
+    setApts(allApts)
     const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
     ;(chData||[]).forEach((c:any)=>{
       if(c.apartament_id){
