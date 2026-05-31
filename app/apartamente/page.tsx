@@ -234,14 +234,14 @@ export default function ApartamentePage() {
                 </div>
               )}
               {selected.link_booking && (
-                <>
-                <div style={{ fontSize:10, color:"rgba(252,211,77,0.5)", marginBottom:2 }}>🏨 Booking.com</div>
-                  <a href={selected.link_booking} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(34,197,94,0.1)', color:'#4ADE80', border:'1px solid rgba(34,197,94,0.18)', textDecoration:'none', flex:1 }}>
-                    <MapPin size={10}/> Google Maps
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <div style={{ fontSize:10, color:'rgba(252,211,77,0.5)', marginRight:4 }}>🏨</div>
+                  <a href={selected.link_booking} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#FCD34D', textDecoration:'none' }}>
+                    <ExternalLink size={10}/> Booking.com
                   </a>
                   <CopyBtn text={selected.link_booking}/>
                 </div>
-                </>
+              )}
               )}
               {selected.link_airbnb && (
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
