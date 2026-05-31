@@ -1,354 +1,156 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Toast, useToast } from '@/components/ui'
-import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone } from 'lucide-react'
-
-type SyncResult = {
-  total: number
-  inserted: number
-  updated: number
-  skipped: number
-  errors: number
-  logs: { type: 'ok'|'skip'|'err'|'info'; msg: string }[]
-}
-
-function fmt5star(iso: string): string {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  const d = new Date(iso)
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function parse5star(s: string): string {
-  if (!s) return ''
-  const months: Record<string,string> = {
-    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
-    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
-    ianuarie:'01',februarie:'02',martie:'03',aprilie:'04',mai:'05',iunie:'06',
-    iulie:'07',august:'08',septembrie:'09',octombrie:'10',noiembrie:'11',decembrie:'12'
-  }
-  const p = s.trim().split(' ')
-  if (p.length === 3) {
-    const mon = months[p[1].toLowerCase().slice(0,3)] || months[p[1].toLowerCase()] || '01'
-    return `${p[2]}-${mon}-${p[0].padStart(2,'0')}`
-  }
-  // Already ISO format
-  if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10)
-  return s
-}
-
-function parseCanal(s: string): string {
-  const l = (s||'').toLowerCase()
-  if (l.includes('airbnb')) return 'airbnb'
-  if (l.includes('booking')) return 'booking'
-  if (l.includes('direct')) return 'direct'
-  return 'direct'
-}
+import { RefreshCw, Check, AlertTriangle, Clock, Zap } from 'lucide-react'
 
 export default function SyncPage() {
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<SyncResult|null>(null)
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth()-1); return d.toISOString().split('T')[0]
-  })
-  const [dateTo, setDateTo] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth()+3); return d.toISOString().split('T')[0]
-  })
-  const [rawData, setRawData] = useState<any>(null)
-  const { toast, show } = useToast()
+  const [lastSync, setLastSync] = useState<any>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [result, setResult] = useState<any>(null)
 
-  async function testApi() {
-    setLoading(true)
-    setRawData(null)
+  useEffect(() => { loadStatus() }, [])
+
+  async function loadStatus() {
+    const { data } = await supabase.from('setari').select('valoare').eq('cheie', 'last_sync').single()
+    if (data?.valoare) {
+      try { setLastSync(JSON.parse(data.valoare)) } catch {}
+    }
+  }
+
+  async function triggerSync() {
+    setSyncing(true)
+    setResult(null)
     try {
-      const res = await fetch('/api/fivestar', {
+      const res = await fetch('/api/auto-sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actiune: 'get_bookings',
-          checkin: fmt5star(dateFrom),
-          checkout: fmt5star(dateTo),
-        })
+        body: JSON.stringify({ secret: 'apartpro-cron-2026' })
       })
       const data = await res.json()
-      setRawData(data)
-    } catch(e: any) {
-      setRawData({ error: e.message })
+      setResult(data)
+      await loadStatus()
+    } catch (e: any) {
+      setResult({ ok: false, error: e.message })
     }
-    setLoading(false)
+    setSyncing(false)
   }
 
-    async function fixApartamente() {
-    setLoading(true)
-    setResult(null)
-    const res: SyncResult = { total:0, inserted:0, updated:0, skipped:0, errors:0, logs:[] }
-    try {
-      const { data: apts } = await supabase.from('apartamente').select('id,nota,nume')
-      const { data: rezFaraApt } = await supabase.from('rezervari').select('id,observatii,nume_client,data_checkin').is('apartament_id', null)
-      res.total = rezFaraApt?.length || 0
-      res.logs.push({ type:'info', msg: `${res.total} rezervări fără apartament` })
-      if (!res.total) { res.logs.push({ type:'ok', msg: '✓ Toate rezervările au apartament asociat!' }); setResult({...res}); setLoading(false); return }
-      const idMap: Record<string,string> = {}
-      for (const r of rezFaraApt||[]) {
-        const m = (r.observatii||'').match(/^(\d+)/)
-        if (m) idMap[m[1]] = r.id
-      }
-      res.logs.push({ type:'info', msg: `${Object.keys(idMap).length} ID-uri 5starDesk găsite` })
-      const resp = await fetch('/api/fivestar', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ actiune:'get_bookings', checkin:'01 Jan 2025', checkout:'31 Dec 2027' }) })
-      const data = await resp.json()
-      const bookings = Array.isArray(data) ? data : (data.rezervari || data.bookings || [])
-      res.logs.push({ type:'info', msg: `${bookings.length} rezervări de la 5starDesk` })
-      for (const b of bookings) {
-        const bId = String(b.id||'')
-        const rezId = idMap[bId]
-        if (!rezId) continue
-        const tipCamera = (b.tip_camera||'').trim()
-        const numarCamera = (b.numar_camera||'').trim()
-        
-        // Manual mapping for exceptions + standard format
-        const EXCEPTION_MAP: Record<string,string> = {
-          'Vila07': 'VM07',
-          'Apartament 40': 'CG40',
-          'Apartament 64': 'C64',
-          'Apartament 59': 'EX59',
-          'SkyPort Retreat': 'C64',
-          'Peaceful Copou Retreat': 'CG40',
-          'Cozy Studio': 'EX59',
-          'MV07': 'VM07',
-        }
-        
-        let code = EXCEPTION_MAP[tipCamera] || EXCEPTION_MAP[numarCamera] || null
-        
-        if (!code) {
-          // Standard format: "Apartament L94" -> "L94"
-          const codeMatch = tipCamera.match(/Apartament\s+([A-Z0-9]+)/i)
-          if (codeMatch) code = codeMatch[1].toUpperCase()
-        }
-        
-        if (!code) { res.logs.push({ type:'skip', msg: `ID ${bId}: tip_camera="${tipCamera}" / numar="${numarCamera}" — cod negăsit` }); continue }
-        const apt = (apts||[]).find((a:any) => a.nota === code)
-        if (!apt) { res.logs.push({ type:'skip', msg: `Cod ${code} nu există în ERP` }); continue }
-        const { error } = await supabase.from('rezervari').update({ apartament_id: apt.id }).eq('id', rezId)
-        if (error) { res.errors++; res.logs.push({ type:'err', msg: `${b.nume}: ${error.message}` }) }
-        else { res.updated++; res.logs.push({ type:'ok', msg: `✓ ${b.nume} → [${code}] ${apt.nume}` }) }
-      }
-      res.logs.push({ type:'info', msg: `Done: ${res.updated} asociate, ${res.errors} erori, ${res.total - res.updated - res.errors} negăsite` })
-    } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: 'Eroare: '+e.message }) }
-    setResult({...res}); setLoading(false)
-  }
-
-  async function syncRezervari() {
-    setLoading(true)
-    setResult(null)
-
-    const res: SyncResult = { total:0, inserted:0, updated:0, skipped:0, errors:0, logs:[] }
-
-    try {
-      // 1. Get apartments
-      const { data: apts } = await supabase.from('apartamente').select('id,nume,nota')
-      const aptMap: Record<string,string> = {}
-      for (const a of apts||[]) {
-        if (a.nota) aptMap[a.nota.toLowerCase()] = a.id
-        aptMap[a.nume.toLowerCase()] = a.id
-        // Also map without spaces/special chars
-        aptMap[a.nume.toLowerCase().replace(/\s+/g,'')] = a.id
-      }
-
-      // 2. Call get_bookings
-      const resp = await fetch('/api/fivestar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actiune: 'get_bookings',
-          checkin: fmt5star(dateFrom),
-          checkout: fmt5star(dateTo),
-        })
-      })
-      const data = await resp.json()
-      res.logs.push({ type:'info', msg: `Răspuns 5starDesk: ${JSON.stringify(data).slice(0,200)}` })
-
-      // 3. Parse response - format 5starDesk: array direct
-      const bookings = Array.isArray(data) ? data : (data.rezervari || data.bookings || data.data || null)
-
-      if (!bookings || !Array.isArray(bookings)) {
-        res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns: ${JSON.stringify(data).slice(0,300)}` })
-        setResult(res)
-        setLoading(false)
-        return
-      }
-
-      res.total = bookings.length
-      res.logs.push({ type:'info', msg: `${bookings.length} rezervări primite de la 5starDesk` })
-
-      // 4. Process each booking - format real 5starDesk
-      for (const b of bookings) {
-        try {
-          // Date format: "29 Apr 2026"
-          const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
-          const checkoutRaw = b.ultima_zi || b.checkout || b.check_out || b.data_checkout || ''
-          const checkin = checkinRaw ? parse5star(checkinRaw) : null
-          const checkout = checkoutRaw ? parse5star(checkoutRaw) : null
-          const numeClient = b.nume || b.name || b.guest_name || '—'
-          const canal = parseCanal(b.sursa || b.canal || b.source || '')
-          const telefon = b.telefon || b.phone || null
-          const email = b.email || null
-          const pret = parseFloat(b.pret_camera || b.price || b.total || '0') || 0
-          const pretExtra = parseFloat(b.pret_extra || '0') || 0
-          const totalPret = pret + pretExtra
-          const idExtern = String(b.id || b.id_rezervare || '')
-          const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
-
-          // Find apartment by id_camera or name
-          let aptId: string | null = null
-          // First try exact id_camera match in observatii
-          if (b.id_camera) {
-            const { data: aptByCamera } = await supabase.from('apartamente').select('id').eq('nota', b.id_camera).single()
-            if (aptByCamera) aptId = aptByCamera.id
-          }
-          // Fallback: fuzzy name match
-          if (!aptId) {
-            for (const [key, id] of Object.entries(aptMap)) {
-              if (numeCamera && (numeCamera.includes(key) || key.includes(numeCamera))) { aptId = id as string; break }
-            }
-          }
-
-          if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: dată lipsă` }); continue }
-
-          // Check if exists - use 5starDesk ID (stored in observatii) OR nume+checkin
-          const { data: existingById } = await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
-          
-          const { data: existingByName } = !existingById?.length ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
-            : { data: null }
-
-          const existing = existingById?.length ? existingById : existingByName
-
-          if (existing && existing.length > 0) {
-            // Update phone + apartment if missing
-            const updates: any = {}
-            if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
-            if (aptId && !existing[0].apartament_id) updates.apartament_id = aptId
-            if (Object.keys(updates).length > 0) {
-              await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
-            }
-            res.skipped++
-            res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat':''}` })
-          } else {
-            const { error } = await supabase.from('rezervari').insert({
-              apartament_id: aptId,
-              canal,
-              nume_client: numeClient,
-              data_checkin: checkin,
-              data_checkout: checkout,
-              suma_incasata: totalPret,
-              valoare_bruta: totalPret,
-              moneda: 'RON',
-              telefon_client: telefon,
-              status_rezervare: b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata',
-              status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
-              status_decont: 'nedecontat',
-              observatii: [idExtern, b.tip_camera || b.numar_camera, b.status_rezervare].filter(Boolean).join(' | ') || null,
-            })
-            if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
-            else {
-            res.inserted++
-            const aptName = aptId ? ((apts||[]).find((a:any)=>a.id===aptId)?.nota || aptId.slice(0,8)) : '⚠️ NECUNOSCUT'
-            res.logs.push({ type: aptId?'ok':'skip', msg: `${aptId?'✓':'⚠'} ${numeClient} | ${checkin}→${checkout} | ${canal} | ${aptName}${telefon?' 📞':''}` })
-          }
-          }
-        } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: `Eroare procesare: ${e.message}` }) }
-      }
-    } catch(e:any) {
-      res.errors++; res.logs.push({ type:'err', msg: 'Eroare conexiune: ' + e.message })
-    }
-
-    setResult({...res})
-    setLoading(false)
-    if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
-  }
-
-  const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14, padding:20 }
+  const panel: React.CSSProperties = { background: 'rgba(214,228,244,0.05)', border: '0.5px solid rgba(159,215,255,0.1)', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }
+  const hdr: React.CSSProperties = { padding: '10px 14px', background: 'rgba(14,27,43,0.5)', borderBottom: '0.5px solid rgba(159,215,255,0.07)', display: 'flex', alignItems: 'center', gap: 8 }
 
   return (
     <>
-      <PageHeader title="Sync 5starDesk" subtitle="Import automat rezervări din PMS"/>
-      <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14, maxWidth:720, overflowY:'auto' }}>
+      <PageHeader title="Sync 5starDesk" subtitle="Sincronizare automată rezervări"/>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 40px' }}>
 
-        {/* Period selector */}
-        <div style={panel}>
-          <div style={{ fontSize:13, fontWeight:600, color:'#FFF', marginBottom:14 }}>Perioadă sincronizare</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-            <div>
-              <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:5, display:'block' }}>De la</label>
-              <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
-            </div>
-            <div>
-              <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:5, display:'block' }}>Până la</label>
-              <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}/>
-            </div>
+        {/* Status sync */}
+        <div style={{ ...panel, borderTop: `2px solid ${lastSync?.status==='ok'?'#4ADE80':'#F87171'}` }}>
+          <div style={hdr}>
+            {lastSync?.status === 'ok' ? <Check size={14} color="#4ADE80"/> : <AlertTriangle size={14} color="#F87171"/>}
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.07em' }}>Status sync</span>
           </div>
-          <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
-            {[
-              { l:'Luna trecută', f:()=>{ const d=new Date(); setDateFrom(new Date(d.getFullYear(),d.getMonth()-1,1).toISOString().split('T')[0]); setDateTo(new Date(d.getFullYear(),d.getMonth(),0).toISOString().split('T')[0]) }},
-              { l:'Luna curentă', f:()=>{ const d=new Date(); setDateFrom(new Date(d.getFullYear(),d.getMonth(),1).toISOString().split('T')[0]); setDateTo(new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split('T')[0]) }},
-              { l:'Urmă 3 luni', f:()=>{ const d=new Date(); const t=new Date(d); t.setMonth(t.getMonth()+3); setDateFrom(d.toISOString().split('T')[0]); setDateTo(t.toISOString().split('T')[0]) }},
-              { l:'Tot 2026', f:()=>{ setDateFrom('2026-01-01'); setDateTo('2026-12-31') }},
-            ].map(p=>(
-              <button key={p.l} onClick={p.f} style={{ fontSize:11, padding:'4px 10px', borderRadius:6, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>{p.l}</button>
-            ))}
-          </div>
-          <div style={{ display:'flex', gap:8 }}>
-            <Button variant="primary" icon={loading?<Loader2 size={14} style={{animation:'spin 1s linear infinite'}}/>:<RefreshCw size={14}/>} onClick={syncRezervari} loading={loading} style={{ flex:1 }}>
-              Sincronizează rezervările
-            </Button>
-            <Button variant="secondary" onClick={testApi} loading={loading}>
-              Test API
-            </Button>
-            <Button variant="secondary" onClick={fixApartamente} loading={loading} style={{background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',color:'#FCD34D'}}>
-              🔧 Fix apartamente
-            </Button>
+          <div style={{ padding: '12px 14px' }}>
+            {lastSync ? <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                {[
+                  { l: 'Ultimul sync', v: lastSync.time ? new Date(lastSync.time).toLocaleString('ro-RO') : '—' },
+                  { l: 'Status', v: lastSync.status === 'ok' ? '✓ OK' : '✗ Eroare' },
+                  { l: 'Rezervări 5starDesk', v: lastSync.total_5star || '0' },
+                  { l: 'Durată', v: lastSync.duration_ms ? `${lastSync.duration_ms}ms` : '—' },
+                  { l: 'Inserate', v: lastSync.inserted || 0 },
+                  { l: 'Actualizate', v: lastSync.updated || 0 },
+                  { l: 'Anulate', v: lastSync.cancelled || 0 },
+                  { l: 'Erori', v: lastSync.errors?.length || 0 },
+                ].map(item => (
+                  <div key={item.l} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px' }}>
+                    <div style={{ fontSize: 9, color: 'rgba(159,215,255,0.35)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.l}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF' }}>{String(item.v)}</div>
+                  </div>
+                ))}
+              </div>
+              {lastSync.errors?.length > 0 && (
+                <div style={{ background: 'rgba(248,113,113,0.08)', border: '0.5px solid rgba(248,113,113,0.2)', borderRadius: 7, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 11, color: '#F87171', fontWeight: 600, marginBottom: 4 }}>Erori:</div>
+                  {lastSync.errors.slice(0, 5).map((e: string, i: number) => (
+                    <div key={i} style={{ fontSize: 10, color: 'rgba(248,113,113,0.7)', fontFamily: 'monospace', marginBottom: 2 }}>{e}</div>
+                  ))}
+                </div>
+              )}
+            </> : <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.3)', fontStyle: 'italic' }}>Niciun sync efectuat încă</div>}
           </div>
         </div>
 
-        {/* Raw API response (for debugging) */}
-        {rawData && (
-          <div style={{ ...panel, borderColor:'rgba(245,158,11,0.2)' }}>
-            <div style={{ fontSize:12, fontWeight:600, color:'#FCD34D', marginBottom:8 }}>Răspuns brut API 5starDesk</div>
-            <pre style={{ fontSize:11, color:'rgba(159,215,255,0.6)', overflowX:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all', maxHeight:300, overflowY:'auto' }}>
-              {JSON.stringify(rawData, null, 2)}
-            </pre>
+        {/* Trigger manual */}
+        <button onClick={triggerSync} disabled={syncing}
+          style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: syncing ? 'rgba(77,163,255,0.3)' : 'rgba(77,163,255,0.8)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, transition: 'all .2s' }}>
+          <RefreshCw size={16} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }}/>
+          {syncing ? 'Se sincronizează...' : 'Sincronizează acum'}
+        </button>
+
+        {/* Rezultat */}
+        {result && (
+          <div style={{ ...panel, borderTop: `2px solid ${result.ok ? '#4ADE80' : '#F87171'}` }}>
+            <div style={hdr}>
+              {result.ok ? <Check size={14} color="#4ADE80"/> : <AlertTriangle size={14} color="#F87171"/>}
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.07em' }}>
+                {result.ok ? 'Sync reușit' : 'Eroare sync'}
+              </span>
+            </div>
+            <div style={{ padding: '12px 14px' }}>
+              {result.ok ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  {[
+                    { l: 'Din 5starDesk', v: result.total_from_5star || 0, c: '#7BC8FF' },
+                    { l: 'Inserate', v: result.inserted || 0, c: '#4ADE80' },
+                    { l: 'Actualizate', v: result.updated || 0, c: '#FCD34D' },
+                    { l: 'Anulate', v: result.cancelled || 0, c: '#F87171' },
+                    { l: 'Erori', v: result.errors?.length || 0, c: result.errors?.length ? '#F87171' : '#4ADE80' },
+                    { l: 'Durată', v: `${result.duration_ms || 0}ms`, c: 'rgba(159,215,255,0.6)' },
+                  ].map(item => (
+                    <div key={item.l} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 7, padding: '7px 10px' }}>
+                      <div style={{ fontSize: 9, color: 'rgba(159,215,255,0.35)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.05em' }}>{item.l}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: item.c, fontFamily: 'monospace' }}>{item.v}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#F87171', fontFamily: 'monospace' }}>{result.error || result.msg}</div>
+              )}
+              {result.raw_sample && (
+                <div style={{ marginTop: 10, padding: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: 6, fontSize: 10, color: 'rgba(159,215,255,0.4)', fontFamily: 'monospace', wordBreak: 'break-all' as const }}>
+                  Sample 5starDesk response: {result.raw_sample}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Results */}
-        {result && (
-          <div style={panel}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
-              {[
-                { l:'Total', v:result.total, c:'#FFFFFF' },
-                { l:'Importate', v:result.inserted, c:'#4ADE80' },
-                { l:'Existente', v:result.skipped, c:'#94A3B8' },
-                { l:'Erori', v:result.errors, c:result.errors>0?'#F87171':'#94A3B8' },
-              ].map(s=>(
-                <div key={s.l} style={{ background:'rgba(14,27,43,0.5)', borderRadius:8, padding:'10px', textAlign:'center' }}>
-                  <div style={{ fontSize:20, fontWeight:700, color:s.c, fontFamily:'monospace' }}>{s.v}</div>
-                  <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)' }}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:300, overflowY:'auto' }}>
-              {result.logs.map((log,i)=>(
-                <div key={i} style={{ display:'flex', gap:8, padding:'5px 10px', borderRadius:6, background:log.type==='ok'?'rgba(34,197,94,0.06)':log.type==='err'?'rgba(239,68,68,0.06)':'rgba(214,228,244,0.03)', fontSize:11, color:log.type==='ok'?'#4ADE80':log.type==='err'?'#F87171':log.type==='info'?'#7BC8FF':'rgba(159,215,255,0.5)' }}>
-                  {log.msg}
-                </div>
-              ))}
-            </div>
+        {/* Info cron */}
+        <div style={{ ...panel }}>
+          <div style={hdr}>
+            <Clock size={14} color="rgba(159,215,255,0.5)"/>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.07em' }}>Cron automat</span>
           </div>
-        )}
+          <div style={{ padding: '12px 14px' }}>
+            {[
+              { l: 'Frecvență', v: 'La fiecare 30 minute' },
+              { l: 'Interval sync', v: 'Ultimele 30 zile + urm. 90 zile' },
+              { l: 'Rezervări incluse', v: 'Toate canalele (Booking, Airbnb, Direct)' },
+              { l: 'Rezervări excluse', v: 'Canal intern (rezervări manuale)' },
+              { l: 'La rezervare nouă', v: 'Inserată automat în baza de date' },
+              { l: 'La anulare', v: 'Status actualizat la anulata' },
+            ].map(item => (
+              <div key={item.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '0.5px solid rgba(159,215,255,0.06)' }}>
+                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.45)' }}>{item.l}</span>
+                <span style={{ fontSize: 12, color: 'rgba(214,228,244,0.7)', textAlign: 'right' as const, maxWidth: '55%' }}>{item.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
-      <Toast toast={toast}/>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   )
 }
