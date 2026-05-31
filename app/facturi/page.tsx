@@ -368,8 +368,8 @@ export default function FacturiPage() {
                             onChange={e => setFacturi(list => list.map(x => x.id===f.id ? {...x, apartament_id: e.target.value||null} : x))}
                             style={{ background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
                           >
-                            <option value="">— Apartament —</option>
-                            {apts.map(a => <option key={a.id} value={a.id}>{a.nota ? `${a.nota} ` : ''}{a.nume}</option>)}
+                            <option value="">— Selectează apartament —</option>
+                            {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any) => <option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
                           </select>
                         </div>
                       )}
