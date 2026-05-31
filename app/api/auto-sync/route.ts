@@ -57,10 +57,14 @@ export async function GET(req: NextRequest) {
 
     const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 
-    const raw5star = await fivestar('rezervari_lista', {
-      data_de: fmt(dateFrom),
-      data_pana: fmt(dateTo),
-    })
+    // Incearca mai multe actiuni posibile din 5starDesk API
+    let raw5star = await fivestar('rezervari_lista', { data_de: fmt(dateFrom), data_pana: fmt(dateTo) })
+    if (!Array.isArray(raw5star) && !Array.isArray(raw5star?.rezervari) && !Array.isArray(raw5star?.data)) {
+      raw5star = await fivestar('get_rezervari', { data_de: fmt(dateFrom), data_pana: fmt(dateTo) })
+    }
+    if (!Array.isArray(raw5star) && !Array.isArray(raw5star?.rezervari)) {
+      raw5star = await fivestar('rezervari', { de_la: fmt(dateFrom), pana_la: fmt(dateTo) })
+    }
 
     const rezervari5star = Array.isArray(raw5star) ? raw5star :
                            Array.isArray(raw5star?.rezervari) ? raw5star.rezervari :
@@ -89,33 +93,40 @@ export async function GET(req: NextRequest) {
     // 4. Proceseaza fiecare rezervare din 5starDesk
     for (const r5 of rezervari5star) {
       try {
-        const id5star = r5.id || r5.reservation_id || r5.cod || r5.nr
+        // Structura reala 5starDesk:
+        // id, nume, telefon, email, tara, unitate, data_rezervarii,
+        // data_sosire/data_checkin, data_plecare/data_checkout, sursa/canal,
+        // status, camera/apartament, nr_persoane, valoare/total
+        const id5star = r5.id || r5.reservation_id || r5.cod
         if (!id5star) continue
 
-        const sursa = r5.sursa || r5.source || r5.canal || r5.channel || ''
+        const sursa = r5.sursa || r5.canal_rezervare || r5.source || r5.canal || r5.channel || ''
         const canal = canalFromSursa(sursa)
-        const status5star = r5.status || r5.stare || 'confirmata'
+        const status5star = r5.status || r5.stare || r5.status_rezervare || 'confirmata'
         const statusRez = statusFromFivestar(status5star)
 
-        // Gaseste apartamentul
-        const numeApt = r5.camera || r5.apartament || r5.room || r5.unit || ''
-        const apt = apts.find((a: any) =>
-          numeApt.toLowerCase().includes(a.nota?.toLowerCase()) ||
-          numeApt.toLowerCase().includes(a.nume?.toLowerCase()) ||
-          a.nota?.toLowerCase() === numeApt.toLowerCase()
-        )
-
+        // Apartament - 5starDesk foloseste 'unitate' sau 'camera'
+        const numeApt = r5.camera || r5.unitate || r5.apartament || r5.room || r5.unit || ''
+        const apt = apts.find((a: any) => {
+          const aptNume = (a.nume || '').toLowerCase()
+          const aptNota = (a.nota || '').toLowerCase()
+          const src = numeApt.toLowerCase()
+          return src.includes(aptNota) || src.includes(aptNume) ||
+                 aptNota === src || aptNume === src ||
+                 src.includes(aptNume.split(' ')[0])
+        })
         const aptId = apt?.id || null
 
-        const checkin  = r5.data_checkin || r5.checkin || r5.check_in || r5.arrival || ''
-        const checkout = r5.data_checkout || r5.checkout || r5.check_out || r5.departure || ''
+        // Date - 5starDesk poate folosi data_sosire/data_plecare sau data_checkin/data_checkout
+        const checkin  = r5.data_checkin || r5.data_sosire || r5.checkin || r5.check_in || r5.arrival || ''
+        const checkout = r5.data_checkout || r5.data_plecare || r5.checkout || r5.check_out || r5.departure || ''
         if (!checkin || !checkout) continue
 
-        const client   = r5.client || r5.guest || r5.nume_client || r5.name || 'Client 5starDesk'
+        const client   = r5.nume || r5.client || r5.guest || r5.nume_client || r5.name || 'Client 5starDesk'
         const telefon  = r5.telefon || r5.phone || r5.tel || null
-        const email    = r5.email || null
-        const nrPers   = Number(r5.nr_persoane || r5.persons || r5.pax || 1)
-        const valoare  = Number(r5.valoare || r5.total || r5.price || r5.suma || 0)
+        const email    = typeof r5.email === 'string' ? r5.email : null
+        const nrPers   = Number(r5.nr_persoane || r5.persons || r5.pax || r5.nr_adulti || 1)
+        const valoare  = Number(r5.valoare || r5.total || r5.price || r5.suma || r5.suma_totala || 0)
         const obsKey   = `5SD-${id5star}`
 
         const existing = existingMap.get(obsKey)
