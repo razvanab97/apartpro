@@ -130,10 +130,10 @@ export default function FacturiPage() {
       const pad = (n: number) => String(n).padStart(2,'0')
       const storagePath = `facturi/${now.getFullYear()}-${pad(now.getMonth()+1)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('documente')
+        .from('Facturi')
         .upload(storagePath, file, { contentType: mimeType, upsert: true })
       if (!uploadError && uploadData) {
-        const { data: urlData } = supabase.storage.from('documente').getPublicUrl(storagePath)
+        const { data: urlData } = supabase.storage.from('Facturi').getPublicUrl(storagePath)
         fileUrl = urlData.publicUrl
       }
     } catch {}
