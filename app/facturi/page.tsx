@@ -166,9 +166,20 @@ export default function FacturiPage() {
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
     const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
+    // Mapeaza categoria facturii la col_key din UTIL_COLS pentru cheltuieli
+    const categorieToColKey: Record<string,string> = {
+      'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
+      'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
+      'Urbica': 'urbica', 'urbica': 'urbica',
+      'TermoService': 'termoservice', 'termoservice': 'termoservice',
+      'Salubris': 'salubris', 'salubris': 'salubris',
+      'Internet': 'internet', 'internet': 'internet',
+      'Asociatie': 'asociatie', 'asociatie': 'asociatie',
+    }
+    const colKey = categorieToColKey[f.categorieLabel || ''] || categorieToColKey[f.categorie || ''] || null
     const { data, error } = await supabase.from('cheltuieli').insert({
       apartament_id: f.apartament_id || null,
-      categorie: f.categorieLabel?.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z_]/g,'') || 'alta',
+      categorie: colKey || f.categorie || 'alta',
       descriere: `${f.categorieLabel} — ${f.furnizor}`,
       valoare: f.suma_totala,
       data: dataScadenta,
@@ -269,7 +280,12 @@ export default function FacturiPage() {
                               <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
                                 {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>
                               </span>
-                              {f.data_scadenta && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>scad. {f.data_scadenta}</span>}
+                              {(f as any)._autoMatched && (
+                                <span style={{ fontSize:10, padding:'2px 7px', borderRadius:5, background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.25)', color:'#4ADE80' }}>
+                                  ✓ asociat automat
+                                </span>
+                              )}
+                            {f.data_scadenta && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>scad. {f.data_scadenta}</span>}
                               {f.perioada && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>{f.perioada}</span>}
                             </div>
                           </>
@@ -296,11 +312,20 @@ export default function FacturiPage() {
                           {f.status !== 'salvat' && f.status !== 'eroare' && (
                             <button
                               onClick={() => saveToSupabase(f)}
-                              disabled={!!isSaving}
-                              style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 14px', borderRadius:8, border:'none', background: isSaving?'rgba(77,163,255,0.3)':'var(--accent-blue)', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer', transition:'all .15s' }}
+                              disabled={!!isSaving || !f.apartament_id}
+                              title={!f.apartament_id ? 'Selectează apartamentul mai întâi' : ''}
+                              style={{
+                                display:'flex', alignItems:'center', gap:5, padding:'7px 16px',
+                                borderRadius:8, border:`1px solid ${f.apartament_id ? 'rgba(74,222,128,0.4)' : 'rgba(159,215,255,0.15)'}`,
+                                background: f.apartament_id ? 'rgba(74,222,128,0.12)' : 'rgba(159,215,255,0.04)',
+                                color: f.apartament_id ? '#4ADE80' : 'rgba(159,215,255,0.3)',
+                                cursor: f.apartament_id ? 'pointer' : 'not-allowed',
+                                fontSize:12, fontWeight: f.apartament_id ? 600 : 400,
+                                opacity: isSaving ? 0.5 : 1, transition:'all .15s',
+                              }}
                             >
-                              {isSaving ? <Loader size={12} style={{ animation:'spin 1s linear infinite' }}/> : <Check size={12}/>}
-                              {isSaving ? 'Se salvează...' : 'Salvează'}
+                              {isSaving ? <Loader size={12} style={{ animation:'spin 1s linear infinite' }}/> : null}
+                              {isSaving ? 'Se salvează...' : (f.apartament_id ? '✓ Adaugă la cheltuieli' : 'Selectează apartament')}
                             </button>
                           )}
                           {f.status === 'salvat' && (
