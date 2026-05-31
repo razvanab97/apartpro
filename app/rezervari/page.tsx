@@ -36,6 +36,7 @@ export default function RezervariPage() {
   const [filterCanal, setFilterCanal] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterApt, setFilterApt] = useState('')
+  const [searchNume, setSearchNume] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [showCalc, setShowCalc] = useState(false)
@@ -125,6 +126,7 @@ export default function RezervariPage() {
     if (filterCanal && r.canal !== filterCanal) return false
     if (filterStatus && r.status_rezervare !== filterStatus) return false
     if (filterApt && r.apartament_id !== filterApt) return false
+    if (searchNume && !r.nume_client?.toLowerCase().includes(searchNume.toLowerCase()) && !r.telefon_client?.includes(searchNume)) return false
     if (dateFrom && r.data_checkin < dateFrom) return false
     if (dateTo && r.data_checkin > dateTo) return false
     return true
@@ -183,7 +185,12 @@ export default function RezervariPage() {
       <div className="p-6" style={{ overflowY:"auto" }}>
         {/* Filtre */}
         <div className="flex gap-3 mb-5">
-          <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}>
+          <input
+            value={searchNume} onChange={e=>setSearchNume(e.target.value)}
+            placeholder="🔍 Caută client sau telefon..."
+            style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(100,160,255,0.2)', background:'rgba(20,38,65,0.8)', color:'rgba(214,228,244,0.9)', fontSize:13, outline:'none', minWidth:220 }}
+          />
+          <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}}>
             <option value="">Toate apartamentele</option>
             {apartamente.map(a=><option key={a.id} value={a.id}>{a.nume}</option>)}
           </select>
@@ -218,7 +225,7 @@ export default function RezervariPage() {
               </button>
             ))}
           </div>
-          {(filterCanal||filterStatus||filterApt||dateFrom||dateTo) && (
+          {(filterCanal||filterStatus||filterApt||dateFrom||dateTo||searchNume) && (
             <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('');setDateFrom('');setDateTo('')}}>✕ Reset</Button>
           )}
         </div>
