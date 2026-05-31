@@ -242,7 +242,6 @@ export default function ApartamentePage() {
                   <CopyBtn text={selected.link_booking}/>
                 </div>
               )}
-              )}
               {selected.link_airbnb && (
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <a href={selected.link_airbnb} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(239,68,68,0.1)', color:'#F87171', border:'1px solid rgba(239,68,68,0.18)', textDecoration:'none', flex:1 }}>
