@@ -63,28 +63,49 @@ export default function FacturiPage() {
   }, [])
 
   async function loadApts() {
-    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa').eq('status','activ').order('nume')
+    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa').order('nume')
     setApts(data || [])
   }
 
-  // Auto-potrivire apartament dupa adresa din factura - incearca toate adresele
+  // Auto-potrivire apartament dupa adresa + titular din factura
   function matchApartament(adresaFactura: string | null, aptList: any[]): string | null {
     if (!adresaFactura || !aptList.length) return null
     const af = adresaFactura.toLowerCase().replace(/[,.\-]/g,' ').replace(/\s+/g,' ').trim()
     const keywords = af.split(' ').filter((w:string) => w.length > 3)
     let bestMatch: {id:string; score:number} | null = null
     for (const apt of aptList) {
+      // Matching dupa adresa
       const aptAddr = (apt.adresa || '').toLowerCase().replace(/[,.\-]/g,' ')
-      if (!aptAddr) continue
+      // Matching dupa nota (Canta, Mircea, R99) sau nume
+      const aptNota = (apt.nota || '').toLowerCase()
+      const aptNume = (apt.nume || '').toLowerCase()
       let score = 0
-      for (const kw of keywords) {
-        if (aptAddr.includes(kw)) score++
+      if (aptAddr) {
+        for (const kw of keywords) {
+          if (aptAddr.includes(kw)) score += 2
+        }
       }
+      // Bonus: titular contine nota apartamentului (ex: titular "Canta Ion" → apt nota "Canta")
+      if (aptNota.length > 2 && af.includes(aptNota)) score += 5
+      if (aptNume.length > 2 && af.includes(aptNume)) score += 3
       if (score > 0 && (!bestMatch || score > bestMatch.score)) {
         bestMatch = { id: apt.id, score }
       }
     }
     return bestMatch && bestMatch.score >= 2 ? bestMatch.id : null
+  }
+
+  // Matching si dupa titular (ex: "Canta Alexandru" → apt nota "Canta")
+  function matchByTitular(titular: string | null, aptList: any[]): string | null {
+    if (!titular || !aptList.length) return null
+    const t = titular.toLowerCase()
+    for (const apt of aptList) {
+      const nota = (apt.nota || '').toLowerCase()
+      const nume = (apt.nume || '').toLowerCase()
+      if (nota.length > 2 && t.includes(nota)) return apt.id
+      if (nume.length > 3 && t.includes(nume)) return apt.id
+    }
+    return null
   }
 
   async function loadSaved() {
@@ -160,6 +181,10 @@ export default function FacturiPage() {
       for (const addr of adreseToTry) {
         autoAptId = matchApartament(addr, apts)
         if (autoAptId) break
+      }
+      // Fallback: matching dupa titular (util pentru Canta/Mircea/R99)
+      if (!autoAptId && data.titular) {
+        autoAptId = matchByTitular(data.titular, apts)
       }
       setFacturi(f => f.map(x => x.id === id ? {
         ...x, ...data, id, processing: false,
