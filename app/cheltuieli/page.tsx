@@ -149,7 +149,7 @@ export default function CheltuieliPage(){
     const prevLuna = luna===1?12:luna-1
     const prevAn   = luna===1?an-1:an
     const [{data:aptData},{data:chData},{data:chDataPrev}]=await Promise.all([
-      supabase.from('apartamente').select('id,nume,nota,status').order('nume'),
+      supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
         .gte('data',`${an}-${pad(luna)}-01`)
