@@ -584,12 +584,13 @@ function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada
   const [lenjerii, setLenjerii] = useState(0)
   const [promovare, setPromovare] = useState(0)
   const [incasatCash, setIncasatCash] = useState(0)
+  const [chirie, setChirie] = useState(0)
   const [altelinii, setAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
 
-  const totalScazaminte = Number(contabilitate)+Number(curatenie)+Number(lenjerii)+Number(promovare)+
+  const totalScazaminte = Number(contabilitate)+Number(curatenie)+Number(lenjerii)+Number(promovare)+Number(chirie)+
+    Number(incasatCash) + // cash deja incasat de proprietar = se scade din ce mai platim
     altelinii.filter(l=>l.tip==='scade').reduce((s,l)=>s+Number(l.val||0),0)
-  const totalAdaosuri = Number(incasatCash) +
-    altelinii.filter(l=>l.tip==='adauga').reduce((s,l)=>s+Number(l.val||0),0)
+  const totalAdaosuri = altelinii.filter(l=>l.tip==='adauga').reduce((s,l)=>s+Number(l.val||0),0)
   const netProprietar = netFinal + totalAdaosuri - totalScazaminte
 
   function fmtR(v:number){ return v.toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}) }
@@ -626,17 +627,21 @@ function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada
           <span style={{ fontSize:18, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{fmtR(netFinal)} RON</span>
         </div>
 
-        {/* Incasat cash */}
+        {/* Incasat cash + Chirie */}
         <div>
-          <div style={{ fontSize:11, fontWeight:600, color:'rgba(74,222,128,0.6)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>+ Încasat cash</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, alignItems:'center' }}>
+          <div style={{ fontSize:11, fontWeight:600, color:'rgba(248,113,113,0.6)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>− Plăți directe proprietar</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
             <div>
-              <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4 }}>Sumă încasată cash (se adaugă la total)</div>
+              <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Încasat cash de proprietar</div>
+              <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Proprietarul a primit direct → se scade din ce îi mai datorezi</div>
               <input type="number" min={0} value={incasatCash||''} placeholder="0"
                 onChange={e=>setIncasatCash(Number(e.target.value)||0)} style={inp}/>
             </div>
-            <div style={{ fontSize:14, fontWeight:700, color:'#4ADE80', fontFamily:'monospace', paddingTop:20, minWidth:80, textAlign:'right' as const }}>
-              + {fmtR(Number(incasatCash))}
+            <div>
+              <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Chirie plătită</div>
+              <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Chiria lunară achitată proprietarului → se scade din total</div>
+              <input type="number" min={0} value={chirie||''} placeholder="0"
+                onChange={e=>setChirie(Number(e.target.value)||0)} style={inp}/>
             </div>
           </div>
         </div>
@@ -694,7 +699,8 @@ function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada
           <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
             {[
               ['Net raportat', netFinal, '#4ADE80', false],
-              incasatCash>0 && ['+ Încasat cash', incasatCash, '#4ADE80', false],
+              incasatCash>0 && ['− Încasat cash (direct)', incasatCash, '#F87171', true],
+              chirie>0 && ['− Chirie plătită', chirie, '#F87171', true],
               ...altelinii.filter(l=>l.tip==='adauga'&&l.val>0).map(l=>[`+ ${l.desc||'Adaos'}`, l.val, '#4ADE80', false]),
               contabilitate>0 && ['− Contabilitate', contabilitate, '#F87171', true],
               curatenie>0 && ['− Curățenie', curatenie, '#F87171', true],
