@@ -225,14 +225,14 @@ export default function RapoartePage() {
 
       autoTable(doc, {
         startY: 35, head: [cols], body: rows,
-        styles: { fontSize: 7, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 2, textColor: [30,30,30], fillColor: [255,255,255] },
         headStyles: { fillColor: [14,27,43], textColor: [159,215,255], fontStyle:'bold' },
-        alternateRowStyles: { fillColor: [20,35,55] },
-        bodyStyles: { textColor: [214,228,244] },
+        alternateRowStyles: { fillColor: [245,248,255] },
+        bodyStyles: { textColor: [30,30,30], fillColor: [255,255,255] },
         didParseCell: (data: any) => {
           if (data.row.index === rows.length - 1) {
-            data.cell.styles.fillColor = [14,27,43]
-            data.cell.styles.textColor = [77,255,163]
+            data.cell.styles.fillColor = [0,80,40]
+            data.cell.styles.textColor = [200,255,200]
             data.cell.styles.fontStyle = 'bold'
           }
         }
@@ -373,11 +373,11 @@ export default function RapoartePage() {
 
         {/* TABLE */}
         {generated && (
-          <div style={{ ...panel, overflow:'hidden' }}>
+          <div style={{ ...panel, overflow:'visible' }}>
             {rezervari.length === 0 ? (
               <div style={{ padding:'40px', textAlign:'center', color:'rgba(159,215,255,0.4)', fontSize:13 }}>Nicio rezervare pentru filtrele selectate</div>
             ) : (
-              <div style={{ overflowX:'auto', overflowY:'auto', maxHeight:'65vh', minHeight:'200px' }}>
+              <div style={{ overflowX:'auto', overflowY:'scroll', maxHeight:'55vh', borderRadius:8 }}>
                 <table style={{ width:'100%', borderCollapse:'collapse' }}>
                   <thead style={{ background:'rgba(14,27,43,0.95)', position:'sticky', top:0, zIndex:2 }}>
                     <tr>
