@@ -63,7 +63,7 @@ export default function FacturiPage() {
   }, [])
 
   async function loadApts() {
-    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa').order('nume')
+    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa,status').order('nota,nume')
     setApts(data || [])
   }
 
@@ -369,7 +369,9 @@ export default function FacturiPage() {
                             style={{ background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
                           >
                             <option value="">— Selectează apartament —</option>
-                            {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any) => <option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
+                            {[...apts].filter((a:any)=>a.status==='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
+                            {apts.filter((a:any)=>a.status!=='activ').length>0&&<option disabled>── Alte locații ──</option>}
+                            {[...apts].filter((a:any)=>a.status!=='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
                           </select>
                         </div>
                       )}
