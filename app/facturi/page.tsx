@@ -93,12 +93,19 @@ export default function FacturiPage() {
     const an = now.getFullYear()
     const pad = (n: number) => String(n).padStart(2,'0')
     const { data } = await supabase.from('cheltuieli')
-      .select('id,descriere,valoare,data,nota,categorie,status,apartament_id')
+      .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
       .gte('data', `${an}-${pad(luna)}-01`)
       .lte('data', `${an}-${pad(luna)}-31`)
       .not('nota', 'is', null)
       .order('created_at', { ascending: false })
     setSavedFacturi(data || [])
+  }
+
+  async function deleteFacturaSalvata(id: string) {
+    if (!confirm('Ștergi această cheltuială?')) return
+    const { error } = await supabase.from('cheltuieli').delete().eq('id', id)
+    if (error) show('error', error.message)
+    else { show('success', 'Cheltuială ștearsă'); loadSaved() }
   }
 
   async function processFile(file: File) {
@@ -391,16 +398,22 @@ export default function FacturiPage() {
               Facturi salvate luna aceasta — {savedFacturi.length}
             </div>
             <div style={{ ...glassCard, overflow:'hidden' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)', padding:'8px 16px' }}>
-                {['Descriere','Data','Valoare','Status'].map(h=>(
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px 36px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)', padding:'8px 16px' }}>
+                {['Descriere','Data','Valoare','Status',''].map(h=>(
                   <div key={h} style={{ fontSize:10, fontWeight:500, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</div>
                 ))}
               </div>
               {savedFacturi.map((f,i) => (
-                <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px', padding:'10px 16px', borderBottom: i<savedFacturi.length-1?'1px solid rgba(100,160,255,0.06)':'none', alignItems:'center' }}>
+                <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px 36px', padding:'10px 16px', borderBottom: i<savedFacturi.length-1?'1px solid rgba(100,160,255,0.06)':'none', alignItems:'center' }}>
                   <div>
                     <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
                     {f.nota && <div style={{ fontSize:11, color:'rgba(159,215,255,0.35)', marginTop:2 }}>{f.nota}</div>}
+                    {f.fisier_url && (
+                      <a href={f.fisier_url} target="_blank" rel="noopener"
+                        style={{ fontSize:10, color:'rgba(77,163,255,0.6)', textDecoration:'none', marginTop:2, display:'inline-flex', alignItems:'center', gap:3 }}>
+                        📄 Deschide factura
+                      </a>
+                    )}
                   </div>
                   <div style={{ fontSize:12, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{f.data}</div>
                   <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', fontFamily:'monospace' }}>{Number(f.valoare).toLocaleString('ro-RO')} RON</div>
@@ -408,6 +421,12 @@ export default function FacturiPage() {
                     <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500 }}>
                       {f.status==='validat'?'Plătit':'Neachitat'}
                     </span>
+                  </div>
+                  <div>
+                    <button onClick={() => deleteFacturaSalvata(f.id)}
+                      style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(248,113,113,0.2)', background:'rgba(248,113,113,0.06)', color:'rgba(248,113,113,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      <Trash2 size={12}/>
+                    </button>
                   </div>
                 </div>
               ))}
