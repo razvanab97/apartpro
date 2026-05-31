@@ -1,7 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_KEY
+const CLAUDE_KEY = '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'
+
+async function callClaude(prompt: string, imageBase64?: string, imageType?: string): Promise<string> {
+  const content: any[] = []
+  
+  if (imageBase64) {
+    content.push({
+      type: 'image',
+      source: { type: 'base64', media_type: imageType || 'image/jpeg', data: imageBase64 }
+    })
+  }
+  content.push({ type: 'text', text: prompt })
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': CLAUDE_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content }],
+    }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error.message)
+  return data.content?.[0]?.text || '{}'
+}
 const SUPABASE_URL = 'https://lsmraxevzkmupaidianv.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzbXJheGV2emttdXBhaWRpYW52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTkwMDA5NywiZXhwIjoyMDk1NDc2MDk3fQ.CagkIVPFE6r8D1oZPoxvs3jzJDR3HSwtx0GzM0etpss'
 
@@ -124,22 +152,7 @@ export async function POST(req: NextRequest) {
     text || '(din imagine)',
   ].join('\n')
 
-  const parts: any[] = [{ text: extractPrompt }]
-  if (imageBase64) {
-    parts[0].text = extractPrompt
-    parts.push({ inline_data: { mime_type: imageType || 'image/jpeg', data: imageBase64 } })
-  }
-
-  const extractRes = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
-    }),
-  })
-  const extractData = await extractRes.json()
-  const extractRaw = extractData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+  const extractRaw = await callClaude(extractPrompt, imageBase64, imageType)
   let extracted: any = {}
   try {
     const parsed = JSON.parse(extractRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim())
@@ -227,16 +240,7 @@ export async function POST(req: NextRequest) {
     '- Raspunsul sa fie in ' + (extracted.limba === 'en' ? 'engleza' : extracted.limba === 'fr' ? 'franceza' : extracted.limba === 'de' ? 'germana' : 'romana'),
   ].join('\n')
 
-  const recRes = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: recPrompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 700 },
-    }),
-  })
-  const recData = await recRes.json()
-  const recRaw = recData.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+  const recRaw = await callClaude(recPrompt)
   let recommended: any = {}
   try { recommended = JSON.parse(recRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()) } catch {}
 
