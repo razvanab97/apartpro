@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [coAziCur,setCoAziCur]=useState<any[]>([])
   const [ciAziCur,setCiAziCur]=useState<any[]>([])
   const [prognoza,setPrognoza]=useState({incasariLV:0,cheltuieliLC:0})
+  const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
 
@@ -192,6 +193,19 @@ export default function DashboardPage() {
       .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
+    // Booking widget - perioada curenta (Vineri-Joi)
+    const nowD=new Date(); const dayD=nowD.getDay()
+    const diffFri=(dayD+2)%7
+    const friD=new Date(nowD); friD.setDate(nowD.getDate()-diffFri); friD.setHours(0,0,0,0)
+    const thuD=new Date(friD); thuD.setDate(friD.getDate()+6)
+    const payFriD=new Date(friD); payFriD.setDate(friD.getDate()+7)
+    const fmtD=(d:Date)=>d.toISOString().split('T')[0]
+    const {data:bkRez}=await supabase.from('rezervari').select('valoare_bruta,suma_incasata,status_plata').eq('canal','booking').neq('status_rezervare','anulata').gte('data_checkout',fmtD(friD)).lte('data_checkout',fmtD(thuD))
+    const bkNet=(bkRez||[]).reduce((s:number,r:any)=>s+Number(r.valoare_bruta||r.suma_incasata||0)*0.83,0)
+    const bkKey=`booking_period_${fmtD(friD)}`
+    const {data:bkSaved}=await supabase.from('setari').select('valoare').eq('cheie',bkKey).maybeSingle()
+    const bkStatus=bkSaved?.valoare||(bkRez||[]).every((r:any)=>r.status_plata==='incasat')?'incasat':'urmeaza'
+    setBookingWidget({net:Math.round(bkNet),count:(bkRez||[]).length,payDate:fmtD(payFriD),status:bkStatus,from:fmtD(friD),to:fmtD(thuD)})
     setLoading(false)
   }
 
@@ -389,6 +403,29 @@ export default function DashboardPage() {
         })()}
 
         </div>
+        {/* ══ BOOKING WIDGET ══ */}
+        <div className="prognoza-card">
+        {(()=>{
+          const isInc=bookingWidget.status==='incasat'
+          const payDateFmt=bookingWidget.payDate?new Date(bookingWidget.payDate+'T12:00:00').toLocaleDateString('ro-RO',{day:'numeric',month:'short'}):''
+          return bookingWidget.count>0?(
+            <div style={{background:'rgba(214,228,244,0.05)',border:'0.5px solid rgba(0,83,186,0.3)',borderTop:'2px solid #0055A5',borderRadius:10,padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto',alignItems:'center',gap:12}}>
+              <div style={{width:36,height:36,borderRadius:9,background:'rgba(0,83,186,0.15)',border:'0.5px solid rgba(0,83,186,0.3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                <span style={{fontSize:18}}>🏨</span>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.45)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:2}}>Încasare Booking</div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{bookingWidget.count} rez · {lunaLabel} · Plată {payDateFmt}</div>
+              </div>
+              <div style={{textAlign:'right' as const}}>
+                <div style={{fontSize:18,fontWeight:700,color:isInc?'#4ADE80':'#60A5FA',fontFamily:'monospace'}}>{bookingWidget.net.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON net</div>
+              </div>
+            </div>
+          ):null
+        })()}
+        </div>
+
         {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
