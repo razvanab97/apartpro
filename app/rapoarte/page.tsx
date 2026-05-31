@@ -120,6 +120,9 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r:
 export default function RapoartePage() {
   const [apartamente, setApartamente] = useState<any[]>([])
   const [selectedApts, setSelectedApts] = useState<string[]>([])
+  const [modSelectie, setModSelectie] = useState<'luna'|'zile'>('luna')
+  const [dataStart, setDataStart] = useState('')
+  const [dataEnd, setDataEnd] = useState('')
   const [lunaStart, setLunaStart] = useState(new Date().getMonth() + 1)
   const [anStart, setAnStart] = useState(new Date().getFullYear())
   const [lunaEnd, setLunaEnd] = useState(new Date().getMonth() + 1)
@@ -146,8 +149,8 @@ export default function RapoartePage() {
 
   async function genereaza() {
     setLoading(true)
-    const primaZi = new Date(anStart, lunaStart - 1, 1)
-    const ultimaZi = new Date(anEnd, lunaEnd, 0)
+    const primaZi = modSelectie === 'zile' && dataStart ? new Date(dataStart+'T00:00:00') : new Date(anStart, lunaStart - 1, 1)
+    const ultimaZi = modSelectie === 'zile' && dataEnd ? new Date(dataEnd+'T23:59:59') : new Date(anEnd, lunaEnd, 0)
     const start = primaZi.toISOString().split('T')[0]
     const end = ultimaZi.toISOString().split('T')[0]
 
@@ -299,27 +302,55 @@ export default function RapoartePage() {
                 ))}
               </div>
             </div>
-            <div>
-              <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>De la</label>
-              <div style={{ display:'flex', gap:4 }}>
-                <select value={lunaStart} onChange={e=>setLunaStart(Number(e.target.value))} style={{ flex:2 }}>
-                  {LUNI.map((l,i)=><option key={i} value={i+1}>{l}</option>)}
-                </select>
-                <select value={anStart} onChange={e=>setAnStart(Number(e.target.value))} style={{ flex:1 }}>
-                  {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
-                </select>
+            <div style={{ gridColumn:'1/-1' }}>
+              <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+                {([['luna','📅 Pe lună'],['zile','🗓 Interval exact']] as [string,string][]).map(([k,l])=>(
+                  <button key={k} onClick={()=>setModSelectie(k as any)}
+                    style={{ padding:'5px 14px', borderRadius:7, border:`1px solid ${modSelectie===k?'rgba(77,163,255,0.4)':'rgba(159,215,255,0.12)'}`, background:modSelectie===k?'rgba(77,163,255,0.12)':'transparent', color:modSelectie===k?'#7BC8FF':'rgba(159,215,255,0.45)', fontSize:12, fontWeight:modSelectie===k?600:400, cursor:'pointer', transition:'all .15s' }}>
+                    {l}
+                  </button>
+                ))}
               </div>
-            </div>
-            <div>
-              <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>Până la</label>
-              <div style={{ display:'flex', gap:4 }}>
-                <select value={lunaEnd} onChange={e=>setLunaEnd(Number(e.target.value))} style={{ flex:2 }}>
-                  {LUNI.map((l,i)=><option key={i} value={i+1}>{l}</option>)}
-                </select>
-                <select value={anEnd} onChange={e=>setAnEnd(Number(e.target.value))} style={{ flex:1 }}>
-                  {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
-                </select>
-              </div>
+              {modSelectie==='luna'&&(
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <div>
+                    <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>De la</label>
+                    <div style={{ display:'flex', gap:4 }}>
+                      <select value={lunaStart} onChange={e=>setLunaStart(Number(e.target.value))} style={{ flex:2 }}>
+                        {LUNI.map((l,i)=><option key={i} value={i+1}>{l}</option>)}
+                      </select>
+                      <select value={anStart} onChange={e=>setAnStart(Number(e.target.value))} style={{ flex:1 }}>
+                        {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>Până la</label>
+                    <div style={{ display:'flex', gap:4 }}>
+                      <select value={lunaEnd} onChange={e=>setLunaEnd(Number(e.target.value))} style={{ flex:2 }}>
+                        {LUNI.map((l,i)=><option key={i} value={i+1}>{l}</option>)}
+                      </select>
+                      <select value={anEnd} onChange={e=>setAnEnd(Number(e.target.value))} style={{ flex:1 }}>
+                        {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {modSelectie==='zile'&&(
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <div>
+                    <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>De la</label>
+                    <input type="date" value={dataStart} onChange={e=>setDataStart(e.target.value)}
+                      style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid rgba(100,160,255,0.2)', background:'rgba(20,38,65,0.8)', color:'rgba(214,228,244,0.9)', fontSize:13, outline:'none' }}/>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>Până la</label>
+                    <input type="date" value={dataEnd} onChange={e=>setDataEnd(e.target.value)}
+                      style={{ width:'100%', padding:'7px 10px', borderRadius:8, border:'1px solid rgba(100,160,255,0.2)', background:'rgba(20,38,65,0.8)', color:'rgba(214,228,244,0.9)', fontSize:13, outline:'none' }}/>
+                  </div>
+                </div>
+              )}
             </div>
             {tipRaport === 'cu_comision' && (
               <div>
