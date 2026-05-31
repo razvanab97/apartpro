@@ -568,24 +568,25 @@ export default function RapoartePage() {
         </div>
       )}
       {/* ══ CALCULATOR DECONTAT PROPRIETAR ══ */}
-      <CalculatorDecontat netFinal={generated ? totals.netFinal : 0} perioada={periodStart && periodEnd ? `${periodStart} — ${periodEnd}` : 'Generează raportul pentru a vedea suma netă'}/>
+      <CalculatorDecontat netFinal={totals.netFinal} perioada={periodStart && periodEnd ? `${periodStart} — ${periodEnd}` : ''} generated={generated}/>
       <Toast toast={toast}/>
     </div>
   )
 }
 
-function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada: string }) {
+function CalculatorDecontat({ netFinal, perioada, generated }: { netFinal: number; perioada: string; generated: boolean }) {
   const [contabilitate, setContabilitate] = useState(0)
   const [curatenie, setCuratenie] = useState(0)
   const [lenjerii, setLenjerii] = useState(0)
   const [promovare, setPromovare] = useState(0)
-  const [altelinii, setAltelinii] = useState<{desc:string;val:number}[]>([
-    {desc:'', val:0}
-  ])
+  const [incasatCash, setIncasatCash] = useState(0)
+  const [altelinii, setAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
 
-  const totalScazaminte = Number(contabilitate) + Number(curatenie) + Number(lenjerii) + Number(promovare) +
-    altelinii.reduce((s,l) => s + Number(l.val||0), 0)
-  const netProprietar = netFinal - totalScazaminte
+  const totalScazaminte = Number(contabilitate)+Number(curatenie)+Number(lenjerii)+Number(promovare)+
+    altelinii.filter(l=>l.tip==='scade').reduce((s,l)=>s+Number(l.val||0),0)
+  const totalAdaosuri = Number(incasatCash) +
+    altelinii.filter(l=>l.tip==='adauga').reduce((s,l)=>s+Number(l.val||0),0)
+  const netProprietar = netFinal + totalAdaosuri - totalScazaminte
 
   function fmtR(v:number){ return v.toLocaleString('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}) }
 
@@ -596,92 +597,122 @@ function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada
   }
   const panel2: React.CSSProperties = {
     background:'rgba(214,228,244,0.05)', border:'0.5px solid rgba(159,215,255,0.1)',
+    borderTop: '2px solid rgba(252,211,77,0.4)',
     borderRadius:12, overflow:'hidden', margin:'0 20px 20px'
   }
+
+  if (!generated) return (
+    <div style={panel2}>
+      <div style={{ padding:'16px', textAlign:'center' as const, color:'rgba(159,215,255,0.3)', fontSize:13, fontStyle:'italic' }}>
+        💰 Generează raportul pentru a vedea calculatorul de decontat
+      </div>
+    </div>
+  )
 
   return (
     <div style={panel2}>
       <div style={{ padding:'12px 16px', background:'rgba(14,27,43,0.5)', borderBottom:'0.5px solid rgba(159,215,255,0.07)', display:'flex', alignItems:'center', gap:8 }}>
         <span style={{ fontSize:14 }}>💰</span>
-        <div>
+        <div style={{ flex:1 }}>
           <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>Calculator decontat proprietar</div>
           <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>{perioada}</div>
         </div>
+        <div style={{ textAlign:'right' as const }}>
+          <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', textTransform:'uppercase', letterSpacing:'.05em' }}>Net raportat</div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{fmtR(netFinal)} RON</div>
+        </div>
       </div>
-      <div style={{ padding:'16px' }}>
+      <div style={{ padding:'16px', display:'flex', flexDirection:'column', gap:14 }}>
 
         {/* Net de baza */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', background:'rgba(74,222,128,0.06)', border:'0.5px solid rgba(74,222,128,0.2)', borderRadius:8, marginBottom:14 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:'rgba(74,222,128,0.06)', border:'0.5px solid rgba(74,222,128,0.2)', borderRadius:8 }}>
           <span style={{ fontSize:13, color:'rgba(159,215,255,0.6)' }}>Net după platforme și comision AB</span>
           <span style={{ fontSize:18, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{fmtR(netFinal)} RON</span>
         </div>
 
-        {/* Scazaminte */}
-        <div style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:10 }}>Scăzăminte</div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
-          {[
-            ['Contabilitate', contabilitate, setContabilitate],
-            ['Curățenie', curatenie, setCuratenie],
-            ['Lenjerii', lenjerii, setLenjerii],
-            ['Promovare', promovare, setPromovare],
-          ].map(([label, val, setter]: any) => (
-            <div key={label}>
-              <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
-              <input type="number" min={0} value={val||''} placeholder="0"
-                onChange={e=>setter(Number(e.target.value)||0)}
-                style={inp}/>
+        {/* Incasat cash */}
+        <div>
+          <div style={{ fontSize:11, fontWeight:600, color:'rgba(74,222,128,0.6)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>+ Încasat cash</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:8, alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4 }}>Sumă încasată cash (se adaugă la total)</div>
+              <input type="number" min={0} value={incasatCash||''} placeholder="0"
+                onChange={e=>setIncasatCash(Number(e.target.value)||0)} style={inp}/>
             </div>
-          ))}
-        </div>
-
-        {/* Alte costuri */}
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>
-            Alte costuri / deduceri
+            <div style={{ fontSize:14, fontWeight:700, color:'#4ADE80', fontFamily:'monospace', paddingTop:20, minWidth:80, textAlign:'right' as const }}>
+              + {fmtR(Number(incasatCash))}
+            </div>
           </div>
-          {altelinii.map((linie, idx) => (
-            <div key={idx} style={{ display:'grid', gridTemplateColumns:'1fr 120px auto', gap:6, marginBottom:6 }}>
-              <input value={linie.desc} placeholder="Descriere (ex: reparație)"
-                onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],desc:e.target.value}; setAltelinii(n) }}
-                style={inp}/>
-              <input type="number" min={0} value={linie.val||''} placeholder="0 RON"
-                onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],val:Number(e.target.value)||0}; setAltelinii(n) }}
-                style={inp}/>
-              <button onClick={()=>setAltelinii(altelinii.filter((_,i)=>i!==idx))}
-                style={{ width:32, height:36, borderRadius:7, border:'0.5px solid rgba(248,113,113,0.25)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
-            </div>
-          ))}
-          <button onClick={()=>setAltelinii([...altelinii,{desc:'',val:0}])}
-            style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:7, border:'0.5px solid rgba(77,163,255,0.2)', background:'rgba(77,163,255,0.06)', color:'rgba(77,163,255,0.7)', fontSize:12, cursor:'pointer', marginTop:4 }}>
-            + Adaugă linie
-          </button>
         </div>
+
+        {/* Scazaminte fixe */}
+        <div>
+          <div style={{ fontSize:11, fontWeight:600, color:'rgba(248,113,113,0.6)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:8 }}>− Scăzăminte</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            {([
+              ['Contabilitate', contabilitate, setContabilitate],
+              ['Curățenie', curatenie, setCuratenie],
+              ['Lenjerii', lenjerii, setLenjerii],
+              ['Promovare', promovare, setPromovare],
+            ] as any[]).map(([label, val, setter]) => (
+              <div key={label}>
+                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
+                <input type="number" min={0} value={val||''} placeholder="0"
+                  onChange={e=>setter(Number(e.target.value)||0)} style={inp}/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Alte linii */}
+        {altelinii.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {altelinii.map((linie, idx) => (
+              <div key={idx} style={{ display:'grid', gridTemplateColumns:'1fr 100px 80px auto', gap:6, alignItems:'center' }}>
+                <input value={linie.desc} placeholder="Descriere"
+                  onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],desc:e.target.value}; setAltelinii(n) }}
+                  style={inp}/>
+                <input type="number" min={0} value={linie.val||''} placeholder="0"
+                  onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],val:Number(e.target.value)||0}; setAltelinii(n) }}
+                  style={inp}/>
+                <select value={linie.tip}
+                  onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],tip:e.target.value as any}; setAltelinii(n) }}
+                  style={{...inp, padding:'7px 6px'}}>
+                  <option value="scade">− scade</option>
+                  <option value="adauga">+ adaugă</option>
+                </select>
+                <button onClick={()=>setAltelinii(altelinii.filter((_,i)=>i!==idx))}
+                  style={{ width:32, height:36, borderRadius:7, border:'0.5px solid rgba(248,113,113,0.25)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={()=>setAltelinii([...altelinii,{desc:'',val:0,tip:'scade'}])}
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:'0.5px solid rgba(77,163,255,0.25)', background:'rgba(77,163,255,0.06)', color:'rgba(77,163,255,0.7)', fontSize:12, cursor:'pointer', alignSelf:'flex-start' as const }}>
+          + Adaugă linie
+        </button>
 
         {/* Sumar */}
-        <div style={{ background:'rgba(14,27,43,0.6)', border:'0.5px solid rgba(159,215,255,0.1)', borderRadius:9, padding:'12px 14px' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-            <span style={{ fontSize:12, color:'rgba(159,215,255,0.5)' }}>Net de bază</span>
-            <span style={{ fontSize:12, color:'rgba(214,228,244,0.7)', fontFamily:'monospace' }}>{fmtR(netFinal)} RON</span>
+        <div style={{ background:'rgba(14,27,43,0.6)', border:'0.5px solid rgba(159,215,255,0.1)', borderRadius:10, padding:'14px 16px' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
+            {[
+              ['Net raportat', netFinal, '#4ADE80', false],
+              incasatCash>0 && ['+ Încasat cash', incasatCash, '#4ADE80', false],
+              ...altelinii.filter(l=>l.tip==='adauga'&&l.val>0).map(l=>[`+ ${l.desc||'Adaos'}`, l.val, '#4ADE80', false]),
+              contabilitate>0 && ['− Contabilitate', contabilitate, '#F87171', true],
+              curatenie>0 && ['− Curățenie', curatenie, '#F87171', true],
+              lenjerii>0 && ['− Lenjerii', lenjerii, '#F87171', true],
+              promovare>0 && ['− Promovare', promovare, '#F87171', true],
+              ...altelinii.filter(l=>l.tip==='scade'&&l.val>0).map(l=>[`− ${l.desc||'Deducere'}`, l.val, '#F87171', true]),
+            ].filter(Boolean).map((item:any, i) => (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+                <span style={{ color:'rgba(159,215,255,0.5)' }}>{item[0]}</span>
+                <span style={{ color:item[2], fontFamily:'monospace' }}>{item[3]?'-':''}{fmtR(Number(item[1]))}</span>
+              </div>
+            ))}
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-            <span style={{ fontSize:12, color:'rgba(159,215,255,0.5)' }}>Total scăzăminte</span>
-            <span style={{ fontSize:12, color:'#F87171', fontFamily:'monospace' }}>- {fmtR(totalScazaminte)} RON</span>
-          </div>
-          {/* linii individuale */}
-          {[
-            ['Contabilitate', contabilitate],
-            ['Curățenie', curatenie],
-            ['Lenjerii', lenjerii],
-            ['Promovare', promovare],
-            ...altelinii.filter(l=>l.val>0).map(l=>[l.desc||'Altele', l.val])
-          ].filter(([,v])=>Number(v)>0).map(([l,v]:any) => (
-            <div key={l} style={{ display:'flex', justifyContent:'space-between', marginBottom:3, paddingLeft:8 }}>
-              <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>· {l}</span>
-              <span style={{ fontSize:11, color:'#F87171', fontFamily:'monospace' }}>- {fmtR(Number(v))}</span>
-            </div>
-          ))}
-          <div style={{ borderTop:'1px solid rgba(159,215,255,0.12)', paddingTop:10, marginTop:4, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ borderTop:'1px solid rgba(159,215,255,0.15)', paddingTop:12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <span style={{ fontSize:14, fontWeight:600, color:'#E8F4FF' }}>Sumă de plătit proprietarului</span>
             <span style={{ fontSize:22, fontWeight:700, color:netProprietar>=0?'#4ADE80':'#F87171', fontFamily:'monospace' }}>{fmtR(netProprietar)} RON</span>
           </div>
