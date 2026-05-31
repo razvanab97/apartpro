@@ -248,9 +248,9 @@ export default function RapoartePage() {
   const showAptCol = selectedApts.length !== 1
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflowY:'auto', overflowX:'hidden' }}>
+    <div style={{ display:'flex', flexDirection:'column', minHeight:'100%' }}>
       <PageHeader title="Rapoarte" subtitle="Calcul comisioane și situație financiară"/>
-      <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto', flex:1, minHeight:0 }}>
+      <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, paddingBottom:60 }}>
 
         {/* TIP RAPORT */}
         <div style={{ display:'flex', gap:8 }}>
