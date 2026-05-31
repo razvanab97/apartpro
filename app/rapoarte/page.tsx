@@ -568,13 +568,13 @@ export default function RapoartePage() {
         </div>
       )}
       {/* ══ CALCULATOR DECONTAT PROPRIETAR ══ */}
-      <CalculatorDecontat netFinal={totals.netFinal} perioada={periodStart && periodEnd ? `${periodStart} — ${periodEnd}` : ''} generated={generated}/>
+      {generated && <CalculatorDecontat netFinal={totals.netFinal} perioada={`${periodStart} — ${periodEnd}`}/>}
       <Toast toast={toast}/>
     </div>
   )
 }
 
-function CalculatorDecontat({ netFinal, perioada, generated }: { netFinal: number; perioada: string; generated: boolean }) {
+function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada: string }) {
   const [contabilitate, setContabilitate] = useState(0)
   const [curatenie, setCuratenie] = useState(0)
   const [lenjerii, setLenjerii] = useState(0)
@@ -600,14 +600,6 @@ function CalculatorDecontat({ netFinal, perioada, generated }: { netFinal: numbe
     borderTop: '2px solid rgba(252,211,77,0.4)',
     borderRadius:12, overflow:'hidden', margin:'0 20px 20px'
   }
-
-  if (!generated) return (
-    <div style={panel2}>
-      <div style={{ padding:'16px', textAlign:'center' as const, color:'rgba(159,215,255,0.3)', fontSize:13, fontStyle:'italic' }}>
-        💰 Generează raportul pentru a vedea calculatorul de decontat
-      </div>
-    </div>
-  )
 
   return (
     <div style={panel2}>
