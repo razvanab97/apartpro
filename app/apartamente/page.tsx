@@ -131,7 +131,7 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
     setSaving(true)
-    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null }
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null }
     const { error } = editing.id ? await supabase.from('apartamente').update(p).eq('id',editing.id) : await supabase.from('apartamente').insert(p)
     if(error){ show('error',error.message); setSaving(false); return }
     show('success',editing.id?'Actualizat':'Adăugat')
@@ -225,6 +225,14 @@ export default function ApartamentePage() {
 
             {/* Links */}
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {((selected as any).airbnb_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <a href={lnk} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#F87171', textDecoration:'none' }}>
+                    <ExternalLink size={10}/> Airbnb ({i+2})
+                  </a>
+                  <CopyBtn text={lnk}/>
+                </div>
+              ))}
               {selected.link_site && (
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <a href={selected.link_site} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(77,163,255,0.1)', color:'#7BC8FF', border:'1px solid rgba(77,163,255,0.18)', textDecoration:'none', flex:1 }}>
@@ -237,11 +245,19 @@ export default function ApartamentePage() {
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <div style={{ fontSize:10, color:'rgba(252,211,77,0.5)', marginRight:4 }}>🏨</div>
                   <a href={selected.link_booking} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#FCD34D', textDecoration:'none' }}>
-                    <ExternalLink size={10}/> Booking.com
+                    <MapPin size={10}/> Google Maps
                   </a>
                   <CopyBtn text={selected.link_booking}/>
                 </div>
               )}
+              {((selected as any).booking_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <a href={lnk} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#60A5FA', textDecoration:'none' }}>
+                    <ExternalLink size={10}/> Booking.com {i>0?`(${i+1})`:''}
+                  </a>
+                  <CopyBtn text={lnk}/>
+                </div>
+              ))}
               {selected.link_airbnb && (
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <a href={selected.link_airbnb} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(239,68,68,0.1)', color:'#F87171', border:'1px solid rgba(239,68,68,0.18)', textDecoration:'none', flex:1 }}>
@@ -350,9 +366,43 @@ export default function ApartamentePage() {
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Link Site</label><input value={editing.link_site||''} onChange={e=>setEditing({...editing,link_site:e.target.value})} placeholder="https://abhomesiasi.ro/..."/></FormGroup>
-          <FormGroup><label>🏨 Link Booking.com</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
+          <FormGroup><label>📍 Link Google Maps</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
         </FormRow>
-        <FormGroup><label>🏠 Link Airbnb</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="airbnb.com/rooms/..."/></FormGroup>
+        <FormGroup><label>🏠 Link Airbnb (primul)</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="https://airbnb.com/..."/></FormGroup>
+
+        <FormGroup>
+          <label>🏨 Linkuri Booking.com</label>
+          {((editing as any).booking_links as string[]||['']).map((lnk:string, idx:number) => (
+            <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
+              <input value={lnk} onChange={e=>{
+                const arr=[...((editing as any).booking_links||[''])]; arr[idx]=e.target.value
+                setEditing({...editing,booking_links:arr} as any)
+              }} placeholder={`https://booking.com/... (${idx+1})`} style={{ flex:1 }}/>
+              {idx===((editing as any).booking_links||['']).length-1
+                ? <button type="button" onClick={()=>setEditing({...editing,booking_links:[...((editing as any).booking_links||['']),'']} as any)}
+                    style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', fontSize:12 }}>+ Adaugă</button>
+                : <button type="button" onClick={()=>{ const arr=[...((editing as any).booking_links||[''])]; arr.splice(idx,1); setEditing({...editing,booking_links:arr} as any) }}
+                    style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
+              }
+            </div>
+          ))}
+        </FormGroup>
+
+        <FormGroup>
+          <label>🏠 Linkuri Airbnb suplimentare</label>
+          {((editing as any).airbnb_links as string[]||[]).map((lnk:string, idx:number) => (
+            <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
+              <input value={lnk} onChange={e=>{
+                const arr=[...((editing as any).airbnb_links||[])]; arr[idx]=e.target.value
+                setEditing({...editing,airbnb_links:arr} as any)
+              }} placeholder={`https://airbnb.com/... (${idx+2})`} style={{ flex:1 }}/>
+              <button type="button" onClick={()=>{ const arr=[...((editing as any).airbnb_links||[])]; arr.splice(idx,1); setEditing({...editing,airbnb_links:arr} as any) }}
+                style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
+            </div>
+          ))}
+          <button type="button" onClick={()=>setEditing({...editing,airbnb_links:[...((editing as any).airbnb_links||[]),'']} as any)}
+            style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', fontSize:12 }}>+ Adaugă link Airbnb</button>
+        </FormGroup>
         <FormGroup><label>Instrucțiuni check-in</label><textarea value={editing.instructiuni_checkin||''} onChange={e=>setEditing({...editing,instructiuni_checkin:e.target.value})} rows={2}/></FormGroup>
         <FormGroup><label>Reguli</label><textarea value={editing.reguli||''} onChange={e=>setEditing({...editing,reguli:e.target.value})} rows={2}/></FormGroup>
         <FormGroup>
