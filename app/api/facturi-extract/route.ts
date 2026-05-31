@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Esti un expert in citirea facturilor romanesti. Analizeaza aceasta factura si extrage EXACT:
 1. Furnizor: numele companiei emitente
-2. Suma TOTALA de plata cu TVA (valoarea finala de achitat in RON/Lei)
+2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare. Cauta campul 'Total valoare factura curenta' sau 'Suma factura curenta'. NU folosi 'Sold de plata' sau 'Total de achitat' care include restante.
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD)
 4. Perioada facturata
 5. Numarul facturii
