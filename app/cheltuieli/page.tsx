@@ -246,6 +246,15 @@ export default function CheltuieliPage(){
     setSeeding(false)
   }
 
+  async function plataPart(item:any, suma:number){
+    if(!item?.id||suma<=0) return
+    const nota2 = (item.nota||'') + ` | Plătit parțial: ${suma} RON`
+    const status = suma >= Number(item.valoare) ? 'validat' : 'nevalidat'
+    await supabase.from('cheltuieli').update({ status, nota: nota2 }).eq('id', item.id)
+    show('success', `Plată ${suma} RON înregistrată`)
+    load()
+  }
+
   async function toggleUtil(aptId:string,col:string){
     const item=util[aptId]?.[col]
     if(!item){show('error','Introdu mai întâi valoarea');return}
@@ -449,10 +458,12 @@ export default function CheltuieliPage(){
   /* ── CostPill cu Muta la alta luna ──────────────────────────────────── */
   function CostPillWithMove({label,val,due,paid,onToggle,onEdit,onMove,lunaC,anC,busy}:{
     label:string;val:number;due:string;paid:boolean;
-    onToggle:()=>void;onEdit?:()=>void;
+    onToggle:()=>void;onEdit?:()=>void;onPlataPart?:(s:number)=>void;
     onMove:(l:number,a:number)=>void;lunaC:number;anC:number;busy?:boolean
   }){
     const [showMove,setShowMove]=useState(false)
+    const [showPP,setShowPP]=useState(false)
+    const [sumaPP,setSumaPP]=useState('')
     const prevL=lunaC===1?{l:12,a:anC-1}:{l:lunaC-1,a:anC}
     const nextL=lunaC===12?{l:1,a:anC+1}:{l:lunaC+1,a:anC}
     return(
@@ -484,6 +495,20 @@ export default function CheltuieliPage(){
             {paid&&<Check size={13} color="#0E1B2B" strokeWidth={3}/>}
           </button>
         </div>
+        {showPP&&val>0&&!paid&&(
+          <div style={{position:'absolute' as const,bottom:'100%',left:0,right:0,zIndex:20,marginBottom:4,background:'rgba(10,22,40,0.98)',border:'1px solid rgba(74,222,128,0.35)',borderRadius:8,padding:'10px'}}>
+            <div style={{fontSize:10,color:'rgba(74,222,128,0.7)',marginBottom:6,fontWeight:600}}>💳 Sumă plătită (total: {val.toLocaleString('ro-RO')} RON)</div>
+            <div style={{display:'flex',gap:6}}>
+              <input autoFocus type="number" value={sumaPP} onChange={e=>setSumaPP(e.target.value)}
+                placeholder={String(val)} min={1}
+                style={{flex:1,background:'rgba(20,38,65,0.9)',border:'1px solid rgba(74,222,128,0.3)',borderRadius:6,color:'#E8F4FF',fontSize:13,padding:'5px 8px',outline:'none'}}
+                onKeyDown={e=>{if(e.key==='Enter'&&sumaPP){onPlataPart?.(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}if(e.key==='Escape')setShowPP(false)}}
+              />
+              <button onClick={()=>{if(sumaPP){onPlataPart?.(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}}}
+                style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',cursor:'pointer',fontSize:12,fontWeight:600}}>✓</button>
+            </div>
+          </div>
+        )}
         {showMove&&val>0&&(
           <div style={{position:'absolute' as const,bottom:'100%',left:0,right:0,background:'rgba(14,27,43,0.97)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:8,padding:'8px',zIndex:10,marginBottom:4}}>
             <div style={{fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Mută în:</div>
@@ -619,6 +644,7 @@ export default function CheltuieliPage(){
                     busy={saving===apt.id+col.key}
                     onToggle={()=>toggleUtil(apt.id,col.key)}
                     onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
+                    onPlataPart={(suma)=>plataPart(item,suma)}
                   />
                 )
               })}
