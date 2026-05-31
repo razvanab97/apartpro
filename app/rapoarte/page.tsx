@@ -248,7 +248,7 @@ export default function RapoartePage() {
   const showAptCol = selectedApts.length !== 1
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'auto' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflowY:'auto', overflowX:'hidden' }}>
       <PageHeader title="Rapoarte" subtitle="Calcul comisioane și situație financiară"/>
       <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, overflowY:'auto', flex:1, minHeight:0 }}>
 
@@ -377,7 +377,7 @@ export default function RapoartePage() {
             {rezervari.length === 0 ? (
               <div style={{ padding:'40px', textAlign:'center', color:'rgba(159,215,255,0.4)', fontSize:13 }}>Nicio rezervare pentru filtrele selectate</div>
             ) : (
-              <div style={{ overflowX:'auto', overflowY:'scroll', maxHeight:'55vh', borderRadius:8 }}>
+              <div style={{ overflowX:'auto', borderRadius:8 }}>
                 <table style={{ width:'100%', borderCollapse:'collapse' }}>
                   <thead style={{ background:'rgba(14,27,43,0.95)', position:'sticky', top:0, zIndex:2 }}>
                     <tr>
