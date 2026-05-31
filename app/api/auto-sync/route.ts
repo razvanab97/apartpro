@@ -15,11 +15,29 @@ async function fivestar(actiune: string, params = {}) {
   return res.json()
 }
 
+// Parseaza data din format "01 May 2026" -> "2026-05-01"
+function parseDate(s: string): string {
+  if (!s) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s // deja ISO
+  const months: Record<string,string> = {
+    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
+    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
+    ian:'01',mai:'05',iun:'06',iul:'07',aug2:'08',noi:'11',
+  }
+  const parts = s.trim().split(/\s+/)
+  if (parts.length === 3) {
+    const [day, mon, year] = parts
+    const m = months[mon.toLowerCase().slice(0,3)] || '01'
+    return `${year}-${m}-${day.padStart(2,'0')}`
+  }
+  return s
+}
+
 function canalFromSursa(sursa: string): string {
   const s = (sursa || '').toLowerCase()
   if (s.includes('booking')) return 'booking'
   if (s.includes('airbnb')) return 'airbnb'
-  if (s.includes('direct') || s.includes('direct')) return 'direct'
+  if (s.includes('direct') || s.includes('site')) return 'direct'
   if (s.includes('telefon')) return 'telefon'
   if (s.includes('whatsapp')) return 'whatsapp'
   return 'direct'
@@ -27,136 +45,117 @@ function canalFromSursa(sursa: string): string {
 
 function statusFromFivestar(status: string): string {
   const s = (status || '').toLowerCase()
-  if (s.includes('anulat') || s.includes('cancel')) return 'anulata'
-  if (s.includes('confirmat') || s.includes('confirm')) return 'confirmata'
-  if (s.includes('check-in') || s.includes('checkin')) return 'confirmata'
-  if (s.includes('check-out') || s.includes('checkout')) return 'finalizata'
+  if (s.includes('anulat') || s.includes('cancel') || s.includes('storn')) return 'anulata'
+  if (s.includes('check-out') || s.includes('checkout') || s.includes('finali')) return 'finalizata'
   return 'confirmata'
 }
 
 export async function GET(req: NextRequest) {
-  // Verifica secret pentru cron
   const auth = req.headers.get('authorization') || req.nextUrl.searchParams.get('secret')
   if (auth !== CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const startTime = Date.now()
-  const results = { inserted: 0, updated: 0, cancelled: 0, errors: [] as string[], apartamente_sync: 0 }
+  const results = { inserted: 0, updated: 0, cancelled: 0, errors: [] as string[], skipped_no_apt: 0 }
 
   try {
-    // 1. Fetch apartamente din Supabase
-    const { data: apts } = await supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ')
+    // Fetch apartamente active
+    const { data: apts } = await supabase.from('apartamente').select('id,nota,nume').eq('status','activ')
     if (!apts?.length) return NextResponse.json({ error: 'No active apartments' })
 
-    // 2. Fetch rezervari din 5starDesk pentru urmatoarele 90 zile + ultimele 30
-    const dateFrom = new Date()
-    dateFrom.setDate(dateFrom.getDate() - 30)
-    const dateTo = new Date()
-    dateTo.setDate(dateTo.getDate() + 90)
+    // Fetch din 5starDesk - ultimele 30 zile + 90 zile viitor
+    const dateFrom = new Date(); dateFrom.setDate(dateFrom.getDate() - 30)
+    const dateTo   = new Date(); dateTo.setDate(dateTo.getDate() + 90)
+    const fmt = (d: Date) => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+    const fmtISO = (d: Date) => `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`
 
-    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-
-    // Incearca mai multe actiuni posibile din 5starDesk API
-    let raw5star = await fivestar('rezervari_lista', { data_de: fmt(dateFrom), data_pana: fmt(dateTo) })
-    if (!Array.isArray(raw5star) && !Array.isArray(raw5star?.rezervari) && !Array.isArray(raw5star?.data)) {
-      raw5star = await fivestar('get_rezervari', { data_de: fmt(dateFrom), data_pana: fmt(dateTo) })
-    }
-    if (!Array.isArray(raw5star) && !Array.isArray(raw5star?.rezervari)) {
-      raw5star = await fivestar('rezervari', { de_la: fmt(dateFrom), pana_la: fmt(dateTo) })
-    }
-
-    const rezervari5star = Array.isArray(raw5star) ? raw5star :
-                           Array.isArray(raw5star?.rezervari) ? raw5star.rezervari :
-                           Array.isArray(raw5star?.data) ? raw5star.data : []
-
-    if (!rezervari5star.length) {
-      await supabase.from('setari').upsert({
-        cheie: 'last_sync', valoare: JSON.stringify({ time: new Date().toISOString(), status: 'ok', count: 0, msg: 'No reservations from 5starDesk' })
-      }, { onConflict: 'cheie' })
-      return NextResponse.json({ ...results, msg: 'No reservations from 5starDesk', raw_sample: JSON.stringify(raw5star).slice(0, 200) })
-    }
-
-    // 3. Fetch rezervari existente din Supabase (ultimele 30 + urm 90 zile)
-    const { data: existingRez } = await supabase.from('rezervari')
-      .select('id,observatii,status_rezervare,data_checkin,data_checkout,apartament_id')
-      .gte('data_checkout', fmt(dateFrom))
-      .neq('canal', 'intern') // nu atingem rezervarile interne
-
-    const existingMap = new Map<string, any>()
-    ;(existingRez || []).forEach((r: any) => {
-      const obs = r.observatii || ''
-      const match = obs.match(/5SD-[\w\d-]+|ID:\s*[\w\d-]+|#[\w\d]+/)
-      if (match) existingMap.set(match[0], r)
+    const raw = await fivestar('rezervari_lista', {
+      data_de: fmtISO(dateFrom),
+      data_pana: fmtISO(dateTo),
     })
 
-    // 4. Proceseaza fiecare rezervare din 5starDesk
+    const rezervari5star: any[] = Array.isArray(raw) ? raw :
+      Array.isArray(raw?.rezervari) ? raw.rezervari :
+      Array.isArray(raw?.data) ? raw.data : []
+
+    if (!rezervari5star.length) {
+      await saveLog({ time: new Date().toISOString(), status: 'ok', total_5star: 0, ...results, msg: 'No data from 5starDesk', raw_sample: JSON.stringify(raw).slice(0,300) })
+      return NextResponse.json({ ok: true, total_5star: 0, ...results, raw_sample: JSON.stringify(raw).slice(0,300) })
+    }
+
+    // Fetch rezervari existente din Supabase (non-interne)
+    const { data: existing } = await supabase.from('rezervari')
+      .select('id,observatii,status_rezervare,data_checkin,data_checkout,apartament_id')
+      .gte('data_checkout', fmtISO(dateFrom))
+      .neq('canal','intern')
+
+    // Map by 5SD-id
+    const existingMap = new Map<string,any>()
+    ;(existing||[]).forEach((r:any) => {
+      const m = (r.observatii||'').match(/5SD-(\d+)/)
+      if (m) existingMap.set(m[1], r)
+    })
+
+    // Proceseaza fiecare rezervare
     for (const r5 of rezervari5star) {
       try {
-        // Structura reala 5starDesk:
-        // id, nume, telefon, email, tara, unitate, data_rezervarii,
-        // data_sosire/data_checkin, data_plecare/data_checkout, sursa/canal,
-        // status, camera/apartament, nr_persoane, valoare/total
-        const id5star = r5.id || r5.reservation_id || r5.cod
-        if (!id5star) continue
+        const id5 = String(r5.id || '').trim()
+        if (!id5) continue
 
-        const sursa = r5.sursa || r5.canal_rezervare || r5.source || r5.canal || r5.channel || ''
-        const canal = canalFromSursa(sursa)
-        const status5star = r5.status || r5.stare || r5.status_rezervare || 'confirmata'
-        const statusRez = statusFromFivestar(status5star)
-
-        // Apartament - 5starDesk foloseste 'unitate' sau 'camera'
-        const numeApt = r5.camera || r5.unitate || r5.apartament || r5.room || r5.unit || ''
-        const apt = apts.find((a: any) => {
-          const aptNume = (a.nume || '').toLowerCase()
-          const aptNota = (a.nota || '').toLowerCase()
-          const src = numeApt.toLowerCase()
-          return src.includes(aptNota) || src.includes(aptNume) ||
-                 aptNota === src || aptNume === src ||
-                 src.includes(aptNume.split(' ')[0])
-        })
-        const aptId = apt?.id || null
-
-        // Date - 5starDesk poate folosi data_sosire/data_plecare sau data_checkin/data_checkout
-        const checkin  = r5.data_checkin || r5.data_sosire || r5.checkin || r5.check_in || r5.arrival || ''
-        const checkout = r5.data_checkout || r5.data_plecare || r5.checkout || r5.check_out || r5.departure || ''
+        // Campuri exacte din 5starDesk conform screenshot
+        const client   = r5.nume || r5.client || r5.guest || 'Client'
+        const telefon  = r5.telefon ? String(r5.telefon) : null
+        const email    = typeof r5.email === 'string' ? r5.email : null
+        const checkin  = parseDate(r5.prima_zi || r5.data_checkin || r5.data_sosire || r5.checkin || '')
+        const checkout = parseDate(r5.ultima_zi || r5.data_checkout || r5.data_plecare || r5.checkout || '')
         if (!checkin || !checkout) continue
 
-        const client   = r5.nume || r5.client || r5.guest || r5.nume_client || r5.name || 'Client 5starDesk'
-        const telefon  = r5.telefon || r5.phone || r5.tel || null
-        const email    = typeof r5.email === 'string' ? r5.email : null
-        const nrPers   = Number(r5.nr_persoane || r5.persons || r5.pax || r5.nr_adulti || 1)
-        const valoare  = Number(r5.valoare || r5.total || r5.price || r5.suma || r5.suma_totala || 0)
-        const obsKey   = `5SD-${id5star}`
+        const sursa    = r5.sursa || r5.canal || r5.source || ''
+        const canal    = canalFromSursa(sursa)
+        const statusRez= statusFromFivestar(r5.status_rezervare || r5.status || '')
+        const valoare  = parseFloat(r5.pret_camera || r5.valoare || r5.total || r5.pret || '0') || 0
+        const nrPers   = Number(r5.nr_persoane || r5.persoane || r5.pax || 1)
+        const nrNopti  = r5.nr_nopti ? Number(r5.nr_nopti) : 0
 
-        const existing = existingMap.get(obsKey)
+        // Identifica apartamentul dupa 'unitate' sau 'camera'
+        const unitateRaw = (r5.unitate || r5.camera || r5.apartament || r5.room || '').toLowerCase()
+        const apt = apts.find((a:any) => {
+          const nota = (a.nota||'').toLowerCase()
+          const nume = (a.nume||'').toLowerCase()
+          return unitateRaw.includes(nota) || unitateRaw.includes(nume.split(' ')[0]) ||
+                 nota === unitateRaw || unitateRaw.includes(nota.replace(/\d/g,'').trim())
+        })
 
-        if (existing) {
-          // Actualizeaza daca s-a schimbat statusul sau datele
-          const needsUpdate =
-            existing.status_rezervare !== statusRez ||
-            existing.data_checkin !== checkin ||
-            existing.data_checkout !== checkout
+        if (!apt) {
+          results.skipped_no_apt++
+          // Totusi insereaza fara apartament_id pentru a nu pierde date
+        }
 
-          if (needsUpdate) {
+        const existing5 = existingMap.get(id5)
+
+        if (existing5) {
+          // Verifica daca trebuie actualizat
+          const changed = existing5.status_rezervare !== statusRez ||
+            existing5.data_checkin !== checkin ||
+            existing5.data_checkout !== checkout
+
+          if (changed) {
             const { error } = await supabase.from('rezervari').update({
               status_rezervare: statusRez,
               data_checkin: checkin,
               data_checkout: checkout,
-              updated_at: new Date().toISOString(),
-            }).eq('id', existing.id)
-
+              ...(apt ? { apartament_id: apt.id } : {}),
+            }).eq('id', existing5.id)
             if (!error) {
               if (statusRez === 'anulata') results.cancelled++
               else results.updated++
-            } else {
-              results.errors.push(`Update ${obsKey}: ${error.message}`)
-            }
+            } else results.errors.push(`Update 5SD-${id5}: ${error.message}`)
           }
         } else {
           // Insereaza rezervare noua
           const { error } = await supabase.from('rezervari').insert({
-            apartament_id: aptId,
+            apartament_id: apt?.id || null,
             nume_client: client,
             telefon_client: telefon,
             email_client: email,
@@ -170,50 +169,33 @@ export async function GET(req: NextRequest) {
             status_rezervare: statusRez,
             status_plata: 'neachitat',
             status_decont: 'nedecontat',
-            observatii: obsKey,
+            observatii: `5SD-${id5}`,
           })
-
           if (!error) results.inserted++
-          else results.errors.push(`Insert ${obsKey}: ${error.message}`)
+          else results.errors.push(`Insert 5SD-${id5}: ${error.message}`)
         }
-      } catch (e: any) {
-        results.errors.push(`Row error: ${e.message}`)
+      } catch (e:any) {
+        results.errors.push(`Row: ${e.message}`)
       }
     }
 
-    // 5. Salveaza log sync
-    await supabase.from('setari').upsert({
-      cheie: 'last_sync',
-      valoare: JSON.stringify({
-        time: new Date().toISOString(),
-        status: 'ok',
-        duration_ms: Date.now() - startTime,
-        ...results,
-        total_5star: rezervari5star.length,
-      })
-    }, { onConflict: 'cheie' })
+    const log = { time: new Date().toISOString(), status: 'ok', total_5star: rezervari5star.length, duration_ms: Date.now()-startTime, ...results }
+    await saveLog(log)
+    return NextResponse.json({ ok: true, ...log })
 
-    return NextResponse.json({
-      ok: true,
-      duration_ms: Date.now() - startTime,
-      total_from_5star: rezervari5star.length,
-      ...results,
-    })
-
-  } catch (e: any) {
-    await supabase.from('setari').upsert({
-      cheie: 'last_sync',
-      valoare: JSON.stringify({ time: new Date().toISOString(), status: 'error', error: e.message })
-    }, { onConflict: 'cheie' })
+  } catch (e:any) {
+    await saveLog({ time: new Date().toISOString(), status: 'error', error: e.message })
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
   }
 }
 
-// Manual trigger
+async function saveLog(data: object) {
+  await supabase.from('setari').upsert({ cheie: 'last_sync', valoare: JSON.stringify(data) }, { onConflict: 'cheie' })
+}
+
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}))
+  const body = await req.json().catch(()=>({}))
   const url = new URL(req.url)
   url.searchParams.set('secret', body.secret || CRON_SECRET)
-  const fakeReq = new NextRequest(url, { headers: req.headers })
-  return GET(fakeReq)
+  return GET(new NextRequest(url, { headers: req.headers }))
 }
