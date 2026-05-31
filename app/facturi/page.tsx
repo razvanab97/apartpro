@@ -43,6 +43,7 @@ type Factura = {
   base64Preview?: string
   mimeType?: string
   cheltuiala_id?: string
+  file_url?: string
 }
 
 export default function FacturiPage() {
@@ -122,6 +123,21 @@ export default function FacturiPage() {
     // preview URL
     const previewUrl = URL.createObjectURL(file)
 
+    // Upload fisier in Supabase Storage
+    let fileUrl: string | null = null
+    try {
+      const now = new Date()
+      const pad = (n: number) => String(n).padStart(2,'0')
+      const storagePath = `facturi/${now.getFullYear()}-${pad(now.getMonth()+1)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('documente')
+        .upload(storagePath, file, { contentType: mimeType, upsert: true })
+      if (!uploadError && uploadData) {
+        const { data: urlData } = supabase.storage.from('documente').getPublicUrl(storagePath)
+        fileUrl = urlData.publicUrl
+      }
+    } catch {}
+
     try {
       const resp = await fetch('/api/facturi-extract', {
         method: 'POST',
@@ -142,6 +158,7 @@ export default function FacturiPage() {
         ...x, ...data, id, processing: false,
         base64Preview: previewUrl, mimeType, status: 'procesat' as const,
         apartament_id: autoAptId,
+        file_url: fileUrl || undefined,
       } : x))
       if (autoAptId) {
         const aptNume = apts.find(a => a.id === autoAptId)?.nume || ''
@@ -193,6 +210,7 @@ export default function FacturiPage() {
       suportat_de: 'administrator',
       tva: 0,
       nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      fisier_url: f.file_url || null,
     }).select().single()
 
     if (error) { show('error', error.message) }
@@ -290,6 +308,12 @@ export default function FacturiPage() {
                                 <span style={{ fontSize:10, padding:'2px 7px', borderRadius:5, background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.25)', color:'#4ADE80' }}>
                                   ✓ asociat automat
                                 </span>
+                              )}
+                            {f.file_url && (
+                                <a href={f.file_url} target="_blank" rel="noopener"
+                                  style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', color:'#7BC8FF', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:3 }}>
+                                  📄 Deschide
+                                </a>
                               )}
                             {f.data_scadenta && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>scad. {f.data_scadenta}</span>}
                               {f.perioada && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>{f.perioada}</span>}
