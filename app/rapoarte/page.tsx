@@ -568,7 +568,11 @@ export default function RapoartePage() {
         </div>
       )}
       {/* ══ CALCULATOR DECONTAT PROPRIETAR ══ */}
-      {generated && <CalculatorDecontat netFinal={totals.netFinal} perioada={`${periodStart} — ${periodEnd}`}/>}
+      {generated && (
+        <div style={{ padding:'0 20px 40px' }}>
+          <CalculatorDecontat netFinal={totals.netFinal} perioada={`${periodStart} — ${periodEnd}`}/>
+        </div>
+      )}
       <Toast toast={toast}/>
     </div>
   )
