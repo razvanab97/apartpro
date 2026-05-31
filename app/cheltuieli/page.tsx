@@ -147,13 +147,23 @@ export default function CheltuieliPage(){
   async function load(){
     setLoading(true)
     const [{data:aptData},{data:chData}]=await Promise.all([
-      supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
+      supabase.from('apartamente').select('id,nume,nota,status').order('nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
         .gte('data',`${an}-${pad(luna)}-01`)
         .lte('data',`${an}-${pad(luna)}-31`),
     ])
-    setApts(aptData||[])
+    // Ensure AB_EXTRA_NAMES appear even if not in DB or inactive
+    const loadedApts = aptData||[]
+    const missingExtras = AB_EXTRA_NAMES.filter(name =>
+      !loadedApts.some((a:any) => {
+        const nota=(a.nota||'').toLowerCase()
+        const nume=(a.nume||'').toLowerCase()
+        const nl=name.toLowerCase()
+        return nota===nl||nota.includes(nl)||nume===nl||nume.includes(nl)
+      })
+    ).map(name => ({ id:`virtual-${name}`, nome: name, nota: name, nume: name, status:'activ' }))
+    setApts([...loadedApts, ...missingExtras])
     const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
     ;(chData||[]).forEach((c:any)=>{
       if(c.apartament_id){
