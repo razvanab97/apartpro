@@ -60,7 +60,7 @@ export default function FacturiPage() {
     setApts(data || [])
   }
 
-  // Auto-potrivire apartament dupa adresa din factura
+  // Auto-potrivire apartament dupa adresa din factura - incearca toate adresele
   function matchApartament(adresaFactura: string | null, aptList: any[]): string | null {
     if (!adresaFactura || !aptList.length) return null
     const af = adresaFactura.toLowerCase().replace(/[,.\-]/g,' ').replace(/\s+/g,' ').trim()
@@ -125,7 +125,13 @@ export default function FacturiPage() {
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
 
-      const autoAptId = matchApartament(data.adresa_consum, apts)
+      // Incearca toate adresele din factura pentru matching
+      const adreseToTry = data.adrese_matching || [data.adresa_consum, data.adresa_titular].filter(Boolean)
+      let autoAptId: string | null = null
+      for (const addr of adreseToTry) {
+        autoAptId = matchApartament(addr, apts)
+        if (autoAptId) break
+      }
       setFacturi(f => f.map(x => x.id === id ? {
         ...x, ...data, id, processing: false,
         base64Preview: previewUrl, mimeType, status: 'procesat' as const,
