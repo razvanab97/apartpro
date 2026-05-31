@@ -136,6 +136,14 @@ export default function RapoartePage() {
   const [periodEnd, setPeriodEnd] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  // Calculator state - ridicat din CalculatorDecontat pentru PDF export
+  const [calcContabilitate, setCalcContabilitate] = useState(0)
+  const [calcCuratenie, setCalcCuratenie] = useState(0)
+  const [calcLenjerii, setCalcLenjerii] = useState(0)
+  const [calcPromovare, setCalcPromovare] = useState(0)
+  const [calcIncasatCash, setCalcIncasatCash] = useState(0)
+  const [calcChirie, setCalcChirie] = useState(0)
+  const [calcAltelinii, setCalcAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
   const [activeTab, setActiveTab] = useState<'rezervari'|'fiscal'>('rezervari')
   const { toast, show } = useToast()
 
@@ -247,45 +255,41 @@ export default function RapoartePage() {
       doc.setTextColor(252,211,77); doc.setFontSize(10); doc.setFont('helvetica','bold')
       doc.text('CALCULATOR DECONTAT PROPRIETAR', 14, calcY)
 
-      const getN = (id:string) => {
-        const el = document.querySelector(`[data-pdf="${id}"]`) as HTMLInputElement
-        return el ? Number(el.value)||0 : 0
-      }
-      const contab = getN('contabilitate'); const curat = getN('curatenie')
-      const lenj = getN('lenjerii'); const prom = getN('promovare')
-      const chir = getN('chirie'); const cash = getN('incasat-cash')
-      const extraEls = document.querySelectorAll('[data-pdf-linie]')
-      const extras: {desc:string;val:number;tip:string}[] = []
-      extraEls.forEach(el => {
-        try { extras.push(JSON.parse((el as HTMLElement).dataset.pdfLinie||'{}')) } catch {}
-      })
-
+      // Folosim valorile direct din React state
       const calcRows: [string,string][] = [
-        ['Net după platforme și comision AB', fmt(totals.netFinal)+' RON'],
+        ['Net dupa platforme si comision AB', fmt(totals.netFinal)+' RON'],
       ]
-      let scaz = 0
-      ;[['Contabilitate',contab],['Curățenie',curat],['Lenjerii',lenj],['Promovare',prom],['Chirie',chir],['Încasat cash (direct)',cash]].forEach(([l,v]:any)=>{
-        if(v>0){ calcRows.push([`  − ${l}`, `- ${fmt(v)} RON`]); scaz+=v }
+      let totalScaz = 0; let totalAdd = 0
+      const fixedItems: [string,number][] = [
+        ['Contabilitate', calcContabilitate],
+        ['Curatenie', calcCuratenie],
+        ['Lenjerii', calcLenjerii],
+        ['Promovare', calcPromovare],
+        ['Chirie platita', calcChirie],
+        ['Incasat cash (direct de proprietar)', calcIncasatCash],
+      ]
+      fixedItems.forEach(([label, val]) => {
+        if(val>0){ calcRows.push([`  - ${label}`, `- ${fmt(val)} RON`]); totalScaz+=val }
       })
-      extras.forEach(({desc,val,tip})=>{
-        if(val>0&&desc){
-          const s=tip==='scade'
-          calcRows.push([`  ${s?'−':'+'} ${desc}`,`${s?'- ':'+ '}${fmt(val)} RON`])
-          if(s) scaz+=val; else scaz-=val
+      calcAltelinii.forEach(({desc,val,tip}) => {
+        if(val>0 && desc.trim()){
+          const isScade = tip==='scade'
+          calcRows.push([`  ${isScade?'-':'+'} ${desc}`, `${isScade?'- ':'+ '}${fmt(val)} RON`])
+          if(isScade) totalScaz+=val; else totalAdd+=val
         }
       })
-      const netProp = totals.netFinal - scaz
-      calcRows.push(['SUMĂ DE PLĂTIT PROPRIETARULUI', fmt(netProp)+' RON'])
+      const netProp = totals.netFinal + totalAdd - totalScaz
+      calcRows.push(['SUMA DE PLATIT PROPRIETARULUI', fmt(netProp)+' RON'])
 
       autoTable(doc, {
-        startY: calcY+4, head:[['Descriere','Sumă']], body: calcRows,
-        styles:{ fontSize:8, cellPadding:3, textColor:[30,30,30], fillColor:[255,255,255] },
-        headStyles:{ fillColor:[30,50,90], textColor:[200,220,255], fontStyle:'bold' },
+        startY: calcY+4, head:[['Descriere','Suma']], body: calcRows,
+        styles:{ fontSize:8, cellPadding:3, textColor:[20,20,20], fillColor:[255,255,255] },
+        headStyles:{ fillColor:[20,40,80], textColor:[180,210,255], fontStyle:'bold' },
         columnStyles:{ 0:{cellWidth:200}, 1:{cellWidth:60, halign:'right' as const} },
-        alternateRowStyles:{ fillColor:[248,250,255] },
+        alternateRowStyles:{ fillColor:[245,248,255] },
         didParseCell:(data:any)=>{
           if(data.row.index===calcRows.length-1){
-            data.cell.styles.fillColor=[0,60,30]; data.cell.styles.textColor=[180,255,180]
+            data.cell.styles.fillColor=[0,70,35]; data.cell.styles.textColor=[180,255,180]
             data.cell.styles.fontStyle='bold'; data.cell.styles.fontSize=10
           }
         }
@@ -620,7 +624,17 @@ export default function RapoartePage() {
       {/* ══ CALCULATOR DECONTAT PROPRIETAR ══ */}
       {generated && (
         <div style={{ padding:'0 20px 40px' }}>
-          <CalculatorDecontat netFinal={totals.netFinal} perioada={`${periodStart} — ${periodEnd}`}/>
+          <CalculatorDecontat
+              netFinal={totals.netFinal}
+              perioada={`${periodStart} — ${periodEnd}`}
+              contabilitate={calcContabilitate} setContabilitate={setCalcContabilitate}
+              curatenie={calcCuratenie} setCuratenie={setCalcCuratenie}
+              lenjerii={calcLenjerii} setLenjerii={setCalcLenjerii}
+              promovare={calcPromovare} setPromovare={setCalcPromovare}
+              incasatCash={calcIncasatCash} setIncasatCash={setCalcIncasatCash}
+              chirie={calcChirie} setChirie={setCalcChirie}
+              altelinii={calcAltelinii} setAltelinii={setCalcAltelinii}
+            />
         </div>
       )}
       <Toast toast={toast}/>
@@ -628,14 +642,16 @@ export default function RapoartePage() {
   )
 }
 
-function CalculatorDecontat({ netFinal, perioada }: { netFinal: number; perioada: string }) {
-  const [contabilitate, setContabilitate] = useState(0)
-  const [curatenie, setCuratenie] = useState(0)
-  const [lenjerii, setLenjerii] = useState(0)
-  const [promovare, setPromovare] = useState(0)
-  const [incasatCash, setIncasatCash] = useState(0)
-  const [chirie, setChirie] = useState(0)
-  const [altelinii, setAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
+function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitate, curatenie, setCuratenie, lenjerii, setLenjerii, promovare, setPromovare, incasatCash, setIncasatCash, chirie, setChirie, altelinii, setAltelinii }: {
+  netFinal: number; perioada: string
+  contabilitate:number; setContabilitate:(v:number)=>void
+  curatenie:number; setCuratenie:(v:number)=>void
+  lenjerii:number; setLenjerii:(v:number)=>void
+  promovare:number; setPromovare:(v:number)=>void
+  incasatCash:number; setIncasatCash:(v:number)=>void
+  chirie:number; setChirie:(v:number)=>void
+  altelinii:{desc:string;val:number;tip:'scade'|'adauga'}[]; setAltelinii:(v:any)=>void
+}) {
 
   const totalScazaminte = Number(contabilitate)+Number(curatenie)+Number(lenjerii)+Number(promovare)+Number(chirie)+
     Number(incasatCash) + // cash deja incasat de proprietar = se scade din ce mai platim
