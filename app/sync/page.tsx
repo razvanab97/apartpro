@@ -10,6 +10,10 @@ export default function SyncPage() {
   const [result, setResult] = useState<any>(null)
 
   useEffect(() => { loadStatus() }, [])
+  useEffect(() => {
+    const interval = setInterval(loadStatus, 30000) // refresh la 30s
+    return () => clearInterval(interval)
+  }, [])
 
   async function loadStatus() {
     const { data } = await supabase.from('setari').select('valoare').eq('cheie', 'last_sync').single()
@@ -41,7 +45,7 @@ export default function SyncPage() {
 
   return (
     <>
-      <PageHeader title="Sync 5starDesk" subtitle="Sincronizare automată rezervări"/>
+      <PageHeader title="Sync 5starDesk" subtitle="Sincronizare automată la fiecare 30 minute"/>
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 40px' }}>
 
         {/* Status sync */}
@@ -82,6 +86,23 @@ export default function SyncPage() {
         </div>
 
         {/* Trigger manual */}
+        {/* Last sync prominent */}
+        {lastSync?.time && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'rgba(74,222,128,0.06)', border:'0.5px solid rgba(74,222,128,0.2)', borderRadius:9, marginBottom:12 }}>
+            <Clock size={14} color="#4ADE80"/>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>Ultimul sync automat</div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#4ADE80' }}>
+                {new Date(lastSync.time).toLocaleString('ro-RO', {day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
+              </div>
+            </div>
+            <div style={{ textAlign:'right' as const }}>
+              <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>Următor</div>
+              <div style={{ fontSize:12, color:'#FCD34D' }}>~{30 - Math.floor((Date.now() - new Date(lastSync.time).getTime()) / 60000) % 30} min</div>
+            </div>
+          </div>
+        )}
+
         <button onClick={triggerSync} disabled={syncing}
           style={{ width: '100%', padding: '14px', borderRadius: 10, border: 'none', background: syncing ? 'rgba(77,163,255,0.3)' : 'rgba(77,163,255,0.8)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, transition: 'all .2s' }}>
           <RefreshCw size={16} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }}/>
