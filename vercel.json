@@ -1,6 +1,8 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "next build",
-  "devCommand": "next dev",
-  "installCommand": "npm install"
+  "crons": [
+    {
+      "path": "/api/auto-sync?secret=apartpro-cron-2026",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }
