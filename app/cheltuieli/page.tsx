@@ -104,8 +104,8 @@ const inpStyle: React.CSSProperties = {
 
 export default function CheltuieliPage(){
   const now=new Date()
-  const luna=now.getMonth()+1
-  const an=now.getFullYear()
+  const [luna,setLuna]=useState(now.getMonth()+1)
+  const [an,setAn]=useState(now.getFullYear())
 
   const [loading,setLoading]=useState(true)
   const [seeding,setSeeding]=useState(false)
@@ -140,7 +140,7 @@ export default function CheltuieliPage(){
 
   const {toast,show}=useToast()
 
-  useEffect(()=>{load()},[])
+  useEffect(()=>{load()},[luna,an])
   useEffect(()=>{if(editCell)setTimeout(()=>cellRef.current?.focus(),50)},[editCell])
   useEffect(()=>{if(editFisc)setTimeout(()=>fiscRef.current?.focus(),50)},[editFisc])
 
@@ -180,6 +180,17 @@ export default function CheltuieliPage(){
     })
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
     setLoading(false)
+  }
+
+  async function moveTolLuna(item:any, newLuna:number, newAn:number){
+    if(!item?.id) return
+    const pad=(n:number)=>String(n).padStart(2,'0')
+    // Keep same day, change month/year
+    const day = item.data?.slice(8,10) || '01'
+    const newData = `${newAn}-${pad(newLuna)}-${day}`
+    await supabase.from('cheltuieli').update({ data: newData }).eq('id', item.id)
+    show('success', `Mutat în ${LUNI[newLuna]} ${newAn}`)
+    load()
   }
 
   function toggleExpand(id:string){
@@ -407,6 +418,54 @@ export default function CheltuieliPage(){
     )
   }
 
+  /* ── CostPill cu Muta la alta luna ──────────────────────────────────── */
+  function CostPillWithMove({label,val,due,paid,onToggle,onEdit,onMove,lunaC,anC,busy}:{
+    label:string;val:number;due:string;paid:boolean;
+    onToggle:()=>void;onEdit?:()=>void;
+    onMove:(l:number,a:number)=>void;lunaC:number;anC:number;busy?:boolean
+  }){
+    const [showMove,setShowMove]=useState(false)
+    const prevL=lunaC===1?{l:12,a:anC-1}:{l:lunaC-1,a:anC}
+    const nextL=lunaC===12?{l:1,a:anC+1}:{l:lunaC+1,a:anC}
+    return(
+      <div style={{...pillBase(paid),minWidth:130,flex:'1 1 130px',position:'relative' as const}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:500,color:paid?'rgba(74,222,128,0.65)':'rgba(100,160,255,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
+          <div style={{fontSize:18,fontWeight:600,color:paid?'#4ADE80':'#E8F4FF',letterSpacing:'-.3px'}}>
+            {val>0?val.toLocaleString('ro-RO'):<span style={{fontSize:13,color:'rgba(100,160,255,0.3)'}}>—</span>}
+            {val>0&&<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span>}
+          </div>
+          <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginTop:4}}>scad. {due}</div>
+        </div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
+          <div style={{display:'flex',gap:4}}>
+            {onEdit&&val>0&&<button onClick={onEdit} style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(77,163,255,0.7)'}}>✏</button>}
+            {val>0&&<button onClick={()=>setShowMove(!showMove)} title="Mută la altă lună"
+              style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(252,211,77,0.7)'}}>↔</button>}
+          </div>
+          <button onClick={onToggle} disabled={busy||!val} style={{...checkBtn(paid),opacity:busy||!val?0.4:1}}>
+            {paid&&<Check size={13} color="#0E1B2B" strokeWidth={3}/>}
+          </button>
+        </div>
+        {showMove&&val>0&&(
+          <div style={{position:'absolute' as const,bottom:'100%',left:0,right:0,background:'rgba(14,27,43,0.97)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:8,padding:'8px',zIndex:10,marginBottom:4}}>
+            <div style={{fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Mută în:</div>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap' as const}}>
+              <button onClick={()=>{onMove(prevL.l,prevL.a);setShowMove(false)}}
+                style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer'}}>
+                ← {LUNI[prevL.l]} {prevL.a!==anC?prevL.a:''}
+              </button>
+              <button onClick={()=>{onMove(nextL.l,nextL.a);setShowMove(false)}}
+                style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer'}}>
+                {LUNI[nextL.l]} {nextL.a!==anC?nextL.a:''} →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   /* ── Inline edit pill ────────────────────────────────────────────────── */
   function EditPill({label,due,onSave,onCancel,initialVal}:{label:string;due:string;onSave:(v:string)=>void;onCancel:()=>void;initialVal?:string}){
     const [v,setV]=useState(initialVal||'')
@@ -572,10 +631,29 @@ export default function CheltuieliPage(){
     <>
       <PageHeader title="Cheltuieli & Utilități" subtitle={`${LUNI[luna]} ${an}`}
         actions={
-          <button onClick={seedDefaults} disabled={seeding||loading}
-            style={{display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,fontWeight:500,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.08)',color:'var(--accent-blue)',cursor:'pointer',opacity:seeding?0.6:1}}>
-            <Plus size={13}/>{seeding?'Se importă...':'Import valori fixe'}
-          </button>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            {/* Selector luna */}
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <button onClick={()=>{ const prev=luna===1?{l:12,a:an-1}:{l:luna-1,a:an}; setLuna(prev.l); setAn(prev.a) }}
+                style={{width:28,height:28,borderRadius:6,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>‹</button>
+              <select value={luna} onChange={e=>setLuna(Number(e.target.value))}
+                style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'rgba(214,228,244,0.9)',fontSize:12,padding:'4px 6px',cursor:'pointer'}}>
+                {LUNI.slice(1).map((l,i)=><option key={i+1} value={i+1}>{l}</option>)}
+              </select>
+              <select value={an} onChange={e=>setAn(Number(e.target.value))}
+                style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'rgba(214,228,244,0.9)',fontSize:12,padding:'4px 6px',cursor:'pointer'}}>
+                {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+              <button onClick={()=>{ const next=luna===12?{l:1,a:an+1}:{l:luna+1,a:an}; setLuna(next.l); setAn(next.a) }}
+                style={{width:28,height:28,borderRadius:6,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.7)',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>›</button>
+              <button onClick={()=>{setLuna(now.getMonth()+1);setAn(now.getFullYear())}}
+                style={{padding:'4px 8px',borderRadius:6,border:'1px solid rgba(77,163,255,0.2)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11}}>Azi</button>
+            </div>
+            <button onClick={seedDefaults} disabled={seeding||loading}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.8)',cursor:'pointer'}}>
+              <Plus size={13}/>{seeding?'Se importă...':'Import valori fixe'}
+            </button>
+          </div>
         }
       />
 
