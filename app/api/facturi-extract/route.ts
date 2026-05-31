@@ -49,7 +49,7 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
 }`
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,17 +60,32 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
               { inline_data: { mime_type: mimeType || 'application/pdf', data: base64Data } }
             ]
           }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 512 }
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
         })
       }
     )
 
     const geminiData = await geminiRes.json()
+    
+    // Log erori Gemini
+    if (geminiData.error) {
+      console.error('Gemini error:', JSON.stringify(geminiData.error))
+      return NextResponse.json({ 
+        error: `Gemini: ${geminiData.error.message}`,
+        furnizor: 'Eroare API', suma_totala: 0, categorie: 'alta', categorieLabel: 'Alta cheltuiala'
+      }, { status: 500 })
+    }
+
     const raw = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const cleaned = raw.replace(/```json|```/g, '').replace(/^[^{]*/, '').replace(/[^}]*$/, '').trim()
 
     let parsed: any = {}
-    try { parsed = JSON.parse(cleaned) } catch { parsed = { furnizor: 'Necunoscut', suma_totala: 0 } }
+    try { 
+      parsed = JSON.parse(cleaned) 
+    } catch { 
+      console.error('JSON parse failed. Raw:', raw.slice(0, 200))
+      parsed = { furnizor: 'Necunoscut', suma_totala: 0 } 
+    }
 
     // detectare categorie dupa furnizor + tip_serviciu
     const textLower = ((parsed.furnizor || '') + ' ' + (parsed.tip_serviciu || '') + ' ' + (filename || '')).toLowerCase()
