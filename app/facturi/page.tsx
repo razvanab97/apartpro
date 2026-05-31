@@ -23,6 +23,7 @@ type Factura = {
   id?: string
   filename: string
   furnizor: string
+  categorie?: string
   categorieLabel: string
   suma_totala: number
   moneda: string
@@ -31,7 +32,12 @@ type Factura = {
   nr_factura: string
   tip_serviciu: string
   detalii: string
+  adresa_consum?: string
+  adresa_titular?: string
+  titular?: string
+  adrese_matching?: string[]
   apartament_id: string | null
+  _autoMatched?: boolean
   status: 'procesat' | 'salvat' | 'eroare'
   processing?: boolean
   base64Preview?: string
