@@ -14,6 +14,7 @@ export type Apartament = {
   capacitate_max: number; pret_standard: number; proprietar_id?: string; proprietar?: Proprietar
   comision_tip: string; comision_procent: number; comision_fix: number; costuri_admin: string[]
   link_airbnb?: string; link_booking?: string; link_site?: string; instructiuni_checkin?: string
+  mesaj_checkin?: string; mesaj_checkout?: string
   reguli?: string; dotari?: string[]; status: string; nota?: string; created_at: string
 }
 export type Rezervare = {
