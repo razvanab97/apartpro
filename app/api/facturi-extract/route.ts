@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
 4. Perioada facturată (luna/intervalul)
 5. Numărul facturii
 6. Tipul serviciului (curent electric, gaz, apă, termoficare, salubritate, telefonie, internet, altele)
+7. ADRESA locatiei de consum (strada, numarul, bloc) - IMPORTANT pentru asociere automata
+8. Numele titularului contractului
 
 Răspunde DOAR cu JSON valid, fără explicații, fără markdown:
 {
@@ -38,6 +40,8 @@ Răspunde DOAR cu JSON valid, fără explicații, fără markdown:
   "perioada": "descriere perioadă",
   "nr_factura": "numărul facturii",
   "tip_serviciu": "categoria",
+  "adresa_consum": "strada si numarul complet din factura sau null",
+  "titular": "numele titularului sau null",
   "detalii": "orice info relevant"
 }`
 
