@@ -24,6 +24,7 @@ const navItems = [
   { href: '/facturi',      icon: Receipt,         label: 'Facturi',        group: 'F', bottom: false },
   { href: '/deconturi',   icon: TrendingUp,      label: 'Deconturi',      group: 'F', bottom: false },
   { href: '/rapoarte',    icon: FileText,        label: 'Rapoarte',       group: 'F', bottom: false },
+  { href: '/rapoarte/booking', icon: TrendingUp,  label: 'Booking $',      group: 'F', bottom: false },
   { href: '/setari',      icon: Settings,        label: 'Setări',         group: 'S', bottom: false },
 ]
 
