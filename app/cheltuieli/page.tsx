@@ -652,12 +652,14 @@ export default function CheltuieliPage(){
                   />
                 )
                 return(
-                  <CostPill key={col.key}
+                  <CostPillWithMove key={col.key}
                     label={col.label} val={val} due={due} paid={isPaid}
                     busy={saving===apt.id+col.key}
                     onToggle={()=>toggleUtil(apt.id,col.key)}
                     onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
                     onPlataPart={(suma)=>plataPart(item,suma)}
+                    onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
+                    lunaC={luna} anC={an}
                   />
                 )
               })}
