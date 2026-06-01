@@ -9,16 +9,9 @@ export async function POST(req: NextRequest) {
 
   const body = { t1: T1, t: T, actiune, ...params }
 
-  // Trimite cu headere care imita un browser - 5starDesk are whitelist pe host
   const res = await fetch(API, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Origin': 'https://www.5stardesk.ro',
-      'Referer': 'https://www.5stardesk.ro/',
-      'Accept': 'application/json, text/plain, */*',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
