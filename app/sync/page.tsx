@@ -62,15 +62,26 @@ export default function SyncPage() {
     setLoading(true)
     setRawData(null)
     try {
-      const res = await fetch('/api/fivestar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actiune: 'get_bookings',
-          checkin: fmt5star(dateFrom),
-          checkout: fmt5star(dateTo),
+      // Incearca mai multe actiuni - 5starDesk poate folosi diferite nume
+      let testData = null
+      for (const actiune of ['getrezervari', 'rezervari_lista', 'get_bookings']) {
+        const res = await fetch('/api/fivestar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actiune,
+            data_de_la: fmt5star(dateFrom),
+            data_pana_la: fmt5star(dateTo),
+            data_de: dateFrom,
+            data_pana: dateTo,
+            checkin: fmt5star(dateFrom),
+            checkout: fmt5star(dateTo),
+          })
         })
-      })
+        testData = await res.json()
+        if (testData?.ok !== 'false' && testData?.ok !== false && !testData?.mesaj?.includes('Eroare')) break
+      }
+      const data = testData
       const data = await res.json()
       setRawData(data)
     } catch(e: any) {
@@ -96,21 +107,38 @@ export default function SyncPage() {
         aptMap[a.nume.toLowerCase().replace(/\s+/g,'')] = a.id
       }
 
-      // 2. Call get_bookings
-      const resp = await fetch('/api/fivestar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actiune: 'get_bookings',
-          checkin: fmt5star(dateFrom),
-          checkout: fmt5star(dateTo),
+      // 2. Incearca mai multe actiuni pana gasim una care functioneaza
+      let data: any = null
+      let actiuneUsed = ''
+      for (const actiune of ['getrezervari', 'rezervari_lista', 'get_bookings']) {
+        const resp = await fetch('/api/fivestar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actiune,
+            data_de_la: fmt5star(dateFrom),
+            data_pana_la: fmt5star(dateTo),
+            data_de: dateFrom,
+            data_pana: dateTo,
+            checkin: fmt5star(dateFrom),
+            checkout: fmt5star(dateTo),
+          })
         })
-      })
-      const data = await resp.json()
-      res.logs.push({ type:'info', msg: `Răspuns 5starDesk: ${JSON.stringify(data).slice(0,200)}` })
+        data = await resp.json()
+        // Daca nu e eroare si are date, folosim aceasta actiune
+        const hasData = Array.isArray(data) || Array.isArray(data?.rezervari) || Array.isArray(data?.bookings) || Array.isArray(data?.data)
+        if (hasData || (data?.ok !== 'false' && data?.ok !== false && !data?.mesaj?.includes('Eroare'))) {
+          actiuneUsed = actiune
+          break
+        }
+      }
+      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | Răspuns: ${JSON.stringify(data).slice(0,200)}` })
 
-      // 3. Parse response - format 5starDesk: array direct
-      const bookings = Array.isArray(data) ? data : (data.rezervari || data.bookings || data.data || null)
+      // 3. Parse response - format 5starDesk: array direct sau obiect cu rezervari
+      const bookings = Array.isArray(data) ? data : 
+        (Array.isArray(data?.rezervari) ? data.rezervari :
+        Array.isArray(data?.bookings) ? data.bookings :
+        Array.isArray(data?.data) ? data.data : null)
 
       if (!bookings || !Array.isArray(bookings)) {
         res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns: ${JSON.stringify(data).slice(0,300)}` })
