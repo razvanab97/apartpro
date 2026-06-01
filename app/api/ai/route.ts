@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const CLAUDE_KEY = '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'
+
 const BIZ_CODES: Record<string, string> = {
   '01': 'Property Management', '02': 'Marketplace',
   '03': 'Spalatorie', '04': 'Personal', '05': 'Admin', '06': 'Financiar',
 }
 
 function detectDate(text: string): string | null {
+  if (!text) return null
   const t = text.toLowerCase()
   const now = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
   const add = (n: number) => { const d = new Date(now); d.setDate(now.getDate()+n); return fmt(d) }
 
-  // Detectare 'azi spalatorie' sau 'spalatorie azi' = business + data
-  // Exact date formats: 31.05 / 31/05 / 31.05.2026 / 2026-05-31
   const exactFull = t.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/)
   if (exactFull) return `${exactFull[1]}-${pad(Number(exactFull[2]))}-${pad(Number(exactFull[3]))}`
   const exactShort = t.match(/(\d{1,2})[./](\d{1,2})(?:[./](\d{4}))?/)
@@ -22,12 +23,12 @@ function detectDate(text: string): string | null {
     return `${year}-${pad(Number(exactShort[2]))}-${pad(Number(exactShort[1]))}`
   }
 
-  if (/\bazi\b|astazi|astăzi|\bacum\b/.test(t)) return fmt(now)
-  if (/\bmâine\b|\bmaine\b/.test(t)) return add(1)
-  if (/poimâine|poimaine/.test(t)) return add(2)
-  if (/săptămâna asta|saptamana asta/.test(t)) return add(7 - now.getDay())
-  if (/săptămâna viitoare|saptamana viitoare/.test(t)) return add(7)
-  if (/luna asta|această lună|aceasta luna/.test(t)) return fmt(new Date(now.getFullYear(), now.getMonth()+1, 0))
+  if (/\bazi\b|astazi|ast\u0103zi|\bacum\b/.test(t)) return fmt(now)
+  if (/\bm\u00e2ine\b|\bmaine\b/.test(t)) return add(1)
+  if (/poim\u00e2ine|poimaine/.test(t)) return add(2)
+  if (/s\u0103pt\u0103m\u00e2na asta|saptamana asta/.test(t)) return add(7 - now.getDay())
+  if (/s\u0103pt\u0103m\u00e2na viitoare|saptamana viitoare/.test(t)) return add(7)
+  if (/luna asta|aceast\u0103 lun\u0103|aceasta luna/.test(t)) return fmt(new Date(now.getFullYear(), now.getMonth()+1, 0))
   if (/luna viitoare/.test(t)) return add(30)
 
   const weekdays: Record<string, number> = { luni:1, marti:2, miercuri:3, joi:4, vineri:5, sambata:6, duminica:0 }
@@ -38,8 +39,14 @@ function detectDate(text: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { text, forcedBiz, forcedDate, imageBase64, imageType } = await req.json()
+  const body = await req.json()
+  const text = (body.text || '').trim()
+  const forcedBiz = body.forcedBiz || ''
+  const forcedDate = body.forcedDate
+  const imageBase64 = body.imageBase64 || null
+  const imageType = body.imageType || 'image/jpeg'
 
+  const today = new Date().toISOString().slice(0, 10)
   const detectedDate = detectDate(text)
   const finalDate = (forcedDate !== undefined && forcedDate !== null && forcedDate !== '') ? forcedDate : detectedDate
 
@@ -47,68 +54,94 @@ export async function POST(req: NextRequest) {
   const activeBiz = forcedBiz || (codeMatch ? BIZ_CODES[codeMatch[1]] : null)
   const cleanText = codeMatch ? text.replace(/^\d{2}\s+/, '') : text
 
-  const jsonTemplate = '{"titlu":"VERB infinitiv + obiect concis","descriere":"detalii","prioritate":"urgenta|normala|scazuta","business":"auto","data_limita":"PLACEHOLDER","impact_score":7,"effort_score":4,"persoana":null,"rationale":"motiv"}'
+  const jsonSchema = '{"titlu":"VERB + obiect concret","descriere":"detalii relevante","prioritate":"urgenta|normala|scazuta","business":"categoria","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"de ce"}'
 
-  const promptLines = [
-    'Esti asistentul AI al lui Razvan, antreprenor roman.',
-    activeBiz ? ('Business activ: ' + activeBiz + ' — NU schimba business-ul!') : '',
-    '',
-    'Transforma textul intr-un task actionabil. Returneaza DOAR JSON:',
-    jsonTemplate,
-    '',
-    'REGULI CRITICE:',
-    'TITLU: verb activ la infinitiv + obiect concret (Suna/Plateste/Trimite/Verifica/Mergi/Contacteaza)',
-    activeBiz ? '' : ('BUSINESS: detecteaza din text:' +
-      '\n- spalatorie/rufe/lenjerii/curatenie → Spalatorie' +
-      '\n- apartament/rezervare/chirias/checkin/checkout/Booking/Airbnb/proprietar → Property Management' +
-      '\n- produs/vanzare/client/comanda/livrare → Marketplace' +
-      '\n- factura/TVA/contabilitate/taxa/plata/banca → Financiar' +
-      '\n- personal/familie/sanatate/cumparaturi → Personal' +
-      '\n- altceva → Admin'),
-    'PRIORITATE: urgenta=trebuie azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
-    'DATA_LIMITA: pune exact ' + (finalDate ? finalDate : 'null') + ' — respecta strict aceasta data!',
-    '',
-    'Text: ' + cleanText,
-  ]
+  const bizRules = activeBiz
+    ? ('Business: ' + activeBiz + ' — NU schimba!')
+    : ('BUSINESS - detecteaza din context:\n' +
+       '- spalatorie/rufe/lenjerii/curatenie → Spalatorie\n' +
+       '- apartament/rezervare/chirias/checkin/checkout/Booking/Airbnb/proprietar → Property Management\n' +
+       '- produs/vanzare/client/comanda → Marketplace\n' +
+       '- factura/TVA/contabilitate/banca/plata → Financiar\n' +
+       '- personal/familie/sanatate → Personal\n' +
+       '- altceva → Admin')
 
-  const prompt = promptLines.filter(Boolean).join('\n')
+  let prompt: string
 
-  // Daca avem imagine, adaugam instructiuni suplimentare
-  const imagePrompt = imageBase64 ? (prompt + '\n\nAnalizeaza imaginea si extrage task-ul. Citeste tot textul vizibil (mesaje WhatsApp, email, notite). Identifica: ce trebuie facut, cine e implicat, ce data/deadline apare, ce business e.') : prompt
+  if (imageBase64) {
+    // Prompt special pentru imagine
+    prompt = [
+      'Esti asistentul AI al lui Razvan, antreprenor roman.',
+      bizRules,
+      '',
+      'DATA AZI: ' + today,
+      '',
+      'Citeste TOT textul vizibil din imagine (WhatsApp, email, SMS, notita, orice).',
+      'Identifica ce actiune trebuie facuta, cine e implicat, ce data/termen apare.',
+      'Returneaza DOAR JSON valid, fara explicatii:',
+      jsonSchema,
+      '',
+      'REGULI:',
+      '- TITLU: verb activ (Suna/Plateste/Mergi/Verifica/Trimite) + obiect concret',
+      '- DATA_LIMITA: daca apare o zi (sambata, luni) sau data (7 iunie, 15.06) in imagine, calculeaza YYYY-MM-DD fata de azi (' + today + ')',
+      '- PRIORITATE: urgenta=azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
+      finalDate ? ('- Daca utilizatorul a selectat data: ' + finalDate + ' — foloseste-o!') : '',
+    ].filter(Boolean).join('\n')
+  } else {
+    // Prompt pentru text
+    prompt = [
+      'Esti asistentul AI al lui Razvan, antreprenor roman.',
+      bizRules,
+      '',
+      'Transforma textul in task. Returneaza DOAR JSON:',
+      jsonSchema,
+      '',
+      'TITLU: verb activ la infinitiv (Suna/Plateste/Trimite/Verifica)',
+      'PRIORITATE: urgenta=azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
+      'DATA_LIMITA: ' + (finalDate ? finalDate : 'null'),
+      '',
+      'Text: ' + cleanText,
+    ].filter(Boolean).join('\n')
+  }
 
-  // Build content - text only or text + image
+  // Build Claude message
   const msgContent: any[] = []
   if (imageBase64) {
-    msgContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: imageType || 'image/jpeg', data: imageBase64 }
-    })
+    msgContent.push({ type: 'image', source: { type: 'base64', media_type: imageType, data: imageBase64 } })
   }
-  msgContent.push({ type: 'text', text: imageBase64 ? imagePrompt : prompt })
+  msgContent.push({ type: 'text', text: prompt })
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': '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',
+      'x-api-key': CLAUDE_KEY,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 400,
+      max_tokens: 512,
       messages: [{ role: 'user', content: msgContent }],
     }),
   })
 
   const data = await res.json()
+  if (data.error) {
+    console.error('Claude error:', data.error)
+    return NextResponse.json({ content: [{ text: '{}' }] })
+  }
+
   const raw = data.content?.[0]?.text || '{}'
-  const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+  const jsonMatch = raw.match(/\{[\s\S]*\}/)
+  const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 
   try {
     const parsed = JSON.parse(cleaned)
     if (activeBiz) parsed.business = activeBiz
-    parsed.data_limita = finalDate || null
-    if (!parsed.titlu || parsed.titlu.length < 4) parsed.titlu = cleanText.slice(0, 60)
+    if (finalDate) parsed.data_limita = finalDate
+    if (!parsed.titlu || parsed.titlu.length < 4) {
+      parsed.titlu = (parsed.descriere || cleanText || 'Task din imagine').slice(0, 60)
+    }
     return NextResponse.json({ content: [{ text: JSON.stringify(parsed) }] })
   } catch {
     return NextResponse.json({ content: [{ text: cleaned }] })
