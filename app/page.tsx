@@ -107,6 +107,7 @@ export default function DashboardPage() {
   const [coAziCur,setCoAziCur]=useState<any[]>([])
   const [ciAziCur,setCiAziCur]=useState<any[]>([])
   const [prognoza,setPrognoza]=useState({incasariLV:0,cheltuieliLC:0})
+  const [cheltuieliLP,setCheltuieliLP]=useState({total:0,platite:0})
   const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
@@ -194,6 +195,18 @@ export default function DashboardPage() {
       .gte('data_checkin', primaLV).lte('data_checkin', ultimaLV)
       .neq('status_rezervare','anulata')
     const incLV = (rezLV||[]).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
+    // Cheltuieli luna precedenta pentru acoperire
+    const prevM = now.getMonth()===0?12:now.getMonth()
+    const prevY = now.getMonth()===0?now.getFullYear()-1:now.getFullYear()
+    const prevPad = String(prevM).padStart(2,'0')
+    const { data: chLP } = await supabase.from('cheltuieli')
+      .select('valoare,status')
+      .gte('data',`${prevY}-${prevPad}-01`)
+      .lte('data',`${prevY}-${prevPad}-31`)
+    const totalLP = (chLP||[]).reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
+    const platiteLP = (chLP||[]).filter((x:any)=>x.status==='validat').reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
+    setCheltuieliLP({total:Math.round(totalLP),platite:Math.round(platiteLP)})
+
     // Cheltuieli luna curenta (din tabelul cheltuieli)
     const { data: chLC } = await supabase.from('cheltuieli')
       .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
@@ -650,6 +663,37 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+            {/* Acoperire cheltuieli luna precedenta */}
+            {cheltuieliLP.total>0&&(
+              <div style={{padding:'0 14px 14px'}}>
+                <div style={{background:'rgba(14,27,43,0.5)',borderRadius:8,padding:'10px 12px',border:'1px solid rgba(159,215,255,0.08)'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.45)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>
+                      Acoperire cheltuieli luna anterioară
+                    </span>
+                    <span style={{fontSize:14,fontWeight:700,fontFamily:'monospace',
+                      color:stats.incasariLuna>=cheltuieliLP.total?'#4ADE80':stats.incasariLuna>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'}}>
+                      {cheltuieliLP.total>0?Math.round(Math.min(100,stats.incasariLuna/cheltuieliLP.total*100)):0}%
+                    </span>
+                  </div>
+                  <div style={{height:5,background:'rgba(159,215,255,0.08)',borderRadius:3,overflow:'hidden'}}>
+                    <div style={{
+                      height:'100%',borderRadius:3,transition:'width .5s',
+                      width:`${cheltuieliLP.total>0?Math.min(100,stats.incasariLuna/cheltuieliLP.total*100):0}%`,
+                      background:stats.incasariLuna>=cheltuieliLP.total?'#4ADE80':stats.incasariLuna>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'
+                    }}/>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',marginTop:5}}>
+                    <span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                      Cheltuieli: {cheltuieliLP.total.toLocaleString('ro-RO')} RON
+                    </span>
+                    <span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                      Încasat: {stats.incasariLuna.toLocaleString('ro-RO')} RON
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* REZERVARI RECENTE */}
