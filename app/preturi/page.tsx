@@ -58,6 +58,7 @@ export default function PreturiPage() {
   }, [])
 
   function buildUrl(baseUrl: string, platform: string, checkin: string) {
+    if (!checkin) checkin = today  // fallback la azi
     if (!baseUrl) return ''
     const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1)
     const checkout = fmt(coD)
@@ -160,7 +161,7 @@ export default function PreturiPage() {
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.booking||''}
                   onChange={e=>updatePret(apt.id,'booking',e.target.value)} style={inp}/>
                 {apt._bk && (
-                  <a href={buildUrl(apt._bk,'booking',dataSelectata)} target="_blank" rel="noopener"
+                  <a href={buildUrl(apt._bk,'booking',dataSelectata||today)} target="_blank" rel="noopener"
                     style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6,
                       border: '1px solid rgba(77,163,255,0.3)', color: '#7BC8FF',
                       textDecoration: 'none', whiteSpace: 'nowrap' as const }}>
@@ -175,7 +176,7 @@ export default function PreturiPage() {
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.airbnb||''}
                   onChange={e=>updatePret(apt.id,'airbnb',e.target.value)} style={inp}/>
                 {apt._ab && (
-                  <a href={buildUrl(apt._ab,'airbnb',dataSelectata)} target="_blank" rel="noopener"
+                  <a href={buildUrl(apt._ab,'airbnb',dataSelectata||today)} target="_blank" rel="noopener"
                     style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6,
                       border: '1px solid rgba(248,113,113,0.3)', color: '#F87171',
                       textDecoration: 'none', whiteSpace: 'nowrap' as const }}>
