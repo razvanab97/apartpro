@@ -469,7 +469,20 @@ export default function CheltuieliPage(){
     return(
       <div style={{...pillBase(paid),minWidth:130,flex:'1 1 130px',position:'relative' as const}}>
         <div>
-          <div style={{fontSize:11,fontWeight:500,color:paid?'rgba(74,222,128,0.65)':'rgba(100,160,255,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
+          {(()=>{
+            const today=new Date();today.setHours(0,0,0,0)
+            const [dd,mm]=(due||'').split('/')
+            const scad=dd&&mm?new Date(today.getFullYear(),Number(mm)-1,Number(dd)):null
+            const depasit=!paid&&scad&&scad<today
+            const aproape=!paid&&scad&&!depasit&&(scad.getTime()-today.getTime())<=3*86400000
+            return <div style={{fontSize:11,fontWeight:500,
+              color:paid?'rgba(74,222,128,0.65)':depasit?'#F87171':aproape?'#FCD34D':'rgba(100,160,255,0.6)',
+              marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'.04em',display:'flex',alignItems:'center',gap:4}}>
+              {label}
+              {depasit&&!paid&&<span style={{fontSize:8,padding:'1px 5px',borderRadius:3,background:'rgba(248,113,113,0.15)',color:'#F87171'}}>DEPĂȘIT</span>}
+              {aproape&&!paid&&<span style={{fontSize:8,padding:'1px 5px',borderRadius:3,background:'rgba(252,211,77,0.15)',color:'#FCD34D'}}>ÎN CURÂND</span>}
+            </div>
+          })()}
           <div style={{fontSize:18,fontWeight:600,color:paid?'#4ADE80':'#E8F4FF',letterSpacing:'-.3px'}}>
             {val>0?val.toLocaleString('ro-RO'):<span style={{fontSize:13,color:'rgba(100,160,255,0.3)'}}>—</span>}
             {val>0&&<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span>}
@@ -488,8 +501,8 @@ export default function CheltuieliPage(){
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
           <div style={{display:'flex',gap:4}}>
             {onEdit&&val>0&&<button onClick={onEdit} style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(77,163,255,0.7)'}}>✏</button>}
-            {val>0&&<button onClick={()=>setShowMove(!showMove)} title="Mută la altă lună"
-              style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(252,211,77,0.7)'}}>↔</button>}
+            {val>0&&!paid&&onPlataPart&&<button onClick={()=>setShowPP(!showPP)} title="Plată parțială" style={{background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.25)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:11,color:'rgba(74,222,128,0.7)'}}>₊</button>}
+            {val>0&&<button onClick={()=>setShowMove(!showMove)} title="Mută la altă lună" style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(252,211,77,0.7)'}}>↔</button>}
           </div>
           <button onClick={onToggle} disabled={busy||!val} style={{...checkBtn(paid),opacity:busy||!val?0.4:1}}>
             {paid&&<Check size={13} color="#0E1B2B" strokeWidth={3}/>}
@@ -502,16 +515,16 @@ export default function CheltuieliPage(){
               <input autoFocus type="number" value={sumaPP} onChange={e=>setSumaPP(e.target.value)}
                 placeholder={String(val)} min={1}
                 style={{flex:1,background:'rgba(20,38,65,0.9)',border:'1px solid rgba(74,222,128,0.3)',borderRadius:6,color:'#E8F4FF',fontSize:13,padding:'5px 8px',outline:'none'}}
-                onKeyDown={e=>{if(e.key==='Enter'&&sumaPP){onPlataPart?.(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}if(e.key==='Escape')setShowPP(false)}}
+                onKeyDown={e=>{if(e.key==='Enter'&&sumaPP){onPlataPart&&onPlataPart(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}if(e.key==='Escape')setShowPP(false)}}
               />
-              <button onClick={()=>{if(sumaPP){onPlataPart?.(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}}}
+              <button onClick={()=>{if(sumaPP){onPlataPart&&onPlataPart(parseFloat(sumaPP));setShowPP(false);setSumaPP('')}}}
                 style={{padding:'5px 12px',borderRadius:6,border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',cursor:'pointer',fontSize:12,fontWeight:600}}>✓</button>
             </div>
           </div>
         )}
         {showMove&&val>0&&(
           <div style={{position:'absolute' as const,bottom:'100%',left:0,right:0,background:'rgba(14,27,43,0.97)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:8,padding:'8px',zIndex:10,marginBottom:4}}>
-            <div style={{fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>Mută în:</div>
+            <div style={{fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Mută în:</div>
             <div style={{display:'flex',gap:4,flexWrap:'wrap' as const}}>
               <button onClick={()=>{onMove(prevL.l,prevL.a);setShowMove(false)}}
                 style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer'}}>
