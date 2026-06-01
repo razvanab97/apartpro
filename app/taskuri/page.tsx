@@ -135,8 +135,11 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         })
       })
       const data = await res.json()
-      const text = data.content?.[0]?.text || '{}'
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+      const raw = data.content?.[0]?.text || '{}'
+      // Extrage primul obiect JSON valid din raspuns
+      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(cleaned)
       setResult(parsed)
     } catch (err: any) {
       console.error('Classify error:', err)
