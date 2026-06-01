@@ -66,7 +66,13 @@ function dueColor(days:number,paid:boolean){
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
   const nr = clean.startsWith('0') ? '4'+clean : clean
-  return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
+  const clean = msg
+    .replace(/◆/g, '🔹').replace(/◇/g, '▫️')
+    .replace(/★/g, '⭐').replace(/●/g, '•')
+    .replace(/✦/g, '✨').replace(/►/g, '▶️')
+    .replace(/■/g, '▪️').replace(/□/g, '▫️')
+    .replace(/❖/g, '🔷').replace(/◈/g, '🔶')
+  return `https://wa.me/${nr}?text=${encodeURIComponent(clean)}`
 }
 
 function msgCheckin(r:any){
