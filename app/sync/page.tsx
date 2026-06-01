@@ -184,15 +184,31 @@ export default function SyncPage() {
 
           if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: dată lipsă` }); continue }
 
-          // Check if exists - use 5starDesk ID (stored in observatii) OR nume+checkin
-          const { data: existingById } = await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
+          // Deduplicare: cauta dupa ID 5starDesk (in observatii), sau apt+checkin+checkout
+          // ID extern trebuie sa fie valid (nu gol, nu prea scurt)
+          const idExternValid = idExtern && idExtern.length > 2
           
-          const { data: existingByName } = !existingById?.length ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
-            : { data: null }
+          const { data: existingById } = idExternValid ? await supabase.from('rezervari')
+            .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
+            : { data: [] }
+          
+          // Fallback: cauta dupa apartament + checkin + checkout (cel mai sigur)
+          const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout) 
+            ? await supabase.from('rezervari')
+              .select('id,telefon_client,apartament_id')
+              .eq('apartament_id', aptId)
+              .eq('data_checkin', checkin)
+              .eq('data_checkout', checkout)
+              .limit(1)
+            : { data: [] }
 
-          const existing = existingById?.length ? existingById : existingByName
+          // Fallback final: cauta dupa nume+checkin
+          const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
+            ? await supabase.from('rezervari')
+              .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            : { data: [] }
+
+          const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
 
           if (existing && existing.length > 0) {
             // Update phone + apartment if missing
