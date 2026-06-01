@@ -1,25 +1,14 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
 
-type PretApt = {
-  id: string
-  nume: string
-  booking: number | null
-  bookingOriginal: number | null
-  airbnb: number | null
-  bookingUrl: string | null
-  airbnbUrl: string | null
-  updatedAt: string
-}
-
 export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
-  const [preturi, setPreturi] = useState<PretApt[]>([])
+  const [preturi, setPreturi] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [loadingApt, setLoadingApt] = useState<string | null>(null)
+  const [loadingApt, setLoadingApt] = useState('')
   const [dataSelectata, setDataSelectata] = useState('')
   const { toast, show } = useToast()
 
@@ -42,89 +31,106 @@ export default function PreturiPage() {
     supabase.from('apartamente')
       .select('id,nume,nota,link_booking,link_airbnb')
       .eq('status', 'activ')
+      .order('nota')
       .then(({ data }) => {
         setApts(data || [])
         setDataSelectata(today)
-        // Initializeaza tabelul cu date goale
-        setPreturi((data||[]).map((apt:any) => ({
-          id: apt.id,
-          nume: apt.nota || apt.nume,
-          booking: null,
-          bookingOriginal: null,
-          airbnb: null,
-          bookingUrl: apt.link_booking || null,
-          airbnbUrl: apt.link_airbnb || null,
-          updatedAt: ''
-        })))
+        loadPreturi(today, data || [])
       })
   }, [])
 
-  function buildUrl(baseUrl: string, platform: string, checkin: string, checkout: string): string {
-    if (!baseUrl) return ''
-    const sep = baseUrl.includes('?') ? '&' : '?'
-    if (platform === 'booking') {
-      if (baseUrl.includes('checkin=')) return baseUrl
-      return baseUrl + sep + `checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`
-    }
-    if (platform === 'airbnb') {
-      if (baseUrl.includes('check_in=')) return baseUrl
-      return baseUrl + sep + `check_in=${checkin}&check_out=${checkout}&adults=2`
-    }
-    return baseUrl
+  async function loadPreturi(data: string, aptList?: any[]) {
+    const list = aptList || apts
+    if (!list.length) return
+    // Incarca din cache Supabase
+    const { data: cached } = await supabase
+      .from('preturi_live')
+      .select('*')
+      .in('apartament_id', list.map((a:any) => a.id))
+      .eq('data_checkin', data)
+    
+    setPreturi(list.map((apt:any) => {
+      const c = (cached||[]).find((x:any) => x.apartament_id === apt.id)
+      return {
+        id: apt.id,
+        nume: apt.nota || apt.nume,
+        booking: c?.pret_booking || null,
+        bookingOriginal: c?.pret_booking_original || null,
+        airbnb: c?.pret_airbnb || null,
+        bookingUrl: apt.link_booking || null,
+        airbnbUrl: apt.link_airbnb || null,
+        updatedAt: c?.updated_at ? new Date(c.updated_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}) : null,
+        hasLinks: !!(apt.link_booking || apt.link_airbnb),
+      }
+    }))
   }
 
-  async function fetchPreturi(data: string) {
-    if (!apts.length) return
+  async function syncPreturi(data: string) {
     setLoading(true)
-    const coD = new Date(data + 'T12:00:00'); coD.setDate(coD.getDate()+1)
-    const checkout = fmt(coD)
-    const now = new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
-
-    // Reset preturi
-    setPreturi(apts.map((apt:any) => ({
-      id: apt.id, nume: apt.nota||apt.nume,
-      booking: null, bookingOriginal: null, airbnb: null,
-      bookingUrl: apt.link_booking||null, airbnbUrl: apt.link_airbnb||null, updatedAt: now
-    })))
+    const pad2 = (n:number) => String(n).padStart(2,'0')
+    const coD = new Date(data+'T12:00:00'); coD.setDate(coD.getDate()+1)
+    const checkout = `${coD.getFullYear()}-${pad2(coD.getMonth()+1)}-${pad2(coD.getDate())}`
 
     for (const apt of apts) {
+      if (!apt.link_booking && !apt.link_airbnb) continue
       setLoadingApt(apt.nota || apt.nume)
 
-      // Citeste Booking
+      let bPret = null, bOrig = null, aPret = null
+
       if (apt.link_booking) {
-        const url = buildUrl(apt.link_booking, 'booking', data, checkout)
         try {
-          const res = await fetch('/api/preturi-live', {
+          const sep = apt.link_booking.includes('?') ? '&' : '?'
+          const url = apt.link_booking.includes('checkin=') 
+            ? apt.link_booking 
+            : apt.link_booking + sep + `checkin=${data}&checkout=${checkout}&group_adults=2&no_rooms=1`
+          const r = await fetch('/api/preturi-live', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, platform: 'booking', checkin: data, checkout })
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({url, platform:'booking', checkin:data, checkout})
           })
-          const d = await res.json()
-          if (d.ok && d.pret) {
-            setPreturi(prev => prev.map(p => p.id===apt.id ? {...p, booking: d.pret, bookingOriginal: d.pretOriginal} : p))
-          }
+          const d = await r.json()
+          if (d.pret) { bPret = d.pret; bOrig = d.pretOriginal }
         } catch {}
       }
 
-      // Citeste Airbnb
       if (apt.link_airbnb) {
-        const url = buildUrl(apt.link_airbnb, 'airbnb', data, checkout)
         try {
-          const res = await fetch('/api/preturi-live', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, platform: 'airbnb', checkin: data, checkout })
+          const sep = apt.link_airbnb.includes('?') ? '&' : '?'
+          const url = apt.link_airbnb.includes('check_in=')
+            ? apt.link_airbnb
+            : apt.link_airbnb + sep + `check_in=${data}&check_out=${checkout}&adults=2`
+          const r = await fetch('/api/preturi-live', {
+            method: 'POST', 
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({url, platform:'airbnb', checkin:data, checkout})
           })
-          const d = await res.json()
-          if (d.ok && d.pret) {
-            setPreturi(prev => prev.map(p => p.id===apt.id ? {...p, airbnb: d.pret} : p))
-          }
+          const d = await r.json()
+          if (d.pret) aPret = d.pret
         } catch {}
       }
+
+      // Salveaza in Supabase
+      if (bPret || aPret) {
+        await supabase.from('preturi_live').upsert({
+          apartament_id: apt.id,
+          data_checkin: data,
+          pret_booking: bPret,
+          pret_airbnb: aPret,
+          pret_booking_original: bOrig,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'apartament_id,data_checkin' })
+      }
+
+      // Update UI progresiv
+      setPreturi(prev => prev.map(p => p.id === apt.id 
+        ? {...p, booking: bPret, bookingOriginal: bOrig, airbnb: aPret, updatedAt: new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}
+        : p
+      ))
     }
 
-    setLoadingApt(null)
+    setLoadingApt('')
     setLoading(false)
+    show('success', 'Prețuri actualizate!')
   }
 
   const panel: React.CSSProperties = {
@@ -133,75 +139,84 @@ export default function PreturiPage() {
     borderRadius: 14, overflow: 'hidden', marginBottom: 14,
   }
 
+  const hasAnyPrice = preturi.some(p => p.booking || p.airbnb)
+
   return (
     <>
-      <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb — prețuri în timp real"/>
+      <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb — sincronizare automată"/>
       <div style={{ padding: '14px 16px', overflowY: 'auto', flex: 1 }}>
 
-        {/* Selector dată */}
         <div style={panel}>
           <div style={{ padding: '14px 16px' }}>
-            <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 10, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Selectează data check-in</div>
+            <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 10, textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>
+              Selectează data check-in
+            </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 12 }}>
               {QUICK.map(({ label, val }) => (
-                <button key={val} onClick={() => setDataSelectata(val)}
+                <button key={val} onClick={() => { setDataSelectata(val); loadPreturi(val) }}
                   style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
                     border: `1px solid ${dataSelectata===val?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,
                     background: dataSelectata===val?'rgba(77,163,255,0.15)':'transparent',
-                    color: dataSelectata===val?'#7BC8FF':'rgba(159,215,255,0.5)', transition: 'all .15s' }}>
+                    color: dataSelectata===val?'#7BC8FF':'rgba(159,215,255,0.5)' }}>
                   {label}
                 </button>
               ))}
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' as const }}>
-              <input type="date" value={dataSelectata} onChange={e => setDataSelectata(e.target.value)}
+              <input type="date" value={dataSelectata}
+                onChange={e => { setDataSelectata(e.target.value); loadPreturi(e.target.value) }}
                 style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(100,160,255,0.2)', background: 'rgba(20,38,65,0.8)', color: 'rgba(214,228,244,0.9)', fontSize: 13, outline: 'none' }}/>
-              <button onClick={() => fetchPreturi(dataSelectata)} disabled={loading || !dataSelectata}
-                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(77,163,255,0.4)', background: 'rgba(77,163,255,0.12)', color: '#7BC8FF', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: loading?0.5:1 }}>
-                {loading ? `⏳ ${loadingApt||'Se citesc...'}` : '🔄 Actualizează prețurile'}
+              <button onClick={() => syncPreturi(dataSelectata)} disabled={loading || !dataSelectata}
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(77,163,255,0.4)', background: 'rgba(77,163,255,0.12)', color: '#7BC8FF', cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: loading?0.5:1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {loading ? `⏳ ${loadingApt||'Se sincronizează...'}` : '🔄 Sincronizează prețurile'}
               </button>
+              {hasAnyPrice && !loading && (
+                <span style={{ fontSize: 10, color: 'rgba(74,222,128,0.5)' }}>
+                  ✓ {preturi.filter(p=>p.booking||p.airbnb).length} prețuri din cache
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Tabel */}
         {preturi.length > 0 && (
           <div style={panel}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(159,215,255,0.08)', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF' }}>Check-in: {dataSelectata||'—'}</span>
-              {preturi[0]?.updatedAt && <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)' }}>actualizat {preturi[0].updatedAt}</span>}
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid rgba(159,215,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF' }}>Check-in: {dataSelectata}</span>
+              {hasAnyPrice && <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)' }}>
+                ultima sincronizare: {preturi.find(p=>p.updatedAt)?.updatedAt || '—'}
+              </span>}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(159,215,255,0.08)' }}>
-                  {['Apartament','🏨 Booking','🏠 Airbnb','Diferență',''].map(h => (
+                  {['Apartament','🏨 Booking','🏠 Airbnb','Diferență','Link'].map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, fontWeight: 600, color: 'rgba(159,215,255,0.4)', textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {preturi.map((p, i) => {
+                {preturi.filter(p => p.hasLinks).map((p, i) => {
                   const diff = p.booking && p.airbnb ? p.booking - p.airbnb : null
-                  const isLoadingThis = loading && loadingApt === p.nume
+                  const isThis = loading && loadingApt === p.nume
                   return (
-                    <tr key={p.id} style={{ borderBottom: i<preturi.length-1?'1px solid rgba(159,215,255,0.04)':'none' }}>
-                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: '#E8F4FF' }}>{p.nume}</td>
+                    <tr key={p.id} style={{ borderBottom: '1px solid rgba(159,215,255,0.04)', background: isThis ? 'rgba(77,163,255,0.03)' : 'transparent' }}>
+                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500, color: '#E8F4FF' }}>
+                        {p.nume}
+                        {isThis && <span style={{ fontSize: 10, color: 'rgba(77,163,255,0.5)', marginLeft: 6 }}>⏳</span>}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>
-                        {isLoadingThis ? <span style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>⏳</span> :
-                         p.booking ? (
+                        {p.booking ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'monospace', color: '#60A5FA' }}>{p.booking} RON</span>
-                            {p.bookingOriginal && p.bookingOriginal !== p.booking &&
-                              <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.3)', textDecoration: 'line-through' }}>{p.bookingOriginal}</span>}
+                            {p.bookingOriginal && p.bookingOriginal !== p.booking && (
+                              <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.3)', textDecoration: 'line-through' }}>{p.bookingOriginal}</span>
+                            )}
                           </div>
-                        ) : p.bookingUrl ?
-                          <span style={{ color: 'rgba(159,215,255,0.2)', fontSize: 11 }}>—</span> :
-                          <span style={{ color: 'rgba(248,113,113,0.4)', fontSize: 10 }}>fără link</span>}
+                        ) : <span style={{ color: 'rgba(159,215,255,0.2)', fontSize: 12 }}>{isThis ? '...' : '—'}</span>}
                       </td>
-                      <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 700, fontFamily: 'monospace', color: p.airbnb?'#F87171':'rgba(159,215,255,0.2)' }}>
-                        {isLoadingThis ? <span style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>⏳</span> :
-                         p.airbnb ? `${p.airbnb} RON` :
-                         p.airbnbUrl ? '—' : <span style={{ color: 'rgba(248,113,113,0.4)', fontSize: 10 }}>fără link</span>}
+                      <td style={{ padding: '10px 14px', fontSize: 15, fontWeight: 700, fontFamily: 'monospace', color: p.airbnb ? '#F87171' : 'rgba(159,215,255,0.2)' }}>
+                        {p.airbnb ? `${p.airbnb} RON` : (isThis ? '...' : '—')}
                       </td>
                       <td style={{ padding: '10px 14px', fontSize: 12, fontFamily: 'monospace',
                         color: diff===null?'rgba(159,215,255,0.3)':Math.abs(diff)<=5?'rgba(159,215,255,0.5)':diff>0?'#FCD34D':'#4ADE80' }}>
@@ -210,9 +225,9 @@ export default function PreturiPage() {
                       <td style={{ padding: '10px 14px' }}>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {p.bookingUrl && <a href={p.bookingUrl} target="_blank" rel="noopener"
-                            style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(77,163,255,0.2)', color: 'rgba(77,163,255,0.6)', textDecoration: 'none' }}>Bk</a>}
+                            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(77,163,255,0.25)', color: 'rgba(77,163,255,0.7)', textDecoration: 'none', whiteSpace: 'nowrap' as const }}>Bk ↗</a>}
                           {p.airbnbUrl && <a href={p.airbnbUrl} target="_blank" rel="noopener"
-                            style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(248,113,113,0.2)', color: 'rgba(248,113,113,0.6)', textDecoration: 'none' }}>Ab</a>}
+                            style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, border: '1px solid rgba(248,113,113,0.25)', color: 'rgba(248,113,113,0.7)', textDecoration: 'none', whiteSpace: 'nowrap' as const }}>Ab ↗</a>}
                         </div>
                       </td>
                     </tr>
@@ -220,6 +235,13 @@ export default function PreturiPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && preturi.filter(p=>p.hasLinks).length === 0 && apts.length > 0 && (
+          <div style={{ textAlign: 'center' as const, padding: '30px', color: 'rgba(159,215,255,0.3)', fontSize: 13 }}>
+            Niciun apartament nu are linkuri Booking/Airbnb salvate.<br/>
+            <span style={{ fontSize: 11 }}>Adaugă linkurile în fișa fiecărui apartament.</span>
           </div>
         )}
 
