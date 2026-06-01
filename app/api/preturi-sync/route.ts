@@ -18,8 +18,31 @@ async function sb(method: string, path: string, body?: any) {
 }
 
 export async function GET() {
-  const data = await sb('GET', 'apartamente?select=id,nota,nume,link_booking,link_airbnb&status=eq.activ&order=nota')
-  return NextResponse.json(data || [])
+  const data = await sb('GET', 
+    'apartamente?select=id,nota,nume,link_booking,link_airbnb,booking_links,airbnb_links&status=eq.activ&order=nota'
+  )
+  
+  // Normalizeaza linkurile - ia primul link valid din oricare camp
+  const normalized = (data || []).map((apt: any) => {
+    // Booking: incearca booking_links[], apoi link_booking
+    const bkLinks = (apt.booking_links || []).filter((l:string) => l && l.includes('booking.com'))
+    const bkLink = bkLinks[0] || (apt.link_booking?.includes('booking.com') ? apt.link_booking : null)
+    
+    // Airbnb: incearca link_airbnb, apoi airbnb_links[]
+    const abLinks = (apt.airbnb_links || []).filter((l:string) => l && l.includes('airbnb.'))
+    const abLink = (apt.link_airbnb?.includes('airbnb.') ? apt.link_airbnb : null) || abLinks[0]
+    
+    return {
+      id: apt.id,
+      nota: apt.nota || apt.nume,
+      link_booking: bkLink || null,
+      link_airbnb: abLink || null,
+      has_booking: !!bkLink,
+      has_airbnb: !!abLink,
+    }
+  }).filter((a:any) => a.has_booking || a.has_airbnb)
+  
+  return NextResponse.json(normalized)
 }
 
 export async function POST(req: NextRequest) {
@@ -35,5 +58,5 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString()
   })
   
-  return NextResponse.json({ ok: true, result })
+  return NextResponse.json({ ok: true })
 }
