@@ -38,7 +38,7 @@ function detectDate(text: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { text, forcedBiz, forcedDate } = await req.json()
+  const { text, forcedBiz, forcedDate, imageBase64, imageType } = await req.json()
 
   const detectedDate = detectDate(text)
   const finalDate = (forcedDate !== undefined && forcedDate !== null && forcedDate !== '') ? forcedDate : detectedDate
@@ -73,6 +73,19 @@ export async function POST(req: NextRequest) {
 
   const prompt = promptLines.filter(Boolean).join('\n')
 
+  // Daca avem imagine, adaugam instructiuni suplimentare
+  const imagePrompt = imageBase64 ? (prompt + '\n\nAnalizeaza imaginea si extrage task-ul. Citeste tot textul vizibil (mesaje WhatsApp, email, notite). Identifica: ce trebuie facut, cine e implicat, ce data/deadline apare, ce business e.') : prompt
+
+  // Build content - text only or text + image
+  const msgContent: any[] = []
+  if (imageBase64) {
+    msgContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: imageType || 'image/jpeg', data: imageBase64 }
+    })
+  }
+  msgContent.push({ type: 'text', text: imageBase64 ? imagePrompt : prompt })
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -82,8 +95,8 @@ export async function POST(req: NextRequest) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 400,
+      messages: [{ role: 'user', content: msgContent }],
     }),
   })
 
