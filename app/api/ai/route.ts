@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
-
 const BIZ_CODES: Record<string, string> = {
   '01': 'Property Management', '02': 'Marketplace',
   '03': 'Spalatorie', '04': 'Personal', '05': 'Admin', '06': 'Financiar',
@@ -66,20 +64,22 @@ export async function POST(req: NextRequest) {
 
   const prompt = promptLines.filter(Boolean).join('\n')
 
-  const res = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_KEY,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
-      }),
-    }
-  )
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': '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',
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
 
   const data = await res.json()
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+  const raw = data.content?.[0]?.text || '{}'
   const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 
   try {
