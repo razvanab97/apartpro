@@ -938,6 +938,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      <Toast toast={toast}/>
       </div>
     </>
   )
