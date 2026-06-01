@@ -140,14 +140,14 @@ export default function DashboardPage() {
     const idsComision=new Set((apComision||[]).map((a:any)=>a.id))
 
     const [
-      {count:apCount},{count:rezAziCount},{data:rezLuna},
+      {count:apCount},{data:rezAziCount},{data:rezLuna},
       {data:ciAzi},{data:coAzi},{data:recente},{data:deconturi},{count:taskCount},
       {data:aptData},{data:chData},{data:actRez},{count:rezLunaCount},
     ]=await Promise.all([
       // apartamente active
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
       // rezervari active ACUM (checkin<=azi, checkout>azi)
-      supabase.from('rezervari').select('*',{count:'exact',head:true}).in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr),
+      supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
       // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
       // checkin azi
@@ -178,7 +178,9 @@ export default function DashboardPage() {
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
     // grad ocupare = rezervari active azi / apartamente active
-    const gradOcupareReal=apCount&&rezAziCount?Math.round((rezAziCount/apCount)*100):0
+    // Grad ocupare: apartamente unice ocupate / total apartamente active
+    const aptOcupateAzi = new Set((rezAziCount as any[])?.map((r:any)=>r.apartament_id).filter(Boolean))
+    const gradOcupareReal = apCount ? Math.round((aptOcupateAzi.size / apCount) * 100) : 0
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
