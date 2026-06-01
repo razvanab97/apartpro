@@ -37,9 +37,11 @@ function canalFromSursa(sursa: string): string {
   const s = (sursa || '').toLowerCase()
   if (s.includes('booking')) return 'booking'
   if (s.includes('airbnb')) return 'airbnb'
-  if (s.includes('direct') || s.includes('site')) return 'direct'
-  if (s.includes('telefon')) return 'telefon'
   if (s.includes('whatsapp')) return 'whatsapp'
+  if (s.includes('telefon')) return 'telefon'
+  if (s.includes('manual') || s.includes('intern') || s.includes('recepto') || s.includes('front')) return 'direct'
+  if (s.includes('direct') || s.includes('site')) return 'direct'
+  if (s === '' || s === 'manual' || s === 'intern') return 'direct'
   return 'direct'
 }
 
@@ -88,7 +90,7 @@ export async function GET(req: NextRequest) {
     const { data: existing } = await supabase.from('rezervari')
       .select('id,observatii,status_rezervare,data_checkin,data_checkout,apartament_id')
       .gte('data_checkout', fmtISO(dateFrom))
-      .neq('canal','intern')
+      // Incluse toate canalele, inclusiv manual/intern
 
     // Map by 5SD-id
     const existingMap = new Map<string,any>()
