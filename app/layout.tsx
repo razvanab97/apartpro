@@ -5,11 +5,26 @@ import Layout from '@/components/Layout'
 export const metadata: Metadata = {
   title: 'ApartPro — Administrare Apartamente',
   description: 'Platforma de administrare apartamente in regim hotelier',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'ApartPro',
+  },
+  themeColor: '#0A1628',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ro">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+        <link rel="manifest" href="/manifest.json"/>
+        <meta name="apple-mobile-web-app-capable" content="yes"/>
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+        <meta name="apple-mobile-web-app-title" content="ApartPro"/>
+        <meta name="theme-color" content="#0A1628"/>
+      </head>
       <body style={{background:'#060E1A'}}>
         <div style={{position:'fixed',inset:0,zIndex:-2,background:'linear-gradient(160deg,#040C18 0%,#071220 40%,#0A1828 100%)'}}/>
         <div style={{position:'fixed',top:'-15%',right:'-5%',width:'50%',height:'65%',zIndex:-1,background:'radial-gradient(ellipse,rgba(77,163,255,0.13) 0%,transparent 68%)',pointerEvents:'none'}}/>
