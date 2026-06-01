@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog } from '@/components/ui'
@@ -41,7 +41,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [forcedBiz, setForcedBiz] = useState('')
   const [forcedDate, setForcedDate] = useState('')
   const [image, setImage] = useState<{base64:string;type:string;preview:string}|null>(null)
-  const imgRef = { current: null as any }
+  const imgRef = useRef<HTMLInputElement>(null)
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
 
@@ -246,6 +246,32 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           <input type="date" value={forcedDate} onChange={e => setForcedDate(e.target.value)}
             style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, background: 'rgba(14,27,43,0.5)', border: '1px solid rgba(159,215,255,0.12)', color: forcedDate ? '#7BC8FF' : 'rgba(159,215,255,0.3)', width: 130 }}/>
         </div>
+
+        {/* Image upload */}
+        <input
+          ref={imgRef}
+          type="file"
+          accept="image/*"
+          style={{display:'none'}}
+          onChange={e=>{const f=e.target.files?.[0];if(f)handleImageUpload(f);if(imgRef.current)imgRef.current.value=''}}
+        />
+        {image ? (
+          <div style={{position:'relative' as const,marginBottom:10}}>
+            <img src={image.preview} alt="preview"
+              style={{maxHeight:140,maxWidth:'100%',borderRadius:10,border:'1px solid rgba(74,222,128,0.3)',display:'block'}}/>
+            <button onClick={()=>setImage(null)}
+              style={{position:'absolute' as const,top:4,right:4,width:22,height:22,borderRadius:'50%',background:'rgba(248,113,113,0.8)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <X size={11} color="#fff"/>
+            </button>
+            <div style={{marginTop:4,fontSize:10,color:'rgba(74,222,128,0.6)'}}>✓ Imagine încărcată — AI citește textul din ea</div>
+          </div>
+        ) : (
+          <button onClick={()=>imgRef.current?.click()}
+            style={{display:'flex',alignItems:'center',gap:8,width:'100%',marginBottom:10,padding:'10px 14px',borderRadius:10,border:'1.5px dashed rgba(77,163,255,0.2)',background:'rgba(77,163,255,0.04)',cursor:'pointer',color:'rgba(77,163,255,0.5)',fontSize:12,textAlign:'left' as const}}>
+            <ImagePlus size={15}/>
+            <span>📸 Adaugă poză — WhatsApp, email, notițe, orice mesaj</span>
+          </button>
+        )}
 
         {/* Voice + textarea */}
         <div style={{ position: 'relative' }}>
