@@ -77,12 +77,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log(`[preturi-live] ${platform} ${fmt(today)}: pret=${pret}, url=${fetchUrl.slice(0,80)}`)
     return NextResponse.json({
       pret,
       pretOriginal,
       url: fetchUrl,
       data: fmt(today),
-      ok: pret !== null
+      ok: pret !== null,
+      debug: pret === null ? 'no price found in HTML' : 'ok'
     })
   } catch (e: any) {
     return NextResponse.json({ error: e.message, pret: null, ok: false })
