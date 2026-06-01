@@ -50,11 +50,27 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
   function handleImageUpload(file: File) {
     if (!file.type.startsWith('image/')) return
+    // Comprima imaginea la max 1200px si calitate 0.7 pentru a evita limita Vercel 4.5MB
+    const img = new window.Image()
     const reader = new FileReader()
     reader.onload = e => {
       const dataUrl = e.target?.result as string
-      setImage({ base64: dataUrl.split(',')[1], type: file.type, preview: dataUrl })
-      setInput('') // curata textul cand e imagine
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX = 1200
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+          else { width = Math.round(width * MAX / height); height = MAX }
+        }
+        canvas.width = width; canvas.height = height
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressed = canvas.toDataURL('image/jpeg', 0.8)
+        setImage({ base64: compressed.split(',')[1], type: 'image/jpeg', preview: compressed })
+        setInput('')
+      }
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
@@ -122,8 +138,9 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       const text = data.content?.[0]?.text || '{}'
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
       setResult(parsed)
-    } catch {
-      show('error', 'Eroare AI — încearcă din nou')
+    } catch (err: any) {
+      console.error('Classify error:', err)
+      show('error', 'Eroare AI — ' + (err?.message || 'încearcă din nou'))
     }
     setLoading(false)
   }
