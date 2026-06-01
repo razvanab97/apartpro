@@ -12,6 +12,7 @@ function detectDate(text: string): string | null {
   const fmt = (d: Date) => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
   const add = (n: number) => { const d = new Date(now); d.setDate(now.getDate()+n); return fmt(d) }
 
+  // Detectare 'azi spalatorie' sau 'spalatorie azi' = business + data
   // Exact date formats: 31.05 / 31/05 / 31.05.2026 / 2026-05-31
   const exactFull = t.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/)
   if (exactFull) return `${exactFull[1]}-${pad(Number(exactFull[2]))}-${pad(Number(exactFull[3]))}`
@@ -50,14 +51,22 @@ export async function POST(req: NextRequest) {
 
   const promptLines = [
     'Esti asistentul AI al lui Razvan, antreprenor roman.',
-    activeBiz ? ('Business: ' + activeBiz + ' (nu schimba!)') : '',
+    activeBiz ? ('Business activ: ' + activeBiz + ' — NU schimba business-ul!') : '',
     '',
-    'Transforma textul intr-un task. Returneaza DOAR JSON:',
+    'Transforma textul intr-un task actionabil. Returneaza DOAR JSON:',
     jsonTemplate,
     '',
-    'TITLU: NU copia textul. Reformuleaza cu verb actiune: Plateste/Mergi/Verifica/Suna/Trimite/Contacteaza',
-    activeBiz ? '' : 'BUSINESS: apartament/Booking/Airbnb→Property Management | produs→Marketplace | spalat→Spalatorie | factura/TVA/taxe→Financiar | altceva→Personal',
-    'DATA_LIMITA: pune exact ' + (finalDate ? finalDate : 'null'),
+    'REGULI CRITICE:',
+    'TITLU: verb activ la infinitiv + obiect concret (Suna/Plateste/Trimite/Verifica/Mergi/Contacteaza)',
+    activeBiz ? '' : ('BUSINESS: detecteaza din text:' +
+      '\n- spalatorie/rufe/lenjerii/curatenie → Spalatorie' +
+      '\n- apartament/rezervare/chirias/checkin/checkout/Booking/Airbnb/proprietar → Property Management' +
+      '\n- produs/vanzare/client/comanda/livrare → Marketplace' +
+      '\n- factura/TVA/contabilitate/taxa/plata/banca → Financiar' +
+      '\n- personal/familie/sanatate/cumparaturi → Personal' +
+      '\n- altceva → Admin'),
+    'PRIORITATE: urgenta=trebuie azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
+    'DATA_LIMITA: pune exact ' + (finalDate ? finalDate : 'null') + ' — respecta strict aceasta data!',
     '',
     'Text: ' + cleanText,
   ]
