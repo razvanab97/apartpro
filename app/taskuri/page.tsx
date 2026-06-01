@@ -623,7 +623,19 @@ export default function TaskuriPage() {
     if (filterPrio && t.prioritate !== filterPrio) return false
     return true
   })
-  const byStatus = (s: Task['status']) => filtered.filter(t => t.status === s)
+  const sortTasks = (list: Task[]) => [...list].sort((a,b) => {
+    // 1. Urgente primul
+    const prioOrder = { urgenta: 0, normala: 1, scazuta: 2 }
+    const pDiff = (prioOrder[a.prioritate]||1) - (prioOrder[b.prioritate]||1)
+    if (pDiff !== 0) return pDiff
+    // 2. Cu data limita mai apropiata
+    if (a.data_limita && b.data_limita) return a.data_limita.localeCompare(b.data_limita)
+    if (a.data_limita) return -1
+    if (b.data_limita) return 1
+    // 3. Priority score desc
+    return (b.priority_score||0) - (a.priority_score||0)
+  })
+  const byStatus = (s: Task['status']) => sortTasks(filtered.filter(t => t.status === s))
 
   return (
     <>
