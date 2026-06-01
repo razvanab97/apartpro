@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog } from '@/components/ui'
-import { Plus, Trash2, Edit2, Loader2, Sparkles, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, Sparkles, X, ImagePlus, Camera } from 'lucide-react'
 
 type Task = {
   id: string
@@ -40,10 +40,23 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [listening, setListening] = useState(false)
   const [forcedBiz, setForcedBiz] = useState('')
   const [forcedDate, setForcedDate] = useState('')
+  const [image, setImage] = useState<{base64:string;type:string;preview:string}|null>(null)
+  const imgRef = { current: null as any }
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
 
-  function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate('') }
+  function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate(''); setImage(null) }
+
+  function handleImageUpload(file: File) {
+    if (!file.type.startsWith('image/')) return
+    const reader = new FileReader()
+    reader.onload = e => {
+      const dataUrl = e.target?.result as string
+      setImage({ base64: dataUrl.split(',')[1], type: file.type, preview: dataUrl })
+      setInput('') // curata textul cand e imagine
+    }
+    reader.readAsDataURL(file)
+  }
 
   function toggleVoice() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -97,7 +110,12 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input, forcedBiz, forcedDate })
+        body: JSON.stringify({
+          text: input || (image ? '(din imagine)' : ''),
+          forcedBiz, forcedDate,
+          imageBase64: image?.base64 || null,
+          imageType: image?.type || null,
+        })
       })
       const data = await res.json()
       const text = data.content?.[0]?.text || '{}'
