@@ -22,7 +22,7 @@ const navItems = [
   { href: '/sync',        icon: RefreshCw,       label: 'Sync 5starDesk', group: 'P', bottom: false },
   { href: '/cheltuieli',  icon: Receipt,         label: 'Cheltuieli',     group: 'F', bottom: false },
   { href: '/facturi',      icon: Receipt,         label: 'Facturi',        group: 'F', bottom: false },
-  { href: '/preturi',     icon: DollarSign,      label: 'Prețuri live',   group: 'F', bottom: false },
+  { href: '/preturi',     icon: BarChart2,      label: 'Prețuri live',   group: 'F', bottom: false },
   { href: '/deconturi',   icon: TrendingUp,      label: 'Deconturi',      group: 'F', bottom: false },
   { href: '/rapoarte',    icon: FileText,        label: 'Rapoarte',       group: 'F', bottom: false },
   { href: '/rapoarte/booking', icon: TrendingUp,  label: 'Booking $',      group: 'F', bottom: false },
