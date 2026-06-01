@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { CanalBadge, PageLoading } from '@/components/ui'
-import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone } from 'lucide-react'
+import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
@@ -887,7 +887,7 @@ export default function DashboardPage() {
             {preturiLive.length>0&&<span style={{fontSize:9,color:'rgba(159,215,255,0.35)'}}>actualizat {preturiLive[0]?.updatedAt}</span>}
             <button onClick={fetchPreturiLive} disabled={loadingPreturi}
               style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11,opacity:loadingPreturi?0.5:1}}>
-              {loadingPreturi?<RefreshCw size={11} style={{animation:'spin 1s linear infinite'}}/>:<RefreshCw size={11}/>}
+              {loadingPreturi?'⏳':'🔄'}
               {loadingPreturi?'Se citesc...':'🔄 Actualizează'}
             </button>
           </div>
