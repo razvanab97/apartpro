@@ -131,30 +131,30 @@ export default function SyncPage() {
           break
         }
       }
-      // 3. Parse response - format 5starDesk: array direct sau obiect cu rezervari
-      const bookings = Array.isArray(data) ? data : 
+      // 3. Parse response
+      const rezervariList: any[] = Array.isArray(data) ? data :
         (Array.isArray(data?.rezervari) ? data.rezervari :
         Array.isArray(data?.bookings) ? data.bookings :
-        Array.isArray(data?.data) ? data.data : null)
+        Array.isArray(data?.data) ? data.data : [])
 
-      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${bookings?.length || 0} rezervari` })
-      if (bookings && bookings.length > 0) {
-        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(bookings[0]).join(', ')}` })
-        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(bookings[0]).slice(0,300)}` })
+      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${rezervariList.length} rezervari` })
+      if (rezervariList.length > 0) {
+        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(rezervariList[0]).join(', ')}` })
+        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(rezervariList[0]).slice(0,300)}` })
       }
 
-      if (!bookings || !Array.isArray(bookings)) {
-        res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns: ${JSON.stringify(data).slice(0,300)}` })
+      if (!rezervariList.length) {
+        res.logs.push({ type:'err', msg: `Format nerecunoscut sau fara date. Raspuns: ${JSON.stringify(data).slice(0,300)}` })
         setResult(res)
         setLoading(false)
         return
       }
 
-      res.total = bookings.length
-      res.logs.push({ type:'info', msg: `${bookings.length} rezervări primite de la 5starDesk` })
+      res.total = rezervariList.length
+      res.logs.push({ type:'info', msg: `${rezervariList.length} rezervari primite de la 5starDesk` })
 
       // 4. Process each booking - format real 5starDesk
-      for (const b of bookings) {
+      for (const b of rezervariList) {
         try {
           // Date format: "29 Apr 2026"
           const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
