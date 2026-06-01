@@ -15,6 +15,7 @@ type Task = {
   persoana?: string
   telefon_persoana?: string
   data_limita?: string
+  ora_limita?: string
   impact_score?: number
   effort_score?: number
   priority_score?: number
@@ -29,7 +30,7 @@ const COLS: { key: Task['status']; label: string; color: string }[] = [
 const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
 const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 const BIZ = ['Property Management', 'Marketplace', 'Spălătorie', 'Personal', 'Admin', 'Financiar', 'Alt business']
-const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '' }
+const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '' }
 
 /* ── BRAIN DUMP MODAL ── */
 function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -144,6 +145,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       business: forcedBiz || result.business || null,
       persoana: result.persoana || null,
       data_limita: forcedDate !== '' ? (forcedDate || null) : (result.data_limita || null),
+      ora_limita: result.ora_limita || null,
       impact_score: imp,
       effort_score: eff,
       priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
@@ -435,7 +437,7 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
           const prefix = isOverdue ? '🔴 ' : isCritical ? '🔴 ' : isWarning ? '🟡 ' : '📅 '
           return (
             <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: bg, color, border: `1px solid ${border}` }}>
-              {prefix}{task.data_limita}
+              {prefix}{task.data_limita}{task.ora_limita ? ` ⏰ ${task.ora_limita}` : ''}
             </span>
           )
         })()}
@@ -628,7 +630,45 @@ export default function TaskuriPage() {
   const [filterPrio, setFilterPrio] = useState('')
   const { toast, show } = useToast()
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    // Cere permisiunea pentru notificari
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+    // Verifica task-urile cu deadline in urmatoarele 15 minute
+    const checkNotifs = () => {
+      const now = new Date()
+      const pad = (n:number) => String(n).padStart(2,'0')
+      const todayStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+      const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+      const in15 = new Date(now.getTime() + 15*60000)
+      const in15Str = `${pad(in15.getHours())}:${pad(in15.getMinutes())}`
+      setTasks(prev => {
+        prev.forEach((task:any) => {
+          if (task.ora_limita && task.data_limita === todayStr && task.status !== 'finalizat') {
+            if (task.ora_limita === in15Str && Notification.permission === 'granted') {
+              new Notification(`⏰ Task în 15 min: ${task.titlu}`, {
+                body: `Deadline: ${task.ora_limita}${task.descriere ? ' — ' + task.descriere : ''}`,
+                icon: '/icon-192.png',
+                tag: `task-${task.id}`,
+              })
+            }
+            if (task.ora_limita === timeStr && Notification.permission === 'granted') {
+              new Notification(`🔔 Task acum: ${task.titlu}`, {
+                body: task.descriere || 'Deadline atins!',
+                icon: '/icon-192.png',
+                tag: `task-now-${task.id}`,
+              })
+            }
+          }
+        })
+        return prev
+      })
+    }
+    const interval = setInterval(checkNotifs, 60000) // verifica la fiecare minut
+    return () => clearInterval(interval)
+  }, [])
 
   async function load() {
     setLoading(true)
@@ -650,6 +690,7 @@ export default function TaskuriPage() {
       status: editing.status, prioritate: editing.prioritate,
       business: editing.business || null, persoana: editing.persoana || null,
       data_limita: editing.data_limita || null,
+      ora_limita: editing.ora_limita || null,
       impact_score: imp, effort_score: eff,
       priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
     }
@@ -781,6 +822,7 @@ export default function TaskuriPage() {
           <FormGroup><label>Persoană</label><input value={editing.persoana || ''} onChange={e => setEditing({ ...editing, persoana: e.target.value })} placeholder="Nume..."/></FormGroup>
           <FormGroup><label>Telefon/WA persoană</label><input value={(editing as any).telefon_persoana || ''} onChange={e=>setEditing({...editing,telefon_persoana:e.target.value} as any)} placeholder="+40 7xx xxx xxx"/></FormGroup>
           <FormGroup><label>Dată limită</label><input type="date" value={editing.data_limita || ''} onChange={e => setEditing({ ...editing, data_limita: e.target.value })}/></FormGroup>
+           <FormGroup><label>⏰ Oră (opțional)</label><input type="time" value={editing.ora_limita || ''} onChange={e=>setEditing({...editing,ora_limita:e.target.value})} style={{width:'100%'}}/></FormGroup>
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Impact (1-10): <span style={{ color: '#4ADE80' }}>{editing.impact_score || 5}</span></label><input type="range" min={1} max={10} value={editing.impact_score || 5} onChange={e => setEditing({ ...editing, impact_score: parseInt(e.target.value) })}/></FormGroup>
