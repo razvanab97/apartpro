@@ -164,7 +164,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       <div style={{
         background: 'rgba(14,27,43,0.96)',
         border: '1px solid rgba(159,215,255,0.2)',
-        borderRadius: 20, padding: 28,
+        borderRadius: 20, padding: 20,
         width: 520, maxWidth: 'calc(100vw - 40px)',
         maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
         position: 'relative', animation: 'fadeIn 0.18s ease',
@@ -251,26 +251,38 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         {image ? (
           <div style={{position:'relative' as const,marginBottom:10}}>
             <img src={image.preview} alt="preview"
-              style={{maxHeight:140,maxWidth:'100%',borderRadius:10,border:'1px solid rgba(74,222,128,0.3)',display:'block'}}/>
+              style={{maxHeight:130,maxWidth:'100%',borderRadius:10,border:'1px solid rgba(74,222,128,0.3)',display:'block'}}/>
             <button onClick={()=>setImage(null)}
-              style={{position:'absolute' as const,top:4,right:4,width:24,height:24,borderRadius:'50%',background:'rgba(248,113,113,0.85)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2}}>
+              style={{position:'absolute' as const,top:4,right:4,width:24,height:24,borderRadius:'50%',background:'rgba(248,113,113,0.85)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>
               <X size={12} color="#fff"/>
             </button>
-            <div style={{marginTop:4,fontSize:10,color:'rgba(74,222,128,0.6)'}}>✓ Imagine încărcată — AI citește textul din ea</div>
+            <div style={{marginTop:4,fontSize:10,color:'rgba(74,222,128,0.6)'}}>✓ AI va citi textul din imagine</div>
           </div>
         ) : (
-          <label style={{display:'block',marginBottom:10,cursor:'pointer',position:'relative' as const}}>
-            <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',borderRadius:10,border:'1.5px dashed rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.04)',color:'rgba(77,163,255,0.6)',fontSize:12,userSelect:'none' as const,pointerEvents:'none'}}>
+          <div style={{marginBottom:10}}>
+            <label htmlFor="task-img-upload" style={{
+              display:'flex',alignItems:'center',gap:8,
+              padding:'10px 14px',borderRadius:10,
+              border:'1.5px dashed rgba(77,163,255,0.3)',
+              background:'rgba(77,163,255,0.05)',
+              color:'rgba(77,163,255,0.65)',fontSize:12,
+              cursor:'pointer',userSelect:'none' as const
+            }}>
               <ImagePlus size={15}/>
-              <span>📸 Adaugă poză — WhatsApp, email, notițe</span>
-            </div>
+              <span>📸 Adaugă poză (WhatsApp, email, notițe)</span>
+            </label>
             <input
+              id="task-img-upload"
               type="file"
-              accept="image/*"
-              style={{position:'absolute' as const,inset:0,opacity:0,width:'100%',height:'100%',cursor:'pointer'}}
-              onChange={e=>{const f=e.target.files?.[0];if(f)handleImageUpload(f);e.target.value=''}}
+              accept="image/*,image/heic,image/heif"
+              style={{display:'none'}}
+              onChange={e=>{
+                const f = e.target.files?.[0]
+                if (f) handleImageUpload(f)
+                e.target.value = ''
+              }}
             />
-          </label>
+          </div>
         )}
 
         {/* Voice + textarea */}
