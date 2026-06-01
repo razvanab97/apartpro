@@ -48,6 +48,8 @@ function parseCanal(s: string): string {
 
 export default function SyncPage() {
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [result, setResult] = useState<SyncResult|null>(null)
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth()-1); return d.toISOString().split('T')[0]
@@ -266,6 +268,32 @@ export default function SyncPage() {
     if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
   }
 
+  async function deleteAndResync() {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    setDeleting(true)
+    setConfirmDelete(false)
+    setResult(null)
+    try {
+      // Sterge toate rezervarile
+      const delRes = await fetch('/api/delete-rezervari', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: 'delete-all-rez-2026' })
+      })
+      const delData = await delRes.json()
+      if (!delData.ok) throw new Error(delData.error || 'Eroare stergere')
+      show('success', 'Toate rezervarile au fost sterse. Se reincarca...')
+      // Resincronizeaza
+      await syncRezervari()
+    } catch (e: any) {
+      show('error', 'Eroare: ' + e.message)
+    }
+    setDeleting(false)
+  }
+
   const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14, padding:20 }
 
   return (
@@ -303,6 +331,33 @@ export default function SyncPage() {
             <Button variant="secondary" onClick={testApi} loading={loading}>
               Test API
             </Button>
+          </div>
+          {/* Buton stergere + resync */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(248,113,113,0.15)' }}>
+            {!confirmDelete ? (
+              <button onClick={deleteAndResync} disabled={deleting || loading}
+                style={{ width:'100%', padding:'9px', borderRadius:8, border:'1px solid rgba(248,113,113,0.3)',
+                  background:'rgba(248,113,113,0.06)', color:'rgba(248,113,113,0.8)',
+                  cursor:'pointer', fontSize:12, fontWeight:600 }}>
+                {deleting ? '⏳ Se șterg și resincronizează...' : '🗑️ Șterge toate și reimportă din 5starDesk'}
+              </button>
+            ) : (
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <span style={{ fontSize:12, color:'#F87171', flex:1 }}>
+                  ⚠️ Sigur ștergi TOATE rezervările? Acțiunea nu poate fi anulată!
+                </span>
+                <button onClick={deleteAndResync}
+                  style={{ padding:'7px 16px', borderRadius:8, border:'none', background:'#F87171',
+                    color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                  DA, ȘTERGE TOT
+                </button>
+                <button onClick={()=>setConfirmDelete(false)}
+                  style={{ padding:'7px 12px', borderRadius:8, border:'1px solid rgba(159,215,255,0.2)',
+                    background:'transparent', color:'rgba(159,215,255,0.6)', cursor:'pointer', fontSize:12 }}>
+                  Anulează
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
