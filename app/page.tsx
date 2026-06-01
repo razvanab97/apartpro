@@ -885,60 +885,6 @@ export default function DashboardPage() {
         </div>
 
 
-      {/* ══ PREȚURI LIVE ══ */}
-      <div style={panel}>
-        <div style={panelHdr}>
-          <span style={panelTitle}>💰 Prețuri live</span>
-          {preturiLive.length>0&&<span style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginLeft:'auto'}}>actualizat {preturiLive[0]?.updatedAt}</span>}
-        </div>
-        <div style={{padding:'8px 14px 4px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
-          {(()=>{
-            const p2=(n:number)=>String(n).padStart(2,'0')
-            const f2=(d:Date)=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`
-            const a2=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return f2(d)}
-            const tod=f2(new Date())
-            const dow=new Date().getDay()
-            const toSat=dow===6?7:6-dow; const toSun=dow===0?7:7-dow
-            const sel=preturiData||tod
-            const btns=[{l:'Azi',v:tod},{l:'Mâine',v:a2(1)},{l:'Poimâine',v:a2(2)},{l:'Sâmbătă',v:a2(toSat)},{l:'Duminică',v:a2(toSun)}]
-            return(<>
-              {btns.map(({l,v})=>(
-                <button key={v} onClick={()=>{setPreturiData(v);fetchPreturiLive(v)}} disabled={loadingPreturi}
-                  style={{padding:'4px 9px',borderRadius:6,fontSize:11,cursor:'pointer',border:`1px solid ${sel===v?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,background:sel===v?'rgba(77,163,255,0.15)':'transparent',color:sel===v?'#7BC8FF':'rgba(159,215,255,0.5)',transition:'all .15s'}}>
-                  {l}
-                </button>
-              ))}
-              <input type="date" value={sel} onChange={e=>{setPreturiData(e.target.value);fetchPreturiLive(e.target.value)}}
-                style={{padding:'3px 8px',borderRadius:6,border:'1px solid rgba(159,215,255,0.15)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.7)',fontSize:11,outline:'none'}}/>
-              <button onClick={()=>fetchPreturiLive(sel)} disabled={loadingPreturi}
-                style={{padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11,opacity:loadingPreturi?0.5:1,marginLeft:'auto'}}>
-                {loadingPreturi?'⏳':'🔄'} {loadingPreturi?'Se citesc...':'Actualizează'}
-              </button>
-            </>)
-          })()}
-        </div>
-        {!loadingPreturi&&preturiLive.length===0&&(<div style={{padding:'20px',textAlign:'center' as const,fontSize:12,color:'rgba(159,215,255,0.3)'}}>Apasă <b style={{color:'rgba(77,163,255,0.6)'}}>Actualizează</b> pentru prețurile de azi de pe Booking și Airbnb</div>)}
-        {loadingPreturi&&(<div style={{padding:'20px',textAlign:'center' as const,fontSize:12,color:'rgba(159,215,255,0.4)'}}>⏳ Se citesc prețurile live...</div>)}
-        {preturiLive.length>0&&(
-          <div style={{overflowX:'auto' as const}}>
-            <table style={{width:'100%',borderCollapse:'collapse'}}>
-              <thead><tr>{['Apartament','🏨 Booking','🏠 Airbnb','Diferență'].map(h=>(<th key={h} style={{padding:'7px 12px',textAlign:'left' as const,fontSize:9,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',borderBottom:'1px solid rgba(159,215,255,0.08)'}}>{h}</th>))}</tr></thead>
-              <tbody>
-                {preturiLive.map((p,i)=>{
-                  const diff=p.booking&&p.airbnb?p.booking-p.airbnb:null
-                  return(<tr key={p.id} style={{borderBottom:i<preturiLive.length-1?'1px solid rgba(159,215,255,0.04)':'none'}}>
-                    <td style={{padding:'8px 12px',fontSize:12,fontWeight:500,color:'#E8F4FF'}}>{p.nume}</td>
-                    <td style={{padding:'8px 12px',fontSize:13,fontWeight:700,fontFamily:'monospace',color:p.booking?'#60A5FA':'rgba(159,215,255,0.2)'}}>{p.booking?`${p.booking} RON`:'—'}</td>
-                    <td style={{padding:'8px 12px',fontSize:13,fontWeight:700,fontFamily:'monospace',color:p.airbnb?'#F87171':'rgba(159,215,255,0.2)'}}>{p.airbnb?`${p.airbnb} RON`:'—'}</td>
-                    <td style={{padding:'8px 12px',fontSize:11,fontFamily:'monospace',color:diff===null?'rgba(159,215,255,0.3)':Math.abs(diff)<=5?'rgba(159,215,255,0.5)':diff>0?'#FCD34D':'#4ADE80'}}>{diff===null?'—':diff>0?`Booking +${diff} RON`:diff<0?`Airbnb +${Math.abs(diff)} RON`:'Egal'}</td>
-                  </tr>)
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      <Toast toast={toast}/>
       </div>
     </>
   )
