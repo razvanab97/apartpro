@@ -7,6 +7,22 @@ import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calc
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
 const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
+const pad = (n: number) => String(n).padStart(2,'0')
+const fmtDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+const tomorrow = (d: Date) => { const t = new Date(d); t.setDate(t.getDate()+1); return fmtDate(t) }
+
+function withToday(url: string, platform: 'booking'|'airbnb'): string {
+  if (!url) return url
+  const today = fmtDate(new Date())
+  const tom = tomorrow(new Date())
+  const sep = url.includes('?') ? '&' : '?'
+  if (platform === 'booking' && !url.includes('checkin='))
+    return url + sep + `checkin=${today}&checkout=${tom}&group_adults=2&no_rooms=1`
+  if (platform === 'airbnb' && !url.includes('check_in='))
+    return url + sep + `check_in=${today}&check_out=${tom}&adults=2`
+  return url
+}
+
 const empty: Partial<Apartament> = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'' }
 
 function CopyBtn({ text }: { text: string }) {
@@ -227,7 +243,7 @@ export default function ApartamentePage() {
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
               {((selected as any).airbnb_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <a href={lnk} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#F87171', textDecoration:'none' }}>
+                  <a href={withToday(lnk, lnk.includes('airbnb') ? 'airbnb' : 'booking')} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#F87171', textDecoration:'none' }}>
                     <ExternalLink size={10}/> Airbnb ({i+2})
                   </a>
                   <CopyBtn text={lnk}/>
@@ -244,7 +260,7 @@ export default function ApartamentePage() {
               {selected.link_booking && (
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <div style={{ fontSize:10, color:'rgba(252,211,77,0.5)', marginRight:4 }}>🏨</div>
-                  <a href={selected.link_booking} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#FCD34D', textDecoration:'none' }}>
+                  <a href={withToday(selected.link_booking,'booking')} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#FCD34D', textDecoration:'none' }}>
                     <MapPin size={10}/> Google Maps
                   </a>
                   <CopyBtn text={selected.link_booking}/>
@@ -252,7 +268,7 @@ export default function ApartamentePage() {
               )}
               {((selected as any).booking_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <a href={lnk} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#60A5FA', textDecoration:'none' }}>
+                  <a href={withToday(lnk, lnk.includes('airbnb') ? 'airbnb' : 'booking')} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#60A5FA', textDecoration:'none' }}>
                     <ExternalLink size={10}/> Booking.com {i>0?`(${i+1})`:''}
                   </a>
                   <CopyBtn text={lnk}/>
