@@ -81,9 +81,7 @@ export default function SyncPage() {
         testData = await res.json()
         if (testData?.ok !== 'false' && testData?.ok !== false && !testData?.mesaj?.includes('Eroare')) break
       }
-      const data = testData
-      const data = await res.json()
-      setRawData(data)
+      setRawData(testData)
     } catch(e: any) {
       setRawData({ error: e.message })
     }
