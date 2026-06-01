@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
-  const { url, platform } = await req.json()
+  const { url, platform, checkin, checkout } = await req.json()
   if (!url) return NextResponse.json({ error: 'No URL' }, { status: 400 })
 
-  const today = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
-  const tomorrow = new Date(today); tomorrow.setDate(today.getDate()+1)
-
+  // Foloseste datele primite sau azi/maine
+  const ciDate = checkin ? new Date(checkin+'T12:00:00') : new Date()
+  const coDate = checkout ? new Date(checkout+'T12:00:00') : new Date(ciDate.getTime()+86400000)
+  const today = ciDate
+  const tomorrow = coDate
   try {
     let fetchUrl = url
 
