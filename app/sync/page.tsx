@@ -97,12 +97,11 @@ export default function SyncPage() {
     try {
       // 1. Get apartments
       const { data: apts } = await supabase.from('apartamente').select('id,nume,nota')
-      const aptMap: Record<string,string> = {}
+      // Map strict dupa nota (codul apartamentului) - singurul criteriu sigur
+      // Nota in 5starDesk = codul camerei (ex: C64, L88, GS08, VM07, L99)
+      const aptByNota: Record<string,string> = {}
       for (const a of apts||[]) {
-        if (a.nota) aptMap[a.nota.toLowerCase()] = a.id
-        aptMap[a.nume.toLowerCase()] = a.id
-        // Also map without spaces/special chars
-        aptMap[a.nume.toLowerCase().replace(/\s+/g,'')] = a.id
+        if (a.nota) aptByNota[a.nota.toUpperCase()] = a.id
       }
 
       // 2. Incearca mai multe actiuni pana gasim una care functioneaza
@@ -130,7 +129,12 @@ export default function SyncPage() {
           break
         }
       }
-      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | Răspuns: ${JSON.stringify(data).slice(0,200)}` })
+      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${bookings?.length || 0} rezervari` })
+      if (bookings?.length > 0) {
+        // Arata campurile disponibile din prima rezervare pentru debug
+        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(bookings[0]).join(', ')}` })
+        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(bookings[0]).slice(0,300)}` })
+      }
 
       // 3. Parse response - format 5starDesk: array direct sau obiect cu rezervari
       const bookings = Array.isArray(data) ? data : 
@@ -166,21 +170,31 @@ export default function SyncPage() {
           const idExtern = String(b.id || b.id_rezervare || '')
           const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
 
-          // Find apartment by id_camera or name
+          // Matching STRICT dupa nota (codul camerei din 5starDesk)
+          // Campuri posibile cu codul: id_camera, camera, unitate, room, numar_camera, tip_camera
           let aptId: string | null = null
-          // First try exact id_camera match in observatii
-          if (b.id_camera) {
-            const { data: aptByCamera } = await supabase.from('apartamente').select('id').eq('nota', b.id_camera).single()
-            if (aptByCamera) aptId = aptByCamera.id
-          }
-          // Fallback: fuzzy name match
-          if (!aptId) {
-            for (const [key, id] of Object.entries(aptMap)) {
-              if (numeCamera && (numeCamera.includes(key) || key.includes(numeCamera))) { aptId = id as string; break }
+          const codCandidati = [
+            b.id_camera, b.camera, b.unitate, b.room, 
+            b.numar_camera, b.tip_camera, b.cod_camera
+          ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
+          
+          for (const cod of codCandidati) {
+            if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
+            // Incearca si extragere cod din string (ex: "Ap C64" -> "C64")
+            const match = cod.match(/([A-Z]{1,3}\d{2,3})/i)
+            if (match && aptByNota[match[1].toUpperCase()]) {
+              aptId = aptByNota[match[1].toUpperCase()]; break
             }
           }
+          // IMPORTANT: daca nu gasim apartamentul, NU inserem rezervarea
+          // (mai bine lipsa decat asociere gresita)
 
-          if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: dată lipsă` }); continue }
+          if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); continue }
+          if (!aptId) { 
+            res.skipped++
+            res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${codCandidati.join(',')} | disponibile: ${Object.keys(aptByNota).join(',')}` })
+            continue
+          }
 
           // Deduplicare: cauta dupa ID 5starDesk (in observatii), sau apt+checkin+checkout
           // ID extern trebuie sa fie valid (nu gol, nu prea scurt)
