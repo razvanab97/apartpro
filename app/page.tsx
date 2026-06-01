@@ -110,6 +110,7 @@ export default function DashboardPage() {
   const [cheltuieliLP,setCheltuieliLP]=useState({total:0,platite:0})
   const [preturiLive,setPreturiLive]=useState<{id:string;nume:string;booking:number|null;airbnb:number|null;updatedAt:string}[]>([])
   const [loadingPreturi,setLoadingPreturi]=useState(false)
+  const [preturiData,setPreturiData]=useState('')
   const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
@@ -230,17 +231,22 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
-  async function fetchPreturiLive() {
+  async function fetchPreturiLive(dataParam?: string) {
     setLoadingPreturi(true)
     const { data: aptsData } = await supabase.from('apartamente').select('id,nume,nota,link_booking,link_airbnb').eq('status','activ')
     if (!aptsData) { setLoadingPreturi(false); return }
+    const pad2=(n:number)=>String(n).padStart(2,'0')
+    const fmt2=(d:Date)=>`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`
+    const checkin = dataParam || (preturiData || fmt2(new Date()))
+    const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1)
+    const checkout = fmt2(coD)
     const now = new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
     const results: any[] = []
     for (const apt of aptsData) {
       const bUrl = (apt as any).link_booking; const aUrl = (apt as any).link_airbnb
       let bP: number|null = null; let aP: number|null = null
-      if (bUrl) { try { const r = await fetch('/api/preturi-live',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:bUrl,platform:'booking'})}); const d = await r.json(); if(d.ok) bP=d.pret } catch {} }
-      if (aUrl) { try { const r = await fetch('/api/preturi-live',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:aUrl,platform:'airbnb'})}); const d = await r.json(); if(d.ok) aP=d.pret } catch {} }
+      if (bUrl) { try { const r = await fetch('/api/preturi-live',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:bUrl,platform:'booking',checkin,checkout})}); const d = await r.json(); if(d.ok) bP=d.pret } catch {} }
+      if (aUrl) { try { const r = await fetch('/api/preturi-live',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:aUrl,platform:'airbnb',checkin,checkout})}); const d = await r.json(); if(d.ok) aP=d.pret } catch {} }
       if (bP||aP) results.push({id:apt.id,nume:(apt as any).nota||apt.nume,booking:bP,airbnb:aP,updatedAt:now})
     }
     setPreturiLive(results); setLoadingPreturi(false)
@@ -882,15 +888,34 @@ export default function DashboardPage() {
       {/* ══ PREȚURI LIVE ══ */}
       <div style={panel}>
         <div style={panelHdr}>
-          <span style={panelTitle}>💰 Prețuri live — azi</span>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            {preturiLive.length>0&&<span style={{fontSize:9,color:'rgba(159,215,255,0.35)'}}>actualizat {preturiLive[0]?.updatedAt}</span>}
-            <button onClick={fetchPreturiLive} disabled={loadingPreturi}
-              style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11,opacity:loadingPreturi?0.5:1}}>
-              {loadingPreturi?'⏳':'🔄'}
-              {loadingPreturi?'Se citesc...':'🔄 Actualizează'}
-            </button>
-          </div>
+          <span style={panelTitle}>💰 Prețuri live</span>
+          {preturiLive.length>0&&<span style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginLeft:'auto'}}>actualizat {preturiLive[0]?.updatedAt}</span>}
+        </div>
+        <div style={{padding:'8px 14px 4px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
+          {(()=>{
+            const p2=(n:number)=>String(n).padStart(2,'0')
+            const f2=(d:Date)=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`
+            const a2=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return f2(d)}
+            const tod=f2(new Date())
+            const dow=new Date().getDay()
+            const toSat=dow===6?7:6-dow; const toSun=dow===0?7:7-dow
+            const sel=preturiData||tod
+            const btns=[{l:'Azi',v:tod},{l:'Mâine',v:a2(1)},{l:'Poimâine',v:a2(2)},{l:'Sâmbătă',v:a2(toSat)},{l:'Duminică',v:a2(toSun)}]
+            return(<>
+              {btns.map(({l,v})=>(
+                <button key={v} onClick={()=>{setPreturiData(v);fetchPreturiLive(v)}} disabled={loadingPreturi}
+                  style={{padding:'4px 9px',borderRadius:6,fontSize:11,cursor:'pointer',border:`1px solid ${sel===v?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,background:sel===v?'rgba(77,163,255,0.15)':'transparent',color:sel===v?'#7BC8FF':'rgba(159,215,255,0.5)',transition:'all .15s'}}>
+                  {l}
+                </button>
+              ))}
+              <input type="date" value={sel} onChange={e=>{setPreturiData(e.target.value);fetchPreturiLive(e.target.value)}}
+                style={{padding:'3px 8px',borderRadius:6,border:'1px solid rgba(159,215,255,0.15)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.7)',fontSize:11,outline:'none'}}/>
+              <button onClick={()=>fetchPreturiLive(sel)} disabled={loadingPreturi}
+                style={{padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11,opacity:loadingPreturi?0.5:1,marginLeft:'auto'}}>
+                {loadingPreturi?'⏳':'🔄'} {loadingPreturi?'Se citesc...':'Actualizează'}
+              </button>
+            </>)
+          })()}
         </div>
         {!loadingPreturi&&preturiLive.length===0&&(<div style={{padding:'20px',textAlign:'center' as const,fontSize:12,color:'rgba(159,215,255,0.3)'}}>Apasă <b style={{color:'rgba(77,163,255,0.6)'}}>Actualizează</b> pentru prețurile de azi de pe Booking și Airbnb</div>)}
         {loadingPreturi&&(<div style={{padding:'20px',textAlign:'center' as const,fontSize:12,color:'rgba(159,215,255,0.4)'}}>⏳ Se citesc prețurile live...</div>)}
