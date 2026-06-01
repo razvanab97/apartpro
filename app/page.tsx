@@ -149,7 +149,7 @@ export default function DashboardPage() {
       // rezervari active ACUM (checkin<=azi, checkout>azi)
       supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
       // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
-      supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).in('status_rezervare',['confirmata','finalizata']),
+      supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).order('data_checkin'),
       // checkout azi
@@ -167,7 +167,7 @@ export default function DashboardPage() {
       // rezervari active acum cu detalii
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
       // rezervari in luna curenta (count)
-      supabase.from('rezervari').select('*',{count:'exact',head:true}).in('status_rezervare',['confirmata','finalizata']).gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
+      supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
     ])
     // incasari = suma din rezervarile cu checkin in luna curenta
     const inc=rezLuna?.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)||0
