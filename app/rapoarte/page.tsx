@@ -162,14 +162,14 @@ export default function RapoartePage() {
     const start = primaZi.toISOString().split('T')[0]
     const end = ultimaZi.toISOString().split('T')[0]
 
-    // Fetch all reservations that OVERLAP with the period (not just checkin in period)
+    // Rezervarile sunt atribuite lunii de CHECKOUT (ex: 29 mar - 3 apr => aprilie)
     let q = supabase.from('rezervari')
       .select('*, apartament:apartamente(id,nume,nota)')
-      .lte('data_checkin', end)    // checkin before period end
-      .gt('data_checkout', start)   // checkout after period start
+      .gte('data_checkout', start)  // checkout dupa inceputul perioadei
+      .lte('data_checkout', end)    // checkout inainte de sfarsitul perioadei
       .in('status_rezervare', ['confirmata', 'finalizata'])
       .in('canal', selectedPlatforme)
-      .order('data_checkin')
+      .order('data_checkout')
 
     if (selectedApts.length > 0) q = q.in('apartament_id', selectedApts)
 
