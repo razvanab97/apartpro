@@ -1,0 +1,28 @@
+{
+  "name": "ApartPro \u2014 AB Homes",
+  "short_name": "ApartPro",
+  "description": "ERP management AB Homes Ia\u0219i",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A1628",
+  "theme_color": "#0A1628",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
