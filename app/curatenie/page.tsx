@@ -37,11 +37,15 @@ export default function CuratenePage() {
     setLen({})
     const [{data:coData},{data:ciData}] = await Promise.all([
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente(id,nume,nota,adresa)')
-        .eq('data_checkout', date),
+        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+        .eq('data_checkout', date)
+        .eq('apartament.status', 'activ')
+        .neq('status_rezervare', 'anulata'),
       supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente(id,nume,nota,adresa)')
-        .eq('data_checkin', date),
+        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+        .eq('data_checkin', date)
+        .eq('apartament.status', 'activ')
+        .neq('status_rezervare', 'anulata'),
     ])
     setCo(coData||[])
     setCi(ciData||[])
