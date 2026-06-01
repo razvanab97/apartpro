@@ -238,6 +238,7 @@ export async function POST(req: NextRequest) {
     '- Daca niciun apartament nu e disponibil, apartamente_recomandate=[] si explica in raspuns_sugerat',
     '- Potriveste preferintele (zona, dotari, buget)',
     '- Raspunsul sa fie in ' + (extracted.limba === 'en' ? 'engleza' : extracted.limba === 'fr' ? 'franceza' : extracted.limba === 'de' ? 'germana' : 'romana'),
+    '- IMPORTANT: Foloseste DOAR emoji Unicode standard in raspuns (ex: 😊 🏠 🔑 ✅ 📅 ⭐). NU folosi simboluri speciale non-emoji precum ◆◇★●►■ care apar ca semne de intrebare pe WhatsApp.',
   ].join('\n')
 
   const recRaw = await callClaude(recPrompt)
