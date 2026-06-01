@@ -456,7 +456,7 @@ export default function CheltuieliPage(){
   }
 
   /* ── CostPill cu Muta la alta luna ──────────────────────────────────── */
-  function CostPillWithMove({label,val,due,paid,onToggle,onEdit,onMove,lunaC,anC,busy}:{
+  function CostPillWithMove({label,val,due,paid,onToggle,onEdit,onPlataPart,onMove,lunaC,anC,busy}:{
     label:string;val:number;due:string;paid:boolean;
     onToggle:()=>void;onEdit?:()=>void;onPlataPart?:(s:number)=>void;
     onMove:(l:number,a:number)=>void;lunaC:number;anC:number;busy?:boolean
