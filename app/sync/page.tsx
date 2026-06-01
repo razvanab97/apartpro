@@ -11,7 +11,7 @@ function parseDate(s: string): string {
   const months: Record<string,string> = {
     jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
     jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
-    ian:'01',mai:'05',iun:'06',iul:'07',aug:'08',noi:'11',
+    ian:'01',mai:'05',iun:'06',iul:'07',sep2:'09',noi:'11',
   }
   const parts = s.trim().split(/\s+/)
   if (parts.length === 3) {
