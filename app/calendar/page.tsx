@@ -82,7 +82,7 @@ export default function CalendarPage() {
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
       supabase.from('rezervari')
         .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,apartament:apartamente(id,nume,nota)')
-        .not('status_rezervare', 'eq', 'anulata')
+        .or('status_rezervare.neq.anulata,status_rezervare.is.null')
         .lte('data_checkin', end).gte('data_checkout', start)
         .order('data_checkin'),
     ])
