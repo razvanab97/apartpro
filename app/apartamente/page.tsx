@@ -15,11 +15,24 @@ function withToday(url: string, platform: 'booking'|'airbnb'): string {
   if (!url) return url
   const today = fmtDate(new Date())
   const tom = tomorrow(new Date())
-  const sep = url.includes('?') ? '&' : '?'
-  if (platform === 'booking' && !url.includes('checkin='))
-    return url + sep + `checkin=${today}&checkout=${tom}&group_adults=2&no_rooms=1`
-  if (platform === 'airbnb' && !url.includes('check_in='))
-    return url + sep + `check_in=${today}&check_out=${tom}&adults=2`
+  
+  if (platform === 'airbnb') {
+    // Extrage doar /rooms/ID din URL, ignora parametrii existenti
+    const roomMatch = url.match(/\/rooms\/(\d+)/)
+    if (roomMatch) {
+      return `https://www.airbnb.com.ro/rooms/${roomMatch[1]}?check_in=${today}&check_out=${tom}&adults=2`
+    }
+    // Fallback: curata parametrii si adauga date
+    const baseUrl = url.split('?')[0]
+    return `${baseUrl}?check_in=${today}&check_out=${tom}&adults=2`
+  }
+  
+  if (platform === 'booking') {
+    const sep = url.includes('?') ? '&' : '?'
+    if (!url.includes('checkin='))
+      return url + sep + `checkin=${today}&checkout=${tom}&group_adults=2&no_rooms=1`
+  }
+  
   return url
 }
 
