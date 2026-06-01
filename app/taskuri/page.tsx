@@ -348,7 +348,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
           <button
             onClick={classify}
-            disabled={loading || !input.trim()}
+            disabled={loading || (!input.trim() && !image)}
             style={{
               flex: 1, padding: '10px 16px', borderRadius: 10,
               background: loading || !input.trim() ? 'rgba(77,163,255,0.3)' : 'rgba(77,163,255,0.85)',
