@@ -98,13 +98,13 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
   async function classifyAndSave() {
     // Scurtatura: analizeaza si salveaza direct fara a mai astepta confirmare
-    if (!input.trim()) return
+    if (!input.trim() && !image) return
     if (listening) { recognitionRef.current?.stop(); setListening(false) }
     await classify()
   }
 
   async function classify() {
-    if (!input.trim()) return
+    if (!input.trim() && !image) return  // permite imagine fara text
     setLoading(true)
     setResult(null)
     try {
