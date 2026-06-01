@@ -47,7 +47,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
   function toggleVoice() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) { show('error', 'Browserul nu suportă dictare vocală'); return }
+    if (!SpeechRecognition) { show('error', 'Browserul nu suportă dictare vocală. Folosește Chrome.'); return }
     if (listening) {
       recognitionRef.current?.stop()
       setListening(false)
@@ -55,17 +55,38 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     }
     const recognition = new SpeechRecognition()
     recognition.lang = 'ro-RO'
-    recognition.continuous = false
-    recognition.interimResults = false
+    recognition.continuous = true       // continuu - nu se opreste dupa pauza
+    recognition.interimResults = true   // afiseaza text in timp real
+    let finalTranscript = ''
     recognition.onresult = (e: any) => {
-      const transcript = e.results[0][0].transcript
-      setInput(prev => prev ? prev + ' ' + transcript : transcript)
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) finalTranscript += t + ' '
+        else interim = t
+      }
+      // Actualizeaza inputul cu ce s-a transcris pana acum + interim
+      setInput(finalTranscript + interim)
     }
-    recognition.onend = () => setListening(false)
-    recognition.onerror = () => setListening(false)
+    recognition.onend = () => {
+      if (listening) {
+        // Restart automat daca s-a oprit din cauza pauzei
+        try { recognition.start() } catch {}
+      }
+    }
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'no-speech') setListening(false)
+    }
     recognitionRef.current = recognition
     recognition.start()
     setListening(true)
+  }
+
+  async function classifyAndSave() {
+    // Scurtatura: analizeaza si salveaza direct fara a mai astepta confirmare
+    if (!input.trim()) return
+    if (listening) { recognitionRef.current?.stop(); setListening(false) }
+    await classify()
   }
 
   async function classify() {
