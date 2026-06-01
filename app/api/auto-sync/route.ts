@@ -52,10 +52,6 @@ function statusFromFivestar(status: string): string {
   return 'confirmata'
 }
 
-export async function POST(req: NextRequest) {
-  return GET(req)
-}
-
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization') || req.nextUrl.searchParams.get('secret')
   if (auth !== CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
