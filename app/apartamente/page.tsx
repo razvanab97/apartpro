@@ -372,14 +372,14 @@ export default function ApartamentePage() {
 
         <FormGroup>
           <label>🏨 Linkuri Booking.com</label>
-          {((editing as any).booking_links as string[]||['']).map((lnk:string, idx:number) => (
+          {(((editing as any).booking_links as string[]||[]).length===0?['']: ((editing as any).booking_links as string[])).map((lnk:string, idx:number) => (
             <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
               <input value={lnk} onChange={e=>{
                 const arr=[...((editing as any).booking_links||[''])]; arr[idx]=e.target.value
                 setEditing({...editing,booking_links:arr} as any)
               }} placeholder={`https://booking.com/... (${idx+1})`} style={{ flex:1 }}/>
               {idx===((editing as any).booking_links||['']).length-1
-                ? <button type="button" onClick={()=>setEditing({...editing,booking_links:[...((editing as any).booking_links||['']),'']} as any)}
+                ? <button type="button" onClick={()=>setEditing({...editing,booking_links:[...(((editing as any).booking_links as string[])||['']),'']} as any)}
                     style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', fontSize:12 }}>+ Adaugă</button>
                 : <button type="button" onClick={()=>{ const arr=[...((editing as any).booking_links||[''])]; arr.splice(idx,1); setEditing({...editing,booking_links:arr} as any) }}
                     style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
@@ -390,7 +390,7 @@ export default function ApartamentePage() {
 
         <FormGroup>
           <label>🏠 Linkuri Airbnb suplimentare</label>
-          {((editing as any).airbnb_links as string[]||[]).map((lnk:string, idx:number) => (
+          {(((editing as any).airbnb_links as string[])||[]).map((lnk:string, idx:number) => (
             <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
               <input value={lnk} onChange={e=>{
                 const arr=[...((editing as any).airbnb_links||[])]; arr[idx]=e.target.value
