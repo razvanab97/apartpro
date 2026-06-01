@@ -131,18 +131,17 @@ export default function SyncPage() {
           break
         }
       }
-      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${bookings?.length || 0} rezervari` })
-      if (bookings?.length > 0) {
-        // Arata campurile disponibile din prima rezervare pentru debug
-        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(bookings[0]).join(', ')}` })
-        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(bookings[0]).slice(0,300)}` })
-      }
-
       // 3. Parse response - format 5starDesk: array direct sau obiect cu rezervari
       const bookings = Array.isArray(data) ? data : 
         (Array.isArray(data?.rezervari) ? data.rezervari :
         Array.isArray(data?.bookings) ? data.bookings :
         Array.isArray(data?.data) ? data.data : null)
+
+      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${bookings?.length || 0} rezervari` })
+      if (bookings && bookings.length > 0) {
+        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(bookings[0]).join(', ')}` })
+        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(bookings[0]).slice(0,300)}` })
+      }
 
       if (!bookings || !Array.isArray(bookings)) {
         res.logs.push({ type:'err', msg: `Format nerecunoscut. Răspuns: ${JSON.stringify(data).slice(0,300)}` })
