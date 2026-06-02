@@ -157,8 +157,8 @@ export default function FacturiPage() {
   // Matching special pentru TermoService - adresa in format "AC05, Bl A43, Sc A, Ap 08"
   // Mircea = Bl A43, Canta = Bl 503
   const TERMOSERVICE_BL_MAP: Record<string,string> = {
-    'a43': 'Mircea',
-    '503': 'Canta',
+    'a43': 'Mircea',    // str. Vamasoaia, Bl A43
+    'vamasoaia': 'Mircea',
   }
   function matchByTermoService(adresa: string | null, aptList: any[]): string | null {
     if (!adresa) return null
