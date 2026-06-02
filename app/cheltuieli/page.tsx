@@ -358,11 +358,14 @@ export default function CheltuieliPage(){
       }
     }
     if(toAutoSeed.length > 0){
-      const {data:seeded} = await supabase.from('cheltuieli').insert(toAutoSeed).select()
+      const {data:seeded,error:seedErr} = await supabase.from('cheltuieli').insert(toAutoSeed).select()
+      if(seedErr) console.error('Auto-seed error:', seedErr)
       ;(seeded||[]).forEach((c:any)=>{
         if(!u[c.apartament_id])u[c.apartament_id]={}
         if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
-        if(!u[c.apartament_id][c.categorie].current) u[c.apartament_id][c.categorie].current=c
+        // Stocheaza cu ID-ul real din DB
+        if(!u[c.apartament_id][c.categorie].current)
+          u[c.apartament_id][c.categorie].current={...c,id:c.id}
       })
       setUtil({...u})
     }
@@ -471,10 +474,29 @@ export default function CheltuieliPage(){
     if(!item){show('error','Introdu mai întâi valoarea');return}
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
-    const {error:toggleErr}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+
+    // Daca nu are ID, trebuie mai intai creat in DB
+    if(!item.id){
+      const colDef=UTIL_COLS.find(c=>c.key===col)!
+      const aptNota=(apts.find((a:any)=>a.id===aptId)?.nota)||null
+      const dueDay=getDueForApt(aptNota,col,colDef.due)
+      const {data:newItem,error:insErr}=await supabase.from('cheltuieli').insert({
+        apartament_id:aptId,categorie:col,descriere:colDef.label,
+        valoare:Number(item.valoare)||0,
+        data:`${an}-${pad(luna)}-${pad(dueDay)}`,
+        status:ns,suportat_de:'proprietar',tva:0,
+      }).select().single()
+      if(insErr){show('error','Eroare creare: '+insErr.message);setSaving(null);return}
+      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...newItem,status:ns}}}}))
+      show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
+      setSaving(null)
+      return
+    }
+
+    const {error:toggleErr,data:updData}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id).select().single()
     if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
-    // Actualizeaza local imediat, fara sa astepte reload
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
+    // Actualizeaza local cu datele confirmate din DB
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...(updData||{}),status:ns}}}}))
     show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
     setSaving(null)
   }
