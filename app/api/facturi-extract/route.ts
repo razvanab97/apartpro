@@ -10,7 +10,7 @@ const FURNIZORI: Record<string, string[]> = {
   'Salubris':       ['salubris','salubritate','gunoi','deseuri','colectare'],
   'Orange':         ['orange','abonament orange'],
   'Vodafone':       ['vodafone','abonament vodafone'],
-  'Royal':          ['royal','royal imob','royal property'],
+  'Royal':          ['royal','royal imob','royal property','bl. r7','r7 sc'],
   'Internet':       ['internet','fibra','broadband','rds','digi','telekom'],
   'Asociatie':      ['asociatie','fond rulment','intretinere','cheltuieli comune','e-bloc','ebloc','nota de plata','kondo plus'],
   'Alta':           [],
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
    - Pentru facturi normale: cauta 'Total valoare factura curenta' sau 'Suma factura curenta'
    - Pentru TermoService (tsiasi.ro): cauta EXACT 'Total luna [LUNA] [AN]:' - aceasta e suma lunii curente. NU folosi 'Rest de plata' sau 'Restanta' care includ datorii vechi
    - Pentru E-BLOC (e-bloc.ro, Kondo Plus): cauta EXACT 'TOTAL LUNA CURENTĂ:' - aceasta e suma corecta. NU folosi 'TOTAL DE PLATĂ' care include restante
+   - Pentru Royal (aplicatie mobila, Bl. R7): e un screenshot cu lista de facturi individuale. Sumeaza TOATE valorile vizibile cu status 'Neachitată' pentru luna afisata. Furnizor = 'Royal'. Adresa = apartamentul din header (ex: 'Bl. R7, sc. A, ap. 99'). nr_apartament = numarul din header.
    - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD)
 4. Perioada facturata

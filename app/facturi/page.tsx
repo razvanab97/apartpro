@@ -73,6 +73,24 @@ export default function FacturiPage() {
     'is9pgrum': 'NT9',   // Newton Urban - nr apartament e 9N3, nestandard
   }
 
+  // Royal app: Bl R7 ap 99 = R99
+  const ROYAL_AP_MAP: Record<string,string> = {
+    '99': 'R99',
+  }
+  function matchByRoyal(adresa: string | null, nrApt: string | null, aptList: any[]): string | null {
+    if (!adresa && !nrApt) return null
+    const a = (adresa||'').toLowerCase()
+    // Daca adresa contine 'r7' sau 'royal', cauta dupa nr apartament
+    if (a.includes('r7') || a.includes('royal')) {
+      const nota = nrApt ? ROYAL_AP_MAP[nrApt] || null : null
+      if (nota) {
+        const apt = aptList.find((x:any) => (x.nota||'').toUpperCase() === nota)
+        if (apt) return apt.id
+      }
+    }
+    return null
+  }
+
   // Coduri locatie Urbica → numar apartament
   const URBICA_COD_MAP: Record<string,string> = {
     'isextia5': '83',  // L83 Lazar Comfy
@@ -291,6 +309,12 @@ export default function FacturiPage() {
           (data.furnizor||'').toLowerCase().includes('kondo') ||
           (data.detalii||'').toLowerCase().includes('e-bloc')
         if (isEbloc) autoAptId = matchByEbloc(data.adresa_consum, apts)
+      }
+      // Fallback Royal: Bl R7 ap 99 = R99
+      if (!autoAptId) {
+        const isRoyal = (data.furnizor||'').toLowerCase().includes('royal') ||
+          (data.adresa_consum||'').toLowerCase().includes('r7')
+        if (isRoyal) autoAptId = matchByRoyal(data.adresa_consum, nrAptExplicit, apts)
       }
       const facturaFinala = {
         ...data, id, processing: false,
