@@ -317,8 +317,9 @@ export default function CheltuieliPage(){
     for(const apt of allApts){
       const defs = getDef(apt)
       for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
-        // Sari daca exista deja in luna curenta
-        const existsInCurrent = !!(u[apt.id]?.[col.key]?.current || u[apt.id]?.[col.key])
+        // Sari daca exista deja in luna curenta cu valoare > 0
+        const currentItem = u[apt.id]?.[col.key]?.current || u[apt.id]?.[col.key]
+        const existsInCurrent = !!(currentItem && Number(currentItem?.valoare || currentItem?.current?.valoare || 0) > 0)
         if(existsInCurrent) continue
         // 1. Cauta in luna precedenta
         const prevItem = (chDataPrev||[]).find((c:any)=>
