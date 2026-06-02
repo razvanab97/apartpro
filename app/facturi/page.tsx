@@ -109,16 +109,10 @@ export default function FacturiPage() {
   }
 
   async function loadSaved() {
-    const now = new Date()
-    const luna = now.getMonth() + 1
-    const an = now.getFullYear()
-    const pad = (n: number) => String(n).padStart(2,'0')
     const { data } = await supabase.from('cheltuieli')
       .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
-      .gte('data', `${an}-${pad(luna)}-01`)
-      .lte('data', `${an}-${pad(luna)}-31`)
-      .not('nota', 'is', null)
-      .order('created_at', { ascending: false })
+      .not('fisier_url', 'is', null)
+      .order('data', { ascending: false })
     setSavedFacturi(data || [])
   }
 
@@ -186,15 +180,20 @@ export default function FacturiPage() {
       if (!autoAptId && data.titular) {
         autoAptId = matchByTitular(data.titular, apts)
       }
-      setFacturi(f => f.map(x => x.id === id ? {
-        ...x, ...data, id, processing: false,
+      const facturaFinala = {
+        ...data, id, processing: false,
         base64Preview: previewUrl, mimeType, status: 'procesat' as const,
         apartament_id: autoAptId,
+        _autoMatched: !!autoAptId,
         file_url: fileUrl || undefined,
-      } : x))
+      }
+      setFacturi(f => f.map(x => x.id === id ? facturaFinala : x))
+
+      // Auto-save daca apartamentul a fost identificat automat
       if (autoAptId) {
-        const aptNume = apts.find(a => a.id === autoAptId)?.nume || ''
-        show('info', `Asociat automat cu ${aptNume} (dupa adresa)`)
+        const aptNume = apts.find((a:any) => a.id === autoAptId)?.nume || ''
+        show('info', `Asociat automat cu ${aptNume} — se salvează...`)
+        await autoSave(facturaFinala, apts)
       }
     } catch (e: any) {
       setFacturi(f => f.map(x => x.id === id ? { ...x, processing: false, status: 'eroare' as const, furnizor: 'Eroare extragere' } : x))
@@ -213,6 +212,40 @@ export default function FacturiPage() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault(); setDragging(false)
     handleFiles(e.dataTransfer.files)
+  }
+
+  async function autoSave(f: any, aptList: any[]) {
+    const now = new Date()
+    const pad = (n:number) => String(n).padStart(2,'0')
+    const scadentaOriginala = f.data_scadenta ? new Date(f.data_scadenta) : null
+    const scadentaDepasita = scadentaOriginala && scadentaOriginala < now
+    const dataScadenta = scadentaDepasita
+      ? `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+      : (f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`)
+    const categorieToColKey: Record<string,string> = {
+      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','Urbica':'urbica',
+      'TermoService':'termoservice','Salubris':'salubris',
+      'Internet':'internet','Asociatie':'asociatie',
+    }
+    const colKey = categorieToColKey[f.categorieLabel||''] || categorieToColKey[f.categorie||''] || null
+    const { data, error } = await supabase.from('cheltuieli').insert({
+      apartament_id: f.apartament_id,
+      categorie: colKey || f.categorie || 'alta',
+      descriere: `${f.categorieLabel} — ${f.furnizor}`,
+      valoare: f.suma_totala,
+      data: dataScadenta,
+      status: 'nevalidat',
+      suportat_de: 'administrator',
+      tva: 0,
+      nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      fisier_url: f.file_url || null,
+    }).select().single()
+    if (!error && data) {
+      setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'salvat' as const, cheltuiala_id: data.id } : x))
+      const aptNume = aptList.find((a:any) => a.id === f.apartament_id)?.nota || aptList.find((a:any) => a.id === f.apartament_id)?.nume || ''
+      show('success', `✓ ${f.categorieLabel} ${f.suma_totala} RON salvat automat → ${aptNume}`)
+      loadSaved()
+    }
   }
 
   async function saveToSupabase(f: Factura) {
@@ -424,48 +457,76 @@ export default function FacturiPage() {
           </div>
         )}
 
-        {/* ── Facturi salvate luna curentă ── */}
-        {savedFacturi.length > 0 && (
-          <div>
-            <div style={{ fontSize:11, fontWeight:500, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
-              Facturi salvate luna aceasta — {savedFacturi.length}
-            </div>
-            <div style={{ ...glassCard, overflow:'hidden' }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px 36px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)', padding:'8px 16px' }}>
-                {['Descriere','Data','Valoare','Status',''].map(h=>(
-                  <div key={h} style={{ fontSize:10, fontWeight:500, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.06em' }}>{h}</div>
-                ))}
+        {/* ── Arhivă facturi — grupate pe apartament ── */}
+        {savedFacturi.length > 0 && (()=>{
+          // Grupeaza pe apartament_id
+          const grouped: Record<string, any[]> = {}
+          for (const f of savedFacturi) {
+            const key = f.apartament_id || '__fara__'
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(f)
+          }
+          return (
+            <div>
+              <div style={{ fontSize:11, fontWeight:500, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
+                Arhivă facturi — {savedFacturi.length} total
               </div>
-              {savedFacturi.map((f,i) => (
-                <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 120px 100px 90px 36px', padding:'10px 16px', borderBottom: i<savedFacturi.length-1?'1px solid rgba(100,160,255,0.06)':'none', alignItems:'center' }}>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
-                    {f.nota && <div style={{ fontSize:11, color:'rgba(159,215,255,0.35)', marginTop:2 }}>{f.nota}</div>}
-                    {f.fisier_url && (
-                      <a href={f.fisier_url} target="_blank" rel="noopener"
-                        style={{ fontSize:10, color:'rgba(77,163,255,0.6)', textDecoration:'none', marginTop:2, display:'inline-flex', alignItems:'center', gap:3 }}>
-                        📄 Deschide factura
-                      </a>
-                    )}
-                  </div>
-                  <div style={{ fontSize:12, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{f.data}</div>
-                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', fontFamily:'monospace' }}>{Number(f.valoare).toLocaleString('ro-RO')} RON</div>
-                  <div>
-                    <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500 }}>
-                      {f.status==='validat'?'Plătit':'Neachitat'}
-                    </span>
-                  </div>
-                  <div>
-                    <button onClick={() => deleteFacturaSalvata(f.id)}
-                      style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(248,113,113,0.2)', background:'rgba(248,113,113,0.06)', color:'rgba(248,113,113,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                      <Trash2 size={12}/>
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                {Object.entries(grouped).map(([aptId, items]) => {
+                  const apt = apts.find(a => a.id === aptId)
+                  const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
+                  const total = items.reduce((s,i) => s + Number(i.valoare), 0)
+                  return (
+                    <div key={aptId} style={{ ...glassCard, overflow:'hidden' }}>
+                      {/* Header apartament */}
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 16px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          {apt?.nota && <span style={{ fontSize:11, fontWeight:600, color:'var(--accent-blue)', background:'rgba(77,163,255,0.12)', padding:'2px 8px', borderRadius:5 }}>{apt.nota}</span>}
+                          <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{aptLabel}</span>
+                          <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>{items.length} facturi</span>
+                        </div>
+                        <span style={{ fontSize:13, fontWeight:600, color:'#FCD34D', fontFamily:'monospace' }}>{total.toLocaleString('ro-RO')} RON</span>
+                      </div>
+                      {/* Randuri facturi */}
+                      {items.map((f,i) => (
+                        <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 100px 110px 90px auto', padding:'10px 16px', borderBottom: i<items.length-1?'1px solid rgba(100,160,255,0.05)':'none', alignItems:'center', gap:10 }}>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
+                            {f.nota && <div style={{ fontSize:10, color:'rgba(159,215,255,0.3)', marginTop:1 }}>{f.nota}</div>}
+                          </div>
+                          <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{f.data}</div>
+                          <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF', fontFamily:'monospace' }}>{Number(f.valoare).toLocaleString('ro-RO')} RON</div>
+                          <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500, textAlign:'center' as const }}>
+                            {f.status==='validat'?'Plătit':'Neachitat'}
+                          </span>
+                          <div style={{ display:'flex', gap:5, alignItems:'center' }}>
+                            {f.fisier_url && (<>
+                              <a href={f.fisier_url} target="_blank" rel="noopener"
+                                title="Deschide factura"
+                                style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(77,163,255,0.25)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
+                                📄
+                              </a>
+                              <a href={f.fisier_url} download
+                                title="Descarcă factura"
+                                style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(74,222,128,0.25)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', fontSize:13 }}>
+                                ⬇
+                              </a>
+                            </>)}
+                            <button onClick={() => deleteFacturaSalvata(f.id)}
+                              title="Șterge"
+                              style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(248,113,113,0.2)', background:'rgba(248,113,113,0.06)', color:'rgba(248,113,113,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              <Trash2 size={12}/>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
       </div>
 
