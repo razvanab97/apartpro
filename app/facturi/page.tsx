@@ -28,6 +28,7 @@ type Factura = {
   suma_totala: number
   moneda: string
   data_scadenta: string | null
+  data_emitere: string | null
   perioada: string
   nr_factura: string
   tip_serviciu: string
@@ -292,7 +293,7 @@ export default function FacturiPage() {
     // add placeholder
     setFacturi(f => [...f, {
       id, filename: file.name, furnizor: '...', categorieLabel: '...', suma_totala: 0,
-      moneda: 'RON', data_scadenta: null, perioada: '', nr_factura: '', tip_serviciu: '',
+      moneda: 'RON', data_scadenta: null, data_emitere: null, perioada: '', nr_factura: '', tip_serviciu: '',
       detalii: '', apartament_id: null, status: 'procesat', processing: true,
     }])
 
@@ -434,13 +435,8 @@ export default function FacturiPage() {
       }
     }
 
-    // Salveaza pe luna scadentei daca e in viitor, altfel pe luna curenta
-    // Asta asigura ca factura apare imediat in cheltuieli fara sa astepte mutarea automata
-    const scadenta = f.data_scadenta ? new Date(f.data_scadenta) : null
-    const primaZiLunaCurenta = new Date(now.getFullYear(), now.getMonth(), 1)
-    const dataScadenta = (scadenta && scadenta >= primaZiLunaCurenta)
-      ? f.data_scadenta!
-      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+    // Pastreaza data scadentei exacta din factura - nu o modifica niciodata
+    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','eon_energie':'eon_curent',
       'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
@@ -473,11 +469,7 @@ export default function FacturiPage() {
     setSaving(f.id)
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
-    const scadenta2 = f.data_scadenta ? new Date(f.data_scadenta) : null
-    const primaZiLC = new Date(now.getFullYear(), now.getMonth(), 1)
-    const dataScadenta = (scadenta2 && scadenta2 >= primaZiLC)
-      ? f.data_scadenta!
-      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
       'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
@@ -524,12 +516,8 @@ export default function FacturiPage() {
 
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
-    // Salveaza pe luna scadentei daca e in viitor, altfel pe luna curenta
-    const scadenta2 = f.data_scadenta ? new Date(f.data_scadenta) : null
-    const primaZiLC = new Date(now.getFullYear(), now.getMonth(), 1)
-    const dataScadenta = (scadenta2 && scadenta2 >= primaZiLC)
-      ? f.data_scadenta!
-      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+    // Pastreaza MEREU data scadentei din factura
+    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     // Mapeaza categoria facturii la UTIL_KEYS reale din cheltuieli
     // UTIL_KEYS: chirie, asociatie, eon_curent, eon_gaz, internet, salubris
     const categorieToColKey: Record<string,string> = {
@@ -676,6 +664,7 @@ export default function FacturiPage() {
                                   📄 Deschide
                                 </a>
                               )}
+                            {f.data_emitere && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>emis: {f.data_emitere}</span>}
                             {f.data_scadenta && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>scad. {f.data_scadenta}</span>}
                               {f.perioada && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>{f.perioada}</span>}
                             </div>

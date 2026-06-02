@@ -38,8 +38,9 @@ export async function POST(req: NextRequest) {
    - Pentru E-BLOC (e-bloc.ro, Kondo Plus): cauta EXACT 'TOTAL LUNA CURENTĂ:' - aceasta e suma corecta. NU folosi 'TOTAL DE PLATĂ' care include restante
    - Pentru Royal (aplicatie mobila, Bl. R7): e un screenshot cu lista de facturi individuale. Sumeaza TOATE valorile vizibile cu status 'Neachitată' pentru luna afisata. Furnizor = 'Royal'. Adresa = apartamentul din header (ex: 'Bl. R7, sc. A, ap. 99'). nr_apartament = numarul din header.
    - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
-3. Data scadentei (termenul limita de plata, format YYYY-MM-DD)
-4. Perioada facturata
+3. Data scadentei (termenul limita de plata, format YYYY-MM-DD) - cauta 'Data scadenta', 'Termen plata', 'Data limita'
+4. Data emiterii facturii (format YYYY-MM-DD) - cauta 'Data emitere', 'Data facturii', 'Emisa la'
+5. Perioada facturata
 5. Numarul facturii
 6. Tipul serviciului (gaz natural, curent electric, apa, termoficare, salubritate, telefonie, internet, asociatie, altele)
 7. ADRESA LOCULUI DE CONSUM - strada, numarul, blocul, scara, apartamentul (NU adresa sediului companiei)
@@ -55,6 +56,7 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
   "suma_totala": 123.45,
   "moneda": "RON",
   "data_scadenta": "YYYY-MM-DD sau null",
+  "data_emitere": "YYYY-MM-DD sau null",
   "perioada": "descriere perioada",
   "nr_factura": "numarul facturii",
   "tip_serviciu": "categoria",
