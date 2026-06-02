@@ -832,8 +832,14 @@ export default function CheltuieliPage(){
             {val>0&&!paid&&onPlataPart&&<button onClick={()=>setShowPP(!showPP)} title="Plată parțială" style={{background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.25)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:11,color:'rgba(74,222,128,0.7)'}}>₊</button>}
             {val>0&&<button onClick={()=>setShowMove(!showMove)} title="Mută la altă lună" style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:6,padding:'3px 7px',cursor:'pointer',fontSize:10,color:'rgba(252,211,77,0.7)'}}>↔</button>}
           </div>
-          <button onClick={onToggle} disabled={busy||!val} style={{...checkBtn(paid),opacity:busy||!val?0.4:1}}>
-            {paid&&<Check size={13} color="#0E1B2B" strokeWidth={3}/>}
+          <button onClick={onToggle} disabled={busy||!val} title={paid?'Debifare plată':'Marchează ca plătit'}
+            style={{...checkBtn(paid),opacity:busy||!val?0.4:1, position:'relative' as const}}>
+            {busy
+              ? <span style={{fontSize:10}}>⏳</span>
+              : paid
+                ? <Check size={13} color="#0E1B2B" strokeWidth={3}/>
+                : null
+            }
           </button>
         </div>
         {showPP&&val>0&&!paid&&(
