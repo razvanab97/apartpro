@@ -148,8 +148,8 @@ export default function DashboardPage() {
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
       // rezervari active ACUM (checkin<=azi, checkout>azi)
       supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
-      // incasari luna curenta (checkin in luna curenta) - cu apartament_id pentru filtrare comision
-      supabase.from('rezervari').select('suma_incasata,canal,apartament_id').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna).neq('status_rezervare','anulata'),
+      // incasari luna curenta (checkout in luna curenta) - cu apartament_id pentru filtrare comision
+      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout').gte('data_checkout',primaZiLuna).lte('data_checkout',ultimaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).order('data_checkin'),
       // checkout azi
@@ -169,7 +169,7 @@ export default function DashboardPage() {
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
     ])
-    // incasari = suma din rezervarile cu checkin in luna curenta
+    // incasari = suma din rezervarile cu CHECKOUT in luna curenta
     const inc=rezLuna?.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)||0
     // comisioane AB Homes = doar VM07 si CG40
     const rezComision=(rezLuna||[]).filter((r:any)=>idsComision.has(r.apartament_id))
@@ -177,10 +177,18 @@ export default function DashboardPage() {
     const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.83*0.20,0)
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
-    // grad ocupare = rezervari active azi / apartamente active
-    // Grad ocupare: apartamente unice ocupate / total apartamente active
-    const aptOcupateAzi = new Set((rezAziCount as any[])?.map((r:any)=>r.apartament_id).filter(Boolean))
-    const gradOcupareReal = apCount ? Math.round((aptOcupateAzi.size / apCount) * 100) : 0
+    // Grad ocupare lunar: zile-apartament ocupate / (nr_apartamente_active * zile_in_luna)
+    const zileLuna = new Date(an, luna, 0).getDate()
+    const totalZileApartamente = (apCount||0) * zileLuna
+    let zileOcupate = 0
+    for (const r of (rezLuna||[])) {
+      if (!r.data_checkin || !r.data_checkout) continue
+      const ci = new Date(r.data_checkin) < new Date(primaZiLuna) ? new Date(primaZiLuna) : new Date(r.data_checkin)
+      const co = new Date(r.data_checkout) > new Date(ultimaZiLuna) ? new Date(ultimaZiLuna) : new Date(r.data_checkout)
+      const nopti = Math.max(0, Math.ceil((co.getTime()-ci.getTime())/(1000*60*60*24)))
+      zileOcupate += nopti
+    }
+    const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
@@ -394,7 +402,7 @@ export default function DashboardPage() {
             {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
             {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${stats.incasariLuna.toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:'RON'},
             {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
-            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${stats.rezervariActive}/${stats.apartamenteActive} ap.`},
+            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
             {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#EF4444':'#22C55E',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
           ].map((k,i)=>(
             <div key={i} style={{...panel,borderTop:`2px solid ${k.accent}`}}>
