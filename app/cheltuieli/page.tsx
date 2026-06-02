@@ -1005,9 +1005,26 @@ export default function CheltuieliPage(){
                             style={{flex:1,fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer'}}>
                             → Luna aceasta
                           </button>
-                          <button onClick={async()=>{const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);if(error)show('error',error.message);else load()}}
-                            style={{width:26,height:26,borderRadius:6,border:'1px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                            <Check size={11} color="#F87171" strokeWidth={3}/>
+                          <button onClick={async()=>{
+                              if(!it.id){show('error','ID lipsă - folosește butonul Luna aceasta');return}
+                              const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id)
+                              if(error){show('error',error.message);return}
+                              // Actualizeaza local - muta din restante in validat
+                              setUtil(u=>{
+                                const nu={...u}
+                                if(!nu[apt.id])return nu
+                                const entry=nu[apt.id][col.key]
+                                if(!entry)return nu
+                                nu[apt.id]={...nu[apt.id],[col.key]:{
+                                  ...entry,
+                                  restante:(entry.restante||[]).map((r:any)=>r.id===it.id?{...r,status:'validat'}:r)
+                                }}
+                                return nu
+                              })
+                              show('success','✓ Plătit')
+                            }}
+                            style={{width:26,height:26,borderRadius:6,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            <Check size={11} color="#4ADE80" strokeWidth={3}/>
                           </button>
                         </div>
                       </div>
