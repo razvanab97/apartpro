@@ -166,12 +166,14 @@ export default function CheltuieliPage(){
   useEffect(()=>{if(editCell)setTimeout(()=>cellRef.current?.focus(),50)},[editCell])
   useEffect(()=>{if(editFisc)setTimeout(()=>fiscRef.current?.focus(),50)},[editFisc])
 
+  const ultimaZiRef = useRef<string>('')
   async function load(){
     setLoading(true)
     const prevLuna = luna===1?12:luna-1
     const prevAn   = luna===1?an-1:an
     // Data corecta: ultima zi a lunii (evita 31 pentru luni cu 30 zile)
     const ultimaZiLuna = new Date(an, luna, 0).toISOString().slice(0,10)
+    ultimaZiRef.current = ultimaZiLuna
     const ultimaZiPrevLuna = new Date(prevAn, prevLuna, 0).toISOString().slice(0,10)
     const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
@@ -383,6 +385,39 @@ export default function CheltuieliPage(){
 
   function toggleExpand(id:string){
     setExpanded(e=>({...e,[id]:!e[id]}))
+  }
+
+  async function deduplicateCheltuieli(){
+    // Sterge duplicate - pastreaza doar prima inregistrare per apt+categorie+luna
+    const {data:all} = await supabase.from('cheltuieli')
+      .select('id,apartament_id,categorie,data,valoare,status')
+      .gte('data',`${an}-${pad(luna)}-01`)
+      .lte('data',ultimaZiRef.current)
+      .order('id', {ascending:true})
+    if(!all) return
+    
+    const seen = new Map<string,string>()
+    const toDelete: string[] = []
+    for(const c of all){
+      const key = `${c.apartament_id}__${c.categorie}`
+      if(seen.has(key)){
+        // Pastreaza pe cel cu status validat, sterge celelalte
+        const firstId = seen.get(key)!
+        const first = all.find(x=>x.id===firstId)
+        if(c.status==='validat' && first?.status!=='validat'){
+          toDelete.push(firstId)
+          seen.set(key, c.id)
+        } else {
+          toDelete.push(c.id)
+        }
+      } else {
+        seen.set(key, c.id)
+      }
+    }
+    if(toDelete.length===0){show('info','Fără duplicate');return}
+    const {error} = await supabase.from('cheltuieli').delete().in('id', toDelete)
+    if(error) show('error', error.message)
+    else { show('success', `✓ Șterse ${toDelete.length} duplicate`); await load() }
   }
 
   async function seedDefaults(){
@@ -1069,6 +1104,10 @@ export default function CheltuieliPage(){
               <button onClick={()=>{setLuna(now.getMonth()+1);setAn(now.getFullYear())}}
                 style={{padding:'4px 8px',borderRadius:6,border:'1px solid rgba(77,163,255,0.2)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11}}>Azi</button>
             </div>
+            <button onClick={deduplicateCheltuieli} disabled={loading}
+              style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'rgba(248,113,113,0.7)',fontSize:11,cursor:'pointer',fontWeight:500}}>
+              🧹 Curăță duplicate
+            </button>
             <button onClick={seedDefaults} disabled={seeding||loading}
               style={{display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.8)',cursor:'pointer'}}>
               <Plus size={13}/>{seeding?'Se importă...':'Import valori fixe'}
