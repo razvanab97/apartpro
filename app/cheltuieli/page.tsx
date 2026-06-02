@@ -13,6 +13,21 @@ const UTIL_COLS = [
   { key:'internet',   label:'Internet',    due:10 },
   { key:'salubris',   label:'Salubris',    due:5  },
 ]
+// Scadente diferite per apartament (nota → { col → due })
+const APT_DUE_OVERRIDES: Record<string, Record<string,number>> = {
+  'Canta':  { chirie: 15 },
+  'R99':    { chirie: 15 },
+}
+function getDueForApt(aptNota: string|null, colKey: string, defaultDue: number): number {
+  if (!aptNota) return defaultDue
+  // Cauta dupa nota exacta sau partial
+  for (const [key, overrides] of Object.entries(APT_DUE_OVERRIDES)) {
+    if ((aptNota||'').toLowerCase().includes(key.toLowerCase())) {
+      return overrides[colKey] ?? defaultDue
+    }
+  }
+  return defaultDue
+}
 const UTIL_KEYS = UTIL_COLS.map(c=>c.key)
 
 const FISCAL_ROWS = [
@@ -316,8 +331,9 @@ export default function CheltuieliPage(){
         const v=defs[col.key]
         if(!v||v===0)return
         if(util[apt.id]?.[col.key])return
+        const dueSeed=getDueForApt(apt.nota,col.key,col.due)
         ins.push({apartament_id:apt.id,categorie:col.key,descriere:col.label,valoare:v,
-          data:`${an}-${pad(luna)}-${pad(col.due)}`,status:'nevalidat',suportat_de:'proprietar',tva:0})
+          data:`${an}-${pad(luna)}-${pad(dueSeed)}`,status:'nevalidat',suportat_de:'proprietar',tva:0})
       })
     })
     if(!ins.length){show('info','Toate valorile există deja');setSeeding(false);return}
@@ -329,10 +345,35 @@ export default function CheltuieliPage(){
 
   async function plataPart(item:any, suma:number){
     if(!item?.id||suma<=0) return
-    const nota2 = (item.nota||'') + ` | Plătit parțial: ${suma} RON`
-    const status = suma >= Number(item.valoare) ? 'validat' : 'nevalidat'
-    await supabase.from('cheltuieli').update({ status, nota: nota2 }).eq('id', item.id)
-    show('success', `Plată ${suma} RON înregistrată`)
+    const valoareTotala = Number(item.valoare)
+    const rest = Math.round((valoareTotala - suma) * 100) / 100
+
+    if(suma >= valoareTotala){
+      // Plata integrala
+      await supabase.from('cheltuieli').update({ status:'validat' }).eq('id', item.id)
+      show('success', `Plată integrală ${suma} RON ✓`)
+    } else {
+      // Plata partiala: marcheaza originalul ca validat cu suma platita, creaza rest
+      await supabase.from('cheltuieli').update({
+        status: 'validat',
+        valoare: suma,
+        nota: (item.nota||'') + ` | Plătit parțial: ${suma} RON din ${valoareTotala} RON`
+      }).eq('id', item.id)
+      // Creaza intrare noua cu restul de plata
+      await supabase.from('cheltuieli').insert({
+        apartament_id: item.apartament_id,
+        categorie: item.categorie,
+        descriere: item.descriere,
+        valoare: rest,
+        data: item.data,
+        status: 'nevalidat',
+        suportat_de: item.suportat_de || 'proprietar',
+        tva: item.tva || 0,
+        nota: `Rest de plată din ${valoareTotala} RON (achitat ${suma} RON)`,
+        fisier_url: item.fisier_url || null,
+      })
+      show('success', `Plătit ${suma} RON — rest ${rest} RON salvat`)
+    }
     load()
   }
 
@@ -352,7 +393,9 @@ export default function CheltuieliPage(){
     const {aptId,col}=editCell
     const val=parseFloat(valOverride!==undefined?valOverride:editVal)||0
     const colDef=UTIL_COLS.find(c=>c.key===col)!
-    const dateStr=`${an}-${pad(luna)}-${pad(colDef.due)}`
+    const aptNota=(apts.find((a:any)=>a.id===aptId)?.nota)||null
+    const dueDayC=getDueForApt(aptNota,col,colDef.due)
+    const dateStr=`${an}-${pad(luna)}-${pad(dueDayC)}`
     const entry=util[aptId]?.[col]
     const existing=entry?.current||entry
     setSaving('cell')
@@ -725,7 +768,8 @@ export default function CheltuieliPage(){
                 const isPaid=item?.status==='validat'
                 const val=item?Number(item.valoare):0
                 const isEdit=editCell?.aptId===apt.id&&editCell?.col===col.key
-                const due=`${pad(col.due)}/${pad(luna)}`
+                const dueDay=getDueForApt(apt.nota,col.key,col.due)
+                const due=`${pad(dueDay)}/${pad(luna)}`
 
                 return(
                   <div key={col.key} style={{display:'flex',flexDirection:'column',gap:6,minWidth:130,flex:'1 1 130px'}}>
