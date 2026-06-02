@@ -494,10 +494,17 @@ export default function CheltuieliPage(){
     }
 
     const {error:toggleErr,data:updData}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id).select().single()
-    if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
+    if(toggleErr){
+      show('error','DB Eroare: '+toggleErr.message+' | ID:'+item.id+' | col:'+col)
+      setSaving(null);return
+    }
+    if(!updData){
+      show('error','Update fara confirmare - ID:'+item.id+' posibil RLS blocat')
+      setSaving(null);return
+    }
     // Actualizeaza local cu datele confirmate din DB
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...(updData||{}),status:ns}}}}))
-    show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...updData,status:ns}}}}))
+    show('success', ns==='validat'?'✓ Plătit salvat în DB':'↩ Resetat în DB')
     setSaving(null)
   }
 
