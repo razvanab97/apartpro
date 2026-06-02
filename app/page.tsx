@@ -190,9 +190,12 @@ export default function DashboardPage() {
     const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
-    // Grad ocupare lunar: zile-apartament ocupate / (nr_apartamente_active * zile_in_luna)
+    // Grad ocupare lunar: nopti ocupate / (apartamente_cu_rezervari_in_luna * zile_luna)
+    // Identic cu 5starDesk: doar apartamentele care au cel putin o rezervare in luna
     const zileLuna = new Date(an, luna, 0).getDate()
-    const totalZileApartamente = (apCount||0) * zileLuna
+    const apteWithRez = new Set((rezLuna||[]).map((r:any)=>r.apartament_id).filter(Boolean))
+    const nrApteGrad = apteWithRez.size || (apCount||1)
+    const totalZileApartamente = nrApteGrad * zileLuna
     let zileOcupate = 0
     for (const r of (rezLuna||[])) {
       if (!r.data_checkin || !r.data_checkout) continue
