@@ -158,7 +158,11 @@ export default function CheltuieliPage(){
 
   const {toast,show}=useToast()
 
-  useEffect(()=>{ load() },[luna,an])
+  const seededRef = useRef<string>('')
+  useEffect(()=>{
+    seededRef.current = '' // reset seed flag when month changes
+    load()
+  },[luna,an])
   useEffect(()=>{if(editCell)setTimeout(()=>cellRef.current?.focus(),50)},[editCell])
   useEffect(()=>{if(editFisc)setTimeout(()=>fiscRef.current?.focus(),50)},[editFisc])
 
@@ -321,6 +325,49 @@ export default function CheltuieliPage(){
     })
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
+    // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
+    const seedKey = `${an}-${luna}`
+    const shouldSeed = seededRef.current !== seedKey
+    const FIXED_CATS = ['chirie','internet','salubris']
+    const toAutoSeed: any[] = []
+    if(shouldSeed) for(const apt of allApts){
+      const defs = getDef(apt)
+      for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
+        // Sari daca exista deja orice inregistrare in luna curenta
+        const currentItem = u[apt.id]?.[col.key]?.current || u[apt.id]?.[col.key]
+        if(currentItem) continue
+        // 1. Cauta in luna precedenta
+        const prevItem = (chDataPrev||[]).find((c:any)=>
+          c.apartament_id===apt.id && c.categorie===col.key
+        )
+        const valoare = prevItem ? Number(prevItem.valoare) : (defs?.[col.key] || 0)
+        if(valoare <= 0) continue
+        const dueDay = getDueForApt(apt.nota, col.key, col.due)
+        toAutoSeed.push({
+          apartament_id: apt.id,
+          categorie: col.key,
+          descriere: col.label,
+          valoare,
+          data: `${an}-${pad(luna)}-${pad(dueDay)}`,
+          status: 'nevalidat',
+          suportat_de: 'proprietar',
+          tva: 0,
+        })
+      }
+    }
+    if(toAutoSeed.length > 0){
+      const {data:seeded,error:seedErr} = await supabase.from('cheltuieli').insert(toAutoSeed).select()
+      if(seedErr) console.error('Auto-seed error:', seedErr)
+      ;(seeded||[]).forEach((c:any)=>{
+        if(!u[c.apartament_id])u[c.apartament_id]={}
+        if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
+        // Stocheaza cu ID-ul real din DB
+        if(!u[c.apartament_id][c.categorie].current)
+          u[c.apartament_id][c.categorie].current={...c,id:c.id}
+      })
+      setUtil({...u})
+    }
+    if(shouldSeed) seededRef.current = seedKey
     setLoading(false)
   }
 
@@ -348,9 +395,7 @@ export default function CheltuieliPage(){
       UTIL_COLS.forEach(col=>{
         const v=defs[col.key]
         if(!v||v===0)return
-        // Sari daca exista deja in luna curenta (orice status)
-        const existing=util[apt.id]?.[col.key]?.current || util[apt.id]?.[col.key]
-        if(existing?.id)return
+        if(util[apt.id]?.[col.key])return
         const dueSeed=getDueForApt(apt.nota,col.key,col.due)
         ins.push({apartament_id:apt.id,categorie:col.key,descriere:col.label,valoare:v,
           data:`${an}-${pad(luna)}-${pad(dueSeed)}`,status:'nevalidat',suportat_de:'proprietar',tva:0})
@@ -394,6 +439,8 @@ export default function CheltuieliPage(){
       })
       show('success', `Plătit ${suma} RON — rest ${rest} RON salvat`)
     }
+    // Reload only pentru plataPart (creeaza intrari noi)
+    seededRef.current = ''
     load()
   }
 
