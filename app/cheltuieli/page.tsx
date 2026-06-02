@@ -155,7 +155,11 @@ export default function CheltuieliPage(){
 
   const {toast,show}=useToast()
 
-  useEffect(()=>{load()},[luna,an])
+  const seededRef = useRef<string>('')
+  useEffect(()=>{
+    seededRef.current = '' // reset seed flag when month changes
+    load()
+  },[luna,an])
   useEffect(()=>{if(editCell)setTimeout(()=>cellRef.current?.focus(),50)},[editCell])
   useEffect(()=>{if(editFisc)setTimeout(()=>fiscRef.current?.focus(),50)},[editFisc])
 
@@ -310,8 +314,12 @@ export default function CheltuieliPage(){
     })
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
-    // Auto-seed cheltuieli fixe lunare daca lipsesc pentru luna curenta
-    // Surse in ordine: 1) luna precedenta, 2) DEF hardcodat
+    // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
+    const seedKey = `${an}-${luna}`
+    if(seededRef.current === seedKey) {
+      setLoading(false)
+      return
+    }
     const FIXED_CATS = ['chirie','internet','salubris']
     const toAutoSeed: any[] = []
     for(const apt of allApts){
@@ -356,6 +364,7 @@ export default function CheltuieliPage(){
       setUtil({...u})
     }
 
+    seededRef.current = seedKey
     setLoading(false)
   }
 
@@ -427,6 +436,8 @@ export default function CheltuieliPage(){
       })
       show('success', `Plătit ${suma} RON — rest ${rest} RON salvat`)
     }
+    // Reload only pentru plataPart (creeaza intrari noi)
+    seededRef.current = ''
     load()
   }
 
