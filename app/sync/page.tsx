@@ -171,8 +171,8 @@ export default function SyncPage() {
           const idExtern = String(b.id || b.id_rezervare || '')
           const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
 
-          // Matching STRICT dupa nota (codul camerei din 5starDesk)
-          // Campuri posibile cu codul: id_camera, camera, unitate, room, numar_camera, tip_camera
+          // Matching dupa nota (codul camerei din 5starDesk)
+          // 5starDesk trimite "Apartament L88", "Apartament GS08" etc in tip_camera
           let aptId: string | null = null
           const codCandidati = [
             b.id_camera, b.camera, b.unitate, b.room, 
@@ -180,11 +180,16 @@ export default function SyncPage() {
           ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
           
           for (const cod of codCandidati) {
+            // Match direct (ex: "L88" = "L88")
             if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
-            // Incearca si extragere cod din string (ex: "Ap C64" -> "C64")
-            const match = cod.match(/([A-Z]{1,3}\d{2,3})/i)
-            if (match && aptByNota[match[1].toUpperCase()]) {
-              aptId = aptByNota[match[1].toUpperCase()]; break
+            // Match cu extragere cod din string complet
+            // ex: "APARTAMENT L88" -> "L88", "AP C64" -> "C64", "GS08 GREEN" -> "GS08"
+            const matches = cod.match(/([A-Z]{1,4}\d{2,3})/g)
+            if (matches) {
+              for (const m of matches) {
+                if (aptByNota[m]) { aptId = aptByNota[m]; break }
+              }
+              if (aptId) break
             }
           }
           // IMPORTANT: daca nu gasim apartamentul, NU inserem rezervarea
