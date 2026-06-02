@@ -583,11 +583,16 @@ export default function FacturiPage() {
                               <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
                                 {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>
                               </span>
-                              {(f as any)._autoMatched && (
-                                <span style={{ fontSize:10, padding:'2px 7px', borderRadius:5, background:'rgba(74,222,128,0.1)', border:'1px solid rgba(74,222,128,0.25)', color:'#4ADE80' }}>
-                                  ✓ asociat automat
-                                </span>
-                              )}
+                              {f.apartament_id && (() => {
+                                const apt = apts.find((a:any) => a.id === f.apartament_id)
+                                const label = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : null
+                                if (!label) return null
+                                return (
+                                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:(f as any)._autoMatched?'rgba(74,222,128,0.12)':'rgba(77,163,255,0.12)', border:`1px solid ${(f as any)._autoMatched?'rgba(74,222,128,0.3)':'rgba(77,163,255,0.3)'}`, color:(f as any)._autoMatched?'#4ADE80':'#7BC8FF', fontWeight:600 }}>
+                                    {(f as any)._autoMatched ? '✓ ' : '📍 '}{label}
+                                  </span>
+                                )
+                              })()}
                             {f.file_url && (
                                 <a href={f.file_url} target="_blank" rel="noopener"
                                   style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', color:'#7BC8FF', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:3 }}>
