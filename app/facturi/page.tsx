@@ -55,6 +55,8 @@ export default function FacturiPage() {
   const [dragging, setDragging] = useState(false)
   const [preview, setPreview] = useState<Factura | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [searchArchiva, setSearchArchiva] = useState<string>('')
+  const [syncingAll, setSyncingAll] = useState(false)
   const [editArchiva, setEditArchiva] = useState<any>(null)
   const [editArchivaForm, setEditArchivaForm] = useState({apartament_id:'',valoare:'',status:'nevalidat',data:''})
   const { toast, show } = useToast()
@@ -230,6 +232,42 @@ export default function FacturiPage() {
     if (error) show('error', error.message)
     else { show('success', 'Factură actualizată'); setEditArchiva(null); loadSaved() }
     setSaving(null)
+  }
+
+  async function sincronizeazaToate() {
+    setSyncingAll(true)
+    let count = 0
+    for (const f of savedFacturi.filter(s => !s.cheltuiala_sincronizata)) {
+      if (!f.apartament_id) continue
+      // Verifica daca exista deja in cheltuieli
+      const { data: existing } = await supabase.from('cheltuieli')
+        .select('id').eq('fisier_url', f.fisier_url).limit(1)
+      if (existing && existing.length > 0) continue
+      // Data: luna emiterii (data facturii) dar cu ziua scadentei
+      const dataFactura = f.data || new Date().toISOString().slice(0,10)
+      const categorieToColKey: Record<string,string> = {
+        'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent',
+        'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
+        'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
+      }
+      const colKey = categorieToColKey[f.categorie||''] || 'alte'
+      await supabase.from('cheltuieli').insert({
+        apartament_id: f.apartament_id,
+        categorie: colKey,
+        descriere: f.descriere || f.categorie,
+        valoare: f.valoare,
+        data: dataFactura,
+        status: 'nevalidat',
+        suportat_de: 'administrator',
+        tva: 0,
+        nota: f.nota || '',
+        fisier_url: f.fisier_url,
+      })
+      count++
+    }
+    show('success', count > 0 ? `✓ Sincronizate ${count} facturi` : 'Toate facturile sunt deja sincronizate')
+    setSyncingAll(false)
+    loadSaved()
   }
 
   async function loadSaved() {
@@ -740,16 +778,38 @@ export default function FacturiPage() {
         {/* ── Arhivă facturi — grupate pe apartament ── */}
         {savedFacturi.length > 0 && (()=>{
           // Grupeaza pe apartament_id
+          const filteredFacturi = searchArchiva
+            ? savedFacturi.filter(f =>
+                (f.descriere||'').toLowerCase().includes(searchArchiva.toLowerCase()) ||
+                (f.nota||'').toLowerCase().includes(searchArchiva.toLowerCase()) ||
+                (f.categorie||'').toLowerCase().includes(searchArchiva.toLowerCase()) ||
+                String(f.valoare||'').includes(searchArchiva)
+              )
+            : savedFacturi
           const grouped: Record<string, any[]> = {}
-          for (const f of savedFacturi) {
+          for (const f of filteredFacturi) {
             const key = f.apartament_id || '__fara__'
             if (!grouped[key]) grouped[key] = []
             grouped[key].push(f)
           }
           return (
             <div>
-              <div style={{ fontSize:11, fontWeight:500, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
-                Arhivă facturi — {savedFacturi.length} total
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:10, flexWrap:'wrap' as const }}>
+                <div style={{ fontSize:11, fontWeight:500, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'.08em' }}>
+                  Arhivă facturi — {savedFacturi.length} total
+                </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <input
+                    value={searchArchiva}
+                    onChange={e=>setSearchArchiva(e.target.value)}
+                    placeholder="🔍 Caută factură..."
+                    style={{ background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:8, color:'rgba(214,228,244,0.8)', fontSize:12, padding:'6px 12px', outline:'none', width:180 }}
+                  />
+                  <button onClick={sincronizeazaToate} disabled={syncingAll}
+                    style={{ padding:'6px 14px', borderRadius:8, border:'1px solid rgba(77,163,255,0.4)', background:'rgba(77,163,255,0.12)', color:'#7BC8FF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:syncingAll?0.6:1 }}>
+                    {syncingAll ? '⏳ Sincronizare...' : '⟳ Sincronizează în Cheltuieli'}
+                  </button>
+                </div>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 {Object.entries(grouped).map(([aptId, items]) => {
