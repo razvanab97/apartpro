@@ -182,12 +182,16 @@ export default function CheltuieliPage(){
     }
     const allApts = [...loadedApts, ...extraApts]
     setApts(allApts)
+    // util[aptId][col] = { current: item|null, restante: item[] }
     const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
     ;(chData||[]).forEach((c:any)=>{
       if(c.apartament_id){
         if(UTIL_KEYS.includes(c.categorie)){
           if(!u[c.apartament_id])u[c.apartament_id]={}
-          u[c.apartament_id][c.categorie]=c
+          if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
+          // Prima inregistrare gasita devine current, restul intra in restante
+          if(!u[c.apartament_id][c.categorie].current) u[c.apartament_id][c.categorie].current=c
+          else u[c.apartament_id][c.categorie].restante.push(c)
         } else if(c.categorie==='alte'){
           if(!ex[c.apartament_id])ex[c.apartament_id]=[]
           ex[c.apartament_id].push(c)
@@ -196,11 +200,12 @@ export default function CheltuieliPage(){
       else if(c.categorie==='contabilitate') cont.push(c)
       else if(FISCAL_ROWS.find(f=>f.key===c.categorie)) fisc[c.categorie]=c
     })
-    // Adauga intarziate din luna precedenta
+    // Adauga restante din luna precedenta la categoria corespunzatoare
     ;(chDataPrev||[]).forEach((ch:any)=>{
       if(ch.apartament_id && UTIL_KEYS.includes(ch.categorie)){
         if(!u[ch.apartament_id])u[ch.apartament_id]={}
-        u[ch.apartament_id][ch.categorie+'__int']={...ch,_intarziat:true}
+        if(!u[ch.apartament_id][ch.categorie]) u[ch.apartament_id][ch.categorie]={current:null,restante:[]}
+        u[ch.apartament_id][ch.categorie].restante.push({...ch,_intarziat:true})
       } else if(ch.apartament_id){
         if(!ex[ch.apartament_id])ex[ch.apartament_id]=[]
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
@@ -256,12 +261,13 @@ export default function CheltuieliPage(){
   }
 
   async function toggleUtil(aptId:string,col:string){
-    const item=util[aptId]?.[col]
+    const entry=util[aptId]?.[col]
+    const item=entry?.current||entry
     if(!item){show('error','Introdu mai întâi valoarea');return}
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
     await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...item,status:ns}}}))
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
     setSaving(null)
   }
 
@@ -271,11 +277,12 @@ export default function CheltuieliPage(){
     const val=parseFloat(valOverride!==undefined?valOverride:editVal)||0
     const colDef=UTIL_COLS.find(c=>c.key===col)!
     const dateStr=`${an}-${pad(luna)}-${pad(colDef.due)}`
-    const existing=util[aptId]?.[col]
+    const entry=util[aptId]?.[col]
+    const existing=entry?.current||entry
     setSaving('cell')
-    if(existing){
+    if(existing?.id){
       await supabase.from('cheltuieli').update({valoare:val,data:dateStr}).eq('id',existing.id)
-      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...existing,valoare:val}}}))
+      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...existing,valoare:val}}}}))
     } else {
       const {data,error}=await supabase.from('cheltuieli').insert({
         apartament_id:aptId,categorie:col,descriere:colDef.label,valoare:val,
@@ -379,18 +386,42 @@ export default function CheltuieliPage(){
   }
 
   /* ── calcule ─────────────────────────────────────────────────────────── */
+  function getUtilItem(id:string,col:string){
+    const entry=util[id]?.[col]
+    return entry?.current!==undefined ? entry.current : entry
+  }
+  function getUtilRestante(id:string,col:string):any[]{
+    const entry=util[id]?.[col]
+    return entry?.restante||[]
+  }
   const aptTotal=(id:string)=>{
-    const u=UTIL_COLS.reduce((s,c)=>s+Number(util[id]?.[c.key]?.valoare||0),0)
+    const u=UTIL_COLS.reduce((s,c)=>{
+      const it=getUtilItem(id,c.key)
+      const rest=getUtilRestante(id,c.key)
+      return s+Number(it?.valoare||0)+rest.reduce((rs:number,r:any)=>rs+Number(r.valoare||0),0)
+    },0)
     const e=(extras[id]||[]).reduce((s,i)=>s+Number(i.valoare),0)
     return u+e
   }
   const aptPaid=(id:string)=>{
-    const u=UTIL_COLS.reduce((s,c)=>{const it=util[id]?.[c.key];return s+(it?.status==='validat'?Number(it.valoare):0)},0)
+    const u=UTIL_COLS.reduce((s,c)=>{
+      const it=getUtilItem(id,c.key)
+      const rest=getUtilRestante(id,c.key)
+      const paidRest=rest.filter((r:any)=>r.status==='validat').reduce((rs:number,r:any)=>rs+Number(r.valoare||0),0)
+      return s+(it?.status==='validat'?Number(it?.valoare||0):0)+paidRest
+    },0)
     const e=(extras[id]||[]).filter(i=>i.status==='validat').reduce((s,i)=>s+Number(i.valoare),0)
     return u+e
   }
   const allCheltuieli=[
-    ...apts.flatMap(a=>[...UTIL_COLS.map(c=>util[a.id]?.[c.key]),...(extras[a.id]||[])].filter(Boolean)),
+    ...apts.flatMap(a=>[
+      ...UTIL_COLS.flatMap(c=>{
+        const it=getUtilItem(a.id,c.key)
+        const rest=getUtilRestante(a.id,c.key)
+        return [it,...rest].filter(Boolean)
+      }),
+      ...(extras[a.id]||[])
+    ]),
     ...consumabile,...contab,
     ...FISCAL_ROWS.map(f=>fiscal[f.key]).filter(Boolean),
   ]
@@ -612,55 +643,57 @@ export default function CheltuieliPage(){
           <div style={{padding:'16px 4px 4px'}}>
             {/* pills utilități */}
             <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:aptExtras.length>0?12:0}}>
-              {/* Pills intarziate luna precedenta */}
-              {UTIL_COLS.map(col=>{
-                const it=util[apt.id]?.[col.key+'__int']
-                if(!it) return null
-                return(
-                  <div key={col.key+'_int'} style={{minWidth:130,flex:'1 1 130px',borderRadius:12,padding:'12px 14px',border:'1.5px solid rgba(248,113,113,0.45)',background:'rgba(248,113,113,0.07)',position:'relative' as const}}>
-                    <div style={{position:'absolute' as const,top:0,left:8,fontSize:8,fontWeight:700,color:'#F87171',background:'rgba(248,113,113,0.15)',padding:'1px 6px',borderRadius:'0 0 5px 5px',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>⚠ ÎNTÂRZIAT {it.data?.slice(0,7)}</div>
-                    <div style={{paddingTop:12}}>
-                      <div style={{fontSize:11,fontWeight:600,color:'rgba(248,113,113,0.7)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.04em'}}>{col.label}</div>
-                      <div style={{fontSize:17,fontWeight:700,color:'#F87171',letterSpacing:'-.3px'}}>{Number(it.valoare||0).toLocaleString('ro-RO')}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(248,113,113,0.5)'}}>RON</span></div>
-                      <div style={{fontSize:10,color:'rgba(248,113,113,0.45)',marginTop:3}}>scad. {it.data?.slice(8,10)}/{it.data?.slice(5,7)}</div>
-                    </div>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:10,gap:4}}>
-                      <button onClick={()=>moveTolLuna(it,luna,an)} title="Mută în luna curentă"
-                        style={{fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer',flex:1}}>
-                        → Luna aceasta
-                      </button>
-                      <button onClick={async()=>{await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);load()}}
-                        style={{width:28,height:28,borderRadius:7,border:'1px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                        <Check size={12} color="#F87171" strokeWidth={3}/>
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-              {UTIL_COLS.map(col=>{
-                const item=util[apt.id]?.[col.key]
+                {UTIL_COLS.map(col=>{
+                const item=getUtilItem(apt.id,col.key)
+                const restante=getUtilRestante(apt.id,col.key)
                 const isPaid=item?.status==='validat'
                 const val=item?Number(item.valoare):0
                 const isEdit=editCell?.aptId===apt.id&&editCell?.col===col.key
                 const due=`${pad(col.due)}/${pad(luna)}`
 
-                if(isEdit) return(
-                  <EditPill key={col.key} label={col.label} due={due}
-                    onSave={v=>commitCell(v)}
-                    onCancel={()=>{setEditCell(null);setEditVal('')}}
-                    initialVal={val>0?String(val):''}
-                  />
-                )
                 return(
-                  <CostPillWithMove key={col.key}
-                    label={col.label} val={val} due={due} paid={isPaid}
-                    busy={saving===apt.id+col.key}
-                    onToggle={()=>toggleUtil(apt.id,col.key)}
-                    onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
-                    onPlataPart={(suma)=>plataPart(item,suma)}
-                    onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
-                    lunaC={luna} anC={an}
-                  />
+                  <div key={col.key} style={{display:'flex',flexDirection:'column',gap:6,minWidth:130,flex:'1 1 130px'}}>
+                    {/* Pill luna curenta */}
+                    {isEdit ? (
+                      <EditPill label={col.label} due={due}
+                        onSave={v=>commitCell(v)}
+                        onCancel={()=>{setEditCell(null);setEditVal('')}}
+                        initialVal={val>0?String(val):''}
+                      />
+                    ) : (
+                      <CostPillWithMove
+                        label={col.label} val={val} due={due} paid={isPaid}
+                        busy={saving===apt.id+col.key}
+                        onToggle={()=>toggleUtil(apt.id,col.key)}
+                        onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
+                        onPlataPart={(suma)=>plataPart(item,suma)}
+                        onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
+                        lunaC={luna} anC={an}
+                      />
+                    )}
+                    {/* Restante din luni precedente */}
+                    {restante.map((it:any)=>(
+                      <div key={it.id} style={{borderRadius:10,padding:'10px 12px',border:'1.5px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.06)',position:'relative' as const}}>
+                        <div style={{fontSize:8,fontWeight:700,color:'#F87171',background:'rgba(248,113,113,0.15)',padding:'1px 6px',borderRadius:3,textTransform:'uppercase' as const,letterSpacing:'.05em',display:'inline-block',marginBottom:6}}>
+                          ⚠ RESTANT {it.data?.slice(0,7)}
+                        </div>
+                        <div style={{fontSize:15,fontWeight:700,color:'#F87171',letterSpacing:'-.3px'}}>
+                          {Number(it.valoare||0).toLocaleString('ro-RO')}
+                          <span style={{fontSize:10,fontWeight:400,marginLeft:3,color:'rgba(248,113,113,0.5)'}}>RON</span>
+                        </div>
+                        <div style={{display:'flex',gap:4,marginTop:8}}>
+                          <button onClick={()=>moveTolLuna(it,luna,an)}
+                            style={{flex:1,fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer'}}>
+                            → Luna aceasta
+                          </button>
+                          <button onClick={async()=>{await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);load()}}
+                            style={{width:26,height:26,borderRadius:6,border:'1px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            <Check size={11} color="#F87171" strokeWidth={3}/>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )
               })}
 
