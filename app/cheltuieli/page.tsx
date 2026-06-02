@@ -222,11 +222,13 @@ export default function CheltuieliPage(){
           const hasCurrent = !!u[c.apartament_id][c.categorie].current
           const currentIsFactura = !!(u[c.apartament_id][c.categorie].current?.fisier_url || 
             (u[c.apartament_id][c.categorie].current?.nota && u[c.apartament_id][c.categorie].current?.nota.startsWith('Factur')))
+          const currentValidat = u[c.apartament_id][c.categorie].current?.status === 'validat'
           if(!hasCurrent) {
-            // Prima intrare devine current
             u[c.apartament_id][c.categorie].current = c
+          } else if(currentValidat) {
+            // Nu suprascrie niciodata un current validat
+            u[c.apartament_id][c.categorie].restante.push(c)
           } else if(isFacturaReala && !currentIsFactura) {
-            // Factura reala preia locul valorii manuale
             u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
             u[c.apartament_id][c.categorie].current = c
           } else {
@@ -258,9 +260,13 @@ export default function CheltuieliPage(){
         if(!u[c.apartament_id])u[c.apartament_id]={}
         if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
         const hasCurrent = !!u[c.apartament_id][c.categorie].current
+        const currentIsValidat = u[c.apartament_id][c.categorie].current?.status === 'validat'
         const currentIsFactura = !!u[c.apartament_id][c.categorie].current?.fisier_url
         if(!hasCurrent){
           u[c.apartament_id][c.categorie].current = {...c, _intarziat:true}
+        } else if(currentIsValidat){
+          // Nu suprascrie niciodata un current validat - pune factura in restante
+          u[c.apartament_id][c.categorie].restante.push({...c, _intarziat:true})
         } else if(!currentIsFactura){
           u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
           u[c.apartament_id][c.categorie].current = {...c, _intarziat:true}
@@ -295,7 +301,9 @@ export default function CheltuieliPage(){
           const isFactura = !!c.fisier_url
           const hasCurrent = !!u[c.apartament_id][c.categorie].current
           const currentIsFactura = !!u[c.apartament_id][c.categorie].current?.fisier_url
+          const tomoveCurrentValidat = u[c.apartament_id][c.categorie].current?.status === 'validat'
           if(!hasCurrent){ u[c.apartament_id][c.categorie].current=c }
+          else if(tomoveCurrentValidat){ u[c.apartament_id][c.categorie].restante.push(c) }
           else if(isFactura && !currentIsFactura){
             u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
             u[c.apartament_id][c.categorie].current=c
