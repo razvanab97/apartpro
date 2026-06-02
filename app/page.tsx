@@ -68,17 +68,16 @@ function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
   const nr = clean.startsWith('0') ? '4'+clean : clean
   // Normalizeaza emoji-urile pentru compatibilitate WhatsApp
+  // Adauga variation selector \uFE0F la TOATE emoji-urile pentru compatibilitate WhatsApp iOS/Android
   const cleanMsg = msg
     .replace(/◆/g, '🔹').replace(/◇/g, '▫️')
     .replace(/★/g, '⭐').replace(/●/g, '•')
     .replace(/✦/g, '✨').replace(/►/g, '▶️')
     .replace(/■/g, '▪️').replace(/□/g, '▫️')
     .replace(/❖/g, '🔷').replace(/◈/g, '🔶')
-    // Inlocuieste emoji-uri problematice pe Android cu versiuni compatibile
-    .replace(/👋/g, '👋️').replace(/😊/g, '😊️')
-    .replace(/🏠/g, '🏠️').replace(/🔑/g, '🔑️')
-    .replace(/⭐/g, '⭐️').replace(/✅/g, '✅️')
-    .replace(/📅/g, '📅️').replace(/🙏/g, '🙏️')
+    // Variation selector FE0F garanteaza afisarea ca emoji grafic pe toate platformele
+    .replace(/([\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}])/gu, '$1\uFE0F')
+    .replace(/\uFE0F\uFE0F/gu, '\uFE0F') // evita duplicate
     .normalize('NFC')
   // Encoding corect pentru emoji-uri - folosim Array.from pentru surrogate pairs
   const encoded = encodeURIComponent(cleanMsg)
