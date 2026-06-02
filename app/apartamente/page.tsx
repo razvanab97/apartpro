@@ -51,9 +51,10 @@ function CopyBtn({ text }: { text: string }) {
 function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
   const [chirie, setChirie] = useState(apt.pret_standard||0)
-  const [utilitati, setUtilitati] = useState(0)
+  const [eonCurent, setEonCurent] = useState(0)
+  const [eonGaz, setEonGaz] = useState(0)
+  const [asociatie, setAsociatie] = useState(0)
   const [internet, setInternet] = useState(0)
-  const [admin, setAdmin] = useState(0)
   const [alteFix, setAlteFix] = useState(0)
   const [curatenie, setCuratenie] = useState(200)
   const [consumabile, setConsumabile] = useState(100)
@@ -71,28 +72,22 @@ function Calc({ apt }: { apt: any }) {
     const pad = (n:number) => String(n).padStart(2,'0')
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
     supabase.from('cheltuieli')
-      .select('categorie,valoare,status')
+      .select('categorie,valoare')
       .eq('apartament_id', apt.id)
       .gte('data', `${an}-${pad(luna)}-01`)
       .lte('data', ultimaZi)
-      .neq('status','validat') // doar neplatite = cheltuieli curente
       .then(({ data }) => {
         if (!data) return
         const sum = (cat: string) => data.filter(c=>c.categorie===cat).reduce((s,c)=>s+Number(c.valoare||0),0)
-        const chirieDB = sum('chirie')
-        if (chirieDB > 0) setChirie(chirieDB)
-        const eonC = sum('eon_curent')
-        const eonG = sum('eon_gaz')
-        const eonTotal = eonC + eonG
-        if (eonTotal > 0) setUtilitati(eonTotal)
-        const int = sum('internet')
-        if (int > 0) setInternet(int)
-        const assoc = sum('asociatie')
-        if (assoc > 0) setAdmin(assoc)
+        setEonCurent(sum('eon_curent'))
+        setEonGaz(sum('eon_gaz'))
+        setAsociatie(sum('asociatie'))
+        setInternet(sum('internet'))
         setLoaded(true)
       })
   }, [open, apt.id, loaded])
-  const totalFix = Number(chirie)+Number(utilitati)+Number(internet)+Number(admin)+Number(alteFix)
+
+  const totalFix = Number(chirie)+Number(eonCurent)+Number(eonGaz)+Number(asociatie)+Number(internet)+Number(alteFix)
   const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
   const totalLuna = totalFix+totalVar
   const costN = zile>0?Math.round(totalLuna/zile):0
@@ -110,7 +105,7 @@ function Calc({ apt }: { apt: any }) {
         <div style={{ marginTop:10 }}>
           <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli fixe / lună</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
-            {([['Chirie',chirie,setChirie],['Utilități',utilitati,setUtilitati],['Internet',internet,setInternet],['Administrare',admin,setAdmin],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
+            {([['Chirie',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
               <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
             ))}
           </div>
