@@ -148,8 +148,8 @@ export default function DashboardPage() {
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
       // rezervari active ACUM (checkin<=azi, checkout>azi)
       supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
-      // incasari luna curenta (checkout in luna curenta) - cu apartament_id pentru filtrare comision
-      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout').gte('data_checkout',primaZiLuna).lte('data_checkout',ultimaZiLuna).neq('status_rezervare','anulata'),
+      // rezervari care se suprapun cu luna curenta (checkin < sfarsit luna SI checkout > inceput luna)
+      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lt('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).order('data_checkin'),
       // checkout azi
@@ -169,13 +169,25 @@ export default function DashboardPage() {
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
     ])
-    // incasari = suma din rezervarile cu CHECKOUT in luna curenta
-    const inc=rezLuna?.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)||0
-    // comisioane AB Homes = doar VM07 si CG40
+    // Pro-rata helper: suma proportionala cu zilele din luna curenta (identic cu rapoarte)
+    function proRataLuna(r: any): number {
+      const brut = Number(r.suma_incasata || 0)
+      const nopti = Number(r.nr_nopti || 0) || Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
+      if (!nopti) return brut
+      const overlapStart = r.data_checkin > primaZiLuna ? r.data_checkin : primaZiLuna
+      const overlapEnd = r.data_checkout < ultimaZiLuna ? r.data_checkout : ultimaZiLuna
+      const overlapDays = Math.ceil((new Date(overlapEnd).getTime()-new Date(overlapStart).getTime())/86400000)
+      if (overlapDays <= 0) return 0
+      if (overlapDays >= nopti) return brut
+      return Math.round(brut / nopti * overlapDays * 100) / 100
+    }
+    // incasari = suma pro-rata pentru rezervarile active in luna curenta
+    const inc = (rezLuna||[]).reduce((s:number,r:any) => s + proRataLuna(r), 0)
+    // comisioane AB Homes = doar VM07 si CG40 (pro-rata)
     const rezComision=(rezLuna||[]).filter((r:any)=>idsComision.has(r.apartament_id))
-    const comAirbnb=rezComision.filter((r:any)=>r.canal==='airbnb').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.85*0.20,0)
-    const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.83*0.20,0)
-    const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+Number(r.suma_incasata||0)*0.20,0)
+    const comAirbnb=rezComision.filter((r:any)=>r.canal==='airbnb').reduce((s:number,r:any)=>s+proRataLuna(r)*0.85*0.20,0)
+    const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
+    const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
     // Grad ocupare lunar: zile-apartament ocupate / (nr_apartamente_active * zile_in_luna)
     const zileLuna = new Date(an, luna, 0).getDate()
@@ -183,9 +195,9 @@ export default function DashboardPage() {
     let zileOcupate = 0
     for (const r of (rezLuna||[])) {
       if (!r.data_checkin || !r.data_checkout) continue
-      const ci = new Date(r.data_checkin) < new Date(primaZiLuna) ? new Date(primaZiLuna) : new Date(r.data_checkin)
-      const co = new Date(r.data_checkout) > new Date(ultimaZiLuna) ? new Date(ultimaZiLuna) : new Date(r.data_checkout)
-      const nopti = Math.max(0, Math.ceil((co.getTime()-ci.getTime())/(1000*60*60*24)))
+      const ci = r.data_checkin > primaZiLuna ? r.data_checkin : primaZiLuna
+      const co = r.data_checkout < ultimaZiLuna ? r.data_checkout : ultimaZiLuna
+      const nopti = Math.max(0, Math.ceil((new Date(co).getTime()-new Date(ci).getTime())/86400000))
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
