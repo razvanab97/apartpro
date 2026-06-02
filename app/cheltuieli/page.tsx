@@ -315,9 +315,6 @@ export default function CheltuieliPage(){
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
       }
     })
-    // Debug: arata ce status are chirie in DB
-    const chiriiDebug = (chData||[]).filter((c:any)=>c.categorie==='chirie').map((c:any)=>({id:c.id,val:c.valoare,status:c.status,apt:c.apartament_id?.slice(-4)}))
-    if(chiriiDebug.length>0) console.log('DB chirii:', JSON.stringify(chiriiDebug))
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
     // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
@@ -328,16 +325,9 @@ export default function CheltuieliPage(){
     if(shouldSeed) for(const apt of allApts){
       const defs = getDef(apt)
       for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
-        // Sari daca exista deja in luna curenta cu valoare > 0
-        const currentItem = u[apt.id]?.[col.key]?.current || (u[apt.id]?.[col.key] && !u[apt.id]?.[col.key]?.current ? u[apt.id]?.[col.key] : null)
-        const currentVal = Number(currentItem?.valoare || 0)
-        // Daca exista cu valoare 0, sterge si re-creeaza
-        if(currentItem?.id && currentVal === 0) {
-          await supabase.from('cheltuieli').delete().eq('id', currentItem.id)
-          if(u[apt.id]?.[col.key]) delete u[apt.id][col.key]
-        }
-        const existsInCurrent = currentVal > 0
-        if(existsInCurrent) continue
+        // Sari daca exista deja orice inregistrare in luna curenta
+        const currentItem = u[apt.id]?.[col.key]?.current || u[apt.id]?.[col.key]
+        if(currentItem) continue
         // 1. Cauta in luna precedenta
         const prevItem = (chDataPrev||[]).find((c:any)=>
           c.apartament_id===apt.id && c.categorie===col.key
@@ -497,13 +487,9 @@ export default function CheltuieliPage(){
       show('error','DB Eroare: '+toggleErr.message+' | ID:'+item.id+' | col:'+col)
       setSaving(null);return
     }
-    if(!updData){
-      show('error','Update fara confirmare - ID:'+item.id+' posibil RLS blocat')
-      setSaving(null);return
-    }
     // Actualizeaza local cu datele confirmate din DB
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...updData,status:ns}}}}))
-    show('success', ns==='validat'?'✓ Plătit salvat în DB':'↩ Resetat în DB')
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...(updData||{}),status:ns}}}}))
+    show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
     setSaving(null)
   }
 
