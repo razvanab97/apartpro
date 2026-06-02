@@ -174,13 +174,12 @@ export default function CheltuieliPage(){
         .gte('data',`${prevAn}-${pad(prevLuna)}-01`)
         .lte('data',`${prevAn}-${pad(prevLuna)}-31`)
         .eq('status','nevalidat'),
-      // Toate facturile reale (cu fisier_url) neplatite - indiferent de luna
+      // Toate facturile reale (cu fisier_url) neplatite - orice data
       // Acestea trebuie sa apara intotdeauna in cheltuieli pana sunt platite
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .not('fisier_url','is',null)
-        .eq('status','nevalidat')
-        .lt('data',`${an}-${pad(luna)}-01`), // doar cele din luni anterioare (luna curenta deja in chData)
+        .eq('status','nevalidat'),
     ])
     // Ensure AB_EXTRA_NAMES apar in DB cu ID real (upsert daca lipsesc)
     const loadedApts = aptData||[]
@@ -236,27 +235,32 @@ export default function CheltuieliPage(){
       else if(c.categorie==='contabilitate') cont.push(c)
       else if(FISCAL_ROWS.find(f=>f.key===c.categorie)) fisc[c.categorie]=c
     })
-    // Facturi reale neplatite din luni anterioare (nu doar luna precedenta)
-    // Le adaugam in util ca sa apara in cheltuieli pana sunt platite
-    ;(chFacturiNeplatite||[]).forEach((c:any)=>{
+    // Facturi reale neplatite din luni anterioare - apar in cheltuieli pana sunt platite
+    // Include SI facturile din luna curenta cu fisier_url (refresh dupa salvare din /facturi)
+    const toateFacturiNeplatite = [
+      ...(chFacturiNeplatite||[]),
+      // Facturi din luna curenta cu fisier_url care poate nu sunt inca in chData
+    ]
+    toateFacturiNeplatite.forEach((c:any)=>{
       if(!c.apartament_id) return
+      // Sari daca e deja procesata din chData (evita duplicate)
+      const alreadyInUtil = u[c.apartament_id]?.[c.categorie]?.current?.id === c.id ||
+        u[c.apartament_id]?.[c.categorie]?.restante?.some((r:any)=>r.id===c.id)
+      if(alreadyInUtil) return
       if(UTIL_KEYS.includes(c.categorie)){
         if(!u[c.apartament_id])u[c.apartament_id]={}
         if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
         const hasCurrent = !!u[c.apartament_id][c.categorie].current
         const currentIsFactura = !!u[c.apartament_id][c.categorie].current?.fisier_url
         if(!hasCurrent){
-          // Nicio valoare pentru luna curenta - factura veche devine current cu badge restant
           u[c.apartament_id][c.categorie].current = {...c, _intarziat:true}
         } else if(!currentIsFactura){
-          // Exista valoare manuala - factura reala preia locul
           u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
           u[c.apartament_id][c.categorie].current = {...c, _intarziat:true}
         } else {
-          // Exista deja o factura reala - aceasta e restanta
           u[c.apartament_id][c.categorie].restante.push({...c, _intarziat:true})
         }
-      } else if(c.categorie==='alte'){
+      } else {
         if(!ex[c.apartament_id])ex[c.apartament_id]=[]
         if(!ex[c.apartament_id].some((e:any)=>e.id===c.id))
           ex[c.apartament_id].push({...c, _intarziat:true})
