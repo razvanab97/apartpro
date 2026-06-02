@@ -222,12 +222,8 @@ export default function CheltuieliPage(){
           const hasCurrent = !!u[c.apartament_id][c.categorie].current
           const currentIsFactura = !!(u[c.apartament_id][c.categorie].current?.fisier_url || 
             (u[c.apartament_id][c.categorie].current?.nota && u[c.apartament_id][c.categorie].current?.nota.startsWith('Factur')))
-          const currentValidat = u[c.apartament_id][c.categorie].current?.status === 'validat'
           if(!hasCurrent) {
             u[c.apartament_id][c.categorie].current = c
-          } else if(currentValidat) {
-            // Nu suprascrie niciodata un current validat
-            u[c.apartament_id][c.categorie].restante.push(c)
           } else if(isFacturaReala && !currentIsFactura) {
             u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
             u[c.apartament_id][c.categorie].current = c
@@ -323,6 +319,9 @@ export default function CheltuieliPage(){
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
       }
     })
+    // Log starea cheltuielilor din DB pentru debug
+    const chiriiDB=(chData||[]).filter((c:any)=>c.categorie==='chirie')
+    console.log('CHIRII DIN DB:', chiriiDB.map((c:any)=>({id:c.id,val:c.valoare,status:c.status,data:c.data,apt:c.apartament_id})))
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
     // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
@@ -491,11 +490,10 @@ export default function CheltuieliPage(){
       setSaving(null); return
     }
 
-    const {error,data:dbResult}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id).select('id,status').single()
-    if(error){show('error','DB Error: '+error.message+' id='+item.id);setSaving(null);return}
-    if(!dbResult){show('error','Update nereusit - RLS blocat? id='+item.id);setSaving(null);return}
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:dbResult.status}}}}))
-    show('success',dbResult.status==='validat'?'✓ Salvat în DB: Plătit':'↩ Salvat în DB: Neachitat')
+    const {error}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+    if(error){show('error',error.message);setSaving(null);return}
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
+    show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
     setSaving(null)
   }
 
