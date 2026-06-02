@@ -318,8 +318,14 @@ export default function CheltuieliPage(){
       const defs = getDef(apt)
       for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
         // Sari daca exista deja in luna curenta cu valoare > 0
-        const currentItem = u[apt.id]?.[col.key]?.current || u[apt.id]?.[col.key]
-        const existsInCurrent = !!(currentItem && Number(currentItem?.valoare || currentItem?.current?.valoare || 0) > 0)
+        const currentItem = u[apt.id]?.[col.key]?.current || (u[apt.id]?.[col.key] && !u[apt.id]?.[col.key]?.current ? u[apt.id]?.[col.key] : null)
+        const currentVal = Number(currentItem?.valoare || 0)
+        // Daca exista cu valoare 0, sterge si re-creeaza
+        if(currentItem?.id && currentVal === 0) {
+          await supabase.from('cheltuieli').delete().eq('id', currentItem.id)
+          if(u[apt.id]?.[col.key]) delete u[apt.id][col.key]
+        }
+        const existsInCurrent = currentVal > 0
         if(existsInCurrent) continue
         // 1. Cauta in luna precedenta
         const prevItem = (chDataPrev||[]).find((c:any)=>
@@ -827,6 +833,18 @@ export default function CheltuieliPage(){
                         onCancel={()=>{setEditCell(null);setEditVal('')}}
                         initialVal={val>0?String(val):''}
                       />
+                    ) : val === 0 && !item ? (
+                      // Pill gol - buton + pentru adaugare manuala rapida
+                      <button
+                        onClick={()=>{setEditVal('');setEditCell({aptId:apt.id,col:col.key})}}
+                        style={{minWidth:130,flex:'1 1 130px',padding:'14px 16px',background:'rgba(77,163,255,0.04)',border:'1px dashed rgba(77,163,255,0.2)',borderRadius:12,cursor:'pointer',display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',gap:4,color:'rgba(77,163,255,0.5)',transition:'all .15s'}}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background='rgba(77,163,255,0.1)';(e.currentTarget as HTMLElement).style.borderColor='rgba(77,163,255,0.4)';(e.currentTarget as HTMLElement).style.color='rgba(77,163,255,0.9)'}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='rgba(77,163,255,0.04)';(e.currentTarget as HTMLElement).style.borderColor='rgba(77,163,255,0.2)';(e.currentTarget as HTMLElement).style.color='rgba(77,163,255,0.5)'}}
+                      >
+                        <Plus size={16}/>
+                        <span style={{fontSize:10,fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'.04em'}}>{col.label}</span>
+                        <span style={{fontSize:9,opacity:0.6}}>scad. {due}</span>
+                      </button>
                     ) : (
                       <div style={{position:'relative' as const}}>
                         <CostPillWithMove
