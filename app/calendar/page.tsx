@@ -33,7 +33,8 @@ function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)
 function waLink(phone:string, msg:string){
   const clean=phone.replace(/\D/g,'')
   const nr=clean.startsWith('0')?'4'+clean:clean
-  return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
+  const encoded = encodeURIComponent(msg)
+  return `https://wa.me/${nr}?text=${encoded}`
 }
 
 function nightsBetween(a:string,b:string){ return Math.round((new Date(b).getTime()-new Date(a).getTime())/(1000*60*60*24)) }

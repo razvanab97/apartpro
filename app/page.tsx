@@ -66,13 +66,22 @@ function dueColor(days:number,paid:boolean){
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
   const nr = clean.startsWith('0') ? '4'+clean : clean
+  // Normalizeaza emoji-urile pentru compatibilitate WhatsApp
   const cleanMsg = msg
     .replace(/◆/g, '🔹').replace(/◇/g, '▫️')
     .replace(/★/g, '⭐').replace(/●/g, '•')
     .replace(/✦/g, '✨').replace(/►/g, '▶️')
     .replace(/■/g, '▪️').replace(/□/g, '▫️')
     .replace(/❖/g, '🔷').replace(/◈/g, '🔶')
-  return `https://wa.me/${nr}?text=${encodeURIComponent(cleanMsg)}`
+    // Inlocuieste emoji-uri problematice pe Android cu versiuni compatibile
+    .replace(/👋/g, '👋️').replace(/😊/g, '😊️')
+    .replace(/🏠/g, '🏠️').replace(/🔑/g, '🔑️')
+    .replace(/⭐/g, '⭐️').replace(/✅/g, '✅️')
+    .replace(/📅/g, '📅️').replace(/🙏/g, '🙏️')
+    .normalize('NFC')
+  // Encoding corect pentru emoji-uri - folosim Array.from pentru surrogate pairs
+  const encoded = encodeURIComponent(cleanMsg)
+  return `https://wa.me/${nr}?text=${encoded}`
 }
 
 function msgCheckin(r:any){
