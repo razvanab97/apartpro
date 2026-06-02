@@ -136,6 +136,8 @@ export default function CheltuieliPage(){
   // edit inline util
   const [editCell,setEditCell]=useState<{aptId:string;col:string}|null>(null)
   const [editCol,setEditCol]=useState<string>('')
+  const [mutaModal,setMutaModal]=useState<{item:any;aptId:string;fromCol:string}|null>(null)
+  const [mutaTargetCol,setMutaTargetCol]=useState<string>('')
   const [editVal,setEditVal]=useState('')
   const cellRef=useRef<HTMLInputElement>(null)
 
@@ -440,6 +442,27 @@ export default function CheltuieliPage(){
     // Reload only pentru plataPart (creeaza intrari noi)
     seededRef.current = ''
     load()
+  }
+
+  async function mutaCategorie(item:any, aptId:string, fromCol:string, toCol:string){
+    if(!item?.id || fromCol===toCol) return
+    setSaving('muta')
+    const {error}=await supabase.from('cheltuieli').update({categorie:toCol}).eq('id',item.id)
+    if(error){show('error','Eroare: '+error.message);setSaving(null);return}
+    // Actualizeaza starea local
+    setUtil(u=>{
+      const nu={...u,[aptId]:{...u[aptId]}}
+      // Sterge din col vechi
+      if(nu[aptId][fromCol]?.current?.id===item.id)
+        nu[aptId][fromCol]={...nu[aptId][fromCol],current:null}
+      // Adauga in col nou
+      if(!nu[aptId][toCol]) nu[aptId][toCol]={current:null,restante:[]}
+      nu[aptId][toCol]={...nu[aptId][toCol],current:{...item,categorie:toCol}}
+      return nu
+    })
+    show('success',`✓ Mutat în ${UTIL_COLS.find(c=>c.key===toCol)?.label}`)
+    setSaving(null)
+    setMutaModal(null)
   }
 
   async function toggleUtil(aptId:string,col:string){
@@ -893,6 +916,14 @@ export default function CheltuieliPage(){
                           onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
                           lunaC={luna} anC={an}
                         />
+                        {/* Buton muta categorie */}
+                        {item && (
+                          <button onClick={()=>{setMutaModal({item,aptId:apt.id,fromCol:col.key});setMutaTargetCol(col.key)}}
+                            title="Mută în altă categorie"
+                            style={{position:'absolute' as const,top:6,right:item?.fisier_url?28:6,width:20,height:20,borderRadius:4,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.3)',color:'#FCD34D',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,zIndex:5}}>
+                            ⇄
+                          </button>
+                        )}
                         {/* Badge + link factura reala */}
                         {item?.fisier_url && (
                           <a href={item.fisier_url} target="_blank" rel="noopener"
@@ -1169,6 +1200,36 @@ export default function CheltuieliPage(){
           <button onClick={()=>{setModalContab(false);setFContab({descriere:'',furnizor:'',valoare:'',data:''})}} style={{padding:'9px 16px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>Anulează</button>
         </div>
       </Modal>
+
+      {/* Modal muta categorie */}
+      {mutaModal && (
+        <div onClick={()=>setMutaModal(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:320,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:14,padding:'20px'}}>
+            <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',marginBottom:4}}>⇄ Mută cheltuiala</div>
+            <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:16}}>
+              {Number(mutaModal.item.valoare).toLocaleString('ro-RO')} RON · din <b style={{color:'#FCD34D'}}>{UTIL_COLS.find(c=>c.key===mutaModal.fromCol)?.label}</b>
+            </div>
+            <div style={{display:'flex',flexDirection:'column' as const,gap:8,marginBottom:16}}>
+              {UTIL_COLS.filter(c=>c.key!==mutaModal.fromCol).map(c=>(
+                <button key={c.key} onClick={()=>setMutaTargetCol(c.key)}
+                  style={{padding:'10px 14px',borderRadius:9,border:`1px solid ${mutaTargetCol===c.key?'rgba(252,211,77,0.6)':'rgba(159,215,255,0.15)'}`,background:mutaTargetCol===c.key?'rgba(252,211,77,0.12)':'transparent',color:mutaTargetCol===c.key?'#FCD34D':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer',textAlign:'left' as const}}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>mutaCategorie(mutaModal.item,mutaModal.aptId,mutaModal.fromCol,mutaTargetCol)}
+                disabled={!mutaTargetCol||mutaTargetCol===mutaModal.fromCol||saving==='muta'}
+                style={{flex:1,padding:'10px',borderRadius:9,border:'none',background:mutaTargetCol&&mutaTargetCol!==mutaModal.fromCol?'rgba(252,211,77,0.8)':'rgba(159,215,255,0.1)',color:mutaTargetCol&&mutaTargetCol!==mutaModal.fromCol?'#0E1B2B':'rgba(159,215,255,0.3)',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                {saving==='muta'?'Se mută...':'✓ Mută acum'}
+              </button>
+              <button onClick={()=>setMutaModal(null)} style={{padding:'10px 14px',borderRadius:9,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                Anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}`}</style>
       <Toast toast={toast}/>
