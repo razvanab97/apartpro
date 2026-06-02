@@ -71,11 +71,12 @@ function Calc({ apt }: { apt: any }) {
     const luna = now.getMonth() + 1
     const pad = (n:number) => String(n).padStart(2,'0')
     // Cauta in ultimele 3 luni - facturile pot fi salvate cu date diferite
-    const de3LuniAgo = new Date(an, luna - 3, 1).toISOString().slice(0,10)
+    // Cauta ultimele 6 luni fara limita superioara - include si facturi cu date viitoare
+    const de6LuniAgo = new Date(an, luna - 6, 1).toISOString().slice(0,10)
     const { data } = await supabase.from('cheltuieli')
       .select('categorie,valoare,status')
       .eq('apartament_id', apt.id)
-      .gte('data', de3LuniAgo)
+      .gte('data', de6LuniAgo)
       .order('data', { ascending: false })
     if (data && data.length > 0) {
       // Pentru fiecare categorie, ia cea mai recenta valoare
