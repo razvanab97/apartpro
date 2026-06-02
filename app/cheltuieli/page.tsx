@@ -315,17 +315,17 @@ export default function CheltuieliPage(){
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
       }
     })
+    // Debug: arata ce status are chirie in DB
+    const chiriiDebug = (chData||[]).filter((c:any)=>c.categorie==='chirie').map((c:any)=>({id:c.id,val:c.valoare,status:c.status,apt:c.apartament_id?.slice(-4)}))
+    if(chiriiDebug.length>0) console.log('DB chirii:', JSON.stringify(chiriiDebug))
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
     // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
     const seedKey = `${an}-${luna}`
-    if(seededRef.current === seedKey) {
-      setLoading(false)
-      return
-    }
+    const shouldSeed = seededRef.current !== seedKey
     const FIXED_CATS = ['chirie','internet','salubris']
     const toAutoSeed: any[] = []
-    for(const apt of allApts){
+    if(shouldSeed) for(const apt of allApts){
       const defs = getDef(apt)
       for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
         // Sari daca exista deja in luna curenta cu valoare > 0
@@ -369,8 +369,7 @@ export default function CheltuieliPage(){
       })
       setUtil({...u})
     }
-
-    seededRef.current = seedKey
+    if(shouldSeed) seededRef.current = seedKey
     setLoading(false)
   }
 
