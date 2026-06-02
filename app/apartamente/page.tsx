@@ -51,15 +51,47 @@ function CopyBtn({ text }: { text: string }) {
 function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
   const [chirie, setChirie] = useState(apt.pret_standard||0)
-  const [utilitati, setUtilitati] = useState(300)
-  const [internet, setInternet] = useState(60)
-  const [admin, setAdmin] = useState(100)
+  const [utilitati, setUtilitati] = useState(0)
+  const [internet, setInternet] = useState(0)
+  const [admin, setAdmin] = useState(0)
   const [alteFix, setAlteFix] = useState(0)
   const [curatenie, setCuratenie] = useState(200)
   const [consumabile, setConsumabile] = useState(100)
   const [lenjerii, setLenjerii] = useState(80)
   const [altVar, setAltVar] = useState(0)
   const [zile, setZile] = useState(20)
+  const [loaded, setLoaded] = useState(false)
+
+  // Incarca cheltuielile reale din luna curenta
+  useEffect(() => {
+    if (!open || loaded) return
+    const now = new Date()
+    const an = now.getFullYear()
+    const luna = now.getMonth() + 1
+    const pad = (n:number) => String(n).padStart(2,'0')
+    const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+    supabase.from('cheltuieli')
+      .select('categorie,valoare,status')
+      .eq('apartament_id', apt.id)
+      .gte('data', `${an}-${pad(luna)}-01`)
+      .lte('data', ultimaZi)
+      .neq('status','validat') // doar neplatite = cheltuieli curente
+      .then(({ data }) => {
+        if (!data) return
+        const sum = (cat: string) => data.filter(c=>c.categorie===cat).reduce((s,c)=>s+Number(c.valoare||0),0)
+        const chirieDB = sum('chirie')
+        if (chirieDB > 0) setChirie(chirieDB)
+        const eonC = sum('eon_curent')
+        const eonG = sum('eon_gaz')
+        const eonTotal = eonC + eonG
+        if (eonTotal > 0) setUtilitati(eonTotal)
+        const int = sum('internet')
+        if (int > 0) setInternet(int)
+        const assoc = sum('asociatie')
+        if (assoc > 0) setAdmin(assoc)
+        setLoaded(true)
+      })
+  }, [open, apt.id, loaded])
   const totalFix = Number(chirie)+Number(utilitati)+Number(internet)+Number(admin)+Number(alteFix)
   const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
   const totalLuna = totalFix+totalVar
