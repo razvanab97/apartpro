@@ -99,8 +99,8 @@ export default function SyncPage() {
     try {
       // 1. Get apartments
       const { data: apts } = await supabase.from('apartamente').select('id,nume,nota')
-      // Map strict dupa nota (codul apartamentului) - singurul criteriu sigur
-      // Nota in 5starDesk = codul camerei (ex: C64, L88, GS08, VM07, L99)
+      // Map dupa nota (codul apartamentului)
+      // Lista confirmata: EX59, GS08, HD02, L83, L88, L94, L99, N32, NT9, VM07, C64, N33, CG40
       const aptByNota: Record<string,string> = {}
       for (const a of apts||[]) {
         if (a.nota) aptByNota[a.nota.toUpperCase()] = a.id
@@ -171,29 +171,40 @@ export default function SyncPage() {
           const idExtern = String(b.id || b.id_rezervare || '')
           const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
 
-          // Matching dupa nota (codul camerei din 5starDesk)
-          // 5starDesk trimite "Apartament L88", "Apartament GS08" etc in tip_camera
+          // Matching dupa nota - lista confirmata de utilizator:
+          // EX59=Cozy Studio, GS08=Green Station, HD02=Hideout, L83=Lazar Comfy,
+          // L88=Palas SkyNest, L94=Palas Retreat, L99=Airy Palas, N32=Mint Loft,
+          // NT9=Newton Urban, VM07=Vila Pacurari, C64=SkyPort, N33, CG40
+          // 5starDesk trimite "Apartament L88", "Apartament GS08" etc
           let aptId: string | null = null
           const codCandidati = [
-            b.id_camera, b.camera, b.unitate, b.room, 
-            b.numar_camera, b.tip_camera, b.cod_camera
+            b.id_camera, b.camera, b.unitate, b.room,
+            b.numar_camera, b.tip_camera, b.cod_camera,
+            b.denumire_camera, b.name, b.room_name
           ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
-          
+
           for (const cod of codCandidati) {
-            // Match direct (ex: "L88" = "L88")
+            // 1. Match direct exact
             if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
-            // Match cu extragere cod din string complet
-            // ex: "APARTAMENT L88" -> "L88", "AP C64" -> "C64", "GS08 GREEN" -> "GS08"
-            const matches = cod.match(/([A-Z]{1,4}\d{2,3})/g)
+
+            // 2. Extrage toate codurile posibile din string
+            // "APARTAMENT L88" -> ["L88"], "GS08 GREEN STATION" -> ["GS08"]
+            // Pattern: 1-4 litere urmate de 2-3 cifre (EX59, GS08, L88, NT9, VM07 etc)
+            const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
             if (matches) {
               for (const m of matches) {
                 if (aptByNota[m]) { aptId = aptByNota[m]; break }
               }
               if (aptId) break
             }
+
+            // 3. Fallback: cauta orice secventa cod in string
+            for (const nota of Object.keys(aptByNota)) {
+              if (cod.includes(nota)) { aptId = aptByNota[nota]; break }
+            }
+            if (aptId) break
           }
           // IMPORTANT: daca nu gasim apartamentul, NU inserem rezervarea
-          // (mai bine lipsa decat asociere gresita)
 
           if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); continue }
           if (!aptId) { 
