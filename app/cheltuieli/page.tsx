@@ -395,7 +395,9 @@ export default function CheltuieliPage(){
       UTIL_COLS.forEach(col=>{
         const v=defs[col.key]
         if(!v||v===0)return
-        if(util[apt.id]?.[col.key])return
+        // Sari daca exista deja cu valoare > 0
+        const ex=util[apt.id]?.[col.key]?.current||util[apt.id]?.[col.key]
+        if(ex && Number(ex?.valoare||0)>0)return
         const dueSeed=getDueForApt(apt.nota,col.key,col.due)
         ins.push({apartament_id:apt.id,categorie:col.key,descriere:col.label,valoare:v,
           data:`${an}-${pad(luna)}-${pad(dueSeed)}`,status:'nevalidat',suportat_de:'proprietar',tva:0})
@@ -472,8 +474,9 @@ export default function CheltuieliPage(){
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
 
-    // Daca nu are ID, trebuie mai intai creat in DB
-    if(!item.id){
+    // Daca nu are ID, creeaza in DB mai intai
+    let itemId = item.id
+    if(!itemId){
       const colDef=UTIL_COLS.find(c=>c.key===col)!
       const aptNota=(apts.find((a:any)=>a.id===aptId)?.nota)||null
       const dueDay=getDueForApt(aptNota,col,colDef.due)
@@ -481,23 +484,35 @@ export default function CheltuieliPage(){
         apartament_id:aptId,categorie:col,descriere:colDef.label,
         valoare:Number(item.valoare)||0,
         data:`${an}-${pad(luna)}-${pad(dueDay)}`,
-        status:ns,suportat_de:'proprietar',tva:0,
+        status:'nevalidat',suportat_de:'proprietar',tva:0,
       }).select().single()
       if(insErr){show('error','Eroare creare: '+insErr.message);setSaving(null);return}
-      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...newItem,status:ns}}}}))
-      show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
-      setSaving(null)
-      return
+      itemId = newItem.id
     }
 
-    const {error:toggleErr,data:updData}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id).select().single()
-    if(toggleErr){
-      show('error','DB Eroare: '+toggleErr.message+' | ID:'+item.id+' | col:'+col)
-      setSaving(null);return
+    // Salveaza status in DB
+    const {error:toggleErr}=await supabase.from('cheltuieli').update({status:ns}).eq('id',itemId)
+    if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
+
+    // Refresh selectiv din DB pentru acest apartament
+    const {data:fresh}=await supabase.from('cheltuieli')
+      .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+      .eq('apartament_id',aptId)
+      .gte('data',`${an}-${pad(luna)}-01`)
+      .lte('data',`${an}-${pad(luna)}-31`)
+    
+    if(fresh){
+      const newU:{[col:string]:{current:any,restante:any[]}}={}
+      fresh.forEach((c:any)=>{
+        if(!UTIL_KEYS.includes(c.categorie)) return
+        if(!newU[c.categorie]) newU[c.categorie]={current:null,restante:[]}
+        if(!newU[c.categorie].current) newU[c.categorie].current=c
+        else newU[c.categorie].restante.push(c)
+      })
+      setUtil(u=>({...u,[aptId]:{...u[aptId],...newU}}))
     }
-    // Actualizeaza local cu datele confirmate din DB
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...(updData||{}),status:ns}}}}))
-    show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
+
+    show('success', ns==='validat'?'✓ Plătit':'↩ Neachitat')
     setSaving(null)
   }
 

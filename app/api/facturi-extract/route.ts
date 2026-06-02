@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 const CLAUDE_KEY = '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'
 
 const FURNIZORI: Record<string, string[]> = {
-  'E.ON Curent':    ['e.on','eon curent','energie electrica','electricitate','standard electricity','curent electric'],
-  'E.ON Gaz':       ['gaz natural','consum gaz','eon gaz','mc gaz','standard gas','gaze naturale','eon energie'],
+  'E.ON Curent':    ['e.on energie','eon energie','eon curent','energie electrica','electricitate','standard electricity','curent electric','kwh'],
+  'E.ON Gaz':       ['gaz natural','consum gaz','eon gaz','mc gaz','standard gas','gaze naturale','metri cubi gaz','mwh gaz'],
   'Urbica':         ['urbica','apa canal','apa rece','apa calda','termoficare urbica'],
   'TermoService':   ['termoservice','termoficare','caldura','gigacalorie','gcal','tsiasi','termo-service','sc termo'],
   'Salubris':       ['salubris','salubritate','gunoi','deseuri','colectare'],
