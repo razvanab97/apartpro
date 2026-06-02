@@ -128,6 +128,7 @@ export default function CheltuieliPage(){
   const [util,setUtil]=useState<Record<string,Record<string,any>>>({})
   const [extras,setExtras]=useState<Record<string,any[]>>({})
   const [consumabile,setCons]=useState<any[]>([])
+  const [salariati,setSalariati]=useState<any[]>([])
   const [contab,setContab]=useState<any[]>([])
   const [fiscal,setFiscal]=useState<Record<string,any>>({})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
@@ -152,6 +153,8 @@ export default function CheltuieliPage(){
 
   // modal consumabile / contab
   const [modalCons,setModalCons]=useState(false)
+  const [modalSalariati,setModalSalariati]=useState(false)
+  const [fSal,setFSal]=useState({descriere:'',furnizor:'',valoare:'',data:''})
   const [modalContab,setModalContab]=useState(false)
   const [fCons,setFCons]=useState({descriere:'',furnizor:'',valoare:'',data:''})
   const [fContab,setFContab]=useState({descriere:'',furnizor:'',valoare:'',data:''})
@@ -217,7 +220,7 @@ export default function CheltuieliPage(){
     setApts(allApts)
     // util[aptId][col] = { current: item|null, restante: item[] }
     // Prioritate: factura reala (cu fisier_url sau nota "Factura") > valoare manuala
-    const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
+    const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],sal:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
     ;(chData||[]).forEach((c:any)=>{
       if(c.apartament_id){
         if(UTIL_KEYS.includes(c.categorie)){
@@ -242,6 +245,7 @@ export default function CheltuieliPage(){
             ex[c.apartament_id].push(c)
         }
       } else if(c.categorie==='consumabile') cons.push(c)
+      else if(c.categorie==='salariati') sal.push(c)
       else if(c.categorie==='contabilitate') cont.push(c)
       else if(FISCAL_ROWS.find(f=>f.key===c.categorie)) fisc[c.categorie]=c
     })
@@ -324,7 +328,7 @@ export default function CheltuieliPage(){
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
       }
     })
-    setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
+    setUtil(u);setExtras(ex);setCons(cons);setSalariati(sal);setContab(cont);setFiscal(fisc)
 
     // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
     const seedKey = `${an}-${luna}`
@@ -627,6 +631,18 @@ export default function CheltuieliPage(){
     setSaving(null)
   }
 
+  async function saveSalariat(){
+    if(!fSal.descriere||!fSal.valoare){show('error','Completează descrierea și valoarea');return}
+    const {error}=await supabase.from('cheltuieli').insert({
+      apartament_id:null,categorie:'salariati',descriere:fSal.descriere,
+      valoare:parseFloat(fSal.valoare)||0,
+      data:fSal.data||`${an}-${pad(luna)}-01`,
+      status:'nevalidat',suportat_de:'administrator',tva:0,
+    })
+    if(error)show('error',error.message)
+    else{show('success','Salvat');setModalSalariati(false);setFSal({descriere:'',furnizor:'',valoare:'',data:''});load()}
+  }
+
   async function saveContab(){
     if(!fContab.descriere||!fContab.valoare){show('error','Completează câmpurile obligatorii');return}
     setSaving('contab')
@@ -703,7 +719,7 @@ export default function CheltuieliPage(){
       }),
       ...(extras[a.id]||[])
     ]),
-    ...consumabile,...contab,
+    ...consumabile,...salariati,...contab,
     ...FISCAL_ROWS.map(f=>fiscal[f.key]).filter(Boolean),
   ]
   const totalVal=allCheltuieli.reduce((s,i)=>s+Number(i.valoare),0)
@@ -1190,6 +1206,18 @@ export default function CheltuieliPage(){
             }
           </div>
 
+          {/* Salariati */}
+          <div style={{marginBottom:24}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+              <span style={secLbl}>Salariați</span>
+              <button onClick={()=>setModalSalariati(true)} style={addBtnStyle}><Plus size={12}/>Adaugă cost</button>
+            </div>
+            {salariati.length===0
+              ?<div style={{fontSize:12,color:'rgba(159,215,255,0.2)',fontStyle:'italic',paddingBottom:8}}>Nicio înregistrare luna aceasta</div>
+              :<div style={{display:'flex',gap:10,flexWrap:'wrap'}}>{salariati.map(it=><GlobalPill key={it.id} item={it} setter={setSalariati}/>)}</div>
+            }
+          </div>
+
           {/* Contabilitate */}
           <div style={{marginBottom:24}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
@@ -1263,6 +1291,17 @@ export default function CheltuieliPage(){
         <div style={{display:'flex',gap:10,marginTop:8}}>
           <button onClick={saveCons} disabled={saving==='cons'} style={{flex:1,padding:'9px',borderRadius:8,border:'none',background:'var(--accent-blue)',color:'#fff',fontWeight:500,fontSize:13,cursor:'pointer'}}>{saving==='cons'?'...':'Înregistrează'}</button>
           <button onClick={()=>{setModalCons(false);setFCons({descriere:'',furnizor:'',valoare:'',data:''})}} style={{padding:'9px 16px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>Anulează</button>
+        </div>
+      </Modal>
+
+      {/* Modal salariati */}
+      <Modal open={modalSalariati} onClose={()=>{setModalSalariati(false);setFSal({descriere:'',furnizor:'',valoare:'',data:''})}} title="Adaugă cost salariat" width="max-w-md">
+        <FormGroup><label>Descriere *</label><input value={fSal.descriere} onChange={e=>setFSal({...fSal,descriere:e.target.value})} placeholder="ex. Salariu Maria, Bonus..."/></FormGroup>
+        <FormGroup><label>Valoare (RON) *</label><input type="number" value={fSal.valoare} onChange={e=>setFSal({...fSal,valoare:e.target.value})} placeholder="ex. 3000"/></FormGroup>
+        <FormGroup><label>Data plății</label><input type="date" value={fSal.data} onChange={e=>setFSal({...fSal,data:e.target.value})}/></FormGroup>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+          <button onClick={()=>{setModalSalariati(false);setFSal({descriere:'',furnizor:'',valoare:'',data:''})}} style={{padding:'8px 16px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',cursor:'pointer'}}>Anulează</button>
+          <button onClick={saveSalariat} style={{padding:'8px 18px',borderRadius:8,border:'none',background:'rgba(77,163,255,0.8)',color:'#0E1B2B',fontWeight:600,cursor:'pointer'}}>Salvează</button>
         </div>
       </Modal>
 
