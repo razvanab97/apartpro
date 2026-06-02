@@ -70,18 +70,26 @@ function Calc({ apt }: { apt: any }) {
     const an = now.getFullYear()
     const luna = now.getMonth() + 1
     const pad = (n:number) => String(n).padStart(2,'0')
-    const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+    // Cauta in ultimele 3 luni - facturile pot fi salvate cu date diferite
+    const de3LuniAgo = new Date(an, luna - 3, 1).toISOString().slice(0,10)
     const { data } = await supabase.from('cheltuieli')
-      .select('categorie,valoare')
+      .select('categorie,valoare,status')
       .eq('apartament_id', apt.id)
-      .gte('data', `${an}-${pad(luna)}-01`)
-      .lte('data', ultimaZi)
-    if (data) {
-      const sum = (cat: string) => data.filter((c:any)=>c.categorie===cat).reduce((s:number,c:any)=>s+Number(c.valoare||0),0)
-      setEonCurent(sum('eon_curent'))
-      setEonGaz(sum('eon_gaz'))
-      setAsociatie(sum('asociatie'))
-      setInternet(sum('internet'))
+      .gte('data', de3LuniAgo)
+      .order('data', { ascending: false })
+    if (data && data.length > 0) {
+      // Pentru fiecare categorie, ia cea mai recenta valoare
+      const latest = (cat: string) => {
+        const items = data.filter((c:any) => c.categorie === cat)
+        if (!items.length) return 0
+        return Number(items[0].valoare || 0)
+      }
+      const chirieDB = latest('chirie')
+      if (chirieDB > 0) setChirie(chirieDB)
+      setEonCurent(latest('eon_curent'))
+      setEonGaz(latest('eon_gaz'))
+      setAsociatie(latest('asociatie'))
+      setInternet(latest('internet'))
     }
     setLoadingCh(false)
   }
