@@ -78,17 +78,23 @@ export default function FacturiPage() {
   // Royal app: Bl R7 ap 99 = R99
   const ROYAL_AP_MAP: Record<string,string> = {
     '99': 'R99',
+    '9': 'R99', // fallback
   }
   function matchByRoyal(adresa: string | null, nrApt: string | null, aptList: any[]): string | null {
-    if (!adresa && !nrApt) return null
     const a = (adresa||'').toLowerCase()
-    // Daca adresa contine 'r7' sau 'royal', cauta dupa nr apartament
-    if (a.includes('r7') || a.includes('royal')) {
-      const nota = nrApt ? ROYAL_AP_MAP[nrApt] || null : null
+    const isRoyalAddr = a.includes('r7') || a.includes('royal') || a.includes('bl. r')
+    // Cauta dupa nr apartament
+    if (nrApt) {
+      const nota = ROYAL_AP_MAP[nrApt]
       if (nota) {
         const apt = aptList.find((x:any) => (x.nota||'').toUpperCase() === nota)
         if (apt) return apt.id
       }
+    }
+    // Daca adresa e Royal si nu avem nr, cauta dupa R99 direct
+    if (isRoyalAddr) {
+      const apt = aptList.find((x:any) => (x.nota||'').toUpperCase() === 'R99')
+      if (apt) return apt.id
     }
     return null
   }
@@ -389,7 +395,7 @@ export default function FacturiPage() {
       ? f.data_scadenta!
       : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
     const categorieToColKey: Record<string,string> = {
-      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent',
+      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','eon_energie':'eon_curent',
       'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
       'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
     }
@@ -631,7 +637,7 @@ export default function FacturiPage() {
                             style={{ background: f.status==='eroare' ? 'rgba(40,20,20,0.9)' : 'rgba(20,38,65,0.8)', border:`1px solid ${f.status==='eroare'?'rgba(248,113,113,0.4)':'rgba(100,160,255,0.2)'}`, borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
                           >
                             <option value="">— Selectează apartament —</option>
-                            {[...apts].filter((a:any)=>a.status==='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
+                            {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
                             {apts.filter((a:any)=>a.status!=='activ').length>0&&<option disabled>── Alte locații ──</option>}
                             {[...apts].filter((a:any)=>a.status!=='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
                           </select>
@@ -810,8 +816,8 @@ export default function FacturiPage() {
               <select value={editArchivaForm.apartament_id} onChange={e=>setEditArchivaForm(f=>({...f,apartament_id:e.target.value}))}
                 style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}>
                 <option value="">— Fără apartament —</option>
-                {[...apts].filter((a:any)=>a.status==='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=>(
-                  <option key={a.id} value={a.id}>{a.nota ? `[${a.nota}] ` : ''}{a.nume}</option>
+                {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=>(
+                  <option key={a.id} value={a.id}>{a.nota ? `[${a.nota}] ` : ''}{a.nume}{a.status!=='activ'?' ⚠':''}</option>
                 ))}
               </select>
             </div>

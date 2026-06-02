@@ -6,12 +6,12 @@ import { Modal, FormGroup, FormRow, Toast, useToast } from '@/components/ui'
 import { Plus, Pencil, X, Check, Trash2, ChevronDown } from 'lucide-react'
 
 const UTIL_COLS = [
-  { key:'chirie',     label:'Chirie',      due:1  },
-  { key:'asociatie',  label:'Asociație',   due:15 },
-  { key:'eon_curent', label:'E.ON Curent', due:20 },
-  { key:'eon_gaz',    label:'E.ON Gaz',    due:20 },
-  { key:'internet',   label:'Internet',    due:10 },
-  { key:'salubris',   label:'Salubris',    due:5  },
+  { key:'chirie',      label:'Chirie',         due:1  },
+  { key:'asociatie',   label:'Asociație',      due:15 },
+  { key:'eon_curent',  label:'E.ON Energie',   due:20 },
+  { key:'eon_gaz',     label:'E.ON Gaz',       due:20 },
+  { key:'internet',    label:'Internet',       due:10 },
+  { key:'salubris',    label:'Salubris',       due:5  },
 ]
 // Scadente diferite per apartament (nota → { col → due })
 const APT_DUE_OVERRIDES: Record<string, Record<string,number>> = {
@@ -436,7 +436,8 @@ export default function CheltuieliPage(){
     if(!item){show('error','Introdu mai întâi valoarea');return}
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
-    await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+    const {error:toggleErr}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+    if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
     setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
     setSaving(null)
   }
@@ -453,7 +454,8 @@ export default function CheltuieliPage(){
     const existing=entry?.current||entry
     setSaving('cell')
     if(existing?.id){
-      await supabase.from('cheltuieli').update({valoare:val,data:dateStr}).eq('id',existing.id)
+      const {error:updErr}=await supabase.from('cheltuieli').update({valoare:val,data:dateStr}).eq('id',existing.id)
+      if(updErr){show('error','Eroare salvare: '+updErr.message);setSaving(null);setEditCell(null);return}
       setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...existing,valoare:val}}}}))
     } else {
       const {data,error}=await supabase.from('cheltuieli').insert({
@@ -463,7 +465,7 @@ export default function CheltuieliPage(){
       if(!error&&data)setUtil(u=>({...u,[aptId]:{...(u[aptId]||{}),[col]:data}}))
       if(error)show('error',error.message)
     }
-    setSaving(null);setEditCell(null);setEditVal('')
+    setSaving(null);setEditCell(null);setEditVal('');show('success','Salvat ✓')
   }
 
   async function saveExtra(){
@@ -884,7 +886,7 @@ export default function CheltuieliPage(){
                             style={{flex:1,fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer'}}>
                             → Luna aceasta
                           </button>
-                          <button onClick={async()=>{await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);load()}}
+                          <button onClick={async()=>{const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id);if(error)show('error',error.message);else load()}}
                             style={{width:26,height:26,borderRadius:6,border:'1px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                             <Check size={11} color="#F87171" strokeWidth={3}/>
                           </button>
