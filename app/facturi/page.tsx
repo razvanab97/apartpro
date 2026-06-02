@@ -68,6 +68,14 @@ export default function FacturiPage() {
   }
 
   // Extrage numarul apartamentului din cod nota (L83->83, N32->32, CG40->40, EX59->59)
+  // Coduri locatie Urbica → numar apartament
+  const URBICA_COD_MAP: Record<string,string> = {
+    'isextia5': '83',  // L83 Lazar Comfy
+    'is1c3zgu': '94',  // L94 Palas Retreat
+    'isue3rni': '88',  // L88 Palas SkyNest
+    'isqu7njc': '99',  // L99 Airy Palas
+  }
+
   function extractAptNr(nota: string | null): string | null {
     if (!nota) return null
     const m = nota.match(/\d+/)
@@ -198,8 +206,12 @@ export default function FacturiPage() {
 
       // Incearca toate adresele din factura pentru matching
       // Construieste adresa completa cu nr apartament explicit pentru matching mai precis
-      // Numarul apartamentului extras explicit de AI - cel mai de incredere
-      const nrAptExplicit = data.nr_apartament || null
+      // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
+      const nrDinCodUrbica = data.cod_locatie_urbica ? URBICA_COD_MAP[data.cod_locatie_urbica] || null : null
+      const nrAptExplicit = nrDinCodUrbica || data.nr_apartament || null
+      if (nrDinCodUrbica) {
+        show('info', `Urbica cod ${data.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
+      }
       const adreseToTry = [data.adresa_consum, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
       let autoAptId: string | null = null
       for (const addr of adreseToTry) {

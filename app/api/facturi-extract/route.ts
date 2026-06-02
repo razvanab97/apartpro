@@ -24,6 +24,10 @@ export async function POST(req: NextRequest) {
     const isImage = mimeType?.startsWith('image/')
     const mediaType = isImage ? mimeType : 'application/pdf'
 
+    const URBICA_COD_MAP: Record<string,string> = {
+      'isextia5': '83', 'is1c3zgu': '94', 'isue3rni': '88', 'isqu7njc': '99',
+    }
+
     const prompt = `Esti un expert in citirea facturilor romanesti. Analizeaza aceasta factura si extrage EXACT:
 1. Furnizor: numele companiei emitente
 2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare. Cauta campul 'Total valoare factura curenta' sau 'Suma factura curenta'. NU folosi 'Sold de plata' sau 'Total de achitat' care include restante.
@@ -33,7 +37,10 @@ export async function POST(req: NextRequest) {
 6. Tipul serviciului (gaz natural, curent electric, apa, termoficare, salubritate, telefonie, internet, asociatie, altele)
 7. ADRESA LOCULUI DE CONSUM - strada, numarul, blocul, scara, apartamentul (NU adresa sediului companiei)
 8. Numele titularului contractului
-9. NUMARUL APARTAMENTULUI din adresa de consum - DOAR cifra (ex: daca adresa e "Palade 18A ap 83" → "83", daca e "ap. 94" → "94"). FOARTE IMPORTANT pentru diferentierea apartamentelor la aceeasi adresa.
+9. NUMARUL APARTAMENTULUI - DOAR cifra. Surse in ordine de prioritate:
+   a) Daca factura e de la URBICA: cauta campul "cod locatie" (ex: "cod locatie: is1c3zgu") si extrage codul exact in campul "cod_locatie_urbica"
+   b) Din adresa de consum: "ap 83" → "83", "ap. 94" → "94"
+   FOARTE IMPORTANT pentru diferentierea apartamentelor la aceeasi adresa.
 
 Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
 {
@@ -46,6 +53,7 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
   "tip_serviciu": "categoria",
   "adresa_consum": "strada si numarul complet al locului de consum inclusiv nr apartament",
   "nr_apartament": "doar cifra apartamentului sau null",
+  "cod_locatie_urbica": "codul locatie din factura Urbica (ex: is1c3zgu) sau null",
   "adresa_titular": "adresa titularului daca e diferita",
   "titular": "numele titularului",
   "detalii": "orice info relevant"
