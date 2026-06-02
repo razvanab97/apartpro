@@ -183,15 +183,27 @@ export default function CheltuieliPage(){
     const allApts = [...loadedApts, ...extraApts]
     setApts(allApts)
     // util[aptId][col] = { current: item|null, restante: item[] }
+    // Prioritate: factura reala (cu fisier_url sau nota "Factura") > valoare manuala
     const u:Record<string,Record<string,any>>={},ex:Record<string,any[]>={},cons:any[]=[],cont:any[]=[],fisc:Record<string,any>={}
     ;(chData||[]).forEach((c:any)=>{
       if(c.apartament_id){
         if(UTIL_KEYS.includes(c.categorie)){
           if(!u[c.apartament_id])u[c.apartament_id]={}
           if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
-          // Prima inregistrare gasita devine current, restul intra in restante
-          if(!u[c.apartament_id][c.categorie].current) u[c.apartament_id][c.categorie].current=c
-          else u[c.apartament_id][c.categorie].restante.push(c)
+          const isFacturaReala = !!(c.fisier_url || (c.nota && c.nota.startsWith('Factur')))
+          const hasCurrent = !!u[c.apartament_id][c.categorie].current
+          const currentIsFactura = !!(u[c.apartament_id][c.categorie].current?.fisier_url || 
+            (u[c.apartament_id][c.categorie].current?.nota && u[c.apartament_id][c.categorie].current?.nota.startsWith('Factur')))
+          if(!hasCurrent) {
+            // Prima intrare devine current
+            u[c.apartament_id][c.categorie].current = c
+          } else if(isFacturaReala && !currentIsFactura) {
+            // Factura reala preia locul valorii manuale
+            u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
+            u[c.apartament_id][c.categorie].current = c
+          } else {
+            u[c.apartament_id][c.categorie].restante.push(c)
+          }
         } else if(c.categorie==='alte'){
           if(!ex[c.apartament_id])ex[c.apartament_id]=[]
           ex[c.apartament_id].push(c)
@@ -661,15 +673,28 @@ export default function CheltuieliPage(){
                         initialVal={val>0?String(val):''}
                       />
                     ) : (
-                      <CostPillWithMove
-                        label={col.label} val={val} due={due} paid={isPaid}
-                        busy={saving===apt.id+col.key}
-                        onToggle={()=>toggleUtil(apt.id,col.key)}
-                        onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
-                        onPlataPart={(suma)=>plataPart(item,suma)}
-                        onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
-                        lunaC={luna} anC={an}
-                      />
+                      <div style={{position:'relative' as const}}>
+                        <CostPillWithMove
+                          label={col.label} val={val} due={due} paid={isPaid}
+                          busy={saving===apt.id+col.key}
+                          onToggle={()=>toggleUtil(apt.id,col.key)}
+                          onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
+                          onPlataPart={(suma)=>plataPart(item,suma)}
+                          onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
+                          lunaC={luna} anC={an}
+                        />
+                        {/* Badge + link factura reala */}
+                        {item?.fisier_url && (
+                          <a href={item.fisier_url} target="_blank" rel="noopener"
+                            title="Deschide factura"
+                            style={{position:'absolute' as const,top:6,right:6,fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(77,163,255,0.2)',border:'1px solid rgba(77,163,255,0.4)',color:'#7BC8FF',textDecoration:'none',fontWeight:700,letterSpacing:'.03em'}}>
+                            📄
+                          </a>
+                        )}
+                        {item?.fisier_url && (
+                          <div style={{position:'absolute' as const,top:0,left:0,right:0,height:2,borderRadius:'12px 12px 0 0',background:'rgba(77,163,255,0.6)'}}/>
+                        )}
+                      </div>
                     )}
                     {/* Restante din luni precedente */}
                     {restante.map((it:any)=>(
