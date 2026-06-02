@@ -58,15 +58,29 @@ export default function PreturiPage() {
   }, [])
 
   function buildUrl(baseUrl: string, platform: string, checkin: string) {
-    if (!checkin) checkin = today  // fallback la azi
+    if (!checkin) checkin = today
     if (!baseUrl) return ''
     const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1)
     const checkout = fmt(coD)
-    const sep = baseUrl.includes('?') ? '&' : '?'
-    if (platform==='booking' && !baseUrl.includes('checkin='))
-      return baseUrl + sep + `checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`
-    if (platform==='airbnb' && !baseUrl.includes('check_in='))
-      return baseUrl + sep + `check_in=${checkin}&check_out=${checkout}&adults=2`
+
+    if (platform==='booking' || baseUrl.includes('booking.com')) {
+      // Extrage URL-ul de baza fara parametri existenti, adauga datele fresh
+      const baseOnly = baseUrl.split('?')[0]
+      return baseOnly + `?checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`
+    }
+
+    if (platform==='airbnb' || baseUrl.includes('airbnb.')) {
+      // Extrage room ID din URL si construieste link curat
+      // Format: airbnb.com/rooms/12345 sau airbnb.com/rooms/12345?anything
+      const roomMatch = baseUrl.match(/airbnb\.com\/rooms\/(\d+)/)
+      if (roomMatch) {
+        return `https://www.airbnb.com/rooms/${roomMatch[1]}?check_in=${checkin}&check_out=${checkout}&adults=2`
+      }
+      // Fallback: URL de baza fara parametri + date noi
+      const baseOnly = baseUrl.split('?')[0]
+      return baseOnly + `?check_in=${checkin}&check_out=${checkout}&adults=2`
+    }
+
     return baseUrl
   }
 
