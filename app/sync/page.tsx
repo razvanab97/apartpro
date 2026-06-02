@@ -176,6 +176,37 @@ export default function SyncPage() {
           // L88=Palas SkyNest, L94=Palas Retreat, L99=Airy Palas, N32=Mint Loft,
           // NT9=Newton Urban, VM07=Vila Pacurari, C64=SkyPort, N33, CG40
           // 5starDesk trimite "Apartament L88", "Apartament GS08" etc
+
+          // ALIAS MAP: variante gresite / alternative din 5starDesk -> cod corect
+          const ALIAS_MAP: Record<string, string> = {
+            // Vila Pacurari - variante eronate
+            'MV07': 'VM07', 'VMV07': 'VM07', 'VILA07': 'VM07', 'VILA 07': 'VM07',
+            'VILA PACURARI': 'VM07', 'VM 07': 'VM07',
+            // Cozy Studio / EX59
+            'COZY STUDIO': 'EX59', 'APARTAMENT 59': 'EX59', 'APT59': 'EX59',
+            // SkyPort / C64
+            'SKYPORT': 'C64', 'SKYPORT RETREAT': 'C64', 'APARTAMENT 64': 'C64', 'APT64': 'C64',
+            // Peaceful Copou Retreat / CG40
+            'PEACEFUL COPOU RETREAT': 'CG40', 'PEACEFUL COPOU': 'CG40', 'APARTAMENT 40': 'CG40',
+            'COPOU RETREAT': 'CG40',
+            // Green Station / GS08
+            'GREEN STATION': 'GS08', 'GS 08': 'GS08',
+            // Hideout Rozeolor / HD02
+            'HIDEOUT': 'HD02', 'HD 02': 'HD02',
+            // Lazar Comfy / L83
+            'LAZAR COMFY': 'L83', 'LAZAR': 'L83',
+            // Palas SkyNest / L88
+            'PALAS SKYNEST': 'L88', 'SKYNEST': 'L88',
+            // Palas Retreat / L94
+            'PALAS RETREAT': 'L94',
+            // Airy Palas / L99
+            'AIRY PALAS': 'L99',
+            // Mint Loft Copou / N32
+            'MINT LOFT': 'N32', 'MINT LOFT COPOU': 'N32',
+            // Newton Urban / NT9
+            'NEWTON URBAN': 'NT9', 'NEWTON': 'NT9', 'NT 9': 'NT9',
+          }
+
           let aptId: string | null = null
           const codCandidati = [
             b.id_camera, b.camera, b.unitate, b.room,
@@ -184,21 +215,38 @@ export default function SyncPage() {
           ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
 
           for (const cod of codCandidati) {
-            // 1. Match direct exact
+            // 1. Match direct exact in aptByNota
             if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
 
-            // 2. Extrage toate codurile posibile din string
+            // 2. Alias map - variante cunoscute trimise gresit de 5starDesk
+            if (ALIAS_MAP[cod] && aptByNota[ALIAS_MAP[cod]]) {
+              aptId = aptByNota[ALIAS_MAP[cod]]; break
+            }
+
+            // 3. Extrage toate codurile posibile din string cu regex
             // "APARTAMENT L88" -> ["L88"], "GS08 GREEN STATION" -> ["GS08"]
-            // Pattern: 1-4 litere urmate de 2-3 cifre (EX59, GS08, L88, NT9, VM07 etc)
             const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
             if (matches) {
               for (const m of matches) {
+                // 3a. Match direct
                 if (aptByNota[m]) { aptId = aptByNota[m]; break }
+                // 3b. Match prin alias (ex: MV07 -> VM07)
+                if (ALIAS_MAP[m] && aptByNota[ALIAS_MAP[m]]) {
+                  aptId = aptByNota[ALIAS_MAP[m]]; break
+                }
               }
               if (aptId) break
             }
 
-            // 3. Fallback: cauta orice secventa cod in string
+            // 4. Cauta alias map partial (substring) - ex: "AB HOMES IASI,MV07,VILA07"
+            for (const [alias, codCorect] of Object.entries(ALIAS_MAP)) {
+              if (cod.includes(alias) && aptByNota[codCorect]) {
+                aptId = aptByNota[codCorect]; break
+              }
+            }
+            if (aptId) break
+
+            // 5. Fallback: cauta orice cod din aptByNota in string
             for (const nota of Object.keys(aptByNota)) {
               if (cod.includes(nota)) { aptId = aptByNota[nota]; break }
             }
