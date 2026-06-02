@@ -30,6 +30,7 @@ const DAYS_RO = ['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminic
 function daysInMonth(y:number,m:number){ return new Date(y,m+1,0).getDate() }
 function isoDate(y:number,m:number,d:number){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` }
 function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7 }
+function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
   const clean=phone.replace(/\D/g,'')
   const nr=clean.startsWith('0')?'4'+clean:clean

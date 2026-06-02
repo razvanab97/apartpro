@@ -63,6 +63,7 @@ function dueColor(days:number,paid:boolean){
 }
 
 /* ── mesaje WhatsApp ─────────────────────────────────────────────────────── */
+function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
   const nr = clean.startsWith('0') ? '4'+clean : clean
@@ -87,18 +88,18 @@ function waLink(phone:string, msg:string){
 function msgCheckin(r:any){
   const apt = r.apartament?.nume || 'apartament'
   const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
-  return `Bună ziua, ${r.nume_client}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
+  return `Bună ziua, ${firstName(r.nume_client)}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
 }
 
 function msgAcces(r:any){
   const apt = r.apartament?.nume || 'apartament'
-  return `Bună ziua, ${r.nume_client}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+  return `Bună ziua, ${firstName(r.nume_client)}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
 
 function msgCheckout(r:any){
   const apt = r.apartament?.nume || 'apartament'
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
-  return `Bună ziua, ${r.nume_client}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
+  return `Bună ziua, ${firstName(r.nume_client)}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
@@ -588,7 +589,7 @@ export default function DashboardPage() {
                         <a href={`tel:${phone}`} style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(123,200,255,0.25)',background:'rgba(123,200,255,0.08)',color:'#7BC8FF',textDecoration:'none'}}>
                           <Phone size={13}/>
                         </a>
-                        <a href={waLink(phone,`Bună ziua, ${r.nume_client}! Vă contactăm de la AB Homes Iași. `)} target="_blank" rel="noreferrer"
+                        <a href={waLink(phone,`Bună ziua, ${firstName(r.nume_client)}! Vă contactăm de la AB Homes Iași. `)} target="_blank" rel="noreferrer"
                           style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(74,222,128,0.25)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',textDecoration:'none'}}>
                           <MessageCircle size={13}/>
                         </a>
