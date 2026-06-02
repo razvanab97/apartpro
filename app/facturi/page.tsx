@@ -55,6 +55,8 @@ export default function FacturiPage() {
   const [dragging, setDragging] = useState(false)
   const [preview, setPreview] = useState<Factura | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [editArchiva, setEditArchiva] = useState<any>(null)
+  const [editArchivaForm, setEditArchivaForm] = useState({apartament_id:'',valoare:'',status:'nevalidat',data:''})
   const { toast, show } = useToast()
 
   useEffect(() => {
@@ -208,6 +210,20 @@ export default function FacturiPage() {
       }
     }
     return null
+  }
+
+  async function saveEditArchiva() {
+    if (!editArchiva) return
+    setSaving('archiva-edit')
+    const { error } = await supabase.from('cheltuieli').update({
+      apartament_id: editArchivaForm.apartament_id || null,
+      valoare: parseFloat(editArchivaForm.valoare) || editArchiva.valoare,
+      status: editArchivaForm.status,
+      data: editArchivaForm.data || editArchiva.data,
+    }).eq('id', editArchiva.id)
+    if (error) show('error', error.message)
+    else { show('success', 'Factură actualizată'); setEditArchiva(null); loadSaved() }
+    setSaving(null)
   }
 
   async function loadSaved() {
@@ -753,6 +769,12 @@ export default function FacturiPage() {
                                 ⬇
                               </a>
                             </>)}
+                            <button
+                              onClick={() => { setEditArchiva(f); setEditArchivaForm({apartament_id:f.apartament_id||'',valoare:String(f.valoare),status:f.status,data:f.data||''}) }}
+                              title="Editează"
+                              style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(252,211,77,0.25)', background:'rgba(252,211,77,0.08)', color:'#FCD34D', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
+                              ✏️
+                            </button>
                             <button onClick={() => deleteFacturaSalvata(f.id)}
                               title="Șterge"
                               style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(248,113,113,0.2)', background:'rgba(248,113,113,0.06)', color:'rgba(248,113,113,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -770,6 +792,67 @@ export default function FacturiPage() {
         })()}
 
       </div>
+
+      {/* Modal editare arhiva */}
+      {editArchiva && (
+        <div onClick={()=>setEditArchiva(null)} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center' }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:380,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:14,padding:'22px' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18 }}>
+              <div>
+                <div style={{ fontSize:14,fontWeight:700,color:'#FCD34D' }}>✏️ Editează factură</div>
+                <div style={{ fontSize:11,color:'rgba(159,215,255,0.4)',marginTop:2 }}>{editArchiva.descriere}</div>
+              </div>
+              <button onClick={()=>setEditArchiva(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',fontSize:18 }}>✕</button>
+            </div>
+            {/* Apartament */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Apartament</div>
+              <select value={editArchivaForm.apartament_id} onChange={e=>setEditArchivaForm(f=>({...f,apartament_id:e.target.value}))}
+                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}>
+                <option value="">— Fără apartament —</option>
+                {[...apts].filter((a:any)=>a.status==='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=>(
+                  <option key={a.id} value={a.id}>{a.nota ? `[${a.nota}] ` : ''}{a.nume}</option>
+                ))}
+              </select>
+            </div>
+            {/* Valoare + Data */}
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12 }}>
+              <div>
+                <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Valoare (RON)</div>
+                <input type="number" value={editArchivaForm.valoare} onChange={e=>setEditArchivaForm(f=>({...f,valoare:e.target.value}))} min={0}
+                  style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+              </div>
+              <div>
+                <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Data scadență</div>
+                <input type="date" value={editArchivaForm.data} onChange={e=>setEditArchivaForm(f=>({...f,data:e.target.value}))}
+                  style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+              </div>
+            </div>
+            {/* Status */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Status plată</div>
+              <div style={{ display:'flex',gap:8 }}>
+                {['nevalidat','validat'].map(s=>(
+                  <button key={s} onClick={()=>setEditArchivaForm(f=>({...f,status:s}))}
+                    style={{ flex:1,padding:'8px',borderRadius:8,border:`1px solid ${editArchivaForm.status===s?(s==='validat'?'rgba(74,222,128,0.5)':'rgba(252,211,77,0.5)'):'rgba(159,215,255,0.15)'}`,background:editArchivaForm.status===s?(s==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)'):'transparent',color:editArchivaForm.status===s?(s==='validat'?'#4ADE80':'#FCD34D'):'rgba(159,215,255,0.4)',fontSize:12,fontWeight:600,cursor:'pointer' }}>
+                    {s==='validat'?'✓ Plătit':'⏳ Neachitat'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:'flex',gap:8 }}>
+              <button onClick={saveEditArchiva} disabled={saving==='archiva-edit'}
+                style={{ flex:1,padding:'10px',borderRadius:9,border:'none',background:'rgba(252,211,77,0.8)',color:'#0E1B2B',fontSize:13,fontWeight:700,cursor:'pointer' }}>
+                {saving==='archiva-edit'?'Se salvează...':'💾 Salvează modificările'}
+              </button>
+              <button onClick={()=>setEditArchiva(null)}
+                style={{ padding:'10px 16px',borderRadius:9,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:13,cursor:'pointer' }}>
+                Anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
