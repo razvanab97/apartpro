@@ -61,31 +61,30 @@ function Calc({ apt }: { apt: any }) {
   const [lenjerii, setLenjerii] = useState(80)
   const [altVar, setAltVar] = useState(0)
   const [zile, setZile] = useState(20)
-  const [loaded, setLoaded] = useState(false)
 
-  // Incarca cheltuielile reale din luna curenta
-  useEffect(() => {
-    if (!open || loaded) return
+  const [loadingCh, setLoadingCh] = useState(false)
+
+  async function preiadinCheltuieli() {
+    setLoadingCh(true)
     const now = new Date()
     const an = now.getFullYear()
     const luna = now.getMonth() + 1
     const pad = (n:number) => String(n).padStart(2,'0')
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
-    supabase.from('cheltuieli')
+    const { data } = await supabase.from('cheltuieli')
       .select('categorie,valoare')
       .eq('apartament_id', apt.id)
       .gte('data', `${an}-${pad(luna)}-01`)
       .lte('data', ultimaZi)
-      .then(({ data }) => {
-        if (!data) return
-        const sum = (cat: string) => data.filter(c=>c.categorie===cat).reduce((s,c)=>s+Number(c.valoare||0),0)
-        setEonCurent(sum('eon_curent'))
-        setEonGaz(sum('eon_gaz'))
-        setAsociatie(sum('asociatie'))
-        setInternet(sum('internet'))
-        setLoaded(true)
-      })
-  }, [open, apt.id, loaded])
+    if (data) {
+      const sum = (cat: string) => data.filter((c:any)=>c.categorie===cat).reduce((s:number,c:any)=>s+Number(c.valoare||0),0)
+      setEonCurent(sum('eon_curent'))
+      setEonGaz(sum('eon_gaz'))
+      setAsociatie(sum('asociatie'))
+      setInternet(sum('internet'))
+    }
+    setLoadingCh(false)
+  }
 
   const totalFix = Number(chirie)+Number(eonCurent)+Number(eonGaz)+Number(asociatie)+Number(internet)+Number(alteFix)
   const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
@@ -103,7 +102,13 @@ function Calc({ apt }: { apt: any }) {
       </button>
       {open && (
         <div style={{ marginTop:10 }}>
-          <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli fixe / lună</div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+            <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli fixe / lună</div>
+            <button onClick={preiadinCheltuieli} disabled={loadingCh}
+              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', cursor:'pointer', opacity:loadingCh?0.6:1 }}>
+              {loadingCh ? '⏳' : '↓ Preia din Cheltuieli'}
+            </button>
+          </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
             {([['Chirie',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
               <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
