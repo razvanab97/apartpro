@@ -310,21 +310,21 @@ export default function FacturiPage() {
           autoAptId = aptDirect.id
         }
       }
-      // Incearca toate adresele din factura pentru matching
-      const adreseToTry = [data.adresa_consum, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
-      if (!autoAptId) for (const addr of adreseToTry) {
-        autoAptId = matchApartament(addr, apts, nrAptExplicit)
-        if (autoAptId) break
+      // PRIORITATE 1: Royal (inainte de matching general - altfel 'ap 99' e confundat cu L99)
+      const isRoyal = (data.furnizor||'').toLowerCase().includes('royal') ||
+        (data.adresa_consum||'').toLowerCase().includes('bl. r7') ||
+        (data.adresa_consum||'').toLowerCase().includes('bl r7')
+      if (!autoAptId && isRoyal) {
+        autoAptId = matchByRoyal(data.adresa_consum, nrAptExplicit, apts)
+        if (autoAptId) show('info', `Royal → R99 ✓`)
       }
-      // Fallback: matching dupa titular (util pentru Canta/Mircea/R99)
-      if (!autoAptId && data.titular) {
-        autoAptId = matchByTitular(data.titular, apts)
-      }
-      // Fallback TermoService: matching dupa bloc (A43=Mircea)
+
+      // PRIORITATE 2: TermoService
       if (!autoAptId && (data.furnizor||'').toLowerCase().includes('termo')) {
         autoAptId = matchByTermoService(data.adresa_consum, apts)
       }
-      // Fallback Ebloc: matching dupa adresa (Rozelor=HD02)
+
+      // PRIORITATE 3: Ebloc
       if (!autoAptId) {
         const isEbloc = (data.furnizor||'').toLowerCase().includes('ebloc') ||
           (data.furnizor||'').toLowerCase().includes('e-bloc') ||
@@ -332,11 +332,20 @@ export default function FacturiPage() {
           (data.detalii||'').toLowerCase().includes('e-bloc')
         if (isEbloc) autoAptId = matchByEbloc(data.adresa_consum, apts)
       }
-      // Fallback Royal: Bl R7 ap 99 = R99
-      if (!autoAptId) {
-        const isRoyal = (data.furnizor||'').toLowerCase().includes('royal') ||
-          (data.adresa_consum||'').toLowerCase().includes('r7')
-        if (isRoyal) autoAptId = matchByRoyal(data.adresa_consum, nrAptExplicit, apts)
+
+      // PRIORITATE 4: Matching general dupa adresa (Urbica, EON, etc)
+      // Excludem Royal din matching general ca sa nu prinda 'ap 99' → L99
+      if (!autoAptId && !isRoyal) {
+        const adreseToTry = [data.adresa_consum, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
+        for (const addr of adreseToTry) {
+          autoAptId = matchApartament(addr, apts, nrAptExplicit)
+          if (autoAptId) break
+        }
+      }
+
+      // PRIORITATE 5: Matching dupa titular
+      if (!autoAptId && data.titular) {
+        autoAptId = matchByTitular(data.titular, apts)
       }
       const facturaFinala = {
         ...data, id, processing: false,
