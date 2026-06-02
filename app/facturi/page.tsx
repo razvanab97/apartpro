@@ -606,7 +606,15 @@ export default function FacturiPage() {
                         ) : (
                           <>
                             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3, flexWrap:'wrap' }}>
-                              <span style={{ fontSize:11, fontWeight:600, color, background:`${color}18`, padding:'2px 8px', borderRadius:5, textTransform:'uppercase', letterSpacing:'.04em' }}>{f.categorieLabel}</span>
+                              <select
+                                value={f.categorieLabel||''}
+                                onChange={e => setFacturi(list => list.map(x => x.id===f.id ? {...x, categorieLabel: e.target.value} : x))}
+                                style={{ fontSize:11, fontWeight:600, color, background:`${color}18`, padding:'2px 8px', borderRadius:5, textTransform:'uppercase' as const, letterSpacing:'.04em', border:`1px solid ${color}40`, outline:'none', cursor:'pointer' }}
+                              >
+                                {['E.ON Energie','E.ON Gaz','Urbica','TermoService','Salubris','Internet','Asociatie','Royal','Alta'].map(c=>(
+                                  <option key={c} value={c} style={{ background:'#0E1B2B', color:'#E8F4FF', textTransform:'none' }}>{c}</option>
+                                ))}
+                              </select>
                               <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{f.furnizor}</span>
                               {f.nr_factura && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>#{f.nr_factura}</span>}
                             </div>
