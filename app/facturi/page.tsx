@@ -373,11 +373,11 @@ export default function FacturiPage() {
       ? f.data_scadenta!
       : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
     const categorieToColKey: Record<string,string> = {
-      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','Urbica':'urbica',
-      'TermoService':'termoservice','Salubris':'salubris',
-      'Internet':'internet','Asociatie':'asociatie',
+      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent',
+      'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
+      'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
     }
-    const colKey = categorieToColKey[f.categorieLabel||''] || categorieToColKey[f.categorie||''] || null
+    const colKey = categorieToColKey[f.categorieLabel||''] || categorieToColKey[f.categorie||''] || 'alte'
     const { data, error } = await supabase.from('cheltuieli').insert({
       apartament_id: f.apartament_id,
       categorie: colKey || f.categorie || 'alta',
@@ -421,20 +421,27 @@ export default function FacturiPage() {
     const dataScadenta = (scadenta2 && scadenta2 >= primaZiLC)
       ? f.data_scadenta!
       : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
-    // Mapeaza categoria facturii la col_key din UTIL_COLS pentru cheltuieli
+    // Mapeaza categoria facturii la UTIL_KEYS reale din cheltuieli
+    // UTIL_KEYS: chirie, asociatie, eon_curent, eon_gaz, internet, salubris
     const categorieToColKey: Record<string,string> = {
+      // E.ON
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
       'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
-      'Urbica': 'urbica', 'urbica': 'urbica',
-      'TermoService': 'termoservice', 'termoservice': 'termoservice',
-      'Salubris': 'salubris', 'salubris': 'salubris',
-      'Internet': 'internet', 'internet': 'internet',
+      // Asociatie / intretinere - Urbica, Ebloc, Newton Park etc → sectiunea asociatie
+      'Urbica': 'asociatie', 'urbica': 'asociatie',
       'Asociatie': 'asociatie', 'asociatie': 'asociatie',
+      'TermoService': 'asociatie', 'termoservice': 'asociatie',
+      // Salubris
+      'Salubris': 'salubris', 'salubris': 'salubris',
+      // Internet
+      'Internet': 'internet', 'internet': 'internet',
+      // Royal → asociatie
+      'Royal': 'asociatie', 'royal': 'asociatie',
     }
-    const colKey = categorieToColKey[f.categorieLabel || ''] || categorieToColKey[f.categorie || ''] || null
+    const colKey = categorieToColKey[f.categorieLabel || ''] || categorieToColKey[f.categorie || ''] || 'alte'
     const { data, error } = await supabase.from('cheltuieli').insert({
       apartament_id: f.apartament_id || null,
-      categorie: colKey || f.categorie || 'alta',
+      categorie: colKey,
       descriere: `${f.categorieLabel} — ${f.furnizor}`,
       valoare: f.suma_totala,
       data: dataScadenta,
@@ -589,7 +596,17 @@ export default function FacturiPage() {
                               }}
                             >
                               {isSaving ? <Loader size={12} style={{ animation:'spin 1s linear infinite' }}/> : null}
-                              {isSaving ? 'Se salvează...' : (f.apartament_id ? '✓ Adaugă la cheltuieli' : 'Selectează apartament')}
+                              {isSaving ? 'Se salvează...' : f.apartament_id ? (() => {
+                                const apt = apts.find((a:any) => a.id === f.apartament_id)
+                                const aptLabel = apt?.nota || apt?.nume || '?'
+                                const catMap: Record<string,string> = {
+                                  'E.ON Gaz':'Gaz','E.ON Curent':'Curent','Urbica':'Asociație',
+                                  'TermoService':'Asociație','Salubris':'Salubris','Internet':'Internet',
+                                  'Asociatie':'Asociație','Royal':'Asociație',
+                                }
+                                const catLabel = catMap[f.categorieLabel] || f.categorieLabel || 'Cheltuieli'
+                                return `✓ → ${aptLabel} / ${catLabel}`
+                              })() : 'Selectează apartament'}
                             </button>
                           )}
                           {f.status === 'salvat' && (
