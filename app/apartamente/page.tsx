@@ -69,10 +69,8 @@ function Calc({ apt }: { apt: any }) {
     const now = new Date()
     const an = now.getFullYear()
     const luna = now.getMonth() + 1
-    const pad = (n:number) => String(n).padStart(2,'0')
     // Cauta in ultimele 3 luni - facturile pot fi salvate cu date diferite
     // Luna curenta - toate cheltuielile indiferent de status
-    const pad = (n:number) => String(n).padStart(2,'0')
     const primaZi = `${an}-${pad(luna)}-01`
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
     const { data } = await supabase.from('cheltuieli')
