@@ -474,9 +474,8 @@ export default function CheltuieliPage(){
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
 
-    // Daca nu are ID, creeaza in DB mai intai
-    let itemId = item.id
-    if(!itemId){
+    // Daca nu are ID, creeaza in DB
+    if(!item.id){
       const colDef=UTIL_COLS.find(c=>c.key===col)!
       const aptNota=(apts.find((a:any)=>a.id===aptId)?.nota)||null
       const dueDay=getDueForApt(aptNota,col,colDef.due)
@@ -484,35 +483,18 @@ export default function CheltuieliPage(){
         apartament_id:aptId,categorie:col,descriere:colDef.label,
         valoare:Number(item.valoare)||0,
         data:`${an}-${pad(luna)}-${pad(dueDay)}`,
-        status:'nevalidat',suportat_de:'proprietar',tva:0,
+        status:ns,suportat_de:'proprietar',tva:0,
       }).select().single()
-      if(insErr){show('error','Eroare creare: '+insErr.message);setSaving(null);return}
-      itemId = newItem.id
+      if(insErr){show('error',insErr.message);setSaving(null);return}
+      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...newItem,status:ns}}}}))
+      show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
+      setSaving(null); return
     }
 
-    // Salveaza status in DB
-    const {error:toggleErr}=await supabase.from('cheltuieli').update({status:ns}).eq('id',itemId)
-    if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
-
-    // Refresh selectiv din DB pentru acest apartament
-    const {data:fresh}=await supabase.from('cheltuieli')
-      .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
-      .eq('apartament_id',aptId)
-      .gte('data',`${an}-${pad(luna)}-01`)
-      .lte('data',`${an}-${pad(luna)}-31`)
-    
-    if(fresh){
-      const newU:{[col:string]:{current:any,restante:any[]}}={}
-      fresh.forEach((c:any)=>{
-        if(!UTIL_KEYS.includes(c.categorie)) return
-        if(!newU[c.categorie]) newU[c.categorie]={current:null,restante:[]}
-        if(!newU[c.categorie].current) newU[c.categorie].current=c
-        else newU[c.categorie].restante.push(c)
-      })
-      setUtil(u=>({...u,[aptId]:{...u[aptId],...newU}}))
-    }
-
-    show('success', ns==='validat'?'✓ Plătit':'↩ Neachitat')
+    const {error}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+    if(error){show('error',error.message);setSaving(null);return}
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
+    show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
     setSaving(null)
   }
 
