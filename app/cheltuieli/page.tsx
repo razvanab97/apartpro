@@ -1006,22 +1006,27 @@ export default function CheltuieliPage(){
                             → Luna aceasta
                           </button>
                           <button onClick={async()=>{
-                              if(!it.id){show('error','ID lipsă - folosește butonul Luna aceasta');return}
-                              const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',it.id)
-                              if(error){show('error',error.message);return}
-                              // Actualizeaza local - muta din restante in validat
-                              setUtil(u=>{
-                                const nu={...u}
-                                if(!nu[apt.id])return nu
-                                const entry=nu[apt.id][col.key]
-                                if(!entry)return nu
-                                nu[apt.id]={...nu[apt.id],[col.key]:{
-                                  ...entry,
-                                  restante:(entry.restante||[]).map((r:any)=>r.id===it.id?{...r,status:'validat'}:r)
-                                }}
-                                return nu
+                              const itemId = it.id
+                              if(!itemId){show('error','Eroare: ID lipsă');return}
+                              setSaving('restant-'+itemId)
+                              const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',itemId)
+                              setSaving(null)
+                              if(error){show('error','DB: '+error.message);return}
+                              // Update local state
+                              setUtil(prev=>{
+                                const next=JSON.parse(JSON.stringify(prev))
+                                const aptEntry=next[apt.id]
+                                if(!aptEntry)return prev
+                                const colEntry=aptEntry[col.key]
+                                if(!colEntry)return prev
+                                if(Array.isArray(colEntry.restante)){
+                                  colEntry.restante=colEntry.restante.map((r:any)=>
+                                    r.id===itemId?{...r,status:'validat'}:r
+                                  )
+                                }
+                                return next
                               })
-                              show('success','✓ Plătit')
+                              show('success','✓ Marcat ca plătit')
                             }}
                             style={{width:26,height:26,borderRadius:6,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                             <Check size={11} color="#4ADE80" strokeWidth={3}/>
