@@ -398,6 +398,46 @@ export default function FacturiPage() {
     }
   }
 
+  async function saveForcedToSupabase(f: Factura) {
+    // Salvare fortata - bypass verificare duplicat, permite corectare erori
+    if (!f.id || !f.apartament_id) return
+    setSaving(f.id)
+    const now = new Date()
+    const pad = (n:number) => String(n).padStart(2,'0')
+    const scadenta2 = f.data_scadenta ? new Date(f.data_scadenta) : null
+    const primaZiLC = new Date(now.getFullYear(), now.getMonth(), 1)
+    const dataScadenta = (scadenta2 && scadenta2 >= primaZiLC)
+      ? f.data_scadenta!
+      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+    const categorieToColKey: Record<string,string> = {
+      'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
+      'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
+      'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
+      'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
+    }
+    const colKey = categorieToColKey[f.categorieLabel || ''] || categorieToColKey[f.categorie || ''] || 'alte'
+    const { data, error } = await supabase.from('cheltuieli').insert({
+      apartament_id: f.apartament_id,
+      categorie: colKey,
+      descriere: `${f.categorieLabel} — ${f.furnizor}`,
+      valoare: f.suma_totala,
+      data: dataScadenta,
+      status: 'nevalidat',
+      suportat_de: 'administrator',
+      tva: 0,
+      nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      fisier_url: f.file_url || null,
+    }).select().single()
+    if (error) { show('error', error.message) }
+    else {
+      setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'salvat' as const, cheltuiala_id: data.id } : x))
+      const aptNume = apts.find((a:any) => a.id === f.apartament_id)?.nota || ''
+      show('success', `✓ Salvat forțat → ${aptNume}`)
+      loadSaved()
+    }
+    setSaving(null)
+  }
+
   async function saveToSupabase(f: Factura) {
     if (!f.id) return
     setSaving(f.id)
@@ -561,13 +601,13 @@ export default function FacturiPage() {
                         )}
                       </div>
 
-                      {/* apartament selector */}
-                      {!f.processing && f.status !== 'eroare' && (
+                      {/* apartament selector - vizibil si la eroare pentru corectare */}
+                      {!f.processing && f.status !== 'salvat' && (
                         <div style={{ flexShrink:0 }}>
                           <select
                             value={f.apartament_id || ''}
                             onChange={e => setFacturi(list => list.map(x => x.id===f.id ? {...x, apartament_id: e.target.value||null} : x))}
-                            style={{ background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
+                            style={{ background: f.status==='eroare' ? 'rgba(40,20,20,0.9)' : 'rgba(20,38,65,0.8)', border:`1px solid ${f.status==='eroare'?'rgba(248,113,113,0.4)':'rgba(100,160,255,0.2)'}`, borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
                           >
                             <option value="">— Selectează apartament —</option>
                             {[...apts].filter((a:any)=>a.status==='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
@@ -607,6 +647,24 @@ export default function FacturiPage() {
                                 const catLabel = catMap[f.categorieLabel] || f.categorieLabel || 'Cheltuieli'
                                 return `✓ → ${aptLabel} / ${catLabel}`
                               })() : 'Selectează apartament'}
+                            </button>
+                          )}
+                          {f.status === 'eroare' && (
+                            <button
+                              onClick={() => saveForcedToSupabase(f)}
+                              disabled={!!isSaving || !f.apartament_id}
+                              title={!f.apartament_id ? 'Selectează mai întâi apartamentul' : 'Salvează ignorând eroarea de duplicat'}
+                              style={{
+                                display:'flex', alignItems:'center', gap:5, padding:'7px 14px',
+                                borderRadius:8, border:'1px solid rgba(252,211,77,0.4)',
+                                background: f.apartament_id ? 'rgba(252,211,77,0.12)' : 'rgba(159,215,255,0.04)',
+                                color: f.apartament_id ? '#FCD34D' : 'rgba(159,215,255,0.3)',
+                                cursor: f.apartament_id ? 'pointer' : 'not-allowed',
+                                fontSize:12, fontWeight:600, opacity: isSaving ? 0.5 : 1,
+                              }}
+                            >
+                              {isSaving ? <Loader size={12} style={{ animation:'spin 1s linear infinite' }}/> : '✏️'}
+                              {isSaving ? 'Se salvează...' : 'Salvează manual'}
                             </button>
                           )}
                           {f.status === 'salvat' && (
