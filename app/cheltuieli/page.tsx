@@ -438,9 +438,10 @@ export default function CheltuieliPage(){
     const ns=item.status==='validat'?'nevalidat':'validat'
     const {error:toggleErr}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
     if(toggleErr){show('error','Eroare: '+toggleErr.message);setSaving(null);return}
+    // Actualizeaza local imediat, fara sa astepte reload
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
     show('success', ns==='validat'?'✓ Marcat ca plătit':'↩ Marcat ca neachitat')
     setSaving(null)
-    await load()
   }
 
   async function commitCell(valOverride?:string){
@@ -468,7 +469,6 @@ export default function CheltuieliPage(){
     }
     setSaving(null);setEditCell(null);setEditVal('')
     show('success','Salvat ✓')
-    await load()
   }
 
   async function saveExtra(){
