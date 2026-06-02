@@ -151,11 +151,11 @@ export default function CheltuieliPage(){
     const [{data:aptData},{data:chData},{data:chDataPrev}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .gte('data',`${an}-${pad(luna)}-01`)
         .lte('data',`${an}-${pad(luna)}-31`),
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .gte('data',`${prevAn}-${pad(prevLuna)}-01`)
         .lte('data',`${prevAn}-${pad(prevLuna)}-31`)
         .eq('status','nevalidat'),
@@ -212,8 +212,38 @@ export default function CheltuieliPage(){
       else if(c.categorie==='contabilitate') cont.push(c)
       else if(FISCAL_ROWS.find(f=>f.key===c.categorie)) fisc[c.categorie]=c
     })
-    // Adauga restante din luna precedenta la categoria corespunzatoare
-    ;(chDataPrev||[]).forEach((ch:any)=>{
+    // Facturi neplatite din luna precedenta: muta automat pe luna curenta
+    const toMove = (chDataPrev||[]).filter((ch:any) => ch.fisier_url && ch.status==='nevalidat')
+    if(toMove.length > 0){
+      await Promise.all(toMove.map((ch:any) =>
+        supabase.from('cheltuieli').update({
+          data: `${an}-${pad(luna)}-${(ch.data||'').slice(8,10)||'01'}`
+        }).eq('id', ch.id)
+      ))
+      // Reincarca chData dupa mutare
+      const {data: chDataNew} = await supabase.from('cheltuieli')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+        .gte('data',`${an}-${pad(luna)}-01`)
+        .lte('data',`${an}-${pad(luna)}-31`)
+      // Adauga in u cele mutate
+      ;(chDataNew||[]).filter((c:any)=>toMove.some((t:any)=>t.id===c.id)).forEach((c:any)=>{
+        if(c.apartament_id && UTIL_KEYS.includes(c.categorie)){
+          if(!u[c.apartament_id])u[c.apartament_id]={}
+          if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
+          const isFactura = !!c.fisier_url
+          const hasCurrent = !!u[c.apartament_id][c.categorie].current
+          const currentIsFactura = !!u[c.apartament_id][c.categorie].current?.fisier_url
+          if(!hasCurrent){ u[c.apartament_id][c.categorie].current=c }
+          else if(isFactura && !currentIsFactura){
+            u[c.apartament_id][c.categorie].restante.push(u[c.apartament_id][c.categorie].current)
+            u[c.apartament_id][c.categorie].current=c
+          } else { u[c.apartament_id][c.categorie].restante.push(c) }
+        }
+      })
+    }
+
+    // Adauga restante neplatite din luna precedenta (non-facturi) la categoria corespunzatoare
+    ;(chDataPrev||[]).filter((ch:any)=>!ch.fisier_url).forEach((ch:any)=>{
       if(ch.apartament_id && UTIL_KEYS.includes(ch.categorie)){
         if(!u[ch.apartament_id])u[ch.apartament_id]={}
         if(!u[ch.apartament_id][ch.categorie]) u[ch.apartament_id][ch.categorie]={current:null,restante:[]}
