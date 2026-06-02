@@ -303,6 +303,46 @@ export default function CheltuieliPage(){
       }
     })
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
+
+    // Auto-seed cheltuieli fixe lunare daca lipsesc pentru luna curenta
+    // Copiaza din luna precedenta valorile fixe (chirie, internet, salubris)
+    const FIXED_CATS = ['chirie','internet','salubris']
+    const toAutoSeed: any[] = []
+    for(const apt of allApts){
+      for(const col of UTIL_COLS.filter(c=>FIXED_CATS.includes(c.key))){
+        // Daca nu exista in luna curenta
+        if(!u[apt.id]?.[col.key]?.current && !u[apt.id]?.[col.key]){
+          // Cauta valoarea din luna precedenta (din chDataPrev)
+          const prevItem = (chDataPrev||[]).find((c:any)=>
+            c.apartament_id===apt.id && c.categorie===col.key
+          )
+          if(prevItem){
+            const dueDay=getDueForApt(apt.nota,col.key,col.due)
+            toAutoSeed.push({
+              apartament_id: apt.id,
+              categorie: col.key,
+              descriere: col.label,
+              valoare: prevItem.valoare,
+              data: `${an}-${pad(luna)}-${pad(dueDay)}`,
+              status: 'nevalidat',
+              suportat_de: prevItem.suportat_de||'proprietar',
+              tva: 0,
+            })
+          }
+        }
+      }
+    }
+    if(toAutoSeed.length>0){
+      const {data:seeded} = await supabase.from('cheltuieli').insert(toAutoSeed).select()
+      // Adauga in util
+      ;(seeded||[]).forEach((c:any)=>{
+        if(!u[c.apartament_id])u[c.apartament_id]={}
+        if(!u[c.apartament_id][c.categorie]) u[c.apartament_id][c.categorie]={current:null,restante:[]}
+        if(!u[c.apartament_id][c.categorie].current) u[c.apartament_id][c.categorie].current=c
+      })
+      setUtil({...u})
+    }
+
     setLoading(false)
   }
 
