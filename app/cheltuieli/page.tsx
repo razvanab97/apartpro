@@ -135,6 +135,7 @@ export default function CheltuieliPage(){
 
   // edit inline util
   const [editCell,setEditCell]=useState<{aptId:string;col:string}|null>(null)
+  const [editCol,setEditCol]=useState<string>('')
   const [editVal,setEditVal]=useState('')
   const cellRef=useRef<HTMLInputElement>(null)
 
@@ -458,21 +459,37 @@ export default function CheltuieliPage(){
   async function commitCell(valOverride?:string){
     if(!editCell)return
     const {aptId,col}=editCell
+    const targetCol = editCol || col  // categoria selectata (poate fi schimbata)
     const val=parseFloat(valOverride!==undefined?valOverride:editVal)||0
-    const colDef=UTIL_COLS.find(c=>c.key===col)!
+    const colDef=UTIL_COLS.find(c=>c.key===targetCol) || UTIL_COLS.find(c=>c.key===col)!
     const aptNota=(apts.find((a:any)=>a.id===aptId)?.nota)||null
-    const dueDayC=getDueForApt(aptNota,col,colDef.due)
+    const dueDayC=getDueForApt(aptNota,targetCol,colDef.due)
     const dateStr=`${an}-${pad(luna)}-${pad(dueDayC)}`
     const entry=util[aptId]?.[col]
     const existing=entry?.current||entry
     setSaving('cell')
     if(existing?.id){
-      const {error:updErr}=await supabase.from('cheltuieli').update({valoare:val,data:dateStr}).eq('id',existing.id)
+      const updatePayload: any = {valoare:val,data:dateStr}
+      if(targetCol !== col) updatePayload.categorie = targetCol
+      const {error:updErr}=await supabase.from('cheltuieli').update(updatePayload).eq('id',existing.id)
       if(updErr){show('error','Eroare salvare: '+updErr.message);setSaving(null);setEditCell(null);return}
-      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...existing,valoare:val}}}}))
+      // Daca s-a schimbat categoria, muta in noul col
+      const newEntry = {...existing,valoare:val,categorie:targetCol}
+      if(targetCol !== col){
+        setUtil(u=>{
+          const nu={...u}
+          if(!nu[aptId])nu[aptId]={}
+          if(nu[aptId][col]?.current?.id===existing.id) nu[aptId][col]={...nu[aptId][col],current:null}
+          if(!nu[aptId][targetCol]) nu[aptId][targetCol]={current:null,restante:[]}
+          nu[aptId][targetCol]={...nu[aptId][targetCol],current:newEntry}
+          return nu
+        })
+      } else {
+        setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...existing,valoare:val}}}}))
+      }
     } else {
       const {data,error}=await supabase.from('cheltuieli').insert({
-        apartament_id:aptId,categorie:col,descriere:colDef.label,valoare:val,
+        apartament_id:aptId,categorie:targetCol,descriere:colDef.label,valoare:val,
         data:dateStr,status:'nevalidat',suportat_de:'proprietar',tva:0,
       }).select().single()
       if(!error&&data)setUtil(u=>({...u,[aptId]:{...(u[aptId]||{}),[col]:data}}))
@@ -771,7 +788,11 @@ export default function CheltuieliPage(){
     }
     return(
       <div style={{...pillBase(false),minWidth:130,flex:'1 1 130px'}}>
-        <div style={{fontSize:11,fontWeight:500,color:'rgba(100,160,255,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
+        {/* Dropdown categorie */}
+        <select value={editCol} onChange={e=>setEditCol(e.target.value)}
+          style={{width:'100%',background:'rgba(11,18,36,0.9)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:6,color:'rgba(159,215,255,0.8)',fontSize:10,fontWeight:600,padding:'4px 6px',marginBottom:7,outline:'none',textTransform:'uppercase',letterSpacing:'.04em'}}>
+          {UTIL_COLS.map(c=><option key={c.key} value={c.key} style={{textTransform:'none'}}>{c.label}</option>)}
+        </select>
         <input ref={ref} type="number" value={v} onChange={e=>setV(e.target.value)}
           onKeyDown={e=>{if(e.key==='Enter')handleSave();if(e.key==='Escape')onCancel()}}
           placeholder="ex: 1850" style={{...inpStyle,marginBottom:8,fontSize:15,fontWeight:500}} min={0}/>
@@ -846,13 +867,13 @@ export default function CheltuieliPage(){
                     {isEdit ? (
                       <EditPill label={col.label} due={due}
                         onSave={v=>commitCell(v)}
-                        onCancel={()=>{setEditCell(null);setEditVal('')}}
+                        onCancel={()=>{setEditCell(null);setEditVal('');setEditCol('')}}
                         initialVal={val>0?String(val):''}
                       />
                     ) : val === 0 && !item ? (
                       // Pill gol - buton + pentru adaugare manuala rapida
                       <button
-                        onClick={()=>{setEditVal('');setEditCell({aptId:apt.id,col:col.key})}}
+                        onClick={()=>{setEditVal('');setEditCell({aptId:apt.id,col:col.key});setEditCol(col.key)}}
                         style={{minWidth:130,flex:'1 1 130px',padding:'14px 16px',background:'rgba(77,163,255,0.04)',border:'1px dashed rgba(77,163,255,0.2)',borderRadius:12,cursor:'pointer',display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',gap:4,color:'rgba(77,163,255,0.5)',transition:'all .15s'}}
                         onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background='rgba(77,163,255,0.1)';(e.currentTarget as HTMLElement).style.borderColor='rgba(77,163,255,0.4)';(e.currentTarget as HTMLElement).style.color='rgba(77,163,255,0.9)'}}
                         onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background='rgba(77,163,255,0.04)';(e.currentTarget as HTMLElement).style.borderColor='rgba(77,163,255,0.2)';(e.currentTarget as HTMLElement).style.color='rgba(77,163,255,0.5)'}}
@@ -867,7 +888,7 @@ export default function CheltuieliPage(){
                           label={col.label} val={val} due={due} paid={isPaid}
                           busy={saving===apt.id+col.key}
                           onToggle={()=>toggleUtil(apt.id,col.key)}
-                          onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key})}}
+                          onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key});setEditCol(col.key)}}
                           onPlataPart={(suma)=>plataPart(item,suma)}
                           onMove={(newL,newA)=>item&&moveTolLuna(item,newL,newA)}
                           lunaC={luna} anC={an}
