@@ -156,6 +156,17 @@ export default function SetariPage() {
                       <button onClick={() => resetMsg(key)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:8, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:12, cursor:'pointer' }}>
                         <RotateCcw size={12}/>Resetează
                       </button>
+                      <button onClick={() => {
+                        // Copiaza cu emoji-uri Unicode corecte pentru WhatsApp
+                        const text = msgs[key]
+                        const blob = new Blob([text], {type: 'text/plain;charset=utf-8'})
+                        const item = new ClipboardItem({'text/plain': blob})
+                        navigator.clipboard.write([item]).then(()=>show('success','✓ Copiat pentru WhatsApp!')).catch(()=>{
+                          navigator.clipboard.writeText(text).then(()=>show('success','✓ Copiat!')).catch(()=>show('error','Nu s-a putut copia'))
+                        })
+                      }} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:8, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:12, cursor:'pointer' }}>
+                        📋 Copiază pentru WhatsApp
+                      </button>
                     </div>
                   </div>
                 </div>
