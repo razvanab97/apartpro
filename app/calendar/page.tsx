@@ -46,6 +46,7 @@ export default function CalendarPage() {
   const [month, setMonth]       = useState(new Date().getMonth())
   const [selApt, setSelApt]     = useState('')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
+  const [selectedDay, setSelectedDay] = useState<number|null>(null)
 
   // selectie zile pentru rezervare noua
   const [dragStart, setDragStart] = useState<{aptId:string;day:number}|null>(null)
@@ -102,7 +103,7 @@ export default function CalendarPage() {
 
   function prevMonth(){ if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1); clearSel() }
   function nextMonth(){ if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1); clearSel() }
-  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setCiPreview(null);setSaveError(null) }
+  function clearSel(){ setDragStart(null);setDragEnd(null);setIsDragging(false);setPanel(null);setPanelDay(null);setSelectedDay(null);setCiPreview(null);setSaveError(null) }
 
   const isCurrentMonth  = month===todayMon && year===todayYear
   const occupiedToday   = isCurrentMonth ? apts.filter(a=>getRez(a.id,todayDay)).length : 0
@@ -184,6 +185,7 @@ export default function CalendarPage() {
   // panel info zi
   function openDayInfo(day:number){
     setPanelDay(day); setPanel('info')
+    setSelectedDay(day)
     setDragStart(null); setDragEnd(null); setIsDragging(false)
   }
 
@@ -268,9 +270,14 @@ export default function CalendarPage() {
                 return (
                   <div key={d}
                     onClick={()=>{ if(!isDragging) openDayInfo(d) }}
-                    style={{ width:COL_W, flexShrink:0, height:HDR_H, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2, background:hdrBg, borderRight:'1px solid rgba(159,215,255,0.06)', cursor:'pointer', transition:'background .12s', userSelect:'none' }}>
-                    <span style={{ fontSize:18, fontWeight:700, color:numColor, lineHeight:1 }}>{d}</span>
-                    <span style={{ fontSize:10, fontWeight:500, color:dayColor, letterSpacing:'.04em' }}>
+                    style={{ width:COL_W, flexShrink:0, height:HDR_H, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
+                      background: selectedDay===d ? 'rgba(123,200,255,0.15)' : hdrBg,
+                      borderRight:'1px solid rgba(159,215,255,0.06)',
+                      borderBottom: selectedDay===d ? '2px solid #7BC8FF' : '2px solid transparent',
+                      cursor:'pointer', transition:'background .12s', userSelect:'none',
+                      position:'relative' as const }}>
+                    <span style={{ fontSize:18, fontWeight:700, color: selectedDay===d ? '#FFFFFF' : numColor, lineHeight:1 }}>{d}</span>
+                    <span style={{ fontSize:10, fontWeight:500, color: selectedDay===d ? '#7BC8FF' : dayColor, letterSpacing:'.04em' }}>
                       {['L','M','M','J','V','S','D'][dow]}
                     </span>
                   </div>
@@ -355,6 +362,7 @@ export default function CalendarPage() {
 
                         {isT && <div style={{ position:'absolute', top:0, bottom:0, left:'50%', width:2, background:'rgba(74,222,128,0.5)', zIndex:10, pointerEvents:'none' }}/>}
                         {isWk && !isT && <div style={{ position:'absolute', top:0, bottom:0, left:0, width:1, background:'rgba(107,142,255,0.15)', zIndex:3, pointerEvents:'none' }}/>}
+                        {selectedDay===d && <div style={{ position:'absolute', top:0, bottom:0, left:0, right:0, background:'rgba(123,200,255,0.07)', borderLeft:'2px solid rgba(123,200,255,0.5)', zIndex:8, pointerEvents:'none' }}/>}
                       </div>
                     )
                   })}
