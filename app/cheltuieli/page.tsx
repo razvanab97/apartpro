@@ -325,7 +325,7 @@ export default function CheltuieliPage(){
               valoare: prevItem.valoare,
               data: `${an}-${pad(luna)}-${pad(dueDay)}`,
               status: 'nevalidat',
-              suportat_de: prevItem.suportat_de||'proprietar',
+              suportat_de: (prevItem as any).suportat_de||'proprietar',
               tva: 0,
             })
           }
