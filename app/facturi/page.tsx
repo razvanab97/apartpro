@@ -271,9 +271,15 @@ export default function FacturiPage() {
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
 
-      // Incearca toate adresele din factura pentru matching
-      // Construieste adresa completa cu nr apartament explicit pentru matching mai precis
-      // Matching direct dupa nota (pentru NT9 si alte cazuri speciale)
+      // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
+      const nrDinCodUrbica = data.cod_locatie_urbica ? URBICA_COD_MAP[data.cod_locatie_urbica] || null : null
+      const nrAptExplicit = nrDinCodUrbica || data.nr_apartament || null
+      if (nrDinCodUrbica) {
+        show('info', `Urbica cod ${data.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
+      }
+      // Declaram autoAptId inainte de orice utilizare
+      let autoAptId: string | null = null
+      // Matching direct dupa nota (pentru NT9 si alte cazuri speciale cu cod Urbica)
       const notaDirecta = data.cod_locatie_urbica ? URBICA_COD_NOTA_MAP[data.cod_locatie_urbica] || null : null
       if (notaDirecta) {
         const aptDirect = apts.find((a:any) => a.nota === notaDirecta)
@@ -282,15 +288,9 @@ export default function FacturiPage() {
           autoAptId = aptDirect.id
         }
       }
-      // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
-      const nrDinCodUrbica = data.cod_locatie_urbica ? URBICA_COD_MAP[data.cod_locatie_urbica] || null : null
-      const nrAptExplicit = nrDinCodUrbica || data.nr_apartament || null
-      if (nrDinCodUrbica) {
-        show('info', `Urbica cod ${data.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
-      }
+      // Incearca toate adresele din factura pentru matching
       const adreseToTry = [data.adresa_consum, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
-      let autoAptId: string | null = null
-      for (const addr of adreseToTry) {
+      if (!autoAptId) for (const addr of adreseToTry) {
         autoAptId = matchApartament(addr, apts, nrAptExplicit)
         if (autoAptId) break
       }
