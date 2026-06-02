@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
 6. Tipul serviciului (gaz natural, curent electric, apa, termoficare, salubritate, telefonie, internet, asociatie, altele)
 7. ADRESA LOCULUI DE CONSUM - strada, numarul, blocul, scara, apartamentul (NU adresa sediului companiei)
 8. Numele titularului contractului
+9. NUMARUL APARTAMENTULUI din adresa de consum - DOAR cifra (ex: daca adresa e "Palade 18A ap 83" → "83", daca e "ap. 94" → "94"). FOARTE IMPORTANT pentru diferentierea apartamentelor la aceeasi adresa.
 
 Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
 {
@@ -43,7 +44,8 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
   "perioada": "descriere perioada",
   "nr_factura": "numarul facturii",
   "tip_serviciu": "categoria",
-  "adresa_consum": "strada si numarul complet al locului de consum",
+  "adresa_consum": "strada si numarul complet al locului de consum inclusiv nr apartament",
+  "nr_apartament": "doar cifra apartamentului sau null",
   "adresa_titular": "adresa titularului daca e diferita",
   "titular": "numele titularului",
   "detalii": "orice info relevant"

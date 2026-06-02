@@ -67,27 +67,47 @@ export default function FacturiPage() {
     setApts(data || [])
   }
 
-  // Auto-potrivire apartament dupa adresa + titular din factura
+  // Extrage numarul apartamentului din cod nota (L83->83, N32->32, CG40->40, EX59->59)
+  function extractAptNr(nota: string | null): string | null {
+    if (!nota) return null
+    const m = nota.match(/\d+/)
+    return m ? m[0] : null
+  }
+
+  // Auto-potrivire apartament dupa adresa + numar apartament din factura
   function matchApartament(adresaFactura: string | null, aptList: any[]): string | null {
     if (!adresaFactura || !aptList.length) return null
-    const af = adresaFactura.toLowerCase().replace(/[,.\-]/g,' ').replace(/\s+/g,' ').trim()
+    const af = adresaFactura.toLowerCase().replace(/[,\.\-]/g,' ').replace(/\s+/g,' ').trim()
     const keywords = af.split(' ').filter((w:string) => w.length > 3)
+
+    // Extrage numarul apartamentului din adresa facturii
+    // ex: "Palade 18A ap 83" sau "ap. 83" sau "apartament 83" sau "nr. 83"
+    const apNrMatch = af.match(/(?:ap(?:artament|\.)?|nr\.?)\s*(\d+)/i)
+    const apNrInAddr = apNrMatch ? apNrMatch[1] : null
+
     let bestMatch: {id:string; score:number} | null = null
     for (const apt of aptList) {
-      // Matching dupa adresa
-      const aptAddr = (apt.adresa || '').toLowerCase().replace(/[,.\-]/g,' ')
-      // Matching dupa nota (Canta, Mircea, R99) sau nume
+      const aptAddr = (apt.adresa || '').toLowerCase().replace(/[,\.\-]/g,' ')
       const aptNota = (apt.nota || '').toLowerCase()
       const aptNume = (apt.nume || '').toLowerCase()
+      const aptNr = extractAptNr(apt.nota) // numarul din cod: L83->83, N32->32
       let score = 0
+
+      // Matching dupa adresa (cuvinte cheie)
       if (aptAddr) {
         for (const kw of keywords) {
           if (aptAddr.includes(kw)) score += 2
         }
       }
-      // Bonus: titular contine nota apartamentului (ex: titular "Canta Ion" → apt nota "Canta")
+
+      // BONUS MAJOR: numarul apartamentului din factura == numarul din cod
+      // ex: factura are "ap 83" si apt are nota L83 → match perfect
+      if (apNrInAddr && aptNr && apNrInAddr === aptNr) score += 20
+
+      // Bonus nota/nume direct in adresa
       if (aptNota.length > 2 && af.includes(aptNota)) score += 5
       if (aptNume.length > 2 && af.includes(aptNume)) score += 3
+
       if (score > 0 && (!bestMatch || score > bestMatch.score)) {
         bestMatch = { id: apt.id, score }
       }
@@ -170,7 +190,11 @@ export default function FacturiPage() {
       if (data.error) throw new Error(data.error)
 
       // Incearca toate adresele din factura pentru matching
-      const adreseToTry = data.adrese_matching || [data.adresa_consum, data.adresa_titular].filter(Boolean)
+      // Construieste adresa completa cu nr apartament explicit pentru matching mai precis
+      const adresaCuNr = data.nr_apartament && data.adresa_consum
+        ? `${data.adresa_consum} ap ${data.nr_apartament}`
+        : data.adresa_consum
+      const adreseToTry = [adresaCuNr, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
       let autoAptId: string | null = null
       for (const addr of adreseToTry) {
         autoAptId = matchApartament(addr, apts)
