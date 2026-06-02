@@ -992,19 +992,19 @@ export default function CheltuieliPage(){
                     )}
                     {/* Restante din luni precedente */}
                     {restante.map((it:any)=>(
-                      <div key={it.id} style={{borderRadius:10,padding:'10px 12px',border:'1.5px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.06)',position:'relative' as const}}>
-                        <div style={{fontSize:8,fontWeight:700,color:'#F87171',background:'rgba(248,113,113,0.15)',padding:'1px 6px',borderRadius:3,textTransform:'uppercase' as const,letterSpacing:'.05em',display:'inline-block',marginBottom:6}}>
-                          ⚠ RESTANT {it.data?.slice(0,7)}
+                      <div key={it.id} style={{borderRadius:10,padding:'10px 12px',border:`1.5px solid ${it.status==='validat'?'rgba(74,222,128,0.35)':'rgba(248,113,113,0.35)'}`,background:it.status==='validat'?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',position:'relative' as const}}>
+                        <div style={{fontSize:8,fontWeight:700,color:it.status==='validat'?'#4ADE80':'#F87171',background:it.status==='validat'?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)',padding:'1px 6px',borderRadius:3,textTransform:'uppercase' as const,letterSpacing:'.05em',display:'inline-block',marginBottom:6}}>
+                          {it.status==='validat'?'✓ PLĂTIT':'⚠ RESTANT'} {it.data?.slice(0,7)}
                         </div>
-                        <div style={{fontSize:15,fontWeight:700,color:'#F87171',letterSpacing:'-.3px'}}>
+                        <div style={{fontSize:15,fontWeight:700,color:it.status==='validat'?'#4ADE80':'#F87171',letterSpacing:'-.3px'}}>
                           {Number(it.valoare||0).toLocaleString('ro-RO')}
-                          <span style={{fontSize:10,fontWeight:400,marginLeft:3,color:'rgba(248,113,113,0.5)'}}>RON</span>
+                          <span style={{fontSize:10,fontWeight:400,marginLeft:3,color:it.status==='validat'?'rgba(74,222,128,0.5)':'rgba(248,113,113,0.5)'}}>RON</span>
                         </div>
                         <div style={{display:'flex',gap:4,marginTop:8}}>
-                          <button onClick={()=>moveTolLuna(it,luna,an)}
+                          {it.status!=='validat' && <button onClick={()=>moveTolLuna(it,luna,an)}
                             style={{flex:1,fontSize:9,padding:'3px 6px',borderRadius:5,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'#F87171',cursor:'pointer'}}>
                             → Luna aceasta
-                          </button>
+                          </button>}
                           <button onClick={async()=>{
                               const itemId = it.id
                               if(!itemId){show('error','Eroare: ID lipsă');return}
