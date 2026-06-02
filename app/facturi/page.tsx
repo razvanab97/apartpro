@@ -241,6 +241,18 @@ export default function FacturiPage() {
   async function autoSave(f: any, aptList: any[]) {
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
+
+    // Verifica duplicat dupa numarul facturii
+    if (f.nr_factura) {
+      const { data: existing } = await supabase.from('cheltuieli')
+        .select('id,descriere').ilike('nota', `%${f.nr_factura}%`).limit(1)
+      if (existing && existing.length > 0) {
+        setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'eroare' as const, furnizor: `Duplicat — factura ${f.nr_factura} există deja` } : x))
+        show('error', `⚠ Factura ${f.nr_factura} a mai fost încărcată`)
+        return
+      }
+    }
+
     const scadentaOriginala = f.data_scadenta ? new Date(f.data_scadenta) : null
     const scadentaDepasita = scadentaOriginala && scadentaOriginala < now
     const dataScadenta = scadentaDepasita
@@ -275,6 +287,18 @@ export default function FacturiPage() {
   async function saveToSupabase(f: Factura) {
     if (!f.id) return
     setSaving(f.id)
+
+    // Verifica duplicat dupa numarul facturii
+    if (f.nr_factura) {
+      const { data: existing } = await supabase.from('cheltuieli')
+        .select('id').ilike('nota', `%${f.nr_factura}%`).limit(1)
+      if (existing && existing.length > 0) {
+        show('error', `⚠ Factura ${f.nr_factura} a mai fost încărcată`)
+        setSaving(null)
+        return
+      }
+    }
+
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
     // Daca scadenta e depasita → salvam in luna curenta (azi)
