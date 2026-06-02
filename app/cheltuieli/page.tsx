@@ -170,16 +170,19 @@ export default function CheltuieliPage(){
     setLoading(true)
     const prevLuna = luna===1?12:luna-1
     const prevAn   = luna===1?an-1:an
+    // Data corecta: ultima zi a lunii (evita 31 pentru luni cu 30 zile)
+    const ultimaZiLuna = new Date(an, luna, 0).toISOString().slice(0,10)
+    const ultimaZiPrevLuna = new Date(prevAn, prevLuna, 0).toISOString().slice(0,10)
     const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .gte('data',`${an}-${pad(luna)}-01`)
-        .lte('data',`${an}-${pad(luna)}-31`),
+        .lte('data',ultimaZiLuna),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .gte('data',`${prevAn}-${pad(prevLuna)}-01`)
-        .lte('data',`${prevAn}-${pad(prevLuna)}-31`)
+        .lte('data',ultimaZiPrevLuna)
         .eq('status','nevalidat'),
       // Toate facturile reale (cu fisier_url) neplatite - orice data
       // Acestea trebuie sa apara intotdeauna in cheltuieli pana sunt platite
@@ -288,7 +291,7 @@ export default function CheltuieliPage(){
       const {data: chDataNew} = await supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
         .gte('data',`${an}-${pad(luna)}-01`)
-        .lte('data',`${an}-${pad(luna)}-31`)
+        .lte('data',ultimaZiLuna)
       // Adauga in u cele mutate
       ;(chDataNew||[]).filter((c:any)=>toMove.some((t:any)=>t.id===c.id)).forEach((c:any)=>{
         if(c.apartament_id && UTIL_KEYS.includes(c.categorie)){
@@ -319,9 +322,6 @@ export default function CheltuieliPage(){
         ex[ch.apartament_id].unshift({...ch,_intarziat:true})
       }
     })
-    // Log starea cheltuielilor din DB pentru debug
-    const chiriiDB=(chData||[]).filter((c:any)=>c.categorie==='chirie')
-    console.log('CHIRII DIN DB:', chiriiDB.map((c:any)=>({id:c.id,val:c.valoare,status:c.status,data:c.data,apt:c.apartament_id})))
     setUtil(u);setExtras(ex);setCons(cons);setContab(cont);setFiscal(fisc)
 
     // Auto-seed cheltuieli fixe lunare - o singura data per sesiune/luna
