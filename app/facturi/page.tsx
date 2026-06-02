@@ -74,6 +74,8 @@ export default function FacturiPage() {
     'is1c3zgu': '94',  // L94 Palas Retreat
     'isue3rni': '88',  // L88 Palas SkyNest
     'isqu7njc': '99',  // L99 Airy Palas
+    'isrjpjvo': '32',  // N32 Mint Loft Copou
+    'is9woaaw': '33',  // N33
   }
 
   function extractAptNr(nota: string | null): string | null {
