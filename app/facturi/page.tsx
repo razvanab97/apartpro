@@ -154,6 +154,27 @@ export default function FacturiPage() {
     return null
   }
 
+  // Matching special pentru TermoService - adresa in format "AC05, Bl A43, Sc A, Ap 08"
+  // Mircea = Bl A43, Canta = Bl 503
+  const TERMOSERVICE_BL_MAP: Record<string,string> = {
+    'a43': 'Mircea',
+    '503': 'Canta',
+  }
+  function matchByTermoService(adresa: string | null, aptList: any[]): string | null {
+    if (!adresa) return null
+    const a = adresa.toLowerCase()
+    for (const [bl, aptNota] of Object.entries(TERMOSERVICE_BL_MAP)) {
+      if (a.includes(bl)) {
+        const apt = aptList.find((x:any) =>
+          (x.nota||'').toLowerCase().includes(aptNota.toLowerCase()) ||
+          (x.nume||'').toLowerCase().includes(aptNota.toLowerCase())
+        )
+        if (apt) return apt.id
+      }
+    }
+    return null
+  }
+
   async function loadSaved() {
     const { data } = await supabase.from('cheltuieli')
       .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
@@ -241,6 +262,10 @@ export default function FacturiPage() {
       // Fallback: matching dupa titular (util pentru Canta/Mircea/R99)
       if (!autoAptId && data.titular) {
         autoAptId = matchByTitular(data.titular, apts)
+      }
+      // Fallback TermoService: matching dupa bloc (A43=Mircea, 503=Canta)
+      if (!autoAptId && (data.furnizor||'').toLowerCase().includes('termo')) {
+        autoAptId = matchByTermoService(data.adresa_consum, apts)
       }
       const facturaFinala = {
         ...data, id, processing: false,

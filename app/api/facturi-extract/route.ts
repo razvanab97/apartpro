@@ -6,7 +6,7 @@ const FURNIZORI: Record<string, string[]> = {
   'E.ON Curent':    ['e.on','eon curent','energie electrica','electricitate','standard electricity','curent electric'],
   'E.ON Gaz':       ['gaz natural','consum gaz','eon gaz','mc gaz','standard gas','gaze naturale','eon energie'],
   'Urbica':         ['urbica','apa canal','apa rece','apa calda','termoficare urbica'],
-  'TermoService':   ['termoservice','termoficare','caldura','gigacalorie','gcal'],
+  'TermoService':   ['termoservice','termoficare','caldura','gigacalorie','gcal','tsiasi','termo-service','sc termo'],
   'Salubris':       ['salubris','salubritate','gunoi','deseuri','colectare'],
   'Orange':         ['orange','abonament orange'],
   'Vodafone':       ['vodafone','abonament vodafone'],
@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Esti un expert in citirea facturilor romanesti. Analizeaza aceasta factura si extrage EXACT:
 1. Furnizor: numele companiei emitente
-2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare. Cauta campul 'Total valoare factura curenta' sau 'Suma factura curenta'. NU folosi 'Sold de plata' sau 'Total de achitat' care include restante.
+2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare.
+   - Pentru facturi normale: cauta 'Total valoare factura curenta' sau 'Suma factura curenta'
+   - Pentru TermoService (tsiasi.ro): cauta EXACT 'Total luna [LUNA] [AN]:' - aceasta e suma lunii curente. NU folosi 'Rest de plata' sau 'Restanta' care includ datorii vechi
+   - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD)
 4. Perioada facturata
 5. Numarul facturii
