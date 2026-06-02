@@ -491,10 +491,11 @@ export default function CheltuieliPage(){
       setSaving(null); return
     }
 
-    const {error}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
-    if(error){show('error',error.message);setSaving(null);return}
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
-    show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
+    const {error,data:dbResult}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id).select('id,status').single()
+    if(error){show('error','DB Error: '+error.message+' id='+item.id);setSaving(null);return}
+    if(!dbResult){show('error','Update nereusit - RLS blocat? id='+item.id);setSaving(null);return}
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:dbResult.status}}}}))
+    show('success',dbResult.status==='validat'?'✓ Salvat în DB: Plătit':'↩ Salvat în DB: Neachitat')
     setSaving(null)
   }
 
