@@ -12,7 +12,7 @@ const FURNIZORI: Record<string, string[]> = {
   'Vodafone':       ['vodafone','abonament vodafone'],
   'Royal':          ['royal','royal imob','royal property'],
   'Internet':       ['internet','fibra','broadband','rds','digi','telekom'],
-  'Asociatie':      ['asociatie','fond rulment','intretinere','cheltuieli comune'],
+  'Asociatie':      ['asociatie','fond rulment','intretinere','cheltuieli comune','e-bloc','ebloc','nota de plata','kondo plus'],
   'Alta':           [],
 }
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
 2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare.
    - Pentru facturi normale: cauta 'Total valoare factura curenta' sau 'Suma factura curenta'
    - Pentru TermoService (tsiasi.ro): cauta EXACT 'Total luna [LUNA] [AN]:' - aceasta e suma lunii curente. NU folosi 'Rest de plata' sau 'Restanta' care includ datorii vechi
+   - Pentru E-BLOC (e-bloc.ro, Kondo Plus): cauta EXACT 'TOTAL LUNA CURENTĂ:' - aceasta e suma corecta. NU folosi 'TOTAL DE PLATĂ' care include restante
    - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD)
 4. Perioada facturata

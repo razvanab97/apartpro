@@ -157,8 +157,25 @@ export default function FacturiPage() {
   // Matching special pentru TermoService - adresa in format "AC05, Bl A43, Sc A, Ap 08"
   // Mircea = Bl A43, Canta = Bl 503
   const TERMOSERVICE_BL_MAP: Record<string,string> = {
-    'a43': 'Mircea',    // str. Vamasoaia, Bl A43
+    'a43': 'Mircea',      // str. Vamasoaia, Bl A43
     'vamasoaia': 'Mircea',
+  }
+
+  // Ebloc matching dupa adresa
+  const EBLOC_ADDR_MAP: Record<string,string> = {
+    'rozelor': 'HD02',   // Aleea Rozelor nr 40, ap 2
+    'rozelor 40': 'HD02',
+  }
+  function matchByEbloc(adresa: string | null, aptList: any[]): string | null {
+    if (!adresa) return null
+    const a = adresa.toLowerCase()
+    for (const [keyword, aptNota] of Object.entries(EBLOC_ADDR_MAP)) {
+      if (a.includes(keyword)) {
+        const apt = aptList.find((x:any) => (x.nota||'').toUpperCase() === aptNota)
+        if (apt) return apt.id
+      }
+    }
+    return null
   }
   function matchByTermoService(adresa: string | null, aptList: any[]): string | null {
     if (!adresa) return null
@@ -263,9 +280,17 @@ export default function FacturiPage() {
       if (!autoAptId && data.titular) {
         autoAptId = matchByTitular(data.titular, apts)
       }
-      // Fallback TermoService: matching dupa bloc (A43=Mircea, 503=Canta)
+      // Fallback TermoService: matching dupa bloc (A43=Mircea)
       if (!autoAptId && (data.furnizor||'').toLowerCase().includes('termo')) {
         autoAptId = matchByTermoService(data.adresa_consum, apts)
+      }
+      // Fallback Ebloc: matching dupa adresa (Rozelor=HD02)
+      if (!autoAptId) {
+        const isEbloc = (data.furnizor||'').toLowerCase().includes('ebloc') ||
+          (data.furnizor||'').toLowerCase().includes('e-bloc') ||
+          (data.furnizor||'').toLowerCase().includes('kondo') ||
+          (data.detalii||'').toLowerCase().includes('e-bloc')
+        if (isEbloc) autoAptId = matchByEbloc(data.adresa_consum, apts)
       }
       const facturaFinala = {
         ...data, id, processing: false,
