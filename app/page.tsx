@@ -163,7 +163,7 @@ export default function DashboardPage() {
       // apartamente
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
       // cheltuieli luna curenta
-      supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`),
+      supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data', new Date(an, luna, 0).toISOString().slice(0,10)),
       // rezervari active acum cu detalii
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
       // rezervari in luna curenta (count)
@@ -239,14 +239,14 @@ export default function DashboardPage() {
     const { data: chLP } = await supabase.from('cheltuieli')
       .select('valoare,status')
       .gte('data',`${prevY}-${prevPad}-01`)
-      .lte('data',`${prevY}-${prevPad}-31`)
+      .lte('data', new Date(prevY, Number(prevPad), 0).toISOString().slice(0,10))
     const totalLP = (chLP||[]).reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
     const platiteLP = (chLP||[]).filter((x:any)=>x.status==='validat').reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
     setCheltuieliLP({total:Math.round(totalLP),platite:Math.round(platiteLP)})
 
     // Cheltuieli luna curenta (din tabelul cheltuieli)
     const { data: chLC } = await supabase.from('cheltuieli')
-      .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data',`${an}-${pad(luna)}-31`)
+      .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data', new Date(an, Number(pad(luna)), 0).toISOString().slice(0,10))
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
     // Booking widget - perioada curenta (Vineri-Joi)
