@@ -68,6 +68,11 @@ export default function FacturiPage() {
   }
 
   // Extrage numarul apartamentului din cod nota (L83->83, N32->32, CG40->40, EX59->59)
+  // Coduri locatie Urbica → nota apartament (direct, pentru cazuri speciale)
+  const URBICA_COD_NOTA_MAP: Record<string,string> = {
+    'is9pgrum': 'NT9',   // Newton Urban - nr apartament e 9N3, nestandard
+  }
+
   // Coduri locatie Urbica → numar apartament
   const URBICA_COD_MAP: Record<string,string> = {
     'isextia5': '83',  // L83 Lazar Comfy
@@ -76,6 +81,10 @@ export default function FacturiPage() {
     'isqu7njc': '99',  // L99 Airy Palas
     'isrjpjvo': '32',  // N32 Mint Loft Copou
     'is9woaaw': '33',  // N33
+    'isbiba8y': '59',  // EX59 Cozy Studio
+    'is9pgrum': '9',   // NT9 Newton Urban
+    'isxdhxbg': '64',  // C64 SkyPort
+    'islynpyd': '16',  // Canta
   }
 
   function extractAptNr(nota: string | null): string | null {
@@ -208,6 +217,15 @@ export default function FacturiPage() {
 
       // Incearca toate adresele din factura pentru matching
       // Construieste adresa completa cu nr apartament explicit pentru matching mai precis
+      // Matching direct dupa nota (pentru NT9 si alte cazuri speciale)
+      const notaDirecta = data.cod_locatie_urbica ? URBICA_COD_NOTA_MAP[data.cod_locatie_urbica] || null : null
+      if (notaDirecta) {
+        const aptDirect = apts.find((a:any) => a.nota === notaDirecta)
+        if (aptDirect) {
+          show('info', `Urbica cod ${data.cod_locatie_urbica} → ${notaDirecta}`)
+          autoAptId = aptDirect.id
+        }
+      }
       // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
       const nrDinCodUrbica = data.cod_locatie_urbica ? URBICA_COD_MAP[data.cod_locatie_urbica] || null : null
       const nrAptExplicit = nrDinCodUrbica || data.nr_apartament || null

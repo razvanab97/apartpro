@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     const URBICA_COD_MAP: Record<string,string> = {
       'isextia5': '83', 'is1c3zgu': '94', 'isue3rni': '88', 'isqu7njc': '99',
       'isrjpjvo': '32', 'is9woaaw': '33',
+      'isbiba8y': '59', 'is9pgrum': '9', 'isxdhxbg': '64', 'islynpyd': '16',
     }
 
     const prompt = `Esti un expert in citirea facturilor romanesti. Analizeaza aceasta factura si extrage EXACT:
