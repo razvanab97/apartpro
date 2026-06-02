@@ -169,17 +169,18 @@ export default function DashboardPage() {
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
     ])
-    // Pro-rata helper: suma proportionala cu zilele din luna curenta (identic cu rapoarte)
+    // Pro-rata helper: nopti in luna curenta / total nopti * suma bruta (identic cu 5starDesk)
+    const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
     function proRataLuna(r: any): number {
       const brut = Number(r.suma_incasata || 0)
-      const nopti = Number(r.nr_nopti || 0) || Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
-      if (!nopti) return brut
-      const overlapStart = r.data_checkin > primaZiLuna ? r.data_checkin : primaZiLuna
-      const overlapEnd = r.data_checkout < ultimaZiLuna ? r.data_checkout : ultimaZiLuna
-      const overlapDays = Math.ceil((new Date(overlapEnd).getTime()-new Date(overlapStart).getTime())/86400000)
-      if (overlapDays <= 0) return 0
-      if (overlapDays >= nopti) return brut
-      return Math.round(brut / nopti * overlapDays * 100) / 100
+      const totalNopti = Number(r.nr_nopti || 0) || Math.max(1, Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
+      // nopti care se suprapun cu luna curenta
+      const ciDate = r.data_checkin < primaZiLuna ? primaZiLuna : r.data_checkin
+      const coDate = r.data_checkout > primaZiLunaPlusUna ? primaZiLunaPlusUna : r.data_checkout
+      const noptiInLuna = Math.max(0, Math.ceil((new Date(coDate).getTime()-new Date(ciDate).getTime())/86400000))
+      if (noptiInLuna <= 0) return 0
+      if (noptiInLuna >= totalNopti) return brut
+      return Math.round(brut / totalNopti * noptiInLuna * 100) / 100
     }
     // incasari = suma pro-rata pentru rezervarile active in luna curenta
     const inc = (rezLuna||[]).reduce((s:number,r:any) => s + proRataLuna(r), 0)
@@ -195,8 +196,8 @@ export default function DashboardPage() {
     let zileOcupate = 0
     for (const r of (rezLuna||[])) {
       if (!r.data_checkin || !r.data_checkout) continue
-      const ci = r.data_checkin > primaZiLuna ? r.data_checkin : primaZiLuna
-      const co = r.data_checkout < ultimaZiLuna ? r.data_checkout : ultimaZiLuna
+      const ci = r.data_checkin < primaZiLuna ? primaZiLuna : r.data_checkin
+      const co = r.data_checkout > primaZiLunaPlusUna ? primaZiLunaPlusUna : r.data_checkout
       const nopti = Math.max(0, Math.ceil((new Date(co).getTime()-new Date(ci).getTime())/86400000))
       zileOcupate += nopti
     }
