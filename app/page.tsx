@@ -95,7 +95,7 @@ function msgCheckout(r:any){
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [loading,setLoading]=useState(true)
-  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
+  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,incasariNet:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
   const [rezervariRecente,setRezervariRecente]=useState<any[]>([])
   const [checkinAzi,setCheckinAzi]=useState<any[]>([])
   const [checkoutAzi,setCheckoutAzi]=useState<any[]>([])
@@ -182,8 +182,16 @@ export default function DashboardPage() {
       if (noptiInLuna >= totalNopti) return brut
       return Math.round(brut / totalNopti * noptiInLuna * 100) / 100
     }
-    // incasari = suma pro-rata pentru rezervarile active in luna curenta
+    // incasari brute = suma pro-rata pentru rezervarile active in luna curenta
     const inc = (rezLuna||[]).reduce((s:number,r:any) => s + proRataLuna(r), 0)
+    // incasari nete = brut - comision platforma (Airbnb 15%+TVA, Booking 17%+TVA, direct 0%)
+    const incNet = (rezLuna||[]).reduce((s:number,r:any) => {
+      const brut = proRataLuna(r)
+      const canal = (r.canal||'').toLowerCase()
+      if(canal==='airbnb') return s + brut * 0.85 * (1 - 0.21 * 0.15) // net dupa Airbnb 15% + TVA
+      if(canal==='booking') return s + brut * 0.83 * (1 - 0.21 * 0.17) // net dupa Booking 17% + TVA
+      return s + brut
+    }, 0)
     // comisioane AB Homes = doar VM07 si CG40 (pro-rata)
     const rezComision=(rezLuna||[]).filter((r:any)=>idsComision.has(r.apartament_id))
     const comAirbnb=rezComision.filter((r:any)=>r.canal==='airbnb').reduce((s:number,r:any)=>s+proRataLuna(r)*0.85*0.20,0)
@@ -205,7 +213,7 @@ export default function DashboardPage() {
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
-    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
+    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -416,7 +424,7 @@ export default function DashboardPage() {
           {[
             {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
             {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
-            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${stats.incasariLuna.toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:'RON'},
+            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNet||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:`RON net · brut ${stats.incasariLuna.toLocaleString('ro-RO')}`},
             {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
             {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
             {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#EF4444':'#22C55E',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
