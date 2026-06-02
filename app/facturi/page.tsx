@@ -365,8 +365,13 @@ export default function FacturiPage() {
       }
     }
 
-    // Salveaza pe luna scadentei (nu muta imediat pe luna curenta - cheltuieli face asta automat)
-    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
+    // Salveaza pe luna scadentei daca e in viitor, altfel pe luna curenta
+    // Asta asigura ca factura apare imediat in cheltuieli fara sa astepte mutarea automata
+    const scadenta = f.data_scadenta ? new Date(f.data_scadenta) : null
+    const primaZiLunaCurenta = new Date(now.getFullYear(), now.getMonth(), 1)
+    const dataScadenta = (scadenta && scadenta >= primaZiLunaCurenta)
+      ? f.data_scadenta!
+      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','Urbica':'urbica',
       'TermoService':'termoservice','Salubris':'salubris',
@@ -410,10 +415,12 @@ export default function FacturiPage() {
 
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
-    // Daca scadenta e depasita → salvam in luna curenta (azi)
-    // Daca scadenta e in viitor → pastram data originala
-    // Salveaza pe luna scadentei — cheltuieli muta automat pe luna curenta daca e neplatita
-    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
+    // Salveaza pe luna scadentei daca e in viitor, altfel pe luna curenta
+    const scadenta2 = f.data_scadenta ? new Date(f.data_scadenta) : null
+    const primaZiLC = new Date(now.getFullYear(), now.getMonth(), 1)
+    const dataScadenta = (scadenta2 && scadenta2 >= primaZiLC)
+      ? f.data_scadenta!
+      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
     // Mapeaza categoria facturii la col_key din UTIL_COLS pentru cheltuieli
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
