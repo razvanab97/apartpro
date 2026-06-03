@@ -170,7 +170,8 @@ export default function DocumentePage() {
               {documente.length === 0 ? 'Niciun document încărcat. Trage un fișier în zona de sus.' : 'Niciun document găsit.'}
             </div>
           ) : filtered.map((d, i) => {
-            const catColor = { contract:'#4ADE80', autorizatie:'#FCD34D', asigurare:'#FB923C', fiscal:'#F87171', juridic:'#A78BFA' }[d.categorie?.toLowerCase()] || '#7BC8FF'
+            const catColors: Record<string,string> = { contract:'#4ADE80', autorizatie:'#FCD34D', asigurare:'#FB923C', fiscal:'#F87171', juridic:'#A78BFA' }
+            const catColor = catColors[d.categorie?.toLowerCase()||''] || '#7BC8FF'
             const aptLabel = getAptLabel(d.apartament_id)
             const ext = (d.fisier_url||'').split('.').pop()?.split('?')[0]?.toUpperCase() || 'DOC'
             return (
