@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
-import { FileText, Download, ChevronDown, ChevronUp } from 'lucide-react'
+import { FileText, Download, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 const LUNI = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
 
@@ -146,10 +147,54 @@ export default function RapoartePage() {
   const [calcAltelinii, setCalcAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
   const [activeTab, setActiveTab] = useState<'rezervari'|'fiscal'>('rezervari')
   const { toast, show } = useToast()
+  const [graficeData, setGraficeData] = useState<any[]>([])
+  const [graficeLoading, setGraficeLoading] = useState(false)
+  const [showGrafice, setShowGrafice] = useState(false)
 
   useEffect(() => {
     supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(({ data }) => setApartamente(data || []))
   }, [])
+
+  async function loadGrafice() {
+    setGraficeLoading(true)
+    const an = new Date().getFullYear()
+    const { data } = await supabase.from('rezervari')
+      .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
+      .gte('data_checkout', `${an-1}-08-01`)
+      .lte('data_checkout', `${an}-12-31`)
+      .in('status_rezervare', ['confirmata','finalizata'])
+    
+    if (!data) { setGraficeLoading(false); return }
+    
+    // Group by month
+    const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number, mediaPeZi:number}> = {}
+    
+    for (const r of data) {
+      const co = r.data_checkout
+      if (!co) continue
+      const d = new Date(co)
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+      const label = `${['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`
+      if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0, mediaPeZi:0}
+      byMonth[key].incasari += Number(r.suma_incasata||0)
+      byMonth[key].nopti += Number(r.nr_nopti||0)
+      byMonth[key].rezervari += 1
+      byMonth[key].oaspeti += Number(r.nr_persoane||1)
+    }
+    
+    // Calculate media pe zi (incasari / nopti)
+    const result = Object.entries(byMonth)
+      .sort(([a],[b]) => a.localeCompare(b))
+      .map(([,v]) => ({
+        ...v,
+        incasari: Math.round(v.incasari),
+        mediaPeZi: v.nopti > 0 ? Math.round(v.incasari / v.nopti) : 0,
+      }))
+    
+    setGraficeData(result)
+    setGraficeLoading(false)
+    setShowGrafice(true)
+  }
 
   function togglePlatforma(key: string) {
     setSelectedPlatforme(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key])
@@ -308,6 +353,101 @@ export default function RapoartePage() {
     <div style={{ display:'flex', flexDirection:'column', minHeight:'100%' }}>
       <PageHeader title="Rapoarte" subtitle="Calcul comisioane și situație financiară"/>
       <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, paddingBottom:60 }}>
+
+        {/* ── GRAFICE STATISTICI ── */}
+        <div style={{ background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14, padding:'16px 20px' }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: showGrafice?16:0 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <BarChart2 size={16} color="#7BC8FF"/>
+              <span style={{ fontSize:14, fontWeight:700, color:'#E8F4FF' }}>Statistici & Grafice</span>
+              <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>Aug 2025 – prezent</span>
+            </div>
+            <button onClick={showGrafice?()=>setShowGrafice(false):loadGrafice} disabled={graficeLoading}
+              style={{ padding:'6px 16px', borderRadius:8, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:graficeLoading?0.6:1 }}>
+              {graficeLoading?'Se încarcă...':showGrafice?'Ascunde':'📊 Generează grafice'}
+            </button>
+          </div>
+
+          {showGrafice && graficeData.length>0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+
+              {/* 1. Incasari pe luna */}
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.06em' }}>Încasări brute pe lună (RON)</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={graficeData} margin={{top:5,right:10,left:0,bottom:5}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(159,215,255,0.06)"/>
+                    <XAxis dataKey="luna" tick={{fill:'rgba(159,215,255,0.5)',fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis tick={{fill:'rgba(159,215,255,0.4)',fontSize:10}} axisLine={false} tickLine={false} tickFormatter={(v)=>`${(v/1000).toFixed(0)}k`}/>
+                    <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}} formatter={(v:any)=>[`${Number(v).toLocaleString('ro-RO')} RON`,'Încasări']}/>
+                    <Bar dataKey="incasari" fill="#4DA3FF" radius={[4,4,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 2. Nr nopti si rezervari */}
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.06em' }}>Nopți rezervate & Nr. rezervări</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={graficeData} margin={{top:5,right:10,left:0,bottom:5}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(159,215,255,0.06)"/>
+                    <XAxis dataKey="luna" tick={{fill:'rgba(159,215,255,0.5)',fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis yAxisId="left" tick={{fill:'rgba(159,215,255,0.4)',fontSize:10}} axisLine={false} tickLine={false}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{fill:'rgba(252,211,77,0.4)',fontSize:10}} axisLine={false} tickLine={false}/>
+                    <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}}/>
+                    <Legend wrapperStyle={{fontSize:11,color:'rgba(159,215,255,0.5)'}}/>
+                    <Bar yAxisId="left" dataKey="nopti" name="Nopți" fill="#22C55E" radius={[4,4,0,0]}/>
+                    <Bar yAxisId="right" dataKey="rezervari" name="Rezervări" fill="#FCD34D" radius={[4,4,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 3. Media pe zi si oaspeti */}
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.06em' }}>Media/noapte (RON) & Oaspeți</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={graficeData} margin={{top:5,right:10,left:0,bottom:5}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(159,215,255,0.06)"/>
+                    <XAxis dataKey="luna" tick={{fill:'rgba(159,215,255,0.5)',fontSize:11}} axisLine={false} tickLine={false}/>
+                    <YAxis yAxisId="left" tick={{fill:'rgba(159,215,255,0.4)',fontSize:10}} axisLine={false} tickLine={false}/>
+                    <YAxis yAxisId="right" orientation="right" tick={{fill:'rgba(248,113,113,0.4)',fontSize:10}} axisLine={false} tickLine={false}/>
+                    <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}}/>
+                    <Legend wrapperStyle={{fontSize:11,color:'rgba(159,215,255,0.5)'}}/>
+                    <Line yAxisId="left" type="monotone" dataKey="mediaPeZi" name="Media/noapte RON" stroke="#FB923C" strokeWidth={2} dot={{fill:'#FB923C',r:3}}/>
+                    <Line yAxisId="right" type="monotone" dataKey="oaspeti" name="Oaspeți" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:3}}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 4. Tabel sumar */}
+              <div style={{ overflowX:'auto' as const }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.06em' }}>Sumar lunar</div>
+                <table style={{ width:'100%', borderCollapse:'collapse' as const, fontSize:12 }}>
+                  <thead>
+                    <tr style={{ borderBottom:'1px solid rgba(100,160,255,0.1)' }}>
+                      {['Lună','Încasări','Nopți','Rezervări','Oaspeți','Media/noapte'].map(h=>(
+                        <th key={h} style={{ padding:'6px 10px', textAlign:'left' as const, color:'rgba(159,215,255,0.4)', fontWeight:500, fontSize:11, textTransform:'uppercase' as const, letterSpacing:'.04em' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {graficeData.map((r,i)=>(
+                      <tr key={i} style={{ borderBottom:'1px solid rgba(100,160,255,0.05)' }}>
+                        <td style={{ padding:'8px 10px', color:'#E8F4FF', fontWeight:500 }}>{r.luna}</td>
+                        <td style={{ padding:'8px 10px', color:'#4ADE80', fontFamily:'monospace' }}>{r.incasari.toLocaleString('ro-RO')} RON</td>
+                        <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.nopti}</td>
+                        <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.rezervari}</td>
+                        <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.oaspeti}</td>
+                        <td style={{ padding:'8px 10px', color:'#FB923C', fontFamily:'monospace' }}>{r.mediaPeZi} RON</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          )}
+        </div>
 
         {/* TIP RAPORT */}
         <div style={{ display:'flex', gap:8 }}>
