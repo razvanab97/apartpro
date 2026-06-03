@@ -9,24 +9,25 @@ const fmt = (d:string) => { try { const dt=new Date(d); return `${pad(dt.getDate
 
 const SABLOANE = [
   { key:'revenire',   label:'🏠 Invitație revenire', text:'Buna ziua, {nume}!\n\nSperam ca v-a placut sejurul la AB Homes Iasi!\n\nDaca planificati o noua vizita in Iasi, va asteptam cu drag. Avem apartamente moderne in zone centrale, cu self check-in si tot confortul. 🏠\n\nScriati-ne pentru disponibilitate!\n\nEchipa AB Homes Iasi' },
-  { key:'confirmare', label:'✅ Confirmare rezervare', text:'Buna ziua, {nume}! 👋\n\nVa confirmam rezervarea la *{apartament}* pentru *{checkin}* → *{checkout}*.\n\nVa asteptam cu drag!\nEchipa AB Homes Iasi' },
-  { key:'checkin',    label:'📅 Reminder check-in',  text:'Buna ziua, {nume}! 😊\n\nVa reamintim ca maine, *{checkin}*, aveti rezervarea la *{apartament}*.\n\nVa vom trimite detaliile de acces in ziua sosirii.\nEchipa AB Homes Iasi' },
-  { key:'checkout',   label:'🌅 Reminder check-out', text:'Buna ziua, {nume}!\n\nVa reamintim ca astazi este ziua check-out-ului din *{apartament}*.\n\n⏰ Ora de check-out: 11:00\n🔑 Va rugam sa lasati cheia la usa.\n\nVa multumim!\nEchipa AB Homes Iasi' },
-  { key:'review',     label:'⭐ Cerere review',       text:'Buna ziua, {nume}! 🙏\n\nSperam ca ati avut o sedere placuta la *{apartament}*.\n\nNe-ar bucura mult un review pe platforma!\n\nVa multumim!\nEchipa AB Homes Iasi' },
-  { key:'custom',     label:'✏️ Personalizat',        text:'' },
+  { key:'confirmare', label:'✅ Confirmare rezervare', text:'Buna ziua, {nume}! 👋\n\nVa confirmam rezervarea la *{apartament}* pentru *{checkin}* → *{checkout}*.\n\nVa asteptam!\nEchipa AB Homes Iasi' },
+  { key:'checkin',    label:'📅 Reminder check-in',   text:'Buna ziua, {nume}! 😊\n\nVa reamintim ca maine, *{checkin}*, aveti rezervarea la *{apartament}*.\n\nVa vom trimite detaliile de acces in ziua sosirii.\nEchipa AB Homes Iasi' },
+  { key:'checkout',   label:'🌅 Reminder check-out',  text:'Buna ziua, {nume}!\n\nVa reamintim ca astazi este ziua check-out-ului din *{apartament}*.\n\n⏰ Ora de check-out: 11:00\n\nVa multumim!\nEchipa AB Homes Iasi' },
+  { key:'review',     label:'⭐ Cerere review',        text:'Buna ziua, {nume}! 🙏\n\nSperam ca ati avut o sedere placuta la *{apartament}*.\n\nNe-ar bucura mult un review!\n\nVa multumim!\nEchipa AB Homes Iasi' },
+  { key:'custom',     label:'✏️ Personalizat',         text:'' },
 ]
 
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
-  const nr = clean.startsWith('40') ? clean : clean.startsWith('0') ? '4'+clean : '40'+clean
+  const nr = clean.startsWith('40') ? clean : '4'+clean.replace(/^0/,'')
   return `https://wa.me/${nr}?text=${encodeURIComponent(msg.normalize('NFC'))}`
 }
 
 function apply(text:string, r:any){
-  const firstName = (r.nume_client||'').split(' ')[0]
-  const apt = r.apartament?.nota || r.apartament?.nume || ''
-  return text.replace(/{nume}/g,firstName).replace(/{apartament}/g,apt)
-    .replace(/{checkin}/g,fmt(r.data_checkin||'')).replace(/{checkout}/g,fmt(r.data_checkout||''))
+  return text
+    .replace(/{nume}/g, (r.nume_client||'').split(' ')[0])
+    .replace(/{apartament}/g, r.apartament?.nota || r.apartament?.nume || '')
+    .replace(/{checkin}/g, fmt(r.data_checkin||''))
+    .replace(/{checkout}/g, fmt(r.data_checkout||''))
 }
 
 export default function MesajeMasaPage() {
@@ -72,7 +73,6 @@ export default function MesajeMasaPage() {
     const {data} = await q
     const {data:apts} = await supabase.from('apartamente').select('id,nota,nume')
     const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
-
     const seen = new Map<string,any>()
     for (const r of (data||[])) {
       const tel = (r.telefon_client||'').replace(/\D/g,'')
@@ -95,109 +95,111 @@ export default function MesajeMasaPage() {
     setTrimitre(true)
     for (let i=0; i<selList.length; i++) {
       setTrimiteIdx(i)
-      window.open(waLink(selList[i].telefon_client, apply(textFinal,selList[i])), '_blank')
+      window.open(waLink(selList[i].telefon_client, apply(textFinal, selList[i])), '_blank')
       if (i < selList.length-1) await new Promise(r=>setTimeout(r,700))
     }
     setTrimitre(false); setTrimiteIdx(-1)
     show('success',`✓ ${selList.length} linkuri deschise`)
   }
 
-  const inp = {background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:12,padding:'7px 12px',outline:'none'} as const
-  const card = {background:'rgba(11,18,36,0.75)',border:'1px solid rgba(100,160,255,0.12)',borderRadius:14} as const
+  const S = { // styles
+    card: { background:'rgba(11,18,36,0.75)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:12 } as React.CSSProperties,
+    inp:  { background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:7, color:'rgba(214,228,244,0.85)', fontSize:12, padding:'6px 10px', outline:'none' } as React.CSSProperties,
+    lbl:  { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 } as React.CSSProperties,
+  }
+
+  const FILTRE = [
+    {k:'checkout_30',l:'🔥 Checkout 30 zile'},
+    {k:'checkin_azi',l:'Check-in azi'},
+    {k:'checkin_maine',l:'Check-in mâine'},
+    {k:'checkin_7',l:'Check-in 7 zile'},
+    {k:'checkout_azi',l:'Check-out azi'},
+    {k:'toate',l:'Toți (aug 2025+)'},
+    {k:'custom',l:'📅 Personalizată'},
+  ]
 
   return (
     <>
-      <PageHeader title="Mesaje în masă WhatsApp" subtitle={loading ? 'Se încarcă...' : `${clienti.length} clienți unici`}/>
+      <PageHeader title="Mesaje în masă WhatsApp" subtitle={loading ? 'Se încarcă...' : `${clienti.length} clienți · ${selList.length} selectați`}/>
+      <div style={{padding:'12px 20px 40px', overflowY:'auto', flex:1}}>
 
-      <div style={{flex:1,overflowY:'auto',padding:'12px 20px 40px'}}>
-
-        {/* ── Filtre perioadă ── */}
-        <div style={{...card,padding:'12px 16px',marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:700,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:8}}>Perioadă</div>
-          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-            {[
-              {k:'checkout_30',l:'🔥 Checkout 30 zile'},
-              {k:'checkin_azi',l:'Check-in azi'},
-              {k:'checkin_maine',l:'Check-in mâine'},
-              {k:'checkin_7',l:'Check-in 7 zile'},
-              {k:'checkout_azi',l:'Check-out azi'},
-              {k:'toate',l:'Toți (aug 2025+)'},
-              {k:'custom',l:'📅 Personalizată'},
-            ].map(f=>(
+        {/* Filtre */}
+        <div style={{...S.card, padding:'12px 16px', marginBottom:12}}>
+          <div style={S.lbl}>Perioadă</div>
+          <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+            {FILTRE.map(f=>(
               <button key={f.k} onClick={()=>setFiltru(f.k)}
-                style={{padding:'5px 12px',borderRadius:7,border:`1px solid ${filtru===f.k?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.1)'}`,background:filtru===f.k?'rgba(77,163,255,0.15)':'transparent',color:filtru===f.k?'#7BC8FF':'rgba(159,215,255,0.45)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                style={{padding:'5px 11px', borderRadius:6, border:`1px solid ${filtru===f.k?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.1)'}`, background:filtru===f.k?'rgba(77,163,255,0.15)':'transparent', color:filtru===f.k?'#7BC8FF':'rgba(159,215,255,0.45)', fontSize:11, fontWeight:600, cursor:'pointer'}}>
                 {f.l}
               </button>
             ))}
           </div>
           {filtru==='custom' && (
-            <div style={{display:'flex',gap:10,marginTop:10}}>
-              <div><div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:4}}>De la</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={inp}/></div>
-              <div><div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:4}}>Până la</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={inp}/></div>
+            <div style={{display:'flex', gap:10, marginTop:10}}>
+              <div><div style={S.lbl}>De la</div><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={S.inp}/></div>
+              <div><div style={S.lbl}>Până la</div><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={S.inp}/></div>
             </div>
           )}
         </div>
 
-        {/* ── Grid principal ── */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:12,alignItems:'start',minHeight:0}}>
+        {/* Conținut principal */}
+        <div style={{display:'flex', gap:12, alignItems:'flex-start'}}>
 
-          {/* Lista clienți */}
-          <div style={{...card,overflow:'hidden'}}>
-            {/* Header */}
-            <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:'1px solid rgba(100,160,255,0.08)'}}>
+          {/* Lista clienți - flex grow */}
+          <div style={{...S.card, flex:1, overflow:'hidden'}}>
+            {/* Header tabel */}
+            <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)'}}>
               <input type="checkbox"
-                checked={filtered.length>0&&filtered.every(r=>selectati.has(r.id))}
+                checked={filtered.length>0 && filtered.every(r=>selectati.has(r.id))}
                 onChange={()=>{
                   const allSel = filtered.every(r=>selectati.has(r.id))
-                  setSelectati(prev=>{const n=new Set(prev);filtered.forEach(r=>allSel?n.delete(r.id):n.add(r.id));return n})
+                  setSelectati(prev=>{ const n=new Set(prev); filtered.forEach(r=>allSel?n.delete(r.id):n.add(r.id)); return n })
                 }}/>
-              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută client..."
-                style={{...inp,flex:1,maxWidth:200}}/>
-              <span style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginLeft:'auto',whiteSpace:'nowrap'}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută..."
+                style={{...S.inp, width:180}}/>
+              <span style={{fontSize:11, color:'rgba(159,215,255,0.4)', marginLeft:'auto'}}>
                 {selList.length}/{filtered.length} selectați
               </span>
             </div>
-            {/* Rows */}
-            <div style={{maxHeight:'60vh',overflowY:'auto' as const}}>
-              {filtered.length===0
-                ? <div style={{padding:32,textAlign:'center',color:'rgba(159,215,255,0.3)',fontSize:12}}>
-                    {loading?'Se încarcă...':'Niciun client'}
-                  </div>
-                : filtered.map(r=>{
-                  const sel = selectati.has(r.id)
-                  return(
-                    <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.04)',background:sel?'rgba(77,163,255,0.03)':'transparent'}}>
-                      <input type="checkbox" checked={sel}
-                        onChange={()=>{setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nume_client}</div>
-                        <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                          {r.telefon_client} · {r.apartament?.nota||''} · {fmt(r.data_checkin)}→{fmt(r.data_checkout)}
-                        </div>
-                      </div>
-                      {textFinal&&r.telefon_client&&(
-                        <a href={waLink(r.telefon_client,apply(textFinal,r))} target="_blank" rel="noopener"
-                          style={{padding:'4px 9px',borderRadius:6,border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0}}>
-                          💬
-                        </a>
-                      )}
+
+            {/* Rânduri */}
+            {loading ? (
+              <div style={{padding:32, textAlign:'center', color:'rgba(159,215,255,0.4)', fontSize:13}}>Se încarcă...</div>
+            ) : filtered.length===0 ? (
+              <div style={{padding:32, textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13}}>Niciun client găsit</div>
+            ) : filtered.map(r=>{
+              const sel = selectati.has(r.id)
+              return (
+                <div key={r.id} style={{display:'flex', alignItems:'center', gap:10, padding:'9px 14px', borderBottom:'1px solid rgba(100,160,255,0.04)', background:sel?'rgba(77,163,255,0.03)':'transparent'}}>
+                  <input type="checkbox" checked={sel}
+                    onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:13, fontWeight:600, color:'#E8F4FF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nume_client}</div>
+                    <div style={{fontSize:10, color:'rgba(159,215,255,0.4)'}}>
+                      {r.telefon_client} · {r.apartament?.nota||''} · {fmt(r.data_checkin)}→{fmt(r.data_checkout)}
                     </div>
-                  )
-                })
-              }
-            </div>
+                  </div>
+                  {textFinal && r.telefon_client && (
+                    <a href={waLink(r.telefon_client, apply(textFinal,r))} target="_blank" rel="noopener"
+                      style={{padding:'4px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:10, fontWeight:600, textDecoration:'none', flexShrink:0}}>
+                      💬
+                    </a>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
-          {/* Panou dreapta */}
-          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {/* Panou dreapta — fix 300px */}
+          <div style={{width:300, flexShrink:0, display:'flex', flexDirection:'column', gap:10}}>
 
             {/* Șabloane */}
-            <div style={{...card,padding:14}}>
-              <div style={{fontSize:10,fontWeight:700,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:8}}>Șablon</div>
-              <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <div style={{...S.card, padding:14}}>
+              <div style={S.lbl}>Șablon mesaj</div>
+              <div style={{display:'flex', flexDirection:'column', gap:4}}>
                 {SABLOANE.map(s=>(
                   <button key={s.key} onClick={()=>setSablon(s)}
-                    style={{padding:'7px 10px',borderRadius:7,border:`1px solid ${sablon.key===s.key?'rgba(77,163,255,0.4)':'rgba(159,215,255,0.08)'}`,background:sablon.key===s.key?'rgba(77,163,255,0.12)':'transparent',color:sablon.key===s.key?'#7BC8FF':'rgba(159,215,255,0.45)',fontSize:11,cursor:'pointer',textAlign:'left'}}>
+                    style={{padding:'7px 10px', borderRadius:7, border:`1px solid ${sablon.key===s.key?'rgba(77,163,255,0.4)':'rgba(159,215,255,0.08)'}`, background:sablon.key===s.key?'rgba(77,163,255,0.12)':'transparent', color:sablon.key===s.key?'#7BC8FF':'rgba(159,215,255,0.45)', fontSize:11, cursor:'pointer', textAlign:'left'}}>
                     {s.label}
                   </button>
                 ))}
@@ -205,33 +207,30 @@ export default function MesajeMasaPage() {
               {sablon.key==='custom' && (
                 <textarea value={textCustom} onChange={e=>setTextCustom(e.target.value)}
                   placeholder="Scrie mesajul..." rows={5}
-                  style={{...inp,width:'100%',marginTop:8,resize:'vertical',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                  style={{...S.inp, width:'100%', marginTop:8, resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.5}}/>
               )}
             </div>
 
             {/* Preview */}
             {textFinal && selList.length>0 && (
-              <div style={{...card,padding:12,borderColor:'rgba(74,222,128,0.15)',background:'rgba(74,222,128,0.03)'}}>
-                <div style={{fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.5)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:6}}>
-                  Preview — {selList[0].nume_client?.split(' ')[0]}
-                </div>
-                <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',whiteSpace:'pre-wrap',lineHeight:1.6,maxHeight:120,overflowY:'auto'}}>
-                  {apply(textFinal,selList[0])}
+              <div style={{...S.card, padding:12, borderColor:'rgba(74,222,128,0.2)', background:'rgba(74,222,128,0.04)'}}>
+                <div style={{...S.lbl, color:'rgba(74,222,128,0.6)'}}>Preview — {selList[0].nume_client?.split(' ')[0]}</div>
+                <div style={{fontSize:11, color:'rgba(214,228,244,0.75)', whiteSpace:'pre-wrap', lineHeight:1.6}}>
+                  {apply(textFinal, selList[0])}
                 </div>
               </div>
             )}
 
-            {/* Buton trimitere */}
+            {/* Buton lansare */}
             <button onClick={porneste} disabled={!textFinal||selList.length===0||trimitere}
-              style={{padding:'13px 0',borderRadius:10,border:'none',width:'100%',
+              style={{padding:'13px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:!textFinal||selList.length===0||trimitere?'not-allowed':'pointer',
                 background:!textFinal||selList.length===0||trimitere?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#22C55E,#16A34A)',
-                color:!textFinal||selList.length===0||trimitere?'rgba(159,215,255,0.25)':'#fff',
-                fontSize:13,fontWeight:700,cursor:!textFinal||selList.length===0||trimitere?'not-allowed':'pointer'}}>
-              {trimitere ? `⏳ ${trimiteIdx+1}/${selList.length} se deschide...` : `🚀 Pornește — ${selList.length} mesaje`}
+                color:!textFinal||selList.length===0||trimitere?'rgba(159,215,255,0.25)':'#fff'}}>
+              {trimitere?`⏳ ${trimiteIdx+1}/${selList.length}...`:`🚀 Pornește — ${selList.length} mesaje`}
             </button>
 
-            <div style={{fontSize:10,color:'rgba(159,215,255,0.25)',lineHeight:1.6}}>
-              Variabile: <span style={{color:'rgba(159,215,255,0.4)'}}>{'{nume}'} {'{apartament}'} {'{checkin}'} {'{checkout}'}</span>
+            <div style={{fontSize:10, color:'rgba(159,215,255,0.2)', lineHeight:1.6}}>
+              Variabile: <span style={{color:'rgba(159,215,255,0.35)'}}>{'{nume}'} {'{apartament}'} {'{checkin}'} {'{checkout}'}</span>
             </div>
           </div>
         </div>
