@@ -29,21 +29,10 @@ export default function DocumentePage() {
   async function loadDocumente() {
     const { data } = await supabase.from('cheltuieli')
       .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status,created_at')
-      .not('fisier_url', 'is', null)
-      .in('categorie', ['document','contract','autorizatie','certificat','asigurare','fiscal','juridic','tehnic','altele','doc'])
-      .order('created_at', { ascending: false })
-    
-    // Also get documents uploaded directly (all with fisier_url and nota contains [DOC])
-    const { data: data2 } = await supabase.from('cheltuieli')
-      .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status,created_at')
-      .not('fisier_url', 'is', null)
       .ilike('nota', '%[DOC]%')
+      .not('fisier_url', 'is', null)
       .order('created_at', { ascending: false })
-    
-    const all = [...(data||[]), ...(data2||[])]
-    const unique = Array.from(new Map(all.map(d => [d.id, d])).values())
-      .sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''))
-    setDocumente(unique)
+    setDocumente(data||[])
   }
 
   async function uploadDoc(file: File) {
@@ -56,10 +45,22 @@ export default function DocumentePage() {
       const { data: urlData } = supabase.storage.from('facturi').getPublicUrl(path)
       const url = urlData.publicUrl
 
-      // Save to cheltuieli with category 'document'
+      // Auto-detect category from filename
+      const numeFisier = file.name.replace(/\.[^/.]+$/, '').toLowerCase()
+      const autoCateg = 
+        numeFisier.includes('certif') ? 'certificat' :
+        numeFisier.includes('contract') ? 'contract' :
+        numeFisier.includes('autorizat') ? 'autorizatie' :
+        numeFisier.includes('asigur') ? 'asigurare' :
+        numeFisier.includes('fiscal') || numeFisier.includes('declaratie') ? 'fiscal' :
+        numeFisier.includes('juridic') || numeFisier.includes('notari') ? 'juridic' :
+        numeFisier.includes('tehnic') || numeFisier.includes('constatator') ? 'tehnic' :
+        'document'
+      const descriereAuto = file.name.replace(/\.[^/.]+$/, '')
+
       const { error } = await supabase.from('cheltuieli').insert({
-        descriere: file.name.replace(/\.[^/.]+$/, ''),
-        categorie: 'document',
+        descriere: descriereAuto,
+        categorie: autoCateg,
         valoare: 0,
         data: new Date().toISOString().slice(0,10),
         status: 'nevalidat',
