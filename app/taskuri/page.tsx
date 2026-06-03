@@ -777,6 +777,45 @@ export default function TaskuriPage() {
         }
       />
 
+      {/* RUTINA ZILEI */}
+      <div style={{ padding:'12px 20px 0' }}>
+        <div style={{ background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14, padding:'14px 18px' }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
+            ☀️ Rutina zilei
+          </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <div title="Trimite mesaje clienților cu check-out azi" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>💬</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>1. Mesaje check-out</span>
+            </div>
+            <div title="Notifică echipa de curățenie pentru apartamentele eliberate" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>🧹</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>2. Mesaje curățenie</span>
+            </div>
+            <div title="Actualizează anunțurile pe Publi24" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>📢</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>3. Actualizare Publi24</span>
+            </div>
+            <div title="Verifică și pregătește comenzile zilei" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>📦</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>4. Pregătit comenzi</span>
+            </div>
+            <div title="Postează pe rețelele sociale pentru spălătorie" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>📱</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>5. Postare SM - Spălătorie</span>
+            </div>
+            <div title="Postează pe rețelele sociale pentru apartamente" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>🏠</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>6. Postare SM - Apartamente</span>
+            </div>
+            <div title="Actualizează prețurile apartamentelor pe platforme" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
+              <span style={{ fontSize:14 }}>💰</span>
+              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>7. Actualizare prețuri</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* PROGRESS BAR SECTION */}
       <TaskProgress tasks={tasks}/>
 
