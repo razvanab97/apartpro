@@ -28,7 +28,7 @@ export default function DocumentePage() {
 
   async function loadDocumente() {
     const { data } = await supabase.from('cheltuieli')
-      .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status')
+      .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status,created_at')
       .not('fisier_url', 'is', null)
       .in('categorie', ['document','contract','autorizatie','certificat','asigurare','fiscal','juridic','tehnic','altele','doc'])
       .order('created_at', { ascending: false })
