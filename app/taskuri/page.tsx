@@ -91,8 +91,8 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       if (data) {
         setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
         setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
-        // Reload tasks to update progress bar
-        load()
+        // Add to tasks for progress bar
+        setTasks((prev:any) => [...prev, data])
       }
     }
   }
@@ -770,8 +770,8 @@ export default function TaskuriPage() {
       if (data) {
         setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
         setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
-        // Reload tasks to update progress bar
-        load()
+        // Add to tasks for progress bar
+        setTasks((prev:any) => [...prev, data])
       }
     }
   }
