@@ -45,6 +45,57 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const imgRef = useRef<HTMLInputElement>(null)
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
+  const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
+  const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
+  const todayRutina = new Date().toISOString().split('T')[0]
+
+  useEffect(() => { loadRutina() }, [])
+
+  async function loadRutina() {
+    const { data } = await supabase.from('tasks')
+      .select('id,titlu,status')
+      .eq('business', '__rutina__')
+      .gte('created_at', todayRutina + 'T00:00:00')
+      .lte('created_at', todayRutina + 'T23:59:59')
+    if (!data) return
+    const bifate = new Set<number>()
+    const ids: Record<number,string> = {}
+    data.forEach((t:any) => {
+      const idx = RUTINA_ITEMS_LIST.findIndex(r => r[1] === t.titlu)
+      if (idx >= 0) {
+        ids[idx] = t.id
+        if (t.status === 'finalizat') bifate.add(idx)
+      }
+    })
+    setRutinaBifata(bifate)
+    setRutinaTaskIds(ids)
+  }
+
+  async function toggleRutina(idx: number) {
+    const item = RUTINA_ITEMS_LIST[idx]
+    const isBifat = rutinaBifata.has(idx)
+    
+    if (rutinaTaskIds[idx]) {
+      // Update existing
+      const newStatus = isBifat ? 'de_facut' : 'finalizat'
+      await supabase.from('tasks').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
+      setRutinaBifata(prev => { const n = new Set(prev); isBifat ? n.delete(idx) : n.add(idx); return n })
+    } else {
+      // Create new task for today
+      const { data } = await supabase.from('tasks').insert({
+        titlu: item[1],
+        status: 'finalizat',
+        prioritate: 'normala',
+        business: '__rutina__',
+      }).select().single()
+      if (data) {
+        setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
+        setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
+        // Reload tasks to update progress bar
+        loadTasks()
+      }
+    }
+  }
 
   function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate(''); setImage(null) }
 
@@ -637,6 +688,16 @@ function TaskProgress({ tasks }: { tasks: Task[] }) {
 }
 
 /* ── MAIN PAGE ── */
+const RUTINA_ITEMS_LIST: [string, string][] = [
+  ['💬', 'Mesaje check-out'],
+  ['🧹', 'Mesaje curățenie'],
+  ['📢', 'Actualizare Publi24'],
+  ['📦', 'Pregătit comenzi'],
+  ['📱', 'Postare SM - Spălătorie'],
+  ['🏠', 'Postare SM - Apartamente'],
+  ['💰', 'Actualizare prețuri'],
+]
+
 export default function TaskuriPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
@@ -649,6 +710,57 @@ export default function TaskuriPage() {
   const [filterBusiness, setFilterBusiness] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
   const { toast, show } = useToast()
+  const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
+  const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
+  const todayRutina = new Date().toISOString().split('T')[0]
+
+  useEffect(() => { loadRutina() }, [])
+
+  async function loadRutina() {
+    const { data } = await supabase.from('tasks')
+      .select('id,titlu,status')
+      .eq('business', '__rutina__')
+      .gte('created_at', todayRutina + 'T00:00:00')
+      .lte('created_at', todayRutina + 'T23:59:59')
+    if (!data) return
+    const bifate = new Set<number>()
+    const ids: Record<number,string> = {}
+    data.forEach((t:any) => {
+      const idx = RUTINA_ITEMS_LIST.findIndex(r => r[1] === t.titlu)
+      if (idx >= 0) {
+        ids[idx] = t.id
+        if (t.status === 'finalizat') bifate.add(idx)
+      }
+    })
+    setRutinaBifata(bifate)
+    setRutinaTaskIds(ids)
+  }
+
+  async function toggleRutina(idx: number) {
+    const item = RUTINA_ITEMS_LIST[idx]
+    const isBifat = rutinaBifata.has(idx)
+    
+    if (rutinaTaskIds[idx]) {
+      // Update existing
+      const newStatus = isBifat ? 'de_facut' : 'finalizat'
+      await supabase.from('tasks').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
+      setRutinaBifata(prev => { const n = new Set(prev); isBifat ? n.delete(idx) : n.add(idx); return n })
+    } else {
+      // Create new task for today
+      const { data } = await supabase.from('tasks').insert({
+        titlu: item[1],
+        status: 'finalizat',
+        prioritate: 'normala',
+        business: '__rutina__',
+      }).select().single()
+      if (data) {
+        setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
+        setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
+        // Reload tasks to update progress bar
+        loadTasks()
+      }
+    }
+  }
 
   useEffect(() => {
     load()
@@ -736,6 +848,7 @@ export default function TaskuriPage() {
   }
 
   const filtered = tasks.filter(t => {
+    if (t.business === '__rutina__') return false  // rutina zilei e separata
     if (filterBusiness && t.business !== filterBusiness) return false
     if (filterPrio && t.prioritate !== filterPrio) return false
     return true
@@ -780,38 +893,32 @@ export default function TaskuriPage() {
       {/* RUTINA ZILEI */}
       <div style={{ padding:'12px 20px 0' }}>
         <div style={{ background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14, padding:'14px 18px' }}>
-          <div style={{ fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:12 }}>
-            ☀️ Rutina zilei
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'.08em' }}>
+              ☀️ Rutina zilei — {rutinaBifata.size}/{RUTINA_ITEMS_LIST.length} completate
+            </div>
+            <div style={{ fontSize:11, color: rutinaBifata.size === RUTINA_ITEMS_LIST.length ? '#4ADE80' : 'rgba(159,215,255,0.3)' }}>
+              {rutinaBifata.size === RUTINA_ITEMS_LIST.length ? '✓ Zi completă!' : `${RUTINA_ITEMS_LIST.length - rutinaBifata.size} rămase`}
+            </div>
           </div>
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-            <div title="Trimite mesaje clienților cu check-out azi" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>💬</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>1. Mesaje check-out</span>
-            </div>
-            <div title="Notifică echipa de curățenie pentru apartamentele eliberate" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>🧹</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>2. Mesaje curățenie</span>
-            </div>
-            <div title="Actualizează anunțurile pe Publi24" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>📢</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>3. Actualizare Publi24</span>
-            </div>
-            <div title="Verifică și pregătește comenzile zilei" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>📦</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>4. Pregătit comenzi</span>
-            </div>
-            <div title="Postează pe rețelele sociale pentru spălătorie" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>📱</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>5. Postare SM - Spălătorie</span>
-            </div>
-            <div title="Postează pe rețelele sociale pentru apartamente" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>🏠</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>6. Postare SM - Apartamente</span>
-            </div>
-            <div title="Actualizează prețurile apartamentelor pe platforme" style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:8, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', cursor:'default' }}>
-              <span style={{ fontSize:14 }}>💰</span>
-              <span style={{ fontSize:11, fontWeight:600, color:'rgba(159,215,255,0.7)' }}>7. Actualizare prețuri</span>
-            </div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
+            {RUTINA_ITEMS_LIST.map(([emoji, titlu], idx) => {
+              const bifat = rutinaBifata.has(idx)
+              return (
+                <button key={idx} onClick={() => toggleRutina(idx)}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 13px', borderRadius:8,
+                    background: bifat ? 'rgba(74,222,128,0.12)' : 'rgba(77,163,255,0.06)',
+                    border: `1px solid ${bifat ? 'rgba(74,222,128,0.35)' : 'rgba(77,163,255,0.15)'}`,
+                    cursor:'pointer', transition:'all .15s' }}>
+                  <span style={{ fontSize:14 }}>{emoji}</span>
+                  <span style={{ fontSize:11, fontWeight:600, color: bifat ? '#4ADE80' : 'rgba(159,215,255,0.7)',
+                    textDecoration: bifat ? 'line-through' : 'none' }}>
+                    {idx+1}. {titlu}
+                  </span>
+                  {bifat && <span style={{ fontSize:11, color:'#4ADE80' }}>✓</span>}
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
