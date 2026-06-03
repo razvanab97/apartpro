@@ -139,7 +139,7 @@ export default function MesajeMasaPage() {
         </div>
 
         {/* ── Grid principal ── */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:12,alignItems:'start'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 300px',gap:12,alignItems:'start',minHeight:0}}>
 
           {/* Lista clienți */}
           <div style={{...card,overflow:'hidden'}}>
@@ -158,7 +158,7 @@ export default function MesajeMasaPage() {
               </span>
             </div>
             {/* Rows */}
-            <div style={{maxHeight:440,overflowY:'auto'}}>
+            <div style={{maxHeight:'60vh',overflowY:'auto' as const}}>
               {filtered.length===0
                 ? <div style={{padding:32,textAlign:'center',color:'rgba(159,215,255,0.3)',fontSize:12}}>
                     {loading?'Se încarcă...':'Niciun client'}
