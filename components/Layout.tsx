@@ -15,6 +15,7 @@ const navItems = [
   { href: '/inbox',       icon: Inbox,           label: 'Smart Booking',   group: 'P', bottom: false },
   { href: '/calendar',    icon: CalendarDays,    label: 'Calendar',       group: 'P', bottom: true },
   { href: '/taskuri',     icon: CheckSquare,     label: 'Task-uri',       group: 'O', bottom: true },
+  { href: '/mesaje-masa', icon: MessageCircle,   label: 'Mesaje în masă', group: 'O', bottom: true },
   { href: '/curatenie',   icon: Zap,         label: 'Curățenie',      group: 'O', bottom: true },
   { href: '/apartamente', icon: Building2,       label: 'Apartamente',    group: 'P', bottom: false },
   { href: '/proprietari', icon: Users,           label: 'Proprietari',    group: 'P', bottom: false },
