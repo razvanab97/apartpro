@@ -160,7 +160,7 @@ export default function RapoartePage() {
     const an = new Date().getFullYear()
     // Aduce TOATE rezervarile - fara filtru pe status (5starDesk poate avea null/alte valori)
     const { data } = await supabase.from('rezervari')
-      .select('data_checkin,data_checkout,suma_incasata,pret_camera,nr_nopti,nr_persoane,canal,status_rezervare')
+      .select('data_checkin,data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
       .gte('data_checkout', `${an-1}-08-01`)
       .lte('data_checkout', `${an}-12-31`)
       .neq('status_rezervare', 'anulata')
@@ -173,8 +173,8 @@ export default function RapoartePage() {
     for (const r of data) {
       const co = r.data_checkout
       if (!co) continue
-      // Suma: foloseste suma_incasata daca exista, altfel pret_camera * nr_nopti
-      const suma = Number(r.suma_incasata||0) || (Number(r.pret_camera||0) * Number(r.nr_nopti||0))
+      // Suma: valoare_bruta > suma_incasata > 0
+      const suma = Number(r.valoare_bruta||0) || Number(r.suma_incasata||0)
       const d = new Date(co)
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
       const label = `${['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`
