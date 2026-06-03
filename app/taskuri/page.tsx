@@ -720,7 +720,7 @@ export default function TaskuriPage() {
   useEffect(() => { loadRutina() }, [])
 
   async function loadRutina() {
-    const { data } = await supabase.from('tasks')
+    const { data } = await supabase.from('taskuri')
       .select('id,titlu,status')
       .eq('business', '__rutina__')
       .gte('created_at', todayRutina + 'T00:00:00')
@@ -744,11 +744,11 @@ export default function TaskuriPage() {
     const isBifat = rutinaBifata.has(idx)
     if (rutinaTaskIds[idx]) {
       const newStatus = isBifat ? 'de_facut' : 'finalizat'
-      await supabase.from('tasks').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
+      await supabase.from('taskuri').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
       setRutinaBifata(prev => { const n = new Set(prev); isBifat ? n.delete(idx) : n.add(idx); return n })
       setTasks((prev:Task[]) => prev.map(t => t.id === rutinaTaskIds[idx] ? {...t, status: newStatus as Task['status']} : t))
     } else {
-      const { data } = await supabase.from('tasks').insert({
+      const { data } = await supabase.from('taskuri').insert({
         titlu: item[1], status: 'finalizat', prioritate: 'normala', business: '__rutina__',
       }).select().single()
       if (data) {
