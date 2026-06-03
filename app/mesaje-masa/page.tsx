@@ -35,7 +35,7 @@ function applyTemplate(text:string, r:any){
 export default function MesajeMasaPage() {
   const [rezervari, setRezervari] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtru, setFiltru] = useState('toate')
+  const [filtru, setFiltru] = useState('checkout_30')
   const [search, setSearch] = useState('')
   const [sablon, setSablon] = useState(SABLOANE[0])
   const [textCustom, setTextCustom] = useState('')
@@ -55,7 +55,9 @@ export default function MesajeMasaPage() {
       .order('data_checkin', {ascending:false})
       .limit(500)
 
-    if(filtru==='checkin_azi') q = q.eq('data_checkin', today)
+    const acum30ago = new Date(now.getTime()-30*86400000).toISOString().slice(0,10)
+    if(filtru==='checkout_30') q = q.gte('data_checkout', acum30ago).lte('data_checkout', today)
+    else if(filtru==='checkin_azi') q = q.eq('data_checkin', today)
     else if(filtru==='checkin_maine') q = q.eq('data_checkin', new Date(now.getTime()+86400000).toISOString().slice(0,10))
     else if(filtru==='checkout_azi') q = q.eq('data_checkout', today)
     else if(filtru==='checkin_7') q = q.gte('data_checkin', today).lte('data_checkin', new Date(now.getTime()+7*86400000).toISOString().slice(0,10))
@@ -106,6 +108,7 @@ export default function MesajeMasaPage() {
             {k:'checkin_azi',l:'Check-in azi'},
             {k:'checkin_maine',l:'Check-in mâine'},
             {k:'checkin_7',l:'Check-in 7 zile'},
+            {k:'checkout_30',l:'🔥 Checkout ultimele 30 zile'},
             {k:'checkout_azi',l:'Check-out azi'},
             {k:'luna',l:'Luna curentă'},
           ].map(f=>(
