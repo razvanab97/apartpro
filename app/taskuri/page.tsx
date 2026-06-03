@@ -578,26 +578,40 @@ function TaskProgress({ tasks }: { tasks: Task[] }) {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
 
   const getStats = () => {
-    let relevant = tasks
-    if (view === 'zi') relevant = tasks.filter(t => t.created_at?.startsWith(todayStr) || (t.status === 'finalizat' && t.created_at?.startsWith(todayStr)))
-    else if (view === 'saptamana') relevant = tasks.filter(t => t.created_at >= weekStr)
-    else relevant = tasks.filter(t => t.created_at >= startOfMonth)
+    // Rutina zilei: 7 items zilnic = totalul de baza
+    const RUTINA_TOTAL = 7
+    let relevant = tasks.filter(t => t.business !== '__rutina__')
+    if (view === 'zi') relevant = relevant.filter(t => t.created_at?.startsWith(todayStr))
+    else if (view === 'saptamana') relevant = relevant.filter(t => t.created_at >= weekStr)
+    else relevant = relevant.filter(t => t.created_at >= startOfMonth)
 
-    const total = relevant.length || 1
-    const done = relevant.filter(t => t.status === 'finalizat').length
+    // Adauga rutina zilei la totalul zilei curente
+    const rutinaAzi = tasks.filter(t => t.business === '__rutina__' && t.created_at?.startsWith(todayStr))
+    const rutinaDone = rutinaAzi.filter(t => t.status === 'finalizat').length
+
+    let total: number, done: number
+    if (view === 'zi') {
+      // Azi: task-uri normale + 7 rutina
+      const normalDone = relevant.filter(t => t.status === 'finalizat').length
+      total = relevant.length + RUTINA_TOTAL
+      done = normalDone + rutinaDone
+    } else {
+      total = relevant.length || 1
+      done = relevant.filter(t => t.status === 'finalizat').length
+    }
+
     const inProgress = relevant.filter(t => t.status === 'in_lucru').length
-    const urgent = tasks.filter(t => t.prioritate === 'urgenta' && t.status !== 'finalizat').length
-    const pct = Math.round((done / total) * 100)
+    const urgent = tasks.filter(t => t.prioritate === 'urgenta' && t.status !== 'finalizat' && t.business !== '__rutina__').length
+    const pct = Math.round((done / (total||1)) * 100)
 
-    // Streak - consecutive days with at least 1 task completed
-    return { total: relevant.length, done, inProgress, urgent, pct }
+    return { total, done, inProgress, urgent, pct }
   }
 
   const { total, done, inProgress, urgent, pct } = getStats()
 
-  // XP-style level
+  // XP-style level - include rutina completions
   const totalDone = tasks.filter(t => t.status === 'finalizat').length
-  const xp = totalDone * 10
+  const xp = totalDone * 10  // rutina tasks conteaza la XP
   const level = Math.floor(xp / 100) + 1
   const xpInLevel = xp % 100
   const levelEmoji = level >= 10 ? '🏆' : level >= 7 ? '💎' : level >= 5 ? '🥇' : level >= 3 ? '🥈' : '🥉'
