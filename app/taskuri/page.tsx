@@ -45,58 +45,6 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const imgRef = useRef<HTMLInputElement>(null)
   const recognitionRef = { current: null as any }
   const { toast, show } = useToast()
-  const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
-  const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
-  const todayRutina = new Date().toISOString().split('T')[0]
-
-  useEffect(() => { loadRutina() }, [])
-
-  async function loadRutina() {
-    const { data } = await supabase.from('tasks')
-      .select('id,titlu,status')
-      .eq('business', '__rutina__')
-      .gte('created_at', todayRutina + 'T00:00:00')
-      .lte('created_at', todayRutina + 'T23:59:59')
-    if (!data) return
-    const bifate = new Set<number>()
-    const ids: Record<number,string> = {}
-    data.forEach((t:any) => {
-      const idx = RUTINA_ITEMS_LIST.findIndex(r => r[1] === t.titlu)
-      if (idx >= 0) {
-        ids[idx] = t.id
-        if (t.status === 'finalizat') bifate.add(idx)
-      }
-    })
-    setRutinaBifata(bifate)
-    setRutinaTaskIds(ids)
-  }
-
-  async function toggleRutina(idx: number) {
-    const item = RUTINA_ITEMS_LIST[idx]
-    const isBifat = rutinaBifata.has(idx)
-    
-    if (rutinaTaskIds[idx]) {
-      // Update existing
-      const newStatus = isBifat ? 'de_facut' : 'finalizat'
-      await supabase.from('tasks').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
-      setRutinaBifata(prev => { const n = new Set(prev); isBifat ? n.delete(idx) : n.add(idx); return n })
-    } else {
-      // Create new task for today
-      const { data } = await supabase.from('tasks').insert({
-        titlu: item[1],
-        status: 'finalizat',
-        prioritate: 'normala',
-        business: '__rutina__',
-      }).select().single()
-      if (data) {
-        setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
-        setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
-        // Add to tasks for progress bar
-        setTasks((prev:any) => [...prev, data])
-      }
-    }
-  }
-
   function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate(''); setImage(null) }
 
   function handleImageUpload(file: File) {
@@ -815,6 +763,48 @@ export default function TaskuriPage() {
     const interval = setInterval(checkNotifs, 60000) // verifica la fiecare minut
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => { loadRutina() }, [])
+
+  async function loadRutina() {
+    const { data } = await supabase.from('tasks')
+      .select('id,titlu,status')
+      .eq('business', '__rutina__')
+      .gte('created_at', todayRutina + 'T00:00:00')
+      .lte('created_at', todayRutina + 'T23:59:59')
+    if (!data) return
+    const bifate = new Set<number>()
+    const ids: Record<number,string> = {}
+    data.forEach((t:any) => {
+      const idx = RUTINA_ITEMS_LIST.findIndex(r => r[1] === t.titlu)
+      if (idx >= 0) {
+        ids[idx] = t.id
+        if (t.status === 'finalizat') bifate.add(idx)
+      }
+    })
+    setRutinaBifata(bifate)
+    setRutinaTaskIds(ids)
+  }
+
+  async function toggleRutina(idx: number) {
+    const item = RUTINA_ITEMS_LIST[idx]
+    const isBifat = rutinaBifata.has(idx)
+    if (rutinaTaskIds[idx]) {
+      const newStatus = isBifat ? 'de_facut' : 'finalizat'
+      await supabase.from('tasks').update({ status: newStatus }).eq('id', rutinaTaskIds[idx])
+      setRutinaBifata(prev => { const n = new Set(prev); isBifat ? n.delete(idx) : n.add(idx); return n })
+      setTasks((prev:Task[]) => prev.map(t => t.id === rutinaTaskIds[idx] ? {...t, status: newStatus as Task['status']} : t))
+    } else {
+      const { data } = await supabase.from('tasks').insert({
+        titlu: item[1], status: 'finalizat', prioritate: 'normala', business: '__rutina__',
+      }).select().single()
+      if (data) {
+        setRutinaTaskIds(prev => ({...prev, [idx]: data.id}))
+        setRutinaBifata(prev => { const n = new Set(prev); n.add(idx); return n })
+        setTasks((prev:Task[]) => [...prev, data as Task])
+      }
+    }
+  }
 
   async function load() {
     setLoading(true)
