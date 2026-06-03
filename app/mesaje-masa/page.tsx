@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import PageHeader from '@/components/PageHeader'
+import { PageHeader } from '@/components/Layout'
 
 const pad = (n:number) => String(n).padStart(2,'0')
 const fmt = (d:string) => { try { const dt=new Date(d); return `${pad(dt.getDate())}.${pad(dt.getMonth()+1)}.${dt.getFullYear()}` } catch { return d } }
