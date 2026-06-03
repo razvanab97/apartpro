@@ -40,9 +40,9 @@ export default function DocumentePage() {
     try {
       const ext = file.name.split('.').pop()
       const path = `documente/${Date.now()}_${file.name}`
-      const { error: upErr } = await supabase.storage.from('facturi').upload(path, file, { upsert: true })
+      const { error: upErr } = await supabase.storage.from('Facturi').upload(path, file, { upsert: true })
       if (upErr) { show('error', upErr.message); return }
-      const { data: urlData } = supabase.storage.from('facturi').getPublicUrl(path)
+      const { data: urlData } = supabase.storage.from('Facturi').getPublicUrl(path)
       const url = urlData.publicUrl
 
       // Auto-detect category from filename
