@@ -49,7 +49,7 @@ export default function MesajeMasaPage() {
     const now = new Date()
     const today = now.toISOString().slice(0,10)
     let q = supabase.from('rezervari')
-      .select('id,nume_client,telefon_client,canal,data_checkin,data_checkout,apartament_id,apartament:apartament_id(nota,nume)')
+      .select('id,nume_client,telefon_client,canal,data_checkin,data_checkout,apartament_id')
       .not('telefon_client','is',null)
       .neq('status_rezervare','anulata')
       .order('data_checkin', {ascending:false})
@@ -65,11 +65,14 @@ export default function MesajeMasaPage() {
     else if(filtru==='toate') q = q.gte('data_checkin', '2025-08-01')
 
     const {data} = await q
+    // Fetch apartamente separat
+    const {data: apts} = await supabase.from('apartamente').select('id,nota,nume')
+    const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
     // Deduplicare dupa telefon — pastreaza ultima rezervare per client
     const seen = new Map<string,any>()
     for(const r of (data||[])){
       const tel = (r.telefon_client||'').replace(/\D/g,'')
-      if(tel && !seen.has(tel)) seen.set(tel, r)
+      if(tel && !seen.has(tel)) seen.set(tel, {...r, apartament: aptMap.get(r.apartament_id)||null})
     }
     setRezervari(Array.from(seen.values()))
     setLoading(false)
