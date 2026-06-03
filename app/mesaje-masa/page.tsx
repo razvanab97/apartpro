@@ -13,6 +13,7 @@ const SABLOANE = [
   { key:'checkout', label:'Reminder check-out', text:'Bună ziua, {nume}! 🌅\n\nVă reamintim că astăzi este ziua check-out-ului din *{apartament}*.\n\n⏰ Ora de check-out: 11:00\n🔑 Vă rugăm să lăsați cheia la ușă.\n\nVă mulțumim!\nEchipa AB Homes Iași' },
   { key:'review', label:'Cerere review', text:'Bună ziua, {nume}! 🙏\n\nSperăm că ați avut o ședere plăcută la *{apartament}*.\n\nNe-ar bucura mult un review pe platformă — ajută și alți oaspeți să ne găsească!\n\nVă mulțumim!\nEchipa AB Homes Iași' },
   { key:'promo', label:'Ofertă specială', text:'Bună ziua, {nume}! 🎉\n\nAvem o ofertă specială pentru dumneavoastră!\n\n[completați oferta]\n\nEchipa AB Homes Iași' },
+  { key:'revenire', label:'🏠 Invitație revenire Iași', text:'Bună ziua, {nume}! 👋\n\nSperăm că v-a plăcut sejurul la AB Homes Iași!\n\nDacă planificați o nouă vizită în Iași, vă așteptăm cu drag. Avem apartamente moderne în zone centrale, cu self check-in și tot confortul necesar. 🏠\n\nScriați-ne pentru disponibilitate și cea mai bună ofertă!\n\nEchipa AB Homes Iași\nwww.abhomesiasi.ro' },
 ]
 
 function waLink(phone:string, msg:string){
