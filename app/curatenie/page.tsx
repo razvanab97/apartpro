@@ -32,7 +32,7 @@ export default function CuratenePage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
-  const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'>('curatenie')
+  const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'|'rapoarte'>('curatenie')
   const [probleme, setProbleme] = useState<any[]>([])
   const [newProblema, setNewProblema] = useState({apartament_id:'',titlu:'',descriere:'',prioritate:'normal'})
   const [showAddProblema, setShowAddProblema] = useState(false)
