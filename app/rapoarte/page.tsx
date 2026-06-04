@@ -158,43 +158,43 @@ export default function RapoartePage() {
   async function loadGrafice() {
     setGraficeLoading(true)
     const an = new Date().getFullYear()
-    
-    // Aduce TOATE rezervarile neoanulate din aug 2025
-    const { data, error } = await supabase.from('rezervari')
-      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
-      .gte('data_checkout', '2025-08-01')
-      .lte('data_checkout', `${an}-12-31`)
-      .neq('status_rezervare', 'anulata')
-      .limit(5000)
-    
-    const totalApr = data?.filter((r:any) => r.data_checkout?.startsWith('2026-04')).length || 0
-    const sumaApr = data?.filter((r:any) => r.data_checkout?.startsWith('2026-04')).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0) || 0
-    console.log('Grafice DB result:', { total: data?.length, error: error?.message })
-    console.log('Aprilie 2026:', { rezervari: totalApr, suma: Math.round(sumaApr) })
-    if (error || !data) { setGraficeLoading(false); return }
-    
-    // Group by CHECKOUT month
-    const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number, mediaPeZi:number}> = {}
     const LUNI = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
-    
-    for (const r of data) {
-      // Foloseste data_checkout; daca lipseste, sari
-      if (!r.data_checkout) continue
-      // Suma: prioritate valoare_bruta, fallback suma_incasata
-      // Din DB: valoare_bruta = suma_incasata, ambele corecte
-      const suma = Number(r.suma_incasata||0) || Number(r.valoare_bruta||0)
-      if (suma <= 0) continue
-      const d = new Date(r.data_checkout + 'T12:00:00')
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      const label = `${LUNI[d.getMonth()]} ${d.getFullYear()}`
-      if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0, mediaPeZi:0}
-      byMonth[key].incasari += suma
-      byMonth[key].nopti += Number(r.nr_nopti||0)
-      byMonth[key].rezervari += 1
-      byMonth[key].oaspeti += Number(r.nr_persoane||1)
+    const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number}> = {}
+
+    // Batch fetch - Supabase limiteaza la 1000 rows, trebuie paginat
+    let offset = 0
+    let total = 0
+    while (true) {
+      const { data, error } = await supabase.from('rezervari')
+        .select('data_checkout,suma_incasata,nr_nopti,nr_persoane')
+        .gte('data_checkout', '2025-08-01')
+        .lte('data_checkout', `${an}-12-31`)
+        .neq('status_rezervare', 'anulata')
+        .range(offset, offset + 999)
+
+      if (error || !data || data.length === 0) break
+      total += data.length
+
+      for (const r of data) {
+        if (!r.data_checkout) continue
+        const suma = Number(r.suma_incasata || 0)
+        if (suma <= 0) continue
+        const d = new Date(r.data_checkout + 'T12:00:00')
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+        const label = `${LUNI[d.getMonth()]} ${d.getFullYear()}`
+        if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0}
+        byMonth[key].incasari += suma
+        byMonth[key].nopti += Number(r.nr_nopti || 0)
+        byMonth[key].rezervari += 1
+        byMonth[key].oaspeti += Number(r.nr_persoane || 1)
+      }
+
+      if (data.length < 1000) break
+      offset += 1000
     }
-    
-    // Calculate media pe zi (incasari / nopti)
+
+    console.log('Total rezervari procesate:', total)
+
     const result = Object.entries(byMonth)
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([,v]) => ({
@@ -202,18 +202,14 @@ export default function RapoartePage() {
         incasari: Math.round(v.incasari),
         mediaPeZi: v.nopti > 0 ? Math.round(v.incasari / v.nopti) : 0,
       }))
-    
-    // Log pentru debug
-    console.log('Total rezervari din DB:', data.length)
-    console.log('Cu valoare_bruta > 0:', data.filter((r:any)=>Number(r.valoare_bruta||0)>0).length)
-    console.log('Cu suma_incasata > 0:', data.filter((r:any)=>Number(r.suma_incasata||0)>0).length)
-    console.log('Fara nicio suma:', data.filter((r:any)=>Number(r.valoare_bruta||0)===0&&Number(r.suma_incasata||0)===0).length)
-    result.forEach(r => console.log(r.luna, ':', r.incasari, 'RON,', r.rezervari, 'rez'))
-    
+
+    result.forEach(r => console.log(r.luna, ':', r.incasari.toLocaleString('ro-RO'), 'RON,', r.rezervari, 'rez'))
+
     setGraficeData(result)
     setGraficeLoading(false)
     setShowGrafice(true)
   }
+
 
   function togglePlatforma(key: string) {
     setSelectedPlatforme(prev => prev.includes(key) ? prev.filter(x => x !== key) : [...prev, key])
