@@ -36,6 +36,9 @@ export default function CuratenePage() {
   const [probleme, setProbleme] = useState<any[]>([])
   const [newProblema, setNewProblema] = useState({apartament_id:'',titlu:'',descriere:'',prioritate:'normal'})
   const [showAddProblema, setShowAddProblema] = useState(false)
+  const [rapoarteData, setRapoarteData] = useState<any[]>([])
+  const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
+  const [costPerCuratenie, setCostPerCuratenie] = useState(150)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -58,6 +61,44 @@ export default function CuratenePage() {
       .neq('status','rezolvat')
       .order('created_at',{ascending:false})
     setProbleme(data||[])
+  }
+
+  async function loadRapoarte() {
+    const [an, luna] = rapoarteLuna.split('-').map(Number)
+    const primaZi = `${an}-${String(luna).padStart(2,'0')}-01`
+    const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+    // Toate checkout-urile din luna = curatenii efectuate
+    const { data: rezData } = await supabase.from('rezervari')
+      .select('data_checkout,apartament_id,apartament:apartament_id(nota,nume)')
+      .gte('data_checkout', primaZi)
+      .lte('data_checkout', ultimaZi)
+      .neq('status_rezervare','anulata')
+    // Curatenie status din luna
+    const { data: stData } = await supabase.from('curatenie_status')
+      .select('*,apartament:apartament_id(nota,nume)')
+      .gte('data', primaZi)
+      .lte('data', ultimaZi)
+    // Group by day
+    const byDay: Record<string,{rez:any[],st:any[]}> = {}
+    ;(rezData||[]).forEach((r:any) => {
+      const d = r.data_checkout
+      if(!byDay[d]) byDay[d]={rez:[],st:[]}
+      byDay[d].rez.push(r)
+    })
+    ;(stData||[]).forEach((s:any) => {
+      const d = s.data
+      if(!byDay[d]) byDay[d]={rez:[],st:[]}
+      byDay[d].st.push(s)
+    })
+    const result = Object.entries(byDay)
+      .sort(([a],[b])=>a.localeCompare(b))
+      .map(([data,{rez,st}])=>({
+        data,
+        nrCuratenii: rez.length,
+        nrGata: st.filter(s=>s.status==='gata').length,
+        apartamente: rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '),
+      }))
+    setRapoarteData(result)
   }
 
   async function addProblema() {
@@ -136,8 +177,8 @@ export default function CuratenePage() {
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(8,15,30,0.8)'}}>
-        {[{k:'curatenie',l:'🧹 Curățenie'},{k:'probleme',l:'🔧 Probleme & Reparații'}].map(t=>(
-          <button key={t.k} onClick={()=>{ setActiveTab(t.k as any); if(t.k==='probleme') loadProbleme() }}
+        {[{k:'curatenie',l:'🧹 Curățenie'},{k:'probleme',l:'🔧 Probleme'},{k:'rapoarte',l:'📊 Rapoarte'}].map(t=>(
+          <button key={t.k} onClick={()=>{ setActiveTab(t.k as any); if(t.k==='probleme') loadProbleme(); if(t.k==='rapoarte') loadRapoarte() }}
             style={{flex:1,padding:'11px 8px',border:'none',background:'transparent',color:activeTab===t.k?'#7BC8FF':'rgba(159,215,255,0.4)',fontSize:13,fontWeight:600,cursor:'pointer',borderBottom:`2px solid ${activeTab===t.k?'#7BC8FF':'transparent'}`,transition:'all .15s'}}>
             {t.l}
           </button>
@@ -310,6 +351,83 @@ export default function CuratenePage() {
             </div>
           )
         })}
+      </div>}
+
+      {/* ── TAB RAPOARTE ── */}
+      {activeTab==='rapoarte'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 40px'}}>
+
+        {/* Selector luna + cost */}
+        <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap' as const}}>
+          <div>
+            <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună</div>
+            <input type="month" value={rapoarteLuna} onChange={e=>{setRapoarteLuna(e.target.value);setRapoarteData([])}}
+              style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Cost / curățenie (RON)</div>
+            <input type="number" value={costPerCuratenie} onChange={e=>setCostPerCuratenie(Number(e.target.value))} min={0}
+              style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none',width:120}}/>
+          </div>
+          <div style={{alignSelf:'flex-end'}}>
+            <button onClick={loadRapoarte}
+              style={{padding:'8px 18px',borderRadius:9,border:'none',background:'rgba(77,163,255,0.2)',color:'#7BC8FF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+              📊 Generează
+            </button>
+          </div>
+        </div>
+
+        {rapoarteData.length>0&&(()=>{
+          const totalCuratenii = rapoarteData.reduce((s,r)=>s+r.nrCuratenii,0)
+          const totalGata = rapoarteData.reduce((s,r)=>s+r.nrGata,0)
+          const totalCost = totalCuratenii * costPerCuratenie
+          const zileActive = rapoarteData.length
+          return (
+            <>
+              {/* Sumar */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+                {[
+                  {l:'Zile active',v:zileActive,c:'#7BC8FF'},
+                  {l:'Total curățenii',v:totalCuratenii,c:'#4ADE80'},
+                  {l:'Confirmate',v:totalGata,c:'#22C55E'},
+                  {l:'Cost estimat',v:`${totalCost.toLocaleString('ro-RO')} RON`,c:'#FCD34D'},
+                ].map(({l,v,c})=>(
+                  <div key={l} style={{background:'rgba(11,22,42,0.7)',border:`1px solid ${c}22`,borderRadius:12,padding:'12px 14px',textAlign:'center' as const}}>
+                    <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:4}}>{v}</div>
+                    <div style={{fontSize:10,color:'rgba(159,215,255,0.45)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tabel zilnic */}
+              <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
+                <div style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
+                  {['Data','Apartamente','Curățenii','Confirmate','Cost'].map(h=>(
+                    <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
+                  ))}
+                </div>
+                {rapoarteData.map(r=>(
+                  <div key={r.data} style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'10px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)'}}>
+                    <div style={{fontSize:12,color:'#E8F4FF',fontWeight:500}}>{r.data.slice(5).replace('-','/')}</div>
+                    <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{r.apartamente}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:'#4ADE80',textAlign:'center' as const}}>{r.nrCuratenii}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:r.nrGata===r.nrCuratenii?'#22C55E':'#FCD34D',textAlign:'center' as const}}>{r.nrGata}</div>
+                    <div style={{fontSize:12,color:'#FCD34D',fontFamily:'monospace'}}>{(r.nrCuratenii*costPerCuratenie).toLocaleString('ro-RO')} RON</div>
+                  </div>
+                ))}
+                {/* Total */}
+                <div style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'10px 14px',background:'rgba(74,222,128,0.06)',borderTop:'1px solid rgba(74,222,128,0.15)'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>TOTAL</div>
+                  <div/>
+                  <div style={{fontSize:14,fontWeight:700,color:'#4ADE80',textAlign:'center' as const}}>{totalCuratenii}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:'#22C55E',textAlign:'center' as const}}>{totalGata}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{totalCost.toLocaleString('ro-RO')} RON</div>
+                </div>
+              </div>
+            </>
+          )
+        })()}
+
+        {rapoarteData.length===0&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.3)',fontSize:13}}>Selectează luna și apasă Generează</div>}
       </div>}
 
       <Toast toast={toast}/>
