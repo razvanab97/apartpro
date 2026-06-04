@@ -434,7 +434,7 @@ export default function RapoartePage() {
                     <XAxis dataKey="luna" tick={{fill:'rgba(159,215,255,0.5)',fontSize:11}} axisLine={false} tickLine={false}/>
                     <YAxis tick={{fill:'rgba(159,215,255,0.4)',fontSize:10}} axisLine={false} tickLine={false} tickFormatter={(v)=>`${(v/1000).toFixed(0)}k`}/>
                     <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}}
-                      formatter={(v:any, name:string)=>[`${Number(v).toLocaleString('ro-RO')} RON`, name==='brut'?'Brut':'Net']}/>
+                      formatter={(v:any)=>[`${Number(v).toLocaleString('ro-RO')} RON`]}/>
                     <Bar dataKey="brut" name="brut" fill="#4DA3FF" radius={[4,4,0,0]}/>
                     <Bar dataKey="net" name="net" fill="#4ADE80" radius={[4,4,0,0]}/>
                   </BarChart>
