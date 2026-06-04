@@ -161,7 +161,7 @@ export default function RapoartePage() {
     
     // Aduce TOATE rezervarile neoanulate din aug 2025
     const { data } = await supabase.from('rezervari')
-      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
+      .select('data_checkout,data_checkin,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
       .gte('data_checkout', '2025-08-01')
       .lte('data_checkout', `${an}-12-31`)
       .or('status_rezervare.neq.anulata,status_rezervare.is.null')
@@ -173,6 +173,7 @@ export default function RapoartePage() {
     const LUNI = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
     
     for (const r of data) {
+      // Foloseste data_checkout; daca lipseste, sari
       if (!r.data_checkout) continue
       // Suma: prioritate valoare_bruta, fallback suma_incasata
       const suma = Number(r.valoare_bruta||0) > 0
@@ -197,6 +198,13 @@ export default function RapoartePage() {
         incasari: Math.round(v.incasari),
         mediaPeZi: v.nopti > 0 ? Math.round(v.incasari / v.nopti) : 0,
       }))
+    
+    // Log pentru debug
+    console.log('Total rezervari din DB:', data.length)
+    console.log('Cu valoare_bruta > 0:', data.filter((r:any)=>Number(r.valoare_bruta||0)>0).length)
+    console.log('Cu suma_incasata > 0:', data.filter((r:any)=>Number(r.suma_incasata||0)>0).length)
+    console.log('Fara nicio suma:', data.filter((r:any)=>Number(r.valoare_bruta||0)===0&&Number(r.suma_incasata||0)===0).length)
+    result.forEach(r => console.log(r.luna, ':', r.incasari, 'RON,', r.rezervari, 'rez'))
     
     setGraficeData(result)
     setGraficeLoading(false)
