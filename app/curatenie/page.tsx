@@ -73,12 +73,12 @@ export default function CuratenePage() {
       .gte('data_checkout', primaZi)
       .lte('data_checkout', ultimaZi)
       .neq('status_rezervare','anulata')
-    // Curatenie status din luna
+    // Curatenie status confirmate de staff
     const { data: stData } = await supabase.from('curatenie_status')
-      .select('*,apartament:apartament_id(nota,nume)')
+      .select('apartament_id,data,status,ora_inceput,ora_gata')
       .gte('data', primaZi)
       .lte('data', ultimaZi)
-    // Group by day
+    // Group by day - only days with actual checkouts
     const byDay: Record<string,{rez:any[],st:any[]}> = {}
     ;(rezData||[]).forEach((r:any) => {
       const d = r.data_checkout
@@ -87,8 +87,7 @@ export default function CuratenePage() {
     })
     ;(stData||[]).forEach((s:any) => {
       const d = s.data
-      if(!byDay[d]) byDay[d]={rez:[],st:[]}
-      byDay[d].st.push(s)
+      if(byDay[d]) byDay[d].st.push(s)  // only add if day has checkouts
     })
     const result = Object.entries(byDay)
       .sort(([a],[b])=>a.localeCompare(b))
@@ -360,7 +359,7 @@ export default function CuratenePage() {
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap' as const}}>
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună</div>
-            <input type="month" value={rapoarteLuna} onChange={e=>{setRapoarteLuna(e.target.value);setRapoarteData([])}}
+            <input type="month" value={rapoarteLuna} onChange={e=>{setRapoarteLuna(e.target.value);setRapoarteData([]);setTimeout(()=>loadRapoarte(),100)}}
               style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none'}}/>
           </div>
           <div>

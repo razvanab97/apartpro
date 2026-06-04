@@ -203,7 +203,7 @@ export default function StaffPage() {
   const calDays = Array.from({length:7},(_,i)=>addDays(data,-1+i))
 
   return (
-    <div style={{minHeight:'100dvh',background:'#060D1A',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',display:'flex',flexDirection:'column'}}>
+    <div style={{height:'100dvh',background:'#060D1A',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden',position:'fixed',inset:0,touchAction:'pan-y',overscrollBehavior:'none' as const}}>
 
       {/* Flash */}
       {flash&&(
@@ -253,7 +253,7 @@ export default function StaffPage() {
       </div>
 
       {/* Content */}
-      <div style={{flex:1,overflowY:'auto',padding:'12px 14px 20px'}}>
+      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
 
         {/* ── CURĂȚENIE ── */}
         {tab==='curatenie'&&(
