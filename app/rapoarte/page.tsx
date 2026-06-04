@@ -159,14 +159,21 @@ export default function RapoartePage() {
     setGraficeLoading(true)
     const an = new Date().getFullYear()
     const LUNI = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
-    const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number}> = {}
+    const byMonth: Record<string, {luna:string, brut:number, net:number, nopti:number, rezervari:number, oaspeti:number}> = {}
 
-    // Batch fetch toate rezervarile
+    // Comisioane platforme
+    const COMISION: Record<string,number> = {
+      'airbnb': 0.15,    // Airbnb retine ~15%
+      'booking': 0.17,   // Booking retine ~17%
+      'direct': 0,
+      'site': 0,
+    }
+
     let offset = 0
     let total = 0
     while (true) {
       const { data, error } = await supabase.from('rezervari')
-        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane')
+        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane,canal')
         .gte('data_checkout', '2025-08-01')
         .lte('data_checkout', `${an+1}-12-31`)
         .neq('status_rezervare', 'anulata')
@@ -177,34 +184,38 @@ export default function RapoartePage() {
 
       for (const r of data) {
         if (!r.data_checkin || !r.data_checkout) continue
-        const suma = Number(r.suma_incasata || 0)
-        if (suma <= 0) continue
+        const brut = Number(r.suma_incasata || 0)
+        if (brut <= 0) continue
+
+        const canal = (r.canal||'').toLowerCase()
+        const comision = COMISION[canal] ?? (canal.includes('airbnb') ? 0.15 : canal.includes('booking') ? 0.17 : 0)
+        const net = brut * (1 - comision)
 
         const dtIn = new Date(r.data_checkin + 'T12:00:00')
         const dtOut = new Date(r.data_checkout + 'T12:00:00')
-        const nrZileTotale = Math.round((dtOut.getTime() - dtIn.getTime()) / 86400000)
-        if (nrZileTotale <= 0) continue
+        const nrZile = Math.round((dtOut.getTime() - dtIn.getTime()) / 86400000)
+        if (nrZile <= 0) continue
 
-        const pretPeZi = suma / nrZileTotale
+        const brutPeZi = brut / nrZile
+        const netPeZi = net / nrZile
 
-        // Imparte rezervarea pe luni dupa zilele efectuate in fiecare luna
+        // Pro-rata pe zile
         const dt = new Date(dtIn)
         while (dt < dtOut) {
-          // Sari daca inainte de aug 2025
           if (dt < new Date('2025-08-01T00:00:00')) { dt.setDate(dt.getDate() + 1); continue }
-          
           const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`
           const label = `${LUNI[dt.getMonth()]} ${dt.getFullYear()}`
-          if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0}
-          byMonth[key].incasari += pretPeZi
+          if (!byMonth[key]) byMonth[key] = {luna:label, brut:0, net:0, nopti:0, rezervari:0, oaspeti:0}
+          byMonth[key].brut += brutPeZi
+          byMonth[key].net += netPeZi
           byMonth[key].nopti += 1
           dt.setDate(dt.getDate() + 1)
         }
-        // Numara rezervarea o singura data in luna checkin-ului
-        const keyPrincipal = `${dtIn.getFullYear()}-${String(dtIn.getMonth()+1).padStart(2,'0')}`
-        if (byMonth[keyPrincipal]) {
-          byMonth[keyPrincipal].rezervari += 1
-          byMonth[keyPrincipal].oaspeti += Number(r.nr_persoane || 1)
+        // Rezervare contata o singura data in luna checkin
+        const keyP = `${dtIn.getFullYear()}-${String(dtIn.getMonth()+1).padStart(2,'0')}`
+        if (byMonth[keyP]) {
+          byMonth[keyP].rezervari += 1
+          byMonth[keyP].oaspeti += Number(r.nr_persoane || 1)
         }
       }
 
@@ -219,11 +230,13 @@ export default function RapoartePage() {
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([,v]) => ({
         ...v,
-        incasari: Math.round(v.incasari),
-        mediaPeZi: v.nopti > 0 ? Math.round(v.incasari / v.nopti) : 0,
+        brut: Math.round(v.brut),
+        net: Math.round(v.net),
+        incasari: Math.round(v.brut), // backward compat
+        mediaPeZi: v.nopti > 0 ? Math.round(v.net / v.nopti) : 0,
       }))
 
-    result.forEach(r => console.log(r.luna, ':', r.incasari.toLocaleString('ro-RO'), 'RON,', r.rezervari, 'rez,', r.nopti, 'nopti'))
+    result.forEach(r => console.log(r.luna, '- Brut:', r.brut.toLocaleString('ro-RO'), '| Net:', r.net.toLocaleString('ro-RO'), '| Rez:', r.rezervari))
 
     setGraficeData(result)
     setGraficeLoading(false)
@@ -406,16 +419,24 @@ export default function RapoartePage() {
           {showGrafice && graficeData.length>0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
 
-              {/* 1. Incasari pe luna */}
+              {/* 1. Incasari brut vs net pe luna */}
               <div>
-                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.06em' }}>Încasări brute pe lună (RON)</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={graficeData} margin={{top:5,right:10,left:0,bottom:5}}>
+                <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.5)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>
+                  Încasări pe lună (RON)
+                  <span style={{marginLeft:16,fontWeight:400,fontSize:11}}>
+                    <span style={{color:'#4DA3FF'}}>■</span> Brut &nbsp;
+                    <span style={{color:'#4ADE80'}}>■</span> Net (după comisioane)
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={graficeData} margin={{top:5,right:10,left:0,bottom:5}} barCategoryGap="20%">
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(159,215,255,0.06)"/>
                     <XAxis dataKey="luna" tick={{fill:'rgba(159,215,255,0.5)',fontSize:11}} axisLine={false} tickLine={false}/>
                     <YAxis tick={{fill:'rgba(159,215,255,0.4)',fontSize:10}} axisLine={false} tickLine={false} tickFormatter={(v)=>`${(v/1000).toFixed(0)}k`}/>
-                    <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}} formatter={(v:any)=>[`${Number(v).toLocaleString('ro-RO')} RON`,'Încasări']}/>
-                    <Bar dataKey="incasari" fill="#4DA3FF" radius={[4,4,0,0]}/>
+                    <Tooltip contentStyle={{background:'rgba(8,15,30,0.95)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,fontSize:12}}
+                      formatter={(v:any, name:string)=>[`${Number(v).toLocaleString('ro-RO')} RON`, name==='brut'?'Brut':'Net']}/>
+                    <Bar dataKey="brut" name="brut" fill="#4DA3FF" radius={[4,4,0,0]}/>
+                    <Bar dataKey="net" name="net" fill="#4ADE80" radius={[4,4,0,0]}/>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -460,7 +481,7 @@ export default function RapoartePage() {
                 <table style={{ width:'100%', borderCollapse:'collapse' as const, fontSize:12 }}>
                   <thead>
                     <tr style={{ borderBottom:'1px solid rgba(100,160,255,0.1)' }}>
-                      {['Lună','Încasări','Nopți','Rezervări','Oaspeți','Media/noapte'].map(h=>(
+                      {['Lună','Brut','Net','Nopți','Rezervări','Media/noapte'].map(h=>(
                         <th key={h} style={{ padding:'6px 10px', textAlign:'left' as const, color:'rgba(159,215,255,0.4)', fontWeight:500, fontSize:11, textTransform:'uppercase' as const, letterSpacing:'.04em' }}>{h}</th>
                       ))}
                     </tr>
@@ -469,10 +490,10 @@ export default function RapoartePage() {
                     {graficeData.map((r,i)=>(
                       <tr key={i} style={{ borderBottom:'1px solid rgba(100,160,255,0.05)' }}>
                         <td style={{ padding:'8px 10px', color:'#E8F4FF', fontWeight:500 }}>{r.luna}</td>
-                        <td style={{ padding:'8px 10px', color:'#4ADE80', fontFamily:'monospace' }}>{r.incasari.toLocaleString('ro-RO')} RON</td>
+                        <td style={{ padding:'8px 10px', color:'#4DA3FF', fontFamily:'monospace' }}>{(r.brut||r.incasari||0).toLocaleString('ro-RO')} RON</td>
+                        <td style={{ padding:'8px 10px', color:'#4ADE80', fontFamily:'monospace' }}>{(r.net||0).toLocaleString('ro-RO')} RON</td>
                         <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.nopti}</td>
                         <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.rezervari}</td>
-                        <td style={{ padding:'8px 10px', color:'rgba(159,215,255,0.7)' }}>{r.oaspeti}</td>
                         <td style={{ padding:'8px 10px', color:'#FB923C', fontFamily:'monospace' }}>{r.mediaPeZi} RON</td>
                       </tr>
                     ))}
