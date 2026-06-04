@@ -160,13 +160,15 @@ export default function RapoartePage() {
     const an = new Date().getFullYear()
     
     // Aduce TOATE rezervarile neoanulate din aug 2025
-    const { data } = await supabase.from('rezervari')
-      .select('data_checkout,data_checkin,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
+    const { data, error } = await supabase.from('rezervari')
+      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
       .gte('data_checkout', '2025-08-01')
       .lte('data_checkout', `${an}-12-31`)
-      .or('status_rezervare.neq.anulata,status_rezervare.is.null')
+      .neq('status_rezervare', 'anulata')
+      .limit(2000)
     
-    if (!data) { setGraficeLoading(false); return }
+    console.log('Grafice DB result:', { total: data?.length, error: error?.message })
+    if (error || !data) { setGraficeLoading(false); return }
     
     // Group by CHECKOUT month
     const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number, mediaPeZi:number}> = {}
