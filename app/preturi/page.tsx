@@ -8,6 +8,7 @@ export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
   const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string}>>({})
   const [dataSelectata, setDataSelectata] = useState('')
+  const [ocupate, setOcupate] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState<string|null>(null)
   const { toast, show } = useToast()
 
@@ -40,6 +41,7 @@ export default function PreturiPage() {
         }).filter((a:any) => a._bk || a._ab)
         setApts(list)
         setDataSelectata(today)
+        loadOcupate(today, list.map((a:any)=>a.id))
         // Carica preturile salvate
         const { data: saved } = await supabase.from('preturi_live')
           .select('*').in('apartament_id', list.map((a:any)=>a.id))
@@ -56,6 +58,17 @@ export default function PreturiPage() {
         setPreturi(pretMap)
       })
   }, [])
+
+  async function loadOcupate(data: string, aptIds: string[]) {
+    const { data: rez } = await supabase.from('rezervari')
+      .select('apartament_id')
+      .lte('data_checkin', data)
+      .gt('data_checkout', data)
+      .neq('status_rezervare', 'anulata')
+      .in('apartament_id', aptIds)
+    const ocupateIds = new Set((rez||[]).map((r:any) => r.apartament_id))
+    setOcupate(ocupateIds)
+  }
 
   function buildUrl(baseUrl: string, platform: string, checkin: string) {
     if (!checkin) checkin = today
@@ -167,7 +180,13 @@ export default function PreturiPage() {
               borderBottom: i<apts.length-1?'1px solid rgba(159,215,255,0.05)':'none',
               display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
               {/* Nume */}
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', minWidth: 50 }}>{apt.nota}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, minWidth: 60 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF' }}>{apt.nota}</span>
+                <span title={ocupate.has(apt.id) ? 'Ocupat' : 'Disponibil'}
+                  style={{ fontSize: 10, lineHeight: 1 }}>
+                  {ocupate.has(apt.id) ? '🔴' : '🟢'}
+                </span>
+              </div>
 
               {/* Booking */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
