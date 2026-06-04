@@ -63,8 +63,8 @@ export default function CuratenePage() {
     setProbleme(data||[])
   }
 
-  async function loadRapoarte() {
-    const [an, luna] = rapoarteLuna.split('-').map(Number)
+  async function loadRapoarte(lunaParam?: string) {
+    const [an, luna] = (lunaParam||rapoarteLuna).split('-').map(Number)
     const primaZi = `${an}-${String(luna).padStart(2,'0')}-01`
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
     // Toate checkout-urile din luna = curatenii efectuate
@@ -359,7 +359,7 @@ export default function CuratenePage() {
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap' as const}}>
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună</div>
-            <input type="month" value={rapoarteLuna} onChange={e=>{setRapoarteLuna(e.target.value);setRapoarteData([]);setTimeout(()=>loadRapoarte(),100)}}
+            <input type="month" value={rapoarteLuna} onChange={e=>{const v=e.target.value;setRapoarteLuna(v);setRapoarteData([]);loadRapoarte(v)}}
               style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none'}}/>
           </div>
           <div>
