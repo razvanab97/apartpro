@@ -158,26 +158,30 @@ export default function RapoartePage() {
   async function loadGrafice() {
     setGraficeLoading(true)
     const an = new Date().getFullYear()
-    // Aduce TOATE rezervarile - fara filtru pe status (5starDesk poate avea null/alte valori)
+    
+    // Aduce TOATE rezervarile neoanulate din aug 2025
     const { data } = await supabase.from('rezervari')
-      .select('data_checkin,data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
-      .gte('data_checkout', `${an-1}-08-01`)
+      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,canal,status_rezervare')
+      .gte('data_checkout', '2025-08-01')
       .lte('data_checkout', `${an}-12-31`)
-      .neq('status_rezervare', 'anulata')
+      .or('status_rezervare.neq.anulata,status_rezervare.is.null')
     
     if (!data) { setGraficeLoading(false); return }
     
-    // Group by month
+    // Group by CHECKOUT month
     const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number, mediaPeZi:number}> = {}
+    const LUNI = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
     
     for (const r of data) {
-      const co = r.data_checkout
-      if (!co) continue
-      // Suma: valoare_bruta > suma_incasata > 0
-      const suma = Number(r.valoare_bruta||0) || Number(r.suma_incasata||0)
-      const d = new Date(co)
+      if (!r.data_checkout) continue
+      // Suma: prioritate valoare_bruta, fallback suma_incasata
+      const suma = Number(r.valoare_bruta||0) > 0
+        ? Number(r.valoare_bruta)
+        : Number(r.suma_incasata||0)
+      if (suma <= 0) continue  // skip rezervari fara suma
+      const d = new Date(r.data_checkout + 'T12:00:00')
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-      const label = `${['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]} ${d.getFullYear()}`
+      const label = `${LUNI[d.getMonth()]} ${d.getFullYear()}`
       if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0, mediaPeZi:0}
       byMonth[key].incasari += suma
       byMonth[key].nopti += Number(r.nr_nopti||0)
