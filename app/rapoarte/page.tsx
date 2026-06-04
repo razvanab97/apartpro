@@ -161,14 +161,14 @@ export default function RapoartePage() {
     const LUNI = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
     const byMonth: Record<string, {luna:string, incasari:number, nopti:number, rezervari:number, oaspeti:number}> = {}
 
-    // Batch fetch - Supabase limiteaza la 1000 rows, trebuie paginat
+    // Batch fetch toate rezervarile
     let offset = 0
     let total = 0
     while (true) {
       const { data, error } = await supabase.from('rezervari')
-        .select('data_checkout,suma_incasata,nr_nopti,nr_persoane')
+        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane')
         .gte('data_checkout', '2025-08-01')
-        .lte('data_checkout', `${an}-12-31`)
+        .lte('data_checkout', `${an+1}-12-31`)
         .neq('status_rezervare', 'anulata')
         .range(offset, offset + 999)
 
@@ -176,17 +176,36 @@ export default function RapoartePage() {
       total += data.length
 
       for (const r of data) {
-        if (!r.data_checkout) continue
+        if (!r.data_checkin || !r.data_checkout) continue
         const suma = Number(r.suma_incasata || 0)
         if (suma <= 0) continue
-        const d = new Date(r.data_checkout + 'T12:00:00')
-        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
-        const label = `${LUNI[d.getMonth()]} ${d.getFullYear()}`
-        if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0}
-        byMonth[key].incasari += suma
-        byMonth[key].nopti += Number(r.nr_nopti || 0)
-        byMonth[key].rezervari += 1
-        byMonth[key].oaspeti += Number(r.nr_persoane || 1)
+
+        const dtIn = new Date(r.data_checkin + 'T12:00:00')
+        const dtOut = new Date(r.data_checkout + 'T12:00:00')
+        const nrZileTotale = Math.round((dtOut.getTime() - dtIn.getTime()) / 86400000)
+        if (nrZileTotale <= 0) continue
+
+        const pretPeZi = suma / nrZileTotale
+
+        // Imparte rezervarea pe luni dupa zilele efectuate in fiecare luna
+        const dt = new Date(dtIn)
+        while (dt < dtOut) {
+          // Sari daca inainte de aug 2025
+          if (dt < new Date('2025-08-01T00:00:00')) { dt.setDate(dt.getDate() + 1); continue }
+          
+          const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`
+          const label = `${LUNI[dt.getMonth()]} ${dt.getFullYear()}`
+          if (!byMonth[key]) byMonth[key] = {luna:label, incasari:0, nopti:0, rezervari:0, oaspeti:0}
+          byMonth[key].incasari += pretPeZi
+          byMonth[key].nopti += 1
+          dt.setDate(dt.getDate() + 1)
+        }
+        // Numara rezervarea o singura data in luna checkin-ului
+        const keyPrincipal = `${dtIn.getFullYear()}-${String(dtIn.getMonth()+1).padStart(2,'0')}`
+        if (byMonth[keyPrincipal]) {
+          byMonth[keyPrincipal].rezervari += 1
+          byMonth[keyPrincipal].oaspeti += Number(r.nr_persoane || 1)
+        }
       }
 
       if (data.length < 1000) break
@@ -196,6 +215,7 @@ export default function RapoartePage() {
     console.log('Total rezervari procesate:', total)
 
     const result = Object.entries(byMonth)
+      .filter(([key]) => key >= '2025-08')
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([,v]) => ({
         ...v,
@@ -203,7 +223,7 @@ export default function RapoartePage() {
         mediaPeZi: v.nopti > 0 ? Math.round(v.incasari / v.nopti) : 0,
       }))
 
-    result.forEach(r => console.log(r.luna, ':', r.incasari.toLocaleString('ro-RO'), 'RON,', r.rezervari, 'rez'))
+    result.forEach(r => console.log(r.luna, ':', r.incasari.toLocaleString('ro-RO'), 'RON,', r.rezervari, 'rez,', r.nopti, 'nopti'))
 
     setGraficeData(result)
     setGraficeLoading(false)
