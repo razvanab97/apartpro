@@ -1,38 +1,41 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const CODE = '1111'
 const P = (n:number) => String(n).padStart(2,'0')
-const fmtDate = (d:string) => { const dt=new Date(d); return `${P(dt.getDate())}.${P(dt.getMonth()+1)}` }
-const fmtFull = (d:string) => { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` }
+const fmtDate = (d:string) => { try { const dt=new Date(d+'T12:00:00'); return `${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
+const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
-const today = () => new Date().toISOString().slice(0,10)
+const todayStr = () => new Date().toISOString().slice(0,10)
+
+type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'calendar'
 
 export default function StaffPage() {
   const [auth, setAuth] = useState(false)
   const [cod, setCod] = useState('')
   const [err, setErr] = useState(false)
-  const [data, setData] = useState(today())
+  const [data, setData] = useState(todayStr())
   const [apts, setApts] = useState<any[]>([])
   const [checkouts, setCheckouts] = useState<any[]>([])
   const [checkins, setCheckins] = useState<any[]>([])
   const [ocupate, setOcupate] = useState<any[]>([])
   const [statusuri, setStatusuri] = useState<Record<string,any>>({})
   const [loading, setLoading] = useState(false)
-  const [flash, setFlash] = useState<string|null>(null)
-  const [tab, setTab] = useState<'curatenie'|'disponibile'|'ocupate'>('curatenie')
+  const [flash, setFlash] = useState<{msg:string,ok:boolean}|null>(null)
+  const [tab, setTab] = useState<Tab>('curatenie')
+  const [calData, setCalData] = useState<any[]>([])
 
   useEffect(() => {
     if (localStorage.getItem('staff_v2') === CODE) setAuth(true)
   }, [])
 
-  useEffect(() => { if (auth) load() }, [auth, data])
+  useEffect(() => { if (auth) { load(); if(tab==='calendar') loadCalendar() } }, [auth, data, tab])
 
   async function load() {
     setLoading(true)
     const [a, co, ci, ocp, st] = await Promise.all([
-      supabase.from('apartamente').select('id,nota,nume,adresa').eq('status','activ').order('nota'),
+      supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
       supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
@@ -48,56 +51,97 @@ export default function StaffPage() {
     setLoading(false)
   }
 
+  async function loadCalendar() {
+    const from = addDays(data, -1)
+    const to = addDays(data, 6)
+    const { data: rez } = await supabase.from('rezervari')
+      .select('apartament_id,data_checkin,data_checkout,nume_client')
+      .lte('data_checkin', to).gt('data_checkout', from)
+      .neq('status_rezervare','anulata')
+    setCalData(rez||[])
+  }
+
   async function setStatus(aptId:string, status:'inceput'|'gata') {
     const now = new Date()
     const ora = `${P(now.getHours())}:${P(now.getMinutes())}`
+    const prev = statusuri[aptId]||{}
     const update:any = { apartament_id:aptId, data, status }
-    if (status==='inceput') update.ora_inceput=ora
-    if (status==='gata') { update.ora_gata=ora; if(statusuri[aptId]?.ora_inceput) update.ora_inceput=statusuri[aptId].ora_inceput }
+    if (status==='inceput') update.ora_inceput = ora
+    if (status==='gata') { update.ora_gata = ora; update.ora_inceput = prev.ora_inceput||ora }
     await supabase.from('curatenie_status').upsert(update, {onConflict:'apartament_id,data'})
-    setStatusuri(prev=>({...prev,[aptId]:{...(prev[aptId]||{}),...update}}))
+    setStatusuri(prev=>({...prev,[aptId]:{...prev[aptId],...update}}))
     const apt = apts.find(a=>a.id===aptId)
     const msg = status==='inceput' ? `🧹 Curățenie începută — ${apt?.nota}` : `✅ Gata — ${apt?.nota} (${ora})`
-    setFlash(msg)
+    setFlash({msg, ok: status==='gata'})
     setTimeout(()=>setFlash(null), 2500)
-    // Trimite notificare push catre admin
     fetch('/api/push-send', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title: msg, body: `${fmtFull(data)}`, url:'/curatenie', tag:'staff-'+aptId })
+      body: JSON.stringify({ title: msg, body: fmtFull(data), url:'/curatenie', tag:'staff-'+aptId })
     }).catch(()=>{})
   }
 
-  function login() {
-    if (cod===CODE) { localStorage.setItem('staff_v2',CODE); setAuth(true); setErr(false) }
-    else { setErr(true); setCod('') }
-  }
+  const pressKey = useCallback((k: number|string) => {
+    if (k==='⌫') { setCod(c=>c.slice(0,-1)); setErr(false); return }
+    if (typeof k === 'number' && cod.length < 4) {
+      const nc = cod + k
+      setCod(nc)
+      if (nc.length === 4) {
+        setTimeout(() => {
+          if (nc === CODE) { localStorage.setItem('staff_v2', CODE); setAuth(true); setErr(false) }
+          else { setErr(true); setCod('') }
+        }, 150)
+      }
+    }
+  }, [cod])
 
   // ── LOGIN ──
   if (!auth) return (
-    <div style={{minHeight:'100dvh',background:'#060D1A',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif'}}>
-      <div style={{width:'100%',maxWidth:320,padding:'0 24px'}}>
-        <div style={{textAlign:'center',marginBottom:40}}>
-          <div style={{fontSize:56,marginBottom:12}}>🏠</div>
-          <div style={{fontSize:24,fontWeight:700,color:'#F0F8FF',letterSpacing:'-.5px'}}>AB Homes</div>
-          <div style={{fontSize:14,color:'rgba(159,215,255,0.4)',marginTop:4}}>Echipa curățenie</div>
+    <div style={{minHeight:'100dvh',background:'linear-gradient(160deg,#0A1628 0%,#060D1A 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',padding:'0 0 env(safe-area-inset-bottom)'}}>
+      <div style={{width:'100%',maxWidth:360,padding:'0 28px'}}>
+        {/* Logo */}
+        <div style={{textAlign:'center',marginBottom:48}}>
+          <div style={{width:72,height:72,borderRadius:20,background:'linear-gradient(135deg,#1E40AF,#3B82F6)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',fontSize:32}}>🏠</div>
+          <div style={{fontSize:26,fontWeight:700,color:'#F0F8FF',letterSpacing:'-.5px'}}>AB Homes</div>
+          <div style={{fontSize:14,color:'rgba(159,215,255,0.4)',marginTop:6}}>Echipa curățenie</div>
         </div>
-        <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:28}}>
-          {[1,2,3,4].map(i=>(
-            <div key={i} style={{width:14,height:14,borderRadius:'50%',background:cod.length>=i?'#4ADE80':'rgba(255,255,255,0.1)',transition:'background .2s'}}/>
+
+        {/* Dots */}
+        <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:36}}>
+          {[0,1,2,3].map(i=>(
+            <div key={i} style={{width:16,height:16,borderRadius:'50%',
+              background: err ? '#F87171' : cod.length>i ? '#4ADE80' : 'rgba(255,255,255,0.1)',
+              transition:'background .15s',
+              boxShadow: cod.length>i&&!err ? '0 0 8px rgba(74,222,128,0.5)' : 'none'
+            }}/>
           ))}
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+
+        {/* Keyboard */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
           {[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map((k,i)=>(
-            <button key={i} onClick={()=>{
-              if(k==='⌫') setCod(c=>c.slice(0,-1))
-              else if(k!=='' && cod.length<4) { const nc=cod+k; setCod(nc); if(nc.length===4) setTimeout(()=>{ if(nc===CODE){localStorage.setItem('staff_v2',CODE);setAuth(true)}else{setErr(true);setCod('')} },100) }
-            }}
-              style={{padding:'18px',borderRadius:14,border:'none',background:k===''?'transparent':'rgba(255,255,255,0.07)',color:'#F0F8FF',fontSize:22,fontWeight:500,cursor:k===''?'default':'pointer',opacity:k===''?0:1,WebkitTapHighlightColor:'transparent'}}>
+            <button key={i} onClick={()=>k!=='' && pressKey(k as any)}
+              disabled={k===''}
+              style={{
+                padding:'20px 0',borderRadius:16,border:'none',
+                background: k==='' ? 'transparent' : 'rgba(255,255,255,0.07)',
+                color: k==='⌫' ? 'rgba(159,215,255,0.6)' : '#F0F8FF',
+                fontSize: k==='⌫' ? 20 : 24,fontWeight:500,
+                cursor:k===''?'default':'pointer',
+                opacity:k===''?0:1,
+                WebkitTapHighlightColor:'transparent',
+                transition:'background .1s',
+                touchAction:'manipulation',
+              }}>
               {k}
             </button>
           ))}
         </div>
-        {err && <div style={{textAlign:'center',color:'#F87171',marginTop:16,fontSize:14}}>Cod greșit</div>}
+
+        {err && (
+          <div style={{textAlign:'center',color:'#F87171',marginTop:20,fontSize:14,fontWeight:500}}>
+            ✕ Cod greșit, încearcă din nou
+          </div>
+        )}
       </div>
     </div>
   )
@@ -106,181 +150,195 @@ export default function StaffPage() {
   const coSet = new Set(checkouts.map((r:any)=>r.apartament_id))
   const ciSet = new Set(checkins.map((r:any)=>r.apartament_id))
   const ocpSet = new Set(ocupate.map((r:any)=>r.apartament_id))
-
   const deCuratat = apts.filter(a=>coSet.has(a.id))
   const disponibile = apts.filter(a=>!ocpSet.has(a.id))
   const ocupateApts = apts.filter(a=>ocpSet.has(a.id))
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
 
-  const tabs = [
-    {k:'curatenie', l:`🧹 Curățenie`, n:deCuratat.length},
-    {k:'disponibile', l:`🟢 Libere`, n:disponibile.length},
-    {k:'ocupate', l:`🔴 Ocupate`, n:ocupateApts.length},
+  const TABS: {k:Tab,l:string,n?:number}[] = [
+    {k:'curatenie', l:'🧹 Curățenie', n:deCuratat.length},
+    {k:'disponibile', l:'🟢 Libere', n:disponibile.length},
+    {k:'ocupate', l:'🔴 Ocupate', n:ocupateApts.length},
+    {k:'calendar', l:'📅'},
   ]
 
+  // Calendar 7 zile
+  const calDays = Array.from({length:7},(_,i)=>addDays(data,-1+i))
+
   return (
-    <div style={{minHeight:'100dvh',background:'#060D1A',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',paddingBottom:80}}>
+    <div style={{minHeight:'100dvh',background:'#060D1A',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',display:'flex',flexDirection:'column'}}>
 
       {/* Flash */}
-      {flash&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:99,background:'#22C55E',color:'#fff',padding:'14px 16px',fontSize:14,fontWeight:600,textAlign:'center'}}>{flash}</div>}
+      {flash&&(
+        <div style={{position:'fixed',top:0,left:0,right:0,zIndex:100,background:flash.ok?'#22C55E':'#FB923C',color:'#fff',padding:'14px 16px 14px',paddingTop:'calc(14px + env(safe-area-inset-top))',fontSize:14,fontWeight:600,textAlign:'center',transition:'all .3s'}}>
+          {flash.msg}
+        </div>
+      )}
 
       {/* Header */}
-      <div style={{background:'rgba(6,13,26,0.97)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'14px 16px',position:'sticky',top:0,zIndex:10}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style={{background:'rgba(6,13,26,0.98)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',paddingTop:'calc(12px + env(safe-area-inset-top)',position:'sticky',top:0,zIndex:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <div>
-            <div style={{fontSize:16,fontWeight:700,color:'#F0F8FF'}}>AB Homes Staff</div>
-            <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginTop:1}}>
-              {deCuratat.length>0 ? `${nrGata}/${deCuratat.length} curățate` : 'Nicio curățenie azi'}
+            <div style={{fontSize:15,fontWeight:700,color:'#F0F8FF'}}>
+              {deCuratat.length>0 ? `${nrGata}/${deCuratat.length} curățate` : '✓ Totul e curat'}
             </div>
+            <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:1}}>AB Homes Iași</div>
           </div>
           {/* Navigare zile */}
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
             <button onClick={()=>setData(addDays(data,-1))}
-              style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#7BC8FF',fontSize:18,cursor:'pointer'}}>‹</button>
-            <div style={{textAlign:'center',minWidth:70}}>
-              <div style={{fontSize:13,fontWeight:700,color:data===today()?'#4ADE80':'#F0F8FF'}}>{fmtFull(data)}</div>
-              {data===today()&&<div style={{fontSize:10,color:'#4ADE80'}}>Azi</div>}
-            </div>
+              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>‹</button>
+            <button onClick={()=>setData(todayStr())}
+              style={{padding:'0 12px',height:36,borderRadius:10,border:`1px solid ${data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'}`,background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+              {fmtFull(data)}
+            </button>
             <button onClick={()=>setData(addDays(data,1))}
-              style={{width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#7BC8FF',fontSize:18,cursor:'pointer'}}>›</button>
+              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>›</button>
           </div>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress */}
         {deCuratat.length>0&&(
-          <div style={{marginTop:10,height:4,background:'rgba(255,255,255,0.08)',borderRadius:2}}>
-            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:`${nrGata/deCuratat.length*100}%`,transition:'width .4s'}}/>
+          <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2}}>
+            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:`${nrGata/deCuratat.length*100}%`,transition:'width .5s ease'}}/>
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'rgba(6,13,26,0.95)',position:'sticky',top:loading?57:57,zIndex:9}}>
-        {tabs.map(t=>(
-          <button key={t.k} onClick={()=>setTab(t.k as any)}
-            style={{flex:1,padding:'12px 4px',border:'none',background:'transparent',color:tab===t.k?'#7BC8FF':'rgba(159,215,255,0.4)',fontSize:12,fontWeight:600,cursor:'pointer',borderBottom:`2px solid ${tab===t.k?'#7BC8FF':'transparent'}`,transition:'all .15s'}}>
-            {t.l} <span style={{fontSize:11,opacity:0.7}}>({t.n})</span>
+      <div style={{display:'flex',background:'rgba(6,13,26,0.98)',borderBottom:'1px solid rgba(255,255,255,0.06)',position:'sticky',top:72,zIndex:19}}>
+        {TABS.map(t=>(
+          <button key={t.k} onClick={()=>setTab(t.k)}
+            style={{flex:1,padding:'11px 4px',border:'none',background:'transparent',color:tab===t.k?'#7BC8FF':'rgba(159,215,255,0.35)',fontSize:11,fontWeight:600,cursor:'pointer',borderBottom:`2px solid ${tab===t.k?'#7BC8FF':'transparent'}`,transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+            {t.l}{t.n!==undefined?` (${t.n})`:''}
           </button>
         ))}
       </div>
 
-      <div style={{padding:'12px 14px',display:'flex',flexDirection:'column',gap:10}}>
+      {/* Content */}
+      <div style={{flex:1,overflowY:'auto',padding:'12px 14px 100px'}}>
 
-        {/* ── CURATENIE ── */}
+        {/* ── CURĂȚENIE ── */}
         {tab==='curatenie'&&(
           deCuratat.length===0
-          ? <div style={{textAlign:'center',padding:'48px 0',color:'rgba(159,215,255,0.3)',fontSize:14}}>✓ Niciun checkout azi</div>
+          ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>✓ Niciun checkout {data===todayStr()?'azi':'în ziua asta'}</div>
           : deCuratat.map(apt=>{
-            const st = statusuri[apt.id]
-            const isGata = st?.status==='gata'
-            const isInceput = st?.status==='inceput'
-            const co = checkouts.find((r:any)=>r.apartament_id===apt.id)
-            const ci = checkins.find((r:any)=>r.apartament_id===apt.id)
-            const urgenta = !!ci // checkin azi = urgent
-            return (
-              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:`1px solid ${isGata?'rgba(34,197,94,0.3)':urgenta?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'}`,background:isGata?'rgba(34,197,94,0.07)':isInceput?'rgba(251,146,60,0.07)':'rgba(255,255,255,0.03)'}}>
-                <div style={{padding:'14px 16px'}}>
-                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:8}}>
-                    <div>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <span style={{fontSize:18,fontWeight:700,color:'#F0F8FF'}}>{apt.nota}</span>
-                        {urgenta&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.3)'}}>⚡ URGENT</span>}
-                        {isGata&&<span style={{fontSize:12,color:'#4ADE80'}}>✅ Gata {st.ora_gata}</span>}
-                        {isInceput&&!isGata&&<span style={{fontSize:12,color:'#FB923C'}}>🧹 {st.ora_inceput}...</span>}
-                      </div>
-                      <div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:2}}>{apt.nume}</div>
+            const st=statusuri[apt.id]
+            const isGata=st?.status==='gata'
+            const isInceput=st?.status==='inceput'
+            const co=checkouts.find((r:any)=>r.apartament_id===apt.id)
+            const ci=checkins.find((r:any)=>r.apartament_id===apt.id)
+            return(
+              <div key={apt.id} style={{borderRadius:18,overflow:'hidden',border:`1.5px solid ${isGata?'rgba(34,197,94,0.35)':ci?'rgba(252,211,77,0.35)':'rgba(255,255,255,0.08)'}`,background:isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)',marginBottom:10}}>
+                <div style={{padding:'16px 16px 12px'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{fontSize:20,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
+                      <span style={{fontSize:12,color:'rgba(159,215,255,0.45)'}}>{apt.nume}</span>
+                      {ci&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>⚡ URGENT</span>}
                     </div>
-                    <div style={{fontSize:26}}>{isGata?'✅':isInceput?'🧹':'⏳'}</div>
+                    <span style={{fontSize:28}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
                   </div>
-
-                  {co&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginBottom:4}}>
-                    Checkout: <span style={{color:'rgba(255,255,255,0.7)'}}>{co.nume_client}</span>
-                    {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:8,color:'#7BC8FF',textDecoration:'none'}}>📞</a>}
-                    <span style={{marginLeft:6,color:'rgba(159,215,255,0.4)'}}>· {co.nr_nopti} nopți</span>
+                  {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:4}}>
+                    Checkout: <span style={{color:'rgba(255,255,255,0.75)',fontWeight:500}}>{co.nume_client}</span>
+                    {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
+                    <span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>· {co.nr_nopti} nopți</span>
                   </div>}
-                  {ci&&<div style={{fontSize:12,color:'#FCD34D',marginBottom:4}}>
+                  {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:4}}>
                     Checkin azi: <span style={{fontWeight:600}}>{ci.nume_client}</span>
-                    {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:8,color:'#FCD34D',textDecoration:'none'}}>📞</a>}
+                    {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
+                  </div>}
+                  {st&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginTop:4}}>
+                    {isInceput&&!isGata&&`▶ Început la ${st.ora_inceput}`}
+                    {isGata&&`✓ Terminat la ${st.ora_gata}${st.ora_inceput?` (început ${st.ora_inceput})`:''}` }
                   </div>}
                 </div>
-
                 <div style={{padding:'0 12px 12px',display:'flex',gap:8}}>
-                  {!isInceput&&!isGata&&(
-                    <button onClick={()=>setStatus(apt.id,'inceput')}
-                      style={{flex:1,padding:'13px',borderRadius:12,border:'none',background:'#FB923C',color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer'}}>
-                      ▶ Începe
-                    </button>
-                  )}
-                  {isInceput&&!isGata&&(
-                    <button onClick={()=>setStatus(apt.id,'gata')}
-                      style={{flex:1,padding:'13px',borderRadius:12,border:'none',background:'#22C55E',color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer'}}>
-                      ✅ Am terminat!
-                    </button>
-                  )}
-                  {isGata&&(
-                    <button onClick={()=>setStatus(apt.id,'inceput')}
-                      style={{flex:1,padding:'12px',borderRadius:12,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer'}}>
-                      ↩ Reîncepe
-                    </button>
-                  )}
+                  {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>▶ Începe curățenia</button>}
+                  {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>✅ Am terminat!</button>}
+                  {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>↩ Reîncepe</button>}
                 </div>
               </div>
             )
           })
         )}
 
-        {/* ── DISPONIBILE ── */}
-        {tab==='disponibile'&&(
-          disponibile.length===0
-          ? <div style={{textAlign:'center',padding:'48px 0',color:'rgba(159,215,255,0.3)',fontSize:14}}>Toate ocupate</div>
-          : disponibile.map(apt=>(
-            <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(74,222,128,0.15)',background:'rgba(74,222,128,0.04)',display:'flex',alignItems:'center',gap:12}}>
-              <div style={{width:10,height:10,borderRadius:'50%',background:'#4ADE80',flexShrink:0}}/>
+        {/* ── LIBERE ── */}
+        {tab==='disponibile'&&(disponibile.length===0
+          ?<div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Toate ocupate</div>
+          :disponibile.map(apt=>(
+            <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(74,222,128,0.15)',background:'rgba(74,222,128,0.04)',display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
+              <div style={{width:10,height:10,borderRadius:'50%',background:'#4ADE80',flexShrink:0,boxShadow:'0 0 6px rgba(74,222,128,0.5)'}}/>
               <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#F0F8FF'}}>{apt.nota} <span style={{fontSize:12,fontWeight:400,color:'rgba(159,215,255,0.5)'}}>{apt.nume}</span></div>
-                {ciSet.has(apt.id)&&<div style={{fontSize:12,color:'#FCD34D',marginTop:2}}>
-                  Checkin azi: {checkins.find((r:any)=>r.apartament_id===apt.id)?.nume_client}
-                </div>}
+                <span style={{fontSize:16,fontWeight:700,color:'#F0F8FF'}}>{apt.nota}</span>
+                <span style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginLeft:8}}>{apt.nume}</span>
+                {ciSet.has(apt.id)&&<div style={{fontSize:12,color:'#FCD34D',marginTop:2}}>Checkin azi: {checkins.find((r:any)=>r.apartament_id===apt.id)?.nume_client}</div>}
               </div>
-              <div style={{fontSize:22}}>🟢</div>
             </div>
           ))
         )}
 
         {/* ── OCUPATE ── */}
-        {tab==='ocupate'&&(
-          ocupateApts.length===0
-          ? <div style={{textAlign:'center',padding:'48px 0',color:'rgba(159,215,255,0.3)',fontSize:14}}>Nicio rezervare activă</div>
-          : ocupateApts.map(apt=>{
-            const rez = ocupate.find((r:any)=>r.apartament_id===apt.id)
-            return (
-              <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(248,113,113,0.15)',background:'rgba(248,113,113,0.04)'}}>
+        {tab==='ocupate'&&(ocupateApts.length===0
+          ?<div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Nicio rezervare activă</div>
+          :ocupateApts.map(apt=>{
+            const rez=ocupate.find((r:any)=>r.apartament_id===apt.id)
+            return(
+              <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(248,113,113,0.15)',background:'rgba(248,113,113,0.04)',marginBottom:8}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
                   <div style={{width:10,height:10,borderRadius:'50%',background:'#F87171',flexShrink:0}}/>
-                  <div style={{fontSize:15,fontWeight:700,color:'#F0F8FF'}}>{apt.nota} <span style={{fontSize:12,fontWeight:400,color:'rgba(159,215,255,0.5)'}}>{apt.nume}</span></div>
-                  <div style={{marginLeft:'auto',fontSize:22}}>🔴</div>
+                  <span style={{fontSize:16,fontWeight:700,color:'#F0F8FF'}}>{apt.nota}</span>
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>{apt.nume}</span>
                 </div>
-                {rez&&(
-                  <div style={{fontSize:13,color:'rgba(159,215,255,0.6)',paddingLeft:20}}>
-                    <div style={{marginBottom:2}}><span style={{color:'rgba(255,255,255,0.75)',fontWeight:500}}>{rez.nume_client}</span>
-                      {rez.telefon_client&&<a href={`tel:${rez.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',fontSize:14,textDecoration:'none'}}>📞 {rez.telefon_client}</a>}
-                    </div>
-                    <div style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>
-                      {fmtDate(rez.data_checkin)} → {fmtDate(rez.data_checkout)}
-                    </div>
-                  </div>
-                )}
+                {rez&&<div style={{paddingLeft:22}}>
+                  <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',fontWeight:500,marginBottom:4}}>{rez.nume_client}</div>
+                  <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginBottom:6}}>{fmtDate(rez.data_checkin)} → {fmtDate(rez.data_checkout)}</div>
+                  {rez.telefon_client&&<a href={`tel:${rez.telefon_client}`} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:10,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#7BC8FF',textDecoration:'none',fontSize:13,fontWeight:600}}>📞 {rez.telefon_client}</a>}
+                </div>}
               </div>
             )
           })
         )}
+
+        {/* ── CALENDAR ── */}
+        {tab==='calendar'&&(
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:12}}>7 zile — {fmtFull(addDays(data,-1))} → {fmtFull(addDays(data,5))}</div>
+            {apts.map(apt=>(
+              <div key={apt.id} style={{marginBottom:8,borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.02)'}}>
+                <div style={{padding:'8px 12px',background:'rgba(11,22,42,0.6)',display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:13,fontWeight:700,color:'#E8F4FF',minWidth:42}}>{apt.nota}</span>
+                  <span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{apt.nume}</span>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
+                  {calDays.map(zi=>{
+                    const rez=calData.find((r:any)=>r.apartament_id===apt.id&&r.data_checkin<=zi&&r.data_checkout>zi)
+                    const isCo=checkouts.some((r:any)=>r.apartament_id===apt.id&&zi===data)
+                    const isCi=checkins.some((r:any)=>r.apartament_id===apt.id&&zi===data)
+                    const isToday=zi===todayStr()
+                    const isSelected=zi===data
+                    return(
+                      <div key={zi} onClick={()=>setData(zi)}
+                        style={{padding:'8px 4px',textAlign:'center',cursor:'pointer',background:rez?'rgba(248,113,113,0.2)':'transparent',borderLeft:'1px solid rgba(255,255,255,0.05)',borderBottom: isSelected?`2px solid #7BC8FF`:'2px solid transparent'}}>
+                        <div style={{fontSize:9,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.35)',fontWeight:isToday||isSelected?700:400,marginBottom:2}}>{fmtFull(zi).slice(0,3)}</div>
+                        <div style={{fontSize:10,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.5)',fontWeight:isToday?700:400}}>{zi.slice(8)}</div>
+                        {rez&&<div style={{fontSize:8,color:'rgba(248,113,113,0.8)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',padding:'0 2px'}}>{rez.nume_client?.split(' ')[0]}</div>}
+                        {!rez&&<div style={{fontSize:14,marginTop:1}}>🟢</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Bottom deconectare */}
-      <div style={{position:'fixed',bottom:0,left:0,right:0,padding:'10px 16px',background:'rgba(6,13,26,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span style={{fontSize:12,color:'rgba(159,215,255,0.3)'}}>AB Homes Staff · {fmtFull(data)}</span>
+      {/* Bottom bar */}
+      <div style={{position:'fixed',bottom:0,left:0,right:0,paddingBottom:'env(safe-area-inset-bottom)',background:'rgba(6,13,26,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span style={{fontSize:11,color:'rgba(159,215,255,0.25)'}}>AB Homes Staff</span>
         <button onClick={()=>{localStorage.removeItem('staff_v2');setAuth(false)}}
-          style={{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(159,215,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.3)',fontSize:11,cursor:'pointer'}}>
+          style={{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(159,215,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.3)',fontSize:11,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
           Ieși
         </button>
       </div>

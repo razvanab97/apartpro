@@ -29,8 +29,21 @@ export default function CuratenePage() {
   const [ci, setCi] = useState<any[]>([])
   const [len, setLen] = useState<Record<string,number>>({})
   const [loading, setLoading] = useState(true)
+  const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
+
+  // Refresh staff status every 30 seconds
+  useEffect(()=>{
+    loadStaffStatus()
+    const i = setInterval(loadStaffStatus, 30000)
+    return ()=>clearInterval(i)
+  }, [selectedDate])
+
+  async function loadStaffStatus() {
+    const { data } = await supabase.from('curatenie_status').select('*').eq('data', selectedDate)
+    const m:Record<string,any>={};(data||[]).forEach((s:any)=>{ m[s.apartament_id]=s });setStaffStatus(m)
+  }
 
   async function load(date:string){
     setLoading(true)
@@ -143,6 +156,14 @@ export default function CuratenePage() {
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4,flexWrap:'wrap' as const}}>
                   {apt?.nota&&<span style={{fontSize:11,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 8px',borderRadius:4,fontFamily:'monospace'}}>{apt.nota}</span>}
+                  {apt?.id&&staffStatus[apt.id]&&(
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:5,fontWeight:600,
+                      background:staffStatus[apt.id].status==='gata'?'rgba(74,222,128,0.15)':'rgba(251,146,60,0.15)',
+                      border:`1px solid ${staffStatus[apt.id].status==='gata'?'rgba(74,222,128,0.3)':'rgba(251,146,60,0.3)'}`,
+                      color:staffStatus[apt.id].status==='gata'?'#4ADE80':'#FB923C'}}>
+                      {staffStatus[apt.id].status==='gata'?`✅ Gata ${staffStatus[apt.id].ora_gata||''}`:staffStatus[apt.id].status==='inceput'?`🧹 început ${staffStatus[apt.id].ora_inceput||''}`:'' }
+                    </span>
+                  )}
                   <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>
                 </div>
