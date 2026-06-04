@@ -167,7 +167,10 @@ export default function RapoartePage() {
       .neq('status_rezervare', 'anulata')
       .limit(5000)
     
+    const totalApr = data?.filter((r:any) => r.data_checkout?.startsWith('2026-04')).length || 0
+    const sumaApr = data?.filter((r:any) => r.data_checkout?.startsWith('2026-04')).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0) || 0
     console.log('Grafice DB result:', { total: data?.length, error: error?.message })
+    console.log('Aprilie 2026:', { rezervari: totalApr, suma: Math.round(sumaApr) })
     if (error || !data) { setGraficeLoading(false); return }
     
     // Group by CHECKOUT month
