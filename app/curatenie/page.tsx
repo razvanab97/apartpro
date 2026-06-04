@@ -368,7 +368,7 @@ export default function CuratenePage() {
               style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none',width:120}}/>
           </div>
           <div style={{alignSelf:'flex-end'}}>
-            <button onClick={loadRapoarte}
+            <button onClick={()=>loadRapoarte()}
               style={{padding:'8px 18px',borderRadius:9,border:'none',background:'rgba(77,163,255,0.2)',color:'#7BC8FF',fontSize:13,fontWeight:600,cursor:'pointer'}}>
               📊 Generează
             </button>
