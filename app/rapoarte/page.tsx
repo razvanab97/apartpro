@@ -160,12 +160,22 @@ export default function RapoartePage() {
     const an = new Date().getFullYear()
     
     // Aduce TOATE rezervarile neoanulate din aug 2025
-    const { data, error } = await supabase.from('rezervari')
+    // Fetch all non-cancelled - include NULL status (5starDesk reservations)
+    const { data: data1, error } = await supabase.from('rezervari')
       .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
       .gte('data_checkout', '2025-08-01')
       .lte('data_checkout', `${an}-12-31`)
       .neq('status_rezervare', 'anulata')
       .limit(2000)
+    
+    const { data: data2 } = await supabase.from('rezervari')
+      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
+      .gte('data_checkout', '2025-08-01')
+      .lte('data_checkout', `${an}-12-31`)
+      .is('status_rezervare', null)
+      .limit(2000)
+    
+    const data = [...(data1||[]), ...(data2||[])]
     
     console.log('Grafice DB result:', { total: data?.length, error: error?.message })
     if (error || !data) { setGraficeLoading(false); return }
