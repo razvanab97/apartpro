@@ -111,7 +111,7 @@ export default function StaffPage() {
       await supabase.from('notificari').insert({
         mesaj: msg, tip: 'curatenie', citit: false,
         data: new Date().toISOString(),
-      }).catch(()=>{})
+      })
     }
   }
 
