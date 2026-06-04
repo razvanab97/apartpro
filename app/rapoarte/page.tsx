@@ -160,22 +160,12 @@ export default function RapoartePage() {
     const an = new Date().getFullYear()
     
     // Aduce TOATE rezervarile neoanulate din aug 2025
-    // Fetch all non-cancelled - include NULL status (5starDesk reservations)
-    const { data: data1, error } = await supabase.from('rezervari')
+    const { data, error } = await supabase.from('rezervari')
       .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
       .gte('data_checkout', '2025-08-01')
       .lte('data_checkout', `${an}-12-31`)
       .neq('status_rezervare', 'anulata')
-      .limit(2000)
-    
-    const { data: data2 } = await supabase.from('rezervari')
-      .select('data_checkout,valoare_bruta,suma_incasata,nr_nopti,nr_persoane,status_rezervare')
-      .gte('data_checkout', '2025-08-01')
-      .lte('data_checkout', `${an}-12-31`)
-      .is('status_rezervare', null)
-      .limit(2000)
-    
-    const data = [...(data1||[]), ...(data2||[])]
+      .limit(5000)
     
     console.log('Grafice DB result:', { total: data?.length, error: error?.message })
     if (error || !data) { setGraficeLoading(false); return }
@@ -188,10 +178,9 @@ export default function RapoartePage() {
       // Foloseste data_checkout; daca lipseste, sari
       if (!r.data_checkout) continue
       // Suma: prioritate valoare_bruta, fallback suma_incasata
-      const suma = Number(r.valoare_bruta||0) > 0
-        ? Number(r.valoare_bruta)
-        : Number(r.suma_incasata||0)
-      if (suma <= 0) continue  // skip rezervari fara suma
+      // Din DB: valoare_bruta = suma_incasata, ambele corecte
+      const suma = Number(r.suma_incasata||0) || Number(r.valoare_bruta||0)
+      if (suma <= 0) continue
       const d = new Date(r.data_checkout + 'T12:00:00')
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
       const label = `${LUNI[d.getMonth()]} ${d.getFullYear()}`
