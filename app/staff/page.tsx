@@ -9,7 +9,7 @@ const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
 const todayStr = () => new Date().toISOString().slice(0,10)
 
-type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'calendar'
+type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar'
 
 export default function StaffPage() {
   const [auth, setAuth] = useState(false)
@@ -25,12 +25,20 @@ export default function StaffPage() {
   const [flash, setFlash] = useState<{msg:string,ok:boolean}|null>(null)
   const [tab, setTab] = useState<Tab>('curatenie')
   const [calData, setCalData] = useState<any[]>([])
+  const [problemeStaff, setProblemeStaff] = useState<any[]>([])
+  const [newProbStaff, setNewProbStaff] = useState({titlu:'',descriere:'',prioritate:'normal',apartament_id:''})
+  const [savingProb, setSavingProb] = useState(false)
 
   useEffect(() => {
     if (document.cookie.includes('staff_auth=1111')) setAuth(true)
   }, [])
 
-  useEffect(() => { if (auth) { load(); if(tab==='calendar') loadCalendar() } }, [auth, data, tab])
+  useEffect(() => {
+    if (!auth) return
+    load()
+    if(tab==='calendar') loadCalendar()
+    if(tab==='probleme') loadProblemeStaff()
+  }, [auth, data, tab])
 
   async function load() {
     setLoading(true)
@@ -59,6 +67,34 @@ export default function StaffPage() {
       .lte('data_checkin', to).gt('data_checkout', from)
       .neq('status_rezervare','anulata')
     setCalData(rez||[])
+  }
+
+  async function loadProblemeStaff() {
+    const { data } = await supabase.from('probleme_apartamente')
+      .select('*,apartament:apartament_id(nota,nume)')
+      .neq('status','rezolvat')
+      .order('created_at',{ascending:false})
+    setProblemeStaff(data||[])
+  }
+
+  async function addProblemaStaff() {
+    if(!newProbStaff.titlu) return
+    setSavingProb(true)
+    const { error } = await supabase.from('probleme_apartamente').insert({
+      apartament_id: newProbStaff.apartament_id || null,
+      titlu: newProbStaff.titlu,
+      descriere: newProbStaff.descriere,
+      prioritate: newProbStaff.prioritate,
+      status: 'deschis',
+      created_at: new Date().toISOString(),
+    })
+    if (!error) {
+      setNewProbStaff({titlu:'',descriere:'',prioritate:'normal',apartament_id:''})
+      loadProblemeStaff()
+      setFlash({msg:'✓ Problemă raportată!', ok:true})
+      setTimeout(()=>setFlash(null),2000)
+    }
+    setSavingProb(false)
   }
 
   async function setStatus(aptId:string, status:'inceput'|'gata') {
@@ -156,9 +192,10 @@ export default function StaffPage() {
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
 
   const TABS: {k:Tab,l:string,n?:number}[] = [
-    {k:'curatenie', l:'🧹 Curățenie', n:deCuratat.length},
-    {k:'disponibile', l:'🟢 Libere', n:disponibile.length},
-    {k:'ocupate', l:'🔴 Ocupate', n:ocupateApts.length},
+    {k:'curatenie', l:'🧹', n:deCuratat.length},
+    {k:'disponibile', l:'🟢', n:disponibile.length},
+    {k:'ocupate', l:'🔴', n:ocupateApts.length},
+    {k:'probleme', l:'🔧'},
     {k:'calendar', l:'📅'},
   ]
 
@@ -216,7 +253,7 @@ export default function StaffPage() {
       </div>
 
       {/* Content */}
-      <div style={{flex:1,overflowY:'auto',padding:'12px 14px 100px'}}>
+      <div style={{flex:1,overflowY:'auto',padding:'12px 14px 20px'}}>
 
         {/* ── CURĂȚENIE ── */}
         {tab==='curatenie'&&(
@@ -300,6 +337,64 @@ export default function StaffPage() {
           })
         )}
 
+        {/* ── PROBLEME ── */}
+        {tab==='probleme'&&(
+          <div>
+            {/* Form adaugare */}
+            <div style={{borderRadius:18,border:'1px solid rgba(251,146,60,0.25)',background:'rgba(251,146,60,0.05)',padding:16,marginBottom:14}}>
+              <div style={{fontSize:14,fontWeight:700,color:'#FB923C',marginBottom:12}}>🔧 Raportează o problemă</div>
+              <select value={newProbStaff.apartament_id} onChange={e=>setNewProbStaff(p=>({...p,apartament_id:e.target.value}))}
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box' as const}}>
+                <option value="">— Apartament (opțional) —</option>
+                {apts.map(a=><option key={a.id} value={a.id}>{a.nota} — {a.nume}</option>)}
+              </select>
+              <input value={newProbStaff.titlu} onChange={e=>setNewProbStaff(p=>({...p,titlu:e.target.value}))}
+                placeholder="Ce problemă ai găsit? *"
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box' as const}}/>
+              <textarea value={newProbStaff.descriere} onChange={e=>setNewProbStaff(p=>({...p,descriere:e.target.value}))}
+                placeholder="Detalii (opțional)..." rows={3}
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,resize:'none' as const,fontFamily:'inherit',boxSizing:'border-box' as const}}/>
+              <div style={{display:'flex',gap:8,marginBottom:10}}>
+                {['normal','urgent','critic'].map(p=>(
+                  <button key={p} onClick={()=>setNewProbStaff(prev=>({...prev,prioritate:p}))}
+                    style={{flex:1,padding:'10px',borderRadius:10,border:`1px solid ${newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.5)':p==='urgent'?'rgba(251,146,60,0.5)':'rgba(77,163,255,0.5)'):'rgba(255,255,255,0.1)'}`,
+                    background:newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.15)':p==='urgent'?'rgba(251,146,60,0.15)':'rgba(77,163,255,0.15)'):'transparent',
+                    color:newProbStaff.prioritate===p?(p==='critic'?'#F87171':p==='urgent'?'#FB923C':'#7BC8FF'):'rgba(159,215,255,0.4)',
+                    fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                    {p==='critic'?'🔴 Critic':p==='urgent'?'🟡 Urgent':'🔵 Normal'}
+                  </button>
+                ))}
+              </div>
+              <button onClick={addProblemaStaff} disabled={!newProbStaff.titlu||savingProb}
+                style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:newProbStaff.titlu?'#FB923C':'rgba(159,215,255,0.08)',color:newProbStaff.titlu?'#fff':'rgba(159,215,255,0.3)',fontSize:15,fontWeight:700,cursor:newProbStaff.titlu?'pointer':'not-allowed',WebkitTapHighlightColor:'transparent'}}>
+                {savingProb?'Se trimite...':'📤 Trimite raportul'}
+              </button>
+            </div>
+
+            {/* Lista probleme existente */}
+            {problemeStaff.length>0&&(
+              <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:10}}>
+                Probleme deschise ({problemeStaff.length})
+              </div>
+            )}
+            {problemeStaff.map(p=>{
+              const c=p.prioritate==='critic'?'#F87171':p.prioritate==='urgent'?'#FB923C':'#7BC8FF'
+              return(
+                <div key={p.id} style={{borderRadius:14,border:`1px solid ${c}22`,background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:`${c}18`,color:c,fontWeight:700,textTransform:'uppercase' as const}}>{p.prioritate}</span>
+                    {p.apartament&&<span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{p.apartament.nota}</span>}
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.25)',marginLeft:'auto'}}>{p.status==='in_lucru'?'🟡 În lucru':'🔴 Deschis'}</span>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{p.titlu}</div>
+                  {p.descriere&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:3}}>{p.descriere}</div>}
+                </div>
+              )
+            })}
+            {problemeStaff.length===0&&<div style={{textAlign:'center' as const,padding:'24px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>✓ Nicio problemă deschisă</div>}
+          </div>
+        )}
+
         {/* ── CALENDAR ── */}
         {tab==='calendar'&&(
           <div>
@@ -334,14 +429,7 @@ export default function StaffPage() {
         )}
       </div>
 
-      {/* Bottom bar */}
-      <div style={{position:'fixed',bottom:0,left:0,right:0,paddingBottom:'env(safe-area-inset-bottom)',background:'rgba(6,13,26,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <span style={{fontSize:11,color:'rgba(159,215,255,0.25)'}}>AB Homes Staff</span>
-        <button onClick={()=>{document.cookie='staff_auth=;path=/;max-age=0'; setAuth(false)}}
-          style={{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(159,215,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.3)',fontSize:11,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
-          Ieși
-        </button>
-      </div>
+
     </div>
   )
 }
