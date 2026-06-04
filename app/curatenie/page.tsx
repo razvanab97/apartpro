@@ -260,7 +260,7 @@ export default function CuratenePage() {
             <select value={newProblema.apartament_id} onChange={e=>setNewProblema(p=>({...p,apartament_id:e.target.value}))}
               style={{width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:12,padding:'8px 10px',outline:'none',marginBottom:8}}>
               <option value="">— Selectează apartament —</option>
-              {coItems.map(({apt}:any)=>apt&&<option key={apt.id} value={apt.id}>[{apt.nota}] {apt.nume}</option>)}
+              {locatii.map(({apt}:any)=>apt&&<option key={apt?.id} value={apt?.id}>[{apt?.nota}] {apt?.nume}</option>)}
             </select>
             <input value={newProblema.titlu} onChange={e=>setNewProblema(p=>({...p,titlu:e.target.value}))}
               placeholder="Titlu problemă (ex: Robinet defect)"
