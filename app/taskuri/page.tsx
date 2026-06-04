@@ -714,10 +714,77 @@ export default function TaskuriPage() {
       })
     }
     const interval = setInterval(checkNotifs, 60000) // verifica la fiecare minut
+    // Register push + check recurente
+    registerPush()
+    checkRecurente()
     return () => clearInterval(interval)
   }, [])
 
   useEffect(() => { loadRutina() }, [])
+
+  async function registerPush() {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      const perm = await Notification.requestPermission()
+      if (perm !== 'granted') return
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if (!vapidKey) return
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey
+      })
+      await fetch('/api/push-subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      })
+    } catch (e) { console.log('Push:', e) }
+  }
+
+  function addDays(dateStr: string, days: number): string {
+    const d = new Date(dateStr)
+    d.setDate(d.getDate() + days)
+    return d.toISOString().slice(0, 10)
+  }
+
+  async function checkRecurente() {
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: recurente } = await supabase
+      .from('taskuri').select('*')
+      .eq('recurent', true)
+      .not('interval_zile', 'is', null)
+    for (const task of (recurente || [])) {
+      if (!task.data_urmatoare || task.data_urmatoare > today) continue
+      // Creeaza task nou activ
+      await supabase.from('taskuri').insert({
+        titlu: task.titlu,
+        descriere: task.descriere,
+        prioritate: task.prioritate || 'normala',
+        business: task.business,
+        status: 'de_facut',
+        recurent: false,
+        interval_zile: null,
+      })
+      // Actualizeaza data urmatoare pe template
+      await supabase.from('taskuri').update({
+        data_urmatoare: addDays(today, task.interval_zile),
+        status: 'template'
+      }).eq('id', task.id)
+      // Push notification
+      fetch('/api/push-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '🔔 ' + task.titlu,
+          body: task.descriere || 'Task recurent generat automat',
+          url: '/taskuri',
+          tag: 'recurent-' + task.id
+        })
+      }).catch(() => {})
+    }
+    load()
+  }
 
   async function loadRutina() {
     const { data } = await supabase.from('taskuri')
