@@ -27,7 +27,7 @@ export default function StaffPage() {
   const [calData, setCalData] = useState<any[]>([])
 
   useEffect(() => {
-    if (localStorage.getItem('staff_v2') === CODE) setAuth(true)
+    if (document.cookie.includes('staff_auth=1111')) setAuth(true)
   }, [])
 
   useEffect(() => { if (auth) { load(); if(tab==='calendar') loadCalendar() } }, [auth, data, tab])
@@ -87,7 +87,7 @@ export default function StaffPage() {
       setCod(nc)
       if (nc.length === 4) {
         setTimeout(() => {
-          if (nc === CODE) { localStorage.setItem('staff_v2', CODE); setAuth(true); setErr(false) }
+          if (nc === CODE) { document.cookie='staff_auth=1111;path=/;max-age=86400'; setAuth(true); setErr(false) }
           else { setErr(true); setCod('') }
         }, 150)
       }
@@ -337,7 +337,7 @@ export default function StaffPage() {
       {/* Bottom bar */}
       <div style={{position:'fixed',bottom:0,left:0,right:0,paddingBottom:'env(safe-area-inset-bottom)',background:'rgba(6,13,26,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <span style={{fontSize:11,color:'rgba(159,215,255,0.25)'}}>AB Homes Staff</span>
-        <button onClick={()=>{localStorage.removeItem('staff_v2');setAuth(false)}}
+        <button onClick={()=>{document.cookie='staff_auth=;path=/;max-age=0'; setAuth(false)}}
           style={{padding:'6px 14px',borderRadius:8,border:'1px solid rgba(159,215,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.3)',fontSize:11,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
           Ieși
         </button>
