@@ -150,9 +150,15 @@ export default function RapoartePage() {
   const [graficeData, setGraficeData] = useState<any[]>([])
   const [graficeLoading, setGraficeLoading] = useState(false)
   const [showGrafice, setShowGrafice] = useState(false)
+  const [graficeApts, setGraficeApts] = useState<string[]>([])  // selected apt IDs
+  const [allApts, setAllApts] = useState<any[]>([])
 
   useEffect(() => {
-    supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(({ data }) => setApartamente(data || []))
+    supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(({ data }) => {
+      setApartamente(data || [])
+      setAllApts(data || [])
+      setGraficeApts((data||[]).map((a:any)=>a.id))  // all selected by default
+    })
   }, [])
 
   async function loadGrafice() {
@@ -172,12 +178,16 @@ export default function RapoartePage() {
     let offset = 0
     let total = 0
     while (true) {
-      const { data, error } = await supabase.from('rezervari')
-        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane,canal')
+      let q = supabase.from('rezervari')
+        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane,canal,apartament_id')
         .gte('data_checkout', '2025-08-01')
         .lte('data_checkout', `${an+1}-12-31`)
         .neq('status_rezervare', 'anulata')
         .range(offset, offset + 999)
+      if (graficeApts.length > 0 && graficeApts.length < allApts.length) {
+        q = q.in('apartament_id', graficeApts)
+      }
+      const { data, error } = await q
 
       if (error || !data || data.length === 0) break
       total += data.length
@@ -410,10 +420,31 @@ export default function RapoartePage() {
               <span style={{ fontSize:14, fontWeight:700, color:'#E8F4FF' }}>Statistici & Grafice</span>
               <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>Aug 2025 – prezent</span>
             </div>
-            <button onClick={showGrafice?()=>setShowGrafice(false):loadGrafice} disabled={graficeLoading}
-              style={{ padding:'6px 16px', borderRadius:8, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:graficeLoading?0.6:1 }}>
-              {graficeLoading?'Se încarcă...':showGrafice?'Ascunde':'📊 Generează grafice'}
-            </button>
+<div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+              {/* Selector apartamente */}
+              <div style={{display:'flex',gap:4,flexWrap:'wrap' as const,flex:1}}>
+                <button onClick={()=>setGraficeApts(allApts.map((a:any)=>a.id))}
+                  style={{padding:'4px 10px',borderRadius:6,border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:10,fontWeight:600,cursor:'pointer'}}>
+                  Toate
+                </button>
+                {allApts.map((apt:any)=>{
+                  const sel = graficeApts.includes(apt.id)
+                  return(
+                    <button key={apt.id} onClick={()=>{
+                      setGraficeApts(prev=>sel?prev.filter(id=>id!==apt.id):[...prev,apt.id])
+                      setShowGrafice(false)
+                    }}
+                      style={{padding:'4px 10px',borderRadius:6,border:`1px solid ${sel?'rgba(77,163,255,0.4)':'rgba(159,215,255,0.1)'}`,background:sel?'rgba(77,163,255,0.12)':'transparent',color:sel?'#7BC8FF':'rgba(159,215,255,0.35)',fontSize:11,fontWeight:600,cursor:'pointer',textDecoration:sel?'none':'line-through'}}>
+                      {apt.nota||apt.nume}
+                    </button>
+                  )
+                })}
+              </div>
+              <button onClick={showGrafice?()=>setShowGrafice(false):loadGrafice} disabled={graficeLoading}
+                style={{ padding:'6px 16px', borderRadius:8, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:12, fontWeight:600, cursor:'pointer', opacity:graficeLoading?0.6:1, flexShrink:0 }}>
+                {graficeLoading?'Se încarcă...':showGrafice?'Ascunde':'📊 Generează grafice'}
+              </button>
+            </div>
           </div>
 
           {showGrafice && graficeData.length>0 && (
