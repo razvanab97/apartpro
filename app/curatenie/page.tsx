@@ -105,6 +105,19 @@ export default function CuratenePage() {
     }).catch(()=>{})
   }
 
+  async function setSpecialStatus(aptId: string, aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
+    const { error: updErr } = await supabase.from('curatenie_status')
+      .update({ status: tip || 'liber', special: tip })
+      .eq('apartament_id', aptId).eq('data', selectedDate)
+    if (updErr) {
+      await supabase.from('curatenie_status').insert({
+        apartament_id: aptId, data: selectedDate,
+        status: tip || 'liber', special: tip, eliberat: false
+      })
+    }
+    loadStaffStatus()
+  }
+
   async function loadRapoarte(lunaParam?: string) {
     const [an, luna] = (lunaParam||rapoarteLuna).split('-').map(Number)
     const primaZi = `${an}-${String(luna).padStart(2,'0')}-01`
@@ -297,6 +310,29 @@ export default function CuratenePage() {
                       {eliberat.has(apt.id)?'✓ Eliberat':'🚪 Eliberat?'}
                     </button>
                   )}
+                  {/* Buton Anulare / Doar lenjerie */}
+                  {apt?.id&&(()=>{
+                    const st = staffStatus[apt.id]
+                    const special = st?.special
+                    return (
+                      <div style={{display:'flex',gap:4}}>
+                        <button onClick={()=>setSpecialStatus(apt.id, apt?.nota||'', special==='anulat'?null:'anulat')}
+                          style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
+                            border:`1px solid ${special==='anulat'?'rgba(248,113,113,0.5)':'rgba(248,113,113,0.2)'}`,
+                            background:special==='anulat'?'rgba(248,113,113,0.15)':'rgba(248,113,113,0.06)',
+                            color:special==='anulat'?'#F87171':'rgba(248,113,113,0.5)'}}>
+                          {special==='anulat'?'✕ Anulat':'✕ Anulează'}
+                        </button>
+                        <button onClick={()=>setSpecialStatus(apt.id, apt?.nota||'', special==='doar_lenjerie'?null:'doar_lenjerie')}
+                          style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
+                            border:`1px solid ${special==='doar_lenjerie'?'rgba(167,139,250,0.5)':'rgba(167,139,250,0.2)'}`,
+                            background:special==='doar_lenjerie'?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.06)',
+                            color:special==='doar_lenjerie'?'#A78BFA':'rgba(167,139,250,0.5)'}}>
+                          {special==='doar_lenjerie'?'🛏 Doar lenjerie':'🛏 Lenjerie'}
+                        </button>
+                      </div>
+                    )
+                  })()}
                   <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>
                 </div>
