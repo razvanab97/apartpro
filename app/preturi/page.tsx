@@ -24,6 +24,7 @@ export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
   const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string}>>({})
   const [dataSelectata, setDataSelectata] = useState('')
+  const [dataCheckout, setDataCheckout] = useState('')
   const [ocupate, setOcupate] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState<string|null>(null)
   const { toast, show } = useToast()
@@ -91,6 +92,7 @@ export default function PreturiPage() {
           return {...apt,_bk:bk,_ab:ab}
         }).filter((a:any)=>a._bk||a._ab)
         setApts(list); setDataSelectata(today)
+        const _co=new Date(today+'T12:00:00');_co.setDate(_co.getDate()+1);setDataCheckout(fmt(_co))
         loadOcupate(today, list.map((a:any)=>a.id))
         const {data:saved} = await supabase.from('preturi_live')
           .select('*').in('apartament_id',list.map((a:any)=>a.id)).eq('data_checkin',today)
@@ -111,9 +113,9 @@ export default function PreturiPage() {
     setOcupate(new Set((rez||[]).map((r:any)=>r.apartament_id)))
   }
 
-  function buildUrl(baseUrl:string, platform:string, checkin:string) {
+  function buildUrl(baseUrl:string, platform:string, checkin:string, checkout?:string) {
     if(!checkin) checkin=today; if(!baseUrl) return ''
-    const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1); const co = fmt(coD)
+    const co = checkout||(() => { const d=new Date(checkin+'T12:00:00');d.setDate(d.getDate()+1);return fmt(d) })()
     if(platform==='booking'||baseUrl.includes('booking.com'))
       return baseUrl.split('?')[0]+`?checkin=${checkin}&checkout=${co}&group_adults=2&no_rooms=1`
     const rm = baseUrl.match(/airbnb\.com\/rooms\/(\d+)/)
@@ -139,7 +141,9 @@ export default function PreturiPage() {
   }
 
   function changeData(data:string){
-    setDataSelectata(data); if(!apts.length) return
+    setDataSelectata(data)
+    const _d=new Date(data+'T12:00:00');_d.setDate(_d.getDate()+1);setDataCheckout(fmt(_d))
+    if(!apts.length) return
     supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data)
       .then(({data:saved})=>{
         const pm:Record<string,{booking:string,airbnb:string}> = {}
@@ -278,6 +282,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
 
         {mainTab==='preturi'&&(<><div style={{...panel}}>
           <div style={{padding:'12px 16px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
+  
+          <div style={{padding:'10px 16px 6px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
             {QUICK.map(({label,val})=>(
               <button key={val} onClick={()=>changeData(val)} style={{
                 padding:'5px 12px',borderRadius:7,fontSize:12,cursor:'pointer',
@@ -286,10 +292,27 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 color:dataSelectata===val?'#7BC8FF':'rgba(159,215,255,0.5)',
               }}>{label}</button>
             ))}
-            <input type="date" value={dataSelectata} onChange={e=>changeData(e.target.value)} style={{
-              padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
-              background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
-            }}/>
+          </div>
+          <div style={{padding:'4px 16px 12px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' as const}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>Check-in</span>
+              <input type="date" value={dataSelectata} onChange={e=>changeData(e.target.value)} style={{
+                padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
+                background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
+              }}/>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>Check-out</span>
+              <input type="date" value={dataCheckout} min={dataSelectata}
+                onChange={e=>setDataCheckout(e.target.value)} style={{
+                padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
+                background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
+              }}/>
+            </div>
+            {dataCheckout&&dataSelectata&&(()=>{
+              const nopti=Math.round((new Date(dataCheckout+'T12:00:00').getTime()-new Date(dataSelectata+'T12:00:00').getTime())/86400000)
+              return nopti>0?<span style={{fontSize:11,color:'rgba(147,197,253,0.5)',fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'3px 8px',borderRadius:5}}>{nopti} {nopti===1?'noapte':'nopți'}</span>:null
+            })()}
           </div>
         </div>
 
@@ -297,7 +320,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
         <div style={{...panel}}>
           <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,
             color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>
-            Check-in: {dataSelectata} — prețuri manuale
+            {dataSelectata} → {dataCheckout||'?'} — prețuri manuale
           </div>
           {apts.map((apt,i)=>(
             <div key={apt.id} style={{padding:'10px 16px',
@@ -310,12 +333,12 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:'rgba(77,163,255,0.5)'}}>🏨</span>
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.booking||''} onChange={e=>updatePret(apt.id,'booking',e.target.value)} style={inp}/>
-                {apt._bk&&<a href={buildUrl(apt._bk,'booking',dataSelectata||today)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.3)',color:'#7BC8FF',textDecoration:'none',whiteSpace:'nowrap' as const}}>Bk ↗</a>}
+                {apt._bk&&<a href={buildUrl(apt._bk,'booking',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.3)',color:'#7BC8FF',textDecoration:'none',whiteSpace:'nowrap' as const}}>Bk ↗</a>}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:'rgba(248,113,113,0.5)'}}>🏠</span>
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.airbnb||''} onChange={e=>updatePret(apt.id,'airbnb',e.target.value)} style={inp}/>
-                {apt._ab&&<a href={buildUrl(apt._ab,'airbnb',dataSelectata||today)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(248,113,113,0.3)',color:'#F87171',textDecoration:'none',whiteSpace:'nowrap' as const}}>Ab ↗</a>}
+                {apt._ab&&<a href={buildUrl(apt._ab,'airbnb',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(248,113,113,0.3)',color:'#F87171',textDecoration:'none',whiteSpace:'nowrap' as const}}>Ab ↗</a>}
               </div>
               {preturi[apt.id]?.booking&&preturi[apt.id]?.airbnb&&(
                 <div style={{fontSize:11,fontFamily:'monospace',color:parseInt(preturi[apt.id].booking)>parseInt(preturi[apt.id].airbnb)?'#FCD34D':'#4ADE80'}}>
