@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
@@ -34,6 +35,12 @@ export default function PreturiPage() {
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
+  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'evolutie'>('preturi')
+  const [evolutieData, setEvolutieData] = useState<any[]>([])
+  const [loadingEvolutie, setLoadingEvolutie] = useState(false)
+  const [compareDate1, setCompareDate1] = useState('')
+  const [compareDate2, setCompareDate2] = useState('')
+  const [expandedScan, setExpandedScan] = useState<string|null>(null)
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
 
@@ -51,6 +58,14 @@ export default function PreturiPage() {
     { label: 'Duminică', val: add(dow===0?7:7-dow) },
     { label: '+7 zile', val: add(7) },
   ]
+
+  async function loadEvolutie() {
+    setLoadingEvolutie(true)
+    const { data } = await supabase.from('booking_monitor_history')
+      .select('*').order('checkin', { ascending: true }).limit(200)
+    setEvolutieData(data || [])
+    setLoadingEvolutie(false)
+  }
 
   async function loadHistory() {
     setLoadingHistory(true)
@@ -86,6 +101,7 @@ export default function PreturiPage() {
         setPreturi(pm)
       })
     loadHistory()
+    loadEvolutie()
     return () => { if(pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
@@ -246,9 +262,21 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
   return (
     <>
       <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb"/>
+      <div style={{display:'flex',gap:0,borderBottom:'1px solid rgba(159,215,255,0.1)',background:'rgba(10,20,40,0.5)'}}>
+        {(['preturi','monitor','evolutie'] as const).map((tab)=>{
+          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',evolutie:'📈 Evoluție'}
+          return(
+            <button key={tab} onClick={()=>setMainTab(tab)} style={{
+              padding:'10px 18px',fontSize:12,fontWeight:600,cursor:'pointer',
+              border:'none',borderBottom:`2px solid ${mainTab===tab?'#7BC8FF':'transparent'}`,
+              background:'transparent',color:mainTab===tab?'#7BC8FF':'rgba(159,215,255,0.4)',
+            }}>{labels[tab]}</button>
+          )
+        })}
+      </div>
       <div style={{padding:'14px 16px',overflowY:'auto',flex:1}}>
 
-        {/* Selector dată */}
+        {mainTab==='preturi'&&<>{/* Selector dată */}
         <div style={{...panel}}>
           <div style={{padding:'12px 16px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
             {QUICK.map(({label,val})=>(
@@ -306,8 +334,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           ))}
         </div>
 
-        {/* BOOKING MONITOR */}
-        <div style={{...panel,border:'1px solid rgba(99,179,237,0.2)',background:'rgba(15,30,55,0.6)'}}>
+        </>{/* end preturi */}
+        {mainTab==='monitor'&&<div style={{...panel,border:'1px solid rgba(99,179,237,0.2)',background:'rgba(15,30,55,0.6)'}}>
 
           {/* Header */}
           <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.12)',
@@ -502,7 +530,160 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             </div>
           )}
 
-        </div>
+        </div>}{/* end monitor */}
+
+        {mainTab==='evolutie'&&(()=>{
+          const bkData = evolutieData.filter((h:any)=>!h.platform||h.platform==='booking')
+          const abData = evolutieData.filter((h:any)=>h.platform==='airbnb')
+          const allDates = Array.from(new Set(evolutieData.map((h:any)=>h.checkin))).sort() as string[]
+          const chartData = allDates.map(d=>{
+            const bk = bkData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
+            const ab = abData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
+            return { date:d.slice(5), checkin:d, booking:bk?.lowest_price||null, airbnb:ab?.lowest_price||null, bkTotal:bk?.total_properties||null }
+          })
+          const scan1bk = bkData.find((h:any)=>h.checkin===compareDate1)
+          const scan1ab = abData.find((h:any)=>h.checkin===compareDate1)
+          const scan2bk = bkData.find((h:any)=>h.checkin===compareDate2)
+          const scan2ab = abData.find((h:any)=>h.checkin===compareDate2)
+
+          return loadingEvolutie?(
+            <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)'}}>Se încarcă...</div>
+          ):evolutieData.length===0?(
+            <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+              Nicio scanare — rulează: <code style={{color:'#93C5FD'}}>python3 ~/Desktop/booking_scan.py --zile 7</code>
+            </div>
+          ):(
+            <div>
+              {/* Grafic */}
+              <div style={{...panel,marginBottom:14}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>📈 Evoluție preț minim (lei/noapte)</span>
+                  <button onClick={()=>loadEvolutie()} style={{padding:'3px 10px',borderRadius:5,fontSize:11,cursor:'pointer',border:'1px solid rgba(99,179,237,0.2)',background:'transparent',color:'rgba(147,197,253,0.5)'}}>↺</button>
+                </div>
+                <div style={{padding:'16px',height:240}}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{top:4,right:16,left:0,bottom:4}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                      <XAxis dataKey="date" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={36}/>
+                      <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                        labelStyle={{color:'#93C5FD',fontWeight:600}}
+                        formatter={(v:any,n:string)=>[`${v} lei`,n==='booking'?'🏨 Booking':'🏠 Airbnb']}/>
+                      <Legend formatter={(v:string)=>v==='booking'?'🏨 Booking':'🏠 Airbnb'} wrapperStyle={{fontSize:11}}/>
+                      <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={2} dot={{fill:'#7BC8FF',r:3}} connectNulls/>
+                      <Line type="monotone" dataKey="airbnb" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:3}} connectNulls/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Comparatie */}
+              <div style={{...panel,marginBottom:14}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>⚖️ Comparație între 2 date</span>
+                </div>
+                <div style={{padding:'12px 16px',display:'flex',gap:10,alignItems:'center',borderBottom:'1px solid rgba(159,215,255,0.06)',flexWrap:'wrap' as const}}>
+                  {(['1','2'] as const).map(n=>(
+                    <div key={n} style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Data {n}</span>
+                      <select value={n==='1'?compareDate1:compareDate2} onChange={e=>n==='1'?setCompareDate1(e.target.value):setCompareDate2(e.target.value)}
+                        style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}>
+                        <option value="">— alege —</option>
+                        {allDates.map(d=><option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {compareDate1&&compareDate2&&(
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr'}}>
+                    {([{date:compareDate1,bk:scan1bk,ab:scan1ab},{date:compareDate2,bk:scan2bk,ab:scan2ab}] as any[]).map(({date,bk,ab},ci:number)=>(
+                      <div key={ci} style={{padding:'12px 16px',borderRight:ci===0?'1px solid rgba(159,215,255,0.08)':'none'}}>
+                        <div style={{fontSize:12,fontWeight:700,color:'#93C5FD',marginBottom:10,fontFamily:'monospace'}}>{date}</div>
+                        {([['🏨 Booking',bk],['🏠 Airbnb',ab]] as any[]).map(([lbl,scan]:any,pi:number)=>(
+                          <div key={pi} style={{marginBottom:10}}>
+                            <div style={{fontSize:11,color:'rgba(147,197,253,0.5)',marginBottom:4}}>{lbl}</div>
+                            {scan?(
+                              <>
+                                <div style={{fontSize:13,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{scan.lowest_price} lei min</div>
+                                <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:4}}>{scan.total_properties} proprietăți</div>
+                                {(scan.top5||[]).slice(0,5).map((r:any,i:number)=>(
+                                  <div key={i} style={{fontSize:10,color:r.isOurs?'#4ADE80':'rgba(214,228,244,0.6)',display:'flex',justifyContent:'space-between',marginTop:2}}>
+                                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const,maxWidth:'72%'}}>{r.isOurs?'⭐':''}{r.rank}. {r.name}</span>
+                                    <span style={{fontFamily:'monospace',flexShrink:0,marginLeft:4}}>{r.price} lei</span>
+                                  </div>
+                                ))}
+                              </>
+                            ):(
+                              <div style={{fontSize:11,color:'rgba(147,197,253,0.3)'}}>Fără date</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tabel detaliat */}
+              <div style={{...panel}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>📋 Detaliat — click pe zi pentru top 10</span>
+                </div>
+                {allDates.map((d:string)=>{
+                  const bk=bkData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
+                  const ab=abData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
+                  const exp=expandedScan===d
+                  return(
+                    <div key={d} style={{borderBottom:'1px solid rgba(159,215,255,0.06)'}}>
+                      <div onClick={()=>setExpandedScan(exp?null:d)} style={{padding:'9px 16px',cursor:'pointer',
+                        display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const,
+                        background:exp?'rgba(99,179,237,0.05)':'transparent'}}>
+                        <span style={{fontSize:12,fontWeight:600,color:'#E8F4FF',fontFamily:'monospace',minWidth:52}}>{d.slice(5)}</span>
+                        {bk&&<div style={{display:'flex',alignItems:'center',gap:4}}>
+                          <span style={{fontSize:10,color:'rgba(77,163,255,0.5)'}}>🏨</span>
+                          <span style={{fontSize:12,fontFamily:'monospace',fontWeight:600,color:bk.we_are_lowest?'#4ADE80':'rgba(214,228,244,0.8)'}}>{bk.lowest_price}</span>
+                          {bk.total_properties&&<span style={{fontSize:10,color:'rgba(147,197,253,0.35)'}}>/{bk.total_properties}</span>}
+                          {bk.we_are_lowest&&<span style={{fontSize:9,color:'#4ADE80'}}>★</span>}
+                        </div>}
+                        {ab&&<div style={{display:'flex',alignItems:'center',gap:4}}>
+                          <span style={{fontSize:10,color:'rgba(248,113,113,0.5)'}}>🏠</span>
+                          <span style={{fontSize:12,fontFamily:'monospace',fontWeight:600,color:ab.we_are_lowest?'#4ADE80':'rgba(214,228,244,0.8)'}}>{ab.lowest_price}</span>
+                          {ab.total_properties&&<span style={{fontSize:10,color:'rgba(147,197,253,0.35)'}}>/{ab.total_properties}</span>}
+                          {ab.we_are_lowest&&<span style={{fontSize:9,color:'#4ADE80'}}>★</span>}
+                        </div>}
+                        {bk?.ab_disponibile!=null&&<span style={{fontSize:10,color:'rgba(147,197,253,0.35)',marginLeft:'auto'}}>🏠{bk.ab_disponibile}/13</span>}
+                        <span style={{fontSize:11,color:'rgba(147,197,253,0.25)',marginLeft:bk?.ab_disponibile!=null?0:'auto'}}>{exp?'▲':'▼'}</span>
+                      </div>
+                      {exp&&(
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',background:'rgba(10,20,40,0.3)',
+                          borderTop:'1px solid rgba(99,179,237,0.08)'}}>
+                          {([['🏨 Booking',bk],['🏠 Airbnb',ab]] as any[]).map(([lbl,scan]:any,ci:number)=>(
+                            <div key={ci} style={{padding:'10px 14px',borderRight:ci===0?'1px solid rgba(99,179,237,0.08)':'none'}}>
+                              <div style={{fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.5)',marginBottom:6}}>{lbl}</div>
+                              {scan?(scan.top5||[]).map((r:any,i:number)=>(
+                                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'2px 0',
+                                  borderBottom:'1px solid rgba(99,179,237,0.04)'}}>
+                                  <span style={{fontSize:10,color:r.isOurs?'#4ADE80':'rgba(214,228,244,0.65)',
+                                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const,maxWidth:'76%'}}>
+                                    <span style={{color:'rgba(147,197,253,0.3)',fontSize:9,marginRight:3}}>{r.rank}.</span>
+                                    {r.isOurs&&'⭐'}{r.name}
+                                  </span>
+                                  <span style={{fontSize:10,fontFamily:'monospace',flexShrink:0,marginLeft:4,
+                                    color:r.price===scan.lowest_price?'#4ADE80':'rgba(214,228,244,0.6)'}}>{r.price}</span>
+                                </div>
+                              )):<div style={{fontSize:10,color:'rgba(147,197,253,0.3)'}}>Fără date</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
       </div>
       <Toast toast={toast}/>
     </>
