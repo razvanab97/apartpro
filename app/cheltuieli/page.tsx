@@ -121,6 +121,11 @@ export default function CheltuieliPage(){
   const now=new Date()
   const [luna,setLuna]=useState(now.getMonth()+1)
   const [an,setAn]=useState(now.getFullYear())
+  const [salarii,setSalarii]=useState<any[]>([])
+  const [cantaTotal,setCantaTotal]=useState(0)
+  const [showSalarii,setShowSalarii]=useState(false)
+  const [fSalariu,setFSalariu]=useState({descriere:'',valoare:'',data:new Date().toISOString().slice(0,10)})
+  const [savingSalariu,setSavingSalariu]=useState(false)
 
   const [loading,setLoading]=useState(true)
   const [seeding,setSeeding]=useState(false)
@@ -161,10 +166,28 @@ export default function CheltuieliPage(){
 
   const {toast,show}=useToast()
 
+  async function loadSalarii(l=luna,a=an) {
+    const pad=(n:number)=>String(n).padStart(2,'0')
+    const pz=`${a}-${pad(l)}-01`, uz=new Date(a,l,0).toISOString().slice(0,10)
+    const [{data:canta},{data:sal}]=await Promise.all([
+      supabase.from('cheltuieli').select('id,descriere,valoare,data,status').ilike('descriere','%canta%').gte('data',pz).lte('data',uz),
+      supabase.from('cheltuieli').select('id,descriere,valoare,data,status').eq('categorie','salariu_adrian').gte('data',pz).lte('data',uz),
+    ])
+    const all=[...(canta||[]),...(sal||[])].filter((v:any,i:number,a:any[])=>a.findIndex((x:any)=>x.id===v.id)===i)
+    setSalarii(all); setCantaTotal(all.reduce((s:number,c:any)=>s+Number(c.valoare||0),0))
+  }
+  async function addSalariu() {
+    if(!fSalariu.valoare||!fSalariu.data){show('error','Completează valoarea și data');return}
+    setSavingSalariu(true)
+    await supabase.from('cheltuieli').insert({categorie:'salariu_adrian',descriere:fSalariu.descriere||'Salariu Adrian',valoare:parseFloat(fSalariu.valoare),data:fSalariu.data,status:'platit'})
+    setFSalariu({descriere:'',valoare:'',data:new Date().toISOString().slice(0,10)})
+    setSavingSalariu(false); show('success','Adăugat!'); loadSalarii()
+  }
+
   const seededRef = useRef<string>('')
   useEffect(()=>{
     seededRef.current = '' // reset seed flag when month changes
-    load()
+    load(); loadSalarii(luna,an)
   },[luna,an])
   useEffect(()=>{if(editCell)setTimeout(()=>cellRef.current?.focus(),50)},[editCell])
   useEffect(()=>{if(editFisc)setTimeout(()=>fiscRef.current?.focus(),50)},[editFisc])
@@ -1354,6 +1377,64 @@ export default function CheltuieliPage(){
           </div>
         </div>
       )}
+
+      {/* SALARII ADRIAN */}
+      <div style={{margin:'0 0 16px',border:'1px solid rgba(252,211,77,0.2)',borderRadius:14,overflow:'hidden',background:'rgba(252,211,77,0.03)'}}>
+        <div onClick={()=>setShowSalarii(s=>!s)} style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',borderBottom:showSalarii?'1px solid rgba(252,211,77,0.15)':'none'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:16}}>💰</span>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>Salariu Adrian</div>
+              <div style={{fontSize:10,color:'rgba(252,211,77,0.5)'}}>Cheltuieli Canta + manual · luna curentă</div>
+            </div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div style={{textAlign:'right' as const}}>
+              <div style={{fontSize:18,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{cantaTotal.toLocaleString('ro-RO',{maximumFractionDigits:0})} RON</div>
+              <div style={{fontSize:10,color:'rgba(252,211,77,0.4)'}}>{salarii.length} intrări</div>
+            </div>
+            <span style={{fontSize:12,color:'rgba(252,211,77,0.4)'}}>{showSalarii?'▲':'▼'}</span>
+          </div>
+        </div>
+        {showSalarii&&<div style={{padding:'14px 16px'}}>
+          <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap' as const,alignItems:'flex-end'}}>
+            <div style={{display:'flex',flexDirection:'column' as const,gap:4}}>
+              <span style={{fontSize:10,color:'rgba(252,211,77,0.5)',textTransform:'uppercase' as const}}>Descriere</span>
+              <input value={fSalariu.descriere} onChange={e=>setFSalariu(f=>({...f,descriere:e.target.value}))} placeholder="ex: Avans salariu" style={{padding:'6px 10px',borderRadius:7,border:'1px solid rgba(252,211,77,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none',width:150}}/>
+            </div>
+            <div style={{display:'flex',flexDirection:'column' as const,gap:4}}>
+              <span style={{fontSize:10,color:'rgba(252,211,77,0.5)',textTransform:'uppercase' as const}}>Valoare RON</span>
+              <input type="number" value={fSalariu.valoare} onChange={e=>setFSalariu(f=>({...f,valoare:e.target.value}))} placeholder="0" style={{padding:'6px 10px',borderRadius:7,border:'1px solid rgba(252,211,77,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none',width:90,textAlign:'right' as const}}/>
+            </div>
+            <div style={{display:'flex',flexDirection:'column' as const,gap:4}}>
+              <span style={{fontSize:10,color:'rgba(252,211,77,0.5)',textTransform:'uppercase' as const}}>Data</span>
+              <input type="date" value={fSalariu.data} onChange={e=>setFSalariu(f=>({...f,data:e.target.value}))} style={{padding:'6px 10px',borderRadius:7,border:'1px solid rgba(252,211,77,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+            </div>
+            <button onClick={addSalariu} disabled={savingSalariu} style={{padding:'7px 16px',borderRadius:7,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid rgba(252,211,77,0.3)',background:'rgba(252,211,77,0.12)',color:'#FCD34D',opacity:savingSalariu?0.5:1}}>{savingSalariu?'...':'+ Adaugă'}</button>
+          </div>
+          {salarii.length===0?(
+            <div style={{padding:'12px',textAlign:'center' as const,color:'rgba(252,211,77,0.3)',fontSize:12}}>Nicio cheltuială Canta sau salariu manual în luna aceasta</div>
+          ):(
+            <div style={{border:'1px solid rgba(252,211,77,0.1)',borderRadius:10,overflow:'hidden'}}>
+              <div style={{display:'grid',gridTemplateColumns:'80px 1fr 90px 60px',padding:'6px 12px',background:'rgba(252,211,77,0.06)',fontSize:10,color:'rgba(252,211,77,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>
+                <span>Data</span><span>Descriere</span><span style={{textAlign:'right' as const}}>Valoare</span><span style={{textAlign:'center' as const}}>Status</span>
+              </div>
+              {[...salarii].sort((a:any,b:any)=>(a.data||'').localeCompare(b.data||'')).map((c:any,i:number)=>(
+                <div key={c.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 90px 60px',padding:'8px 12px',borderTop:'1px solid rgba(252,211,77,0.07)',alignItems:'center',background:i%2===0?'rgba(252,211,77,0.02)':'transparent'}}>
+                  <span style={{fontSize:11,color:'rgba(214,228,244,0.6)',fontFamily:'monospace'}}>{c.data?.slice(5)}</span>
+                  <span style={{fontSize:11,color:'rgba(214,228,244,0.8)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{c.descriere}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:'#FCD34D',fontFamily:'monospace',textAlign:'right' as const}}>{Number(c.valoare).toLocaleString('ro-RO',{maximumFractionDigits:0})}</span>
+                  <div style={{textAlign:'center' as const}}><span style={{fontSize:10,padding:'2px 6px',borderRadius:4,background:c.status==='platit'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)',color:c.status==='platit'?'#4ADE80':'#FCD34D',fontWeight:600}}>{c.status==='platit'?'✓':'⏳'}</span></div>
+                </div>
+              ))}
+              <div style={{display:'grid',gridTemplateColumns:'80px 1fr 90px 60px',padding:'9px 12px',borderTop:'1px solid rgba(252,211,77,0.15)',background:'rgba(252,211,77,0.06)'}}>
+                <span style={{fontSize:11,fontWeight:700,color:'#FCD34D',gridColumn:'1/3'}}>TOTAL LUNA</span>
+                <span style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace',textAlign:'right' as const}}>{cantaTotal.toLocaleString('ro-RO',{maximumFractionDigits:0})} RON</span>
+              </div>
+            </div>
+          )}
+        </div>}
+      </div>
 
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}`}</style>
       <Toast toast={toast}/>
