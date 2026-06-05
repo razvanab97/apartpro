@@ -3,13 +3,17 @@ import './globals.css'
 import Layout from '@/components/Layout'
 
 export const metadata: Metadata = {
-  title: 'ApartPro — Administrare Apartamente',
+  title: 'XapartPro — AB Homes Iași',
   description: 'Platforma de administrare apartamente in regim hotelier',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/logo.jpg',
+    apple: '/logo.jpg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'ApartPro',
+    title: 'XapartPro',
   },
   themeColor: '#0A1628',
 }
