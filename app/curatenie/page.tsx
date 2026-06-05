@@ -58,12 +58,15 @@ export default function CuratenePage() {
     const { data } = await supabase.from('curatenie_status').select('*').eq('data', selectedDate)
     const m:Record<string,any>={}
     const elib = new Set<string>()
+    const lenFromDb:Record<string,number> = {}
     ;(data||[]).forEach((s:any)=>{ 
       m[s.apartament_id]=s
       if(s.eliberat) elib.add(s.apartament_id)
+      if(s.nr_lenjerii) lenFromDb[s.apartament_id]=s.nr_lenjerii
     })
     setStaffStatus(m)
     setEliberat(elib)
+    if(Object.keys(lenFromDb).length>0) setLen(prev=>({...lenFromDb,...prev}))
   }
 
   async function loadProbleme() {
@@ -137,7 +140,7 @@ export default function CuratenePage() {
       .neq('status_rezervare','anulata')
     // Curatenie status confirmate de staff
     const { data: stData } = await supabase.from('curatenie_status')
-      .select('apartament_id,data,status,ora_inceput,ora_gata')
+      .select('apartament_id,data,status,ora_inceput,ora_gata,nr_lenjerii')
       .gte('data', primaZi)
       .lte('data', ultimaZi)
     // Rezervari cu nr persoane pentru calcul lenjerii
@@ -173,18 +176,15 @@ export default function CuratenePage() {
         const gata = st.filter((s:any)=>s.status==='gata')
         const timpuri = gata.map((s:any)=>calcTimp(s)).filter((t:any)=>t!==null) as number[]
         const timpMediu = timpuri.length ? Math.round(timpuri.reduce((a,b)=>a+b,0)/timpuri.length) : null
-        const totalLenjerii = rez.reduce((sum:number,r:any)=>{
-          const full = rezByAptDay[`${r.apartament?.id}_${data}`]
-          return sum + nrLenSmart(full||r)
-        },0)
         const detalii = rez.map((r:any)=>{
           const aptId = r.apartament?.id
           const st = (stData||[]).find((s:any)=>s.apartament_id===aptId&&s.data===data)
           const durata = st ? calcTimp(st) : null
           const full = rezByAptDay[`${aptId}_${data}`]
-          const lenjerii = nrLenSmart(full||r)
+          const lenjerii = st?.nr_lenjerii || nrLenSmart(full||r)
           return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, durata, status:st?.status||'neînceput', lenjerii }
         })
+        const totalLenjerii = detalii.reduce((sum:number,d:any)=>sum+(d.lenjerii||0),0)
         const oreInceput = detalii.map((d:any)=>d.oraInceput).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
         const oraMedieMin = oreInceput.length ? Math.round(oreInceput.reduce((a:number,b:number)=>a+b,0)/oreInceput.length) : null
         const ziSapt = new Date(data+'T12:00:00').getDay()
@@ -249,6 +249,16 @@ export default function CuratenePage() {
   co.forEach((r:any)=>{ const id=r.apartament?.id||r.id; if(!aptMap[id]) aptMap[id]={apt:r.apartament}; aptMap[id].coRez=r })
   ci.forEach((r:any)=>{ const id=r.apartament?.id||r.id; if(!aptMap[id]) aptMap[id]={apt:r.apartament}; aptMap[id].ciRez=r })
   const locatii=Object.values(aptMap)
+
+  async function saveLenjerii(aptId: string, nrLen: number) {
+    const { data: existing } = await supabase.from('curatenie_status')
+      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).maybeSingle()
+    if (existing?.id) {
+      await supabase.from('curatenie_status').update({ nr_lenjerii: nrLen }).eq('id', existing.id)
+    } else {
+      await supabase.from('curatenie_status').insert({ apartament_id: aptId, data: selectedDate, status: 'liber', nr_lenjerii: nrLen })
+    }
+  }
 
   function waEchipa(){
     const linii=locatii.map(({apt,ciRez})=>{
@@ -429,9 +439,9 @@ export default function CuratenePage() {
                   <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>lenjerii</span>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <button onClick={()=>setLen(v=>({...v,[aptId]:Math.max(1,(v[aptId]??lenDef)-1)}))} style={s.lenBtn}><Minus size={14}/></button>
+                  <button onClick={()=>setLen(v=>{const n=Math.max(1,(v[aptId]??lenDef)-1);saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Minus size={14}/></button>
                   <span style={{fontSize:24,fontWeight:700,color:'#FCD34D',minWidth:32,textAlign:'center' as const}}>{l}</span>
-                  <button onClick={()=>setLen(v=>({...v,[aptId]:(v[aptId]??lenDef)+1}))} style={s.lenBtn}><Plus size={14}/></button>
+                  <button onClick={()=>setLen(v=>{const n=(v[aptId]??lenDef)+1;saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Plus size={14}/></button>
                 </div>
               </div>
             </div>
