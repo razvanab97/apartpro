@@ -108,19 +108,14 @@ export default function CuratenePage() {
   async function setSpecialStatus(aptId: string, _aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
     const newStatus = tip || 'liber'
     // Try update first
-    const { error: updErr, count } = await supabase.from('curatenie_status')
-      .update({ status: newStatus })
-      .eq('apartament_id', aptId)
-      .eq('data', selectedDate)
-      .select('id', { count: 'exact', head: true })
+    // Check if row exists first
+    const { data: existing } = await supabase.from('curatenie_status')
+      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).single()
     
-    if (updErr || count === 0) {
-      // Row doesn't exist yet, insert
-      await supabase.from('curatenie_status').insert({
-        apartament_id: aptId,
-        data: selectedDate,
-        status: newStatus,
-      })
+    if (existing) {
+      await supabase.from('curatenie_status').update({ status: newStatus }).eq('id', existing.id)
+    } else {
+      await supabase.from('curatenie_status').insert({ apartament_id: aptId, data: selectedDate, status: newStatus })
     }
     loadStaffStatus()
   }
