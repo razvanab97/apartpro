@@ -360,7 +360,7 @@ export default function CuratenePage() {
                     })()}
                   </div>
                 )}
-                {!ciRez&&coRez&&<div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Eliberare — fără check-in azi</div>}
+                {!ciRez&&coRez&&<div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Eliberare — fără check-in azi · Liber după checkout</div>}
               </div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:4}}>
