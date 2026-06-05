@@ -578,7 +578,6 @@ export default function CuratenePage() {
                   <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{totalCost.toLocaleString('ro-RO')}</div>
                 </div>
               </div>
-            </>
           )
         })()}
 
