@@ -231,11 +231,24 @@ export default function CuratenePage() {
     ])
     setCo(coData||[])
     setCi(ciData||[])
-    // init lenjerii din CI
+    // init lenjerii din CI — salveaza in DB daca nu exista deja
     const init:Record<string,number>={}
     ;(ciData||[]).forEach((r:any)=>{ init[r.apartament?.id]=nrLenSmart(r) })
     setLen(init)
     setLoading(false)
+    // Salveaza nr_lenjerii pentru fiecare apartament cu CI azi
+    for (const [aptId, nrLen] of Object.entries(init)) {
+      const { data: existing } = await supabase.from('curatenie_status')
+        .select('id,nr_lenjerii').eq('apartament_id', aptId).eq('data', date).maybeSingle()
+      if (existing?.id && !existing.nr_lenjerii) {
+        // Exista row dar fara lenjerii — actualizeaza
+        await supabase.from('curatenie_status').update({ nr_lenjerii: nrLen }).eq('id', existing.id)
+      } else if (!existing) {
+        // Nu exista row — creaza
+        await supabase.from('curatenie_status').insert({ apartament_id: aptId, data: date, status: 'liber', nr_lenjerii: nrLen })
+      }
+      // Daca existing.nr_lenjerii e deja setat (manual), nu suprascriem
+    }
   }
 
   function changeDate(days:number){
