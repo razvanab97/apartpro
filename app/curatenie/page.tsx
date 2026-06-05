@@ -40,6 +40,7 @@ export default function CuratenePage() {
   const [rapoarteData, setRapoarteData] = useState<any[]>([])
   const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
   const [costPerCuratenie, setCostPerCuratenie] = useState(150)
+  const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -175,11 +176,16 @@ export default function CuratenePage() {
           const p = Number(full?.nr_persoane||r.nr_persoane)||2
           return sum + Math.ceil(p/2)
         },0)
-        return {
-          data, nrCuratenii:rez.length, nrGata:gata.length,
-          apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '),
-          timpMediu, timpuri, totalLenjerii,
-        }
+        const detalii = rez.map((r:any)=>{
+          const aptId = r.apartament?.id
+          const st = (stData||[]).find((s:any)=>s.apartament_id===aptId&&s.data===data)
+          const durata = st ? calcTimp(st) : null
+          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, durata, status:st?.status||'neînceput' }
+        })
+        const oreInceput = detalii.map((d:any)=>d.oraInceput).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
+        const oraMedieMin = oreInceput.length ? Math.round(oreInceput.reduce((a:number,b:number)=>a+b,0)/oreInceput.length) : null
+        const ziSapt = new Date(data+'T12:00:00').getDay()
+        return { data, nrCuratenii:rez.length, nrGata:gata.length, apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '), timpMediu, timpuri, totalLenjerii, detalii, oraMedieMin, ziSapt }
       })
     setRapoarteData(result)
   }
@@ -492,6 +498,13 @@ export default function CuratenePage() {
           </div>
         </div>
 
+        {rapoarteData.length>0&&(
+          <div style={{display:'flex',gap:6,marginBottom:14}}>
+            {([['sumar','📊 Sumar'],['detaliat','🧹 Per curățenie'],['checkout','🕐 Ore checkout']] as [string,string][]).map(([k,l])=>(
+              <button key={k} onClick={()=>setRaportTab(k as any)} style={{padding:'6px 14px',borderRadius:8,fontSize:12,cursor:'pointer',fontWeight:600,border:`1px solid ${raportTab===k?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,background:raportTab===k?'rgba(77,163,255,0.15)':'transparent',color:raportTab===k?'#7BC8FF':'rgba(159,215,255,0.5)'}}>{l}</button>
+            ))}
+          </div>
+        )}
         {rapoarteData.length>0&&(()=>{
           const totalCuratenii = rapoarteData.reduce((s,r)=>s+r.nrCuratenii,0)
           const totalGata = rapoarteData.reduce((s,r)=>s+r.nrGata,0)
@@ -515,7 +528,7 @@ export default function CuratenePage() {
               </div>
 
               {/* Tabel zilnic */}
-              {/* KPI-uri timp + lenjerii */}
+              {raportTab==='sumar'&&<>{/* KPI-uri timp + lenjerii */}
               {(()=>{
                 const timpuriAll=rapoarteData.flatMap((r:any)=>r.timpuri||[])
                 const timpGlobal=timpuriAll.length?Math.round(timpuriAll.reduce((a:number,b:number)=>a+b,0)/timpuriAll.length):null
@@ -568,6 +581,79 @@ export default function CuratenePage() {
             </>
           )
         })()}
+
+              </>}
+
+              {raportTab==='detaliat'&&(
+                <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'80px 55px 1fr 70px 70px 70px 70px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
+                    {['Data','Apt','Nume','Început','Terminat','Durată','Status'].map(h=>(
+                      <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
+                    ))}
+                  </div>
+                  {rapoarteData.flatMap((zi:any)=>zi.detalii.map((d:any,i:number)=>(
+                    <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 55px 1fr 70px 70px 70px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
+                      <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:'#4DA3FF',fontFamily:'monospace'}}>{d.nota}</div>
+                      <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{d.nume}</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',color:d.oraInceput?'#FCD34D':'rgba(159,215,255,0.3)'}}>{d.oraInceput||'—'}</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',color:d.oraGata?'#4ADE80':'rgba(159,215,255,0.3)'}}>{d.oraGata||'—'}</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',fontWeight:700,color:d.durata?(d.durata<45?'#4ADE80':d.durata<90?'#FCD34D':'#F87171'):'rgba(159,215,255,0.3)'}}>
+                        {d.durata?`${Math.floor(d.durata/60)?Math.floor(d.durata/60)+'h ':''}${d.durata%60}min`:'-'}
+                      </div>
+                      <div style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:d.status==='gata'?'rgba(74,222,128,0.15)':d.status==='inceput'?'rgba(251,146,60,0.15)':'rgba(159,215,255,0.08)',color:d.status==='gata'?'#4ADE80':d.status==='inceput'?'#FB923C':'rgba(159,215,255,0.4)'}}>
+                        {d.status==='gata'?'✅ Gata':d.status==='inceput'?'🧹 Început':'—'}
+                      </div>
+                    </div>
+                  )))}
+                  <div style={{padding:'10px 14px',background:'rgba(74,222,128,0.05)',borderTop:'1px solid rgba(74,222,128,0.1)',display:'flex',gap:20}}>
+                    <span style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>{rapoarteData.flatMap((z:any)=>z.detalii).length} curățenii</span>
+                    <span style={{fontSize:12,color:'#4ADE80'}}>{rapoarteData.flatMap((z:any)=>z.detalii).filter((d:any)=>d.status==='gata').length} confirmate</span>
+                    <span style={{fontSize:12,color:'#93C5FD'}}>{(()=>{const t=rapoarteData.flatMap((z:any)=>z.detalii).map((d:any)=>d.durata).filter(Boolean);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`⌀ ${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}min`:''})()}</span>
+                  </div>
+                </div>
+              )}
+
+              {raportTab==='checkout'&&(()=>{
+                const ZILE=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']
+                const byZiSapt:Record<number,number[]>={0:[],1:[],2:[],3:[],4:[],5:[],6:[]}
+                rapoarteData.forEach((zi:any)=>{ if(zi.oraMedieMin!==null) byZiSapt[zi.ziSapt]?.push(zi.oraMedieMin) })
+                const fmtMin=(m:number)=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`
+                return(
+                  <div style={{display:'flex',flexDirection:'column' as const,gap:14}}>
+                    <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(100,160,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(147,197,253,0.7)'}}>🕐 Ora medie start curățenie per zi din săptămână</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
+                        {[1,2,3,4,5,6,0].map(zi=>{
+                          const ore=byZiSapt[zi]||[]
+                          const med=ore.length?Math.round(ore.reduce((a,b)=>a+b,0)/ore.length):null
+                          return(
+                            <div key={zi} style={{padding:'14px 8px',textAlign:'center' as const,borderRight:zi!==0?'1px solid rgba(100,160,255,0.06)':'none'}}>
+                              <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:6,fontWeight:600}}>{ZILE[zi]}</div>
+                              <div style={{fontSize:16,fontWeight:700,color:med?'#93C5FD':'rgba(147,197,253,0.2)',marginBottom:4}}>{med?fmtMin(med):'—'}</div>
+                              <div style={{fontSize:10,color:'rgba(147,197,253,0.3)'}}>{ore.length>0?`${ore.length} zile`:''}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(100,160,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(147,197,253,0.7)'}}>📅 Detaliu zilnic</div>
+                      <div style={{display:'grid',gridTemplateColumns:'100px 60px 1fr 110px',padding:'6px 16px',borderBottom:'1px solid rgba(100,160,255,0.06)',fontSize:10,color:'rgba(147,197,253,0.35)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>
+                        <span>Data</span><span>Zi</span><span>Apartamente</span><span>Ora medie start</span>
+                      </div>
+                      {rapoarteData.filter((z:any)=>z.oraMedieMin!==null).sort((a:any,b:any)=>a.data.localeCompare(b.data)).map((zi:any)=>(
+                        <div key={zi.data} style={{display:'grid',gridTemplateColumns:'100px 60px 1fr 110px',padding:'8px 16px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center'}}>
+                          <span style={{fontSize:12,color:'#E8F4FF',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</span>
+                          <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>{ZILE[zi.ziSapt]}</span>
+                          <span style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{zi.apartamente}</span>
+                          <span style={{fontSize:13,fontWeight:700,color:'#93C5FD',fontFamily:'monospace'}}>{fmtMin(zi.oraMedieMin)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
 
         {rapoarteData.length===0&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.3)',fontSize:13}}>Selectează luna și apasă Generează</div>}
       </div>}
