@@ -236,18 +236,17 @@ export default function CuratenePage() {
     ;(ciData||[]).forEach((r:any)=>{ init[r.apartament?.id]=nrLenSmart(r) })
     setLen(init)
     setLoading(false)
-    // Salveaza nr_lenjerii pentru fiecare apartament cu CI azi
-    for (const [aptId, nrLen] of Object.entries(init)) {
-      const { data: existing } = await supabase.from('curatenie_status')
-        .select('id,nr_lenjerii').eq('apartament_id', aptId).eq('data', date).maybeSingle()
-      if (existing?.id && !existing.nr_lenjerii) {
-        // Exista row dar fara lenjerii — actualizeaza
-        await supabase.from('curatenie_status').update({ nr_lenjerii: nrLen }).eq('id', existing.id)
-      } else if (!existing) {
-        // Nu exista row — creaza
-        await supabase.from('curatenie_status').insert({ apartament_id: aptId, data: date, status: 'liber', nr_lenjerii: nrLen })
+    // Salveaza nr_lenjerii calculat pentru fiecare apt cu CI — doar daca nu e deja setat manual
+    const upserts = Object.entries(init).map(([aptId, nrLen]) => ({
+      apartament_id: aptId, data: date, nr_lenjerii: nrLen
+    }))
+    if (upserts.length > 0) {
+      // Upsert doar nr_lenjerii, nu suprascrie status/ora deja setate
+      for (const u of upserts) {
+        await supabase.from('curatenie_status')
+          .upsert(u, { onConflict: 'apartament_id,data', ignoreDuplicates: false })
+          .is('nr_lenjerii', null) // nu suprascrie daca e deja setat manual
       }
-      // Daca existing.nr_lenjerii e deja setat (manual), nu suprascriem
     }
   }
 
@@ -264,13 +263,10 @@ export default function CuratenePage() {
   const locatii=Object.values(aptMap)
 
   async function saveLenjerii(aptId: string, nrLen: number) {
-    const { data: existing } = await supabase.from('curatenie_status')
-      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).maybeSingle()
-    if (existing?.id) {
-      await supabase.from('curatenie_status').update({ nr_lenjerii: nrLen }).eq('id', existing.id)
-    } else {
-      await supabase.from('curatenie_status').insert({ apartament_id: aptId, data: selectedDate, status: 'liber', nr_lenjerii: nrLen })
-    }
+    await supabase.from('curatenie_status').upsert(
+      { apartament_id: aptId, data: selectedDate, nr_lenjerii: nrLen },
+      { onConflict: 'apartament_id,data', ignoreDuplicates: false }
+    )
   }
 
   function waEchipa(){
