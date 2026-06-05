@@ -75,13 +75,15 @@ export default function CuratenePage() {
     const isEl = eliberat.has(aptId)
     const ora = new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
     
-    // Try update first (row exists), then insert
-    const { error: updErr } = await supabase.from('curatenie_status')
-      .update({ eliberat: !isEl, eliberat_la: isEl ? null : ora })
-      .eq('apartament_id', aptId).eq('data', selectedDate)
+    // Check if row exists
+    const { data: existing } = await supabase.from('curatenie_status')
+      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).maybeSingle()
     
-    if (updErr) {
-      // Row doesn't exist, insert it
+    if (existing?.id) {
+      await supabase.from('curatenie_status')
+        .update({ eliberat: !isEl, eliberat_la: isEl ? null : ora })
+        .eq('id', existing.id)
+    } else {
       await supabase.from('curatenie_status').insert({
         apartament_id: aptId, data: selectedDate,
         status: 'liber', eliberat: !isEl, eliberat_la: isEl ? null : ora
