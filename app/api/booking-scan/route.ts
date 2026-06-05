@@ -8,32 +8,83 @@ function getSupabase() {
   )
 }
 
-// Acest endpoint salveaza rezultatele in Supabase
-// Scraping-ul se face client-side din browser (Booking blocheaza server-side)
+const OUR = ['ab homes','abhomes','ab-homes','ex59','gs08','hd02','l83','l88','l94','l99','n32','n33','nt9','vm07','c64','cg40']
+
+// POST — Claude in Chrome trimite rezultatele JSON aici
 export async function POST(req: NextRequest) {
   try {
-    const { checkin, checkout, results, total, lowestPrice, weAreLowest, ourLowestRank } = await req.json()
+    const body = await req.json()
+    const { jobId, checkin, checkout, rawJson } = body
 
-    if (!checkin || !checkout) {
-      return NextResponse.json({ error: 'checkin și checkout sunt obligatorii' }, { status: 400 })
+    // Parseaza JSON-ul trimis de Claude in Chrome
+    let parsed: any = null
+    try {
+      const s = rawJson.indexOf('{'), e = rawJson.lastIndexOf('}')
+      if (s !== -1 && e !== -1) parsed = JSON.parse(rawJson.slice(s, e + 1))
+    } catch {
+      try { parsed = JSON.parse(rawJson) } catch {}
     }
 
+    if (!parsed?.results?.length) {
+      return NextResponse.json({ error: 'JSON invalid sau fără rezultate' }, { status: 400 })
+    }
+
+    const results = parsed.results.slice(0, 5).map((r: any, i: number) => {
+      const lower = (r.name || '').toLowerCase()
+      const match = OUR.find(id => lower.includes(id))
+      return {
+        rank: i + 1, name: r.name,
+        price: typeof r.price === 'number' ? r.price : parseInt(r.price) || 0,
+        priceText: r.priceText || `${r.price} lei`,
+        isOurs: !!match, matchedCode: match?.toUpperCase(),
+      }
+    })
+
+    const total = parsed.total || 0
+    const lowestPrice = Math.min(...results.map((r: any) => r.price))
+    const ourResults = results.filter((r: any) => r.isOurs)
+    const weAreLowest = ourResults.some((r: any) => r.price === lowestPrice)
+    const ourLowestRank = ourResults.length ? Math.min(...ourResults.map((r: any) => r.rank)) : null
+
     const db = getSupabase()
-    const { error } = await db.from('booking_monitor_history').insert({
-      checkin,
-      checkout,
+
+    // Salveaza in istoric
+    await db.from('booking_monitor_history').insert({
+      checkin, checkout,
       total_properties: total || null,
-      lowest_price: lowestPrice || null,
-      top5: results || [],
-      we_are_lowest: weAreLowest || false,
+      lowest_price: lowestPrice,
+      top5: results,
+      we_are_lowest: weAreLowest,
       our_lowest_rank: ourLowestRank || null,
     })
 
-    if (error) throw new Error(error.message)
+    // Actualizeaza job-ul ca done (pentru polling din pagina)
+    if (jobId) {
+      await db.from('booking_monitor_jobs').update({
+        status: 'done',
+        results,
+        total_properties: total,
+        lowest_price: lowestPrice,
+        we_are_lowest: weAreLowest,
+        our_lowest_rank: ourLowestRank || null,
+        finished_at: new Date().toISOString(),
+      }).eq('id', jobId)
+    }
 
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    console.error('[booking-scan]', err)
-    return NextResponse.json({ error: err.message || 'Eroare internă' }, { status: 500 })
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
+}
+
+// GET — pagina face polling pe jobId
+export async function GET(req: NextRequest) {
+  const jobId = req.nextUrl.searchParams.get('jobId')
+  if (!jobId) return NextResponse.json({ error: 'jobId lipsește' }, { status: 400 })
+
+  const db = getSupabase()
+  const { data } = await db.from('booking_monitor_jobs')
+    .select('*').eq('id', jobId).single()
+
+  return NextResponse.json(data || { status: 'pending' })
 }
