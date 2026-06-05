@@ -33,6 +33,7 @@ export default function PreturiPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
 
@@ -54,7 +55,7 @@ export default function PreturiPage() {
   async function loadHistory() {
     setLoadingHistory(true)
     const {data} = await supabase.from('booking_monitor_history')
-      .select('*').order('scanned_at',{ascending:false}).limit(50)
+      .select('*').order('scanned_at',{ascending:false}).limit(100)
     setHistory(data||[])
     setLoadingHistory(false)
   }
@@ -312,7 +313,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontSize:16}}>🔍</span>
               <span style={{fontSize:13,fontWeight:700,color:'#93C5FD'}}>Monitorizare Booking</span>
-              <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>TOP 10 · IAȘI</span>
+              <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>BOOKING + AIRBNB · IAȘI</span>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               {scan.scannedAt&&(
@@ -343,95 +344,131 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             }}>{loadingHistory?'...' :'↺ Reîncarcă'}</button>
           </div>
 
-          {/* Ultima scanare */}
+          {/* Tabs platform */}
           {!loadingHistory&&history.length>0&&(()=>{
-            const last = history[0]
-            const top5 = (last.top5||[]) as any[]
+            const bookingHistory = history.filter((h:any)=>!h.platform||h.platform==='booking')
+            const airbnbHistory  = history.filter((h:any)=>h.platform==='airbnb')
+            const lastBooking = bookingHistory[0]
+            const lastAirbnb  = airbnbHistory[0]
             return(
               <div>
-                <div style={{
-                  padding:'12px 16px',
-                  background:last.we_are_lowest?'rgba(74,222,128,0.08)':last.our_lowest_rank?'rgba(252,211,77,0.06)':'rgba(99,179,237,0.04)',
-                  borderBottom:'1px solid rgba(99,179,237,0.08)',
-                  display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,
-                }}>
-                  <span style={{fontSize:20}}>{last.we_are_lowest?'🏆':last.our_lowest_rank?'📍':'👀'}</span>
-                  <div style={{flex:1}}>
-                    {last.we_are_lowest?(
-                      <div style={{fontSize:13,fontWeight:700,color:'#4ADE80'}}>Tu ești cel mai ieftin din piață! 🎉</div>
-                    ):last.our_lowest_rank?(
-                      <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>
-                        Ești pe locul #{last.our_lowest_rank} — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
-                      </div>
-                    ):(
-                      <div style={{fontSize:13,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
-                        AB Homes nu e în top 5 — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
-                      </div>
-                    )}
-                    <div style={{display:'flex',alignItems:'center',gap:12,marginTop:3,flexWrap:'wrap' as const}}>
-                      <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>{last.checkin} → {last.checkout}</span>
-                      {last.total_properties&&(
-                        <span style={{fontSize:11,fontFamily:'monospace',fontWeight:600,
-                          color:'rgba(147,197,253,0.7)',background:'rgba(99,179,237,0.1)',
-                          padding:'1px 8px',borderRadius:4,border:'1px solid rgba(99,179,237,0.2)'}}>
-                          {last.total_properties} proprietăți
-                        </span>
-                      )}
-                      <span style={{fontSize:10,color:'rgba(147,197,253,0.3)',fontFamily:'monospace'}}>
-                        {new Date(last.scanned_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
-                      </span>
-                    </div>
-                  </div>
+                {/* Platform tabs */}
+                <div style={{display:'flex',borderBottom:'1px solid rgba(99,179,237,0.1)'}}>
+                  {[['booking','🏨 Booking'],['airbnb','🏠 Airbnb']].map(([pl,label])=>{
+                    const last = pl==='booking' ? lastBooking : lastAirbnb
+                    return(
+                      <button key={pl} onClick={()=>setPlatformTab(pl as any)} style={{
+                        flex:1,padding:'8px 12px',fontSize:12,cursor:'pointer',fontWeight:600,
+                        border:'none',borderBottom:`2px solid ${platformTab===pl?'#93C5FD':'transparent'}`,
+                        background:'transparent',
+                        color:platformTab===pl?'#93C5FD':'rgba(147,197,253,0.4)',
+                        display:'flex',alignItems:'center',justifyContent:'center',gap:6,
+                      }}>
+                        {label}
+                        {last&&<span style={{fontSize:10,fontFamily:'monospace',
+                          color:last.we_are_lowest?'#4ADE80':'rgba(147,197,253,0.4)',
+                          background:'rgba(99,179,237,0.08)',padding:'1px 6px',borderRadius:4}}>
+                          {last.lowest_price} {pl==='airbnb'?'RON':'lei'}
+                        </span>}
+                      </button>
+                    )
+                  })}
                 </div>
-                {top5.map((r:any,i:number)=>(
-                  <div key={i} style={{
-                    padding:'10px 16px',
-                    borderBottom:i<top5.length-1?'1px solid rgba(99,179,237,0.06)':'none',
-                    display:'flex',alignItems:'center',gap:12,
-                    background:r.isOurs?'rgba(74,222,128,0.04)':'transparent',
-                  }}>
-                    <div style={{width:26,height:26,borderRadius:'50%',flexShrink:0,
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:11,fontWeight:700,fontFamily:'monospace',
-                      background:r.rank===1?'rgba(252,211,77,0.15)':'rgba(99,179,237,0.08)',
-                      color:r.rank===1?'#FCD34D':'rgba(147,197,253,0.5)',
-                      border:`1px solid ${r.rank===1?'rgba(252,211,77,0.3)':'rgba(99,179,237,0.15)'}`}}>
-                      {r.rank}
+                {/* Continut tab */}
+                {(()=>{
+                  const last = platformTab==='booking' ? lastBooking : lastAirbnb
+                  if(!last) return(
+                    <div style={{padding:'20px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+                      Nicio scanare {platformTab} — rulează: <code style={{fontFamily:'monospace',color:'#93C5FD'}}>python3 ~/Desktop/booking_scan.py {checkinMonitor} {checkoutMonitor} {platformTab}</code>
                     </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:r.isOurs?700:500,
-                        color:r.isOurs?'#4ADE80':'#E8F4FF',
-                        overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
-                        {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
+                  )
+                  const top = (last.top5||[]) as any[]
+                  return(
+                    <div>
+                      <div style={{
+                        padding:'12px 16px',
+                        background:last.we_are_lowest?'rgba(74,222,128,0.08)':last.our_lowest_rank?'rgba(252,211,77,0.06)':'rgba(99,179,237,0.04)',
+                        borderBottom:'1px solid rgba(99,179,237,0.08)',
+                        display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,
+                      }}>
+                        <span style={{fontSize:20}}>{last.we_are_lowest?'🏆':last.our_lowest_rank?'📍':'👀'}</span>
+                        <div style={{flex:1}}>
+                          {last.we_are_lowest?(
+                            <div style={{fontSize:13,fontWeight:700,color:'#4ADE80'}}>Tu ești cel mai ieftin! 🎉</div>
+                          ):last.our_lowest_rank?(
+                            <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>
+                              Locul #{last.our_lowest_rank} — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
+                            </div>
+                          ):(
+                            <div style={{fontSize:13,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                              AB Homes nu e în top 10 — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
+                            </div>
+                          )}
+                          <div style={{display:'flex',alignItems:'center',gap:10,marginTop:3,flexWrap:'wrap' as const}}>
+                            <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>{last.checkin} → {last.checkout}</span>
+                            {last.total_properties&&(
+                              <span style={{fontSize:11,fontFamily:'monospace',fontWeight:600,
+                                color:'rgba(147,197,253,0.7)',background:'rgba(99,179,237,0.1)',
+                                padding:'1px 8px',borderRadius:4,border:'1px solid rgba(99,179,237,0.2)'}}>
+                                {last.total_properties} proprietăți
+                              </span>
+                            )}
+                            <span style={{fontSize:10,color:'rgba(147,197,253,0.3)',fontFamily:'monospace'}}>
+                              {new Date(last.scanned_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      {r.isOurs&&r.matchedCode&&(
-                        <div style={{fontSize:10,color:'rgba(74,222,128,0.5)',marginTop:1}}>AB Homes · {r.matchedCode}</div>
-                      )}
+                      {top.map((r:any,i:number)=>(
+                        <div key={i} style={{
+                          padding:'9px 16px',
+                          borderBottom:i<top.length-1?'1px solid rgba(99,179,237,0.06)':'none',
+                          display:'flex',alignItems:'center',gap:12,
+                          background:r.isOurs?'rgba(74,222,128,0.04)':'transparent',
+                        }}>
+                          <div style={{width:24,height:24,borderRadius:'50%',flexShrink:0,
+                            display:'flex',alignItems:'center',justifyContent:'center',
+                            fontSize:11,fontWeight:700,fontFamily:'monospace',
+                            background:r.rank===1?'rgba(252,211,77,0.15)':'rgba(99,179,237,0.08)',
+                            color:r.rank===1?'#FCD34D':'rgba(147,197,253,0.5)',
+                            border:`1px solid ${r.rank===1?'rgba(252,211,77,0.3)':'rgba(99,179,237,0.15)'}`}}>
+                            {r.rank}
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:r.isOurs?700:500,
+                              color:r.isOurs?'#4ADE80':'#E8F4FF',
+                              overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                              {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
+                            </div>
+                            {r.isOurs&&r.matchedCode&&(
+                              <div style={{fontSize:10,color:'rgba(74,222,128,0.5)',marginTop:1}}>AB Homes · {r.matchedCode}</div>
+                            )}
+                          </div>
+                          <div style={{fontFamily:'monospace',fontSize:13,fontWeight:700,flexShrink:0,
+                            color:r.price===last.lowest_price?'#4ADE80':r.isOurs?'#93C5FD':'rgba(214,228,244,0.8)'}}>
+                            {r.priceText||`${r.price} lei`}
+                            {r.price===last.lowest_price&&<span style={{fontSize:9,marginLeft:4,color:'#4ADE80',verticalAlign:'super'}}>MIN</span>}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div style={{fontFamily:'monospace',fontSize:14,fontWeight:700,flexShrink:0,
-                      color:r.price===last.lowest_price?'#4ADE80':r.isOurs?'#93C5FD':'rgba(214,228,244,0.8)'}}>
-                      {r.priceText||`${r.price} lei`}
-                      {r.price===last.lowest_price&&<span style={{fontSize:9,marginLeft:4,color:'#4ADE80',verticalAlign:'super'}}>MIN</span>}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })()}
               </div>
             )
           })()}
 
           {!loadingHistory&&history.length===0&&(
             <div style={{padding:'24px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
-              Nicio scanare încă — rulează scriptul din Terminal
+              Nicio scanare — rulează: <code style={{fontFamily:'monospace',color:'rgba(147,197,253,0.5)'}}>python3 ~/Desktop/booking_scan.py</code>
             </div>
           )}
-
           {loadingHistory&&(
-            <div style={{padding:'24px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
-              Se încarcă...
-            </div>
+            <div style={{padding:'24px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Se încarcă...</div>
           )}
 
-                    {/* ISTORIC */}
+          {/* ISTORIC */}
+          {false&&(()=>{          {/* ISTORIC */}
           {showHistory&&(
             <div style={{borderTop:'1px solid rgba(99,179,237,0.12)'}}>
               <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(99,179,237,0.08)',
