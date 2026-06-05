@@ -54,10 +54,7 @@ export default function RezervariPage() {
     const nr = phone.startsWith('40') ? phone : '4' + phone.replace(/^0/,'')
     const firstName = (rez.nume_client||'').split(' ')[0]
     let msg = (s.text||'').replace(/{nume}/g, firstName)
-    if (s.poze?.length) msg += '
-
-' + s.poze.join('
-')
+    if (s.poze?.length) msg += '\n\n' + s.poze.join('\n')
     window.open(`https://wa.me/${nr}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
