@@ -538,7 +538,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           const chartData = allDates.map(d=>{
             const bk = bkData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
             const ab = abData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
-            return { date:d.slice(5), checkin:d, booking:bk?.lowest_price||null, airbnb:ab?.lowest_price||null, bkTotal:bk?.total_properties||null }
+            return { date:d.slice(5), checkin:d, booking:bk?.lowest_price||null, airbnb:ab?.lowest_price||null, bkTotal:bk?.total_properties||null, abTotal:ab?.total_properties||null }
           })
           const scan1bk = bkData.find((h:any)=>h.checkin===compareDate1)
           const scan1ab = abData.find((h:any)=>h.checkin===compareDate1)
@@ -571,6 +571,28 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       <Legend formatter={(v:any)=>v==='booking'?'🏨 Booking':'🏠 Airbnb'} wrapperStyle={{fontSize:11}}/>
                       <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={2} dot={{fill:'#7BC8FF',r:3}} connectNulls/>
                       <Line type="monotone" dataKey="airbnb" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:3}} connectNulls/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Grafic nr proprietati disponibile */}
+              <div style={{...panel,marginBottom:14}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>🏙️ Proprietăți disponibile în Iași pe zi</span>
+                </div>
+                <div style={{padding:'16px',height:200}}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{top:4,right:16,left:0,bottom:4}}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                      <XAxis dataKey="date" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                      <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                      <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                        labelStyle={{color:'#93C5FD',fontWeight:600}}
+                        formatter={(v:any,n:any)=>[`${v} proprietăți`,n==='bkTotal'?'🏨 Booking':'🏠 Airbnb'] as [string,string]}/>
+                      <Legend formatter={(v:any)=>v==='bkTotal'?'🏨 Booking':'🏠 Airbnb'} wrapperStyle={{fontSize:11}}/>
+                      <Line type="monotone" dataKey="bkTotal" stroke="#7BC8FF" strokeWidth={2} dot={{fill:'#7BC8FF',r:3}} connectNulls strokeDasharray="4 2"/>
+                      <Line type="monotone" dataKey="abTotal" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:3}} connectNulls strokeDasharray="4 2"/>
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
