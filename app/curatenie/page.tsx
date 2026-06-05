@@ -137,6 +137,15 @@ export default function CuratenePage() {
       .select('apartament_id,data,status,ora_inceput,ora_gata')
       .gte('data', primaZi)
       .lte('data', ultimaZi)
+    // Rezervari cu nr persoane pentru calcul lenjerii
+    const { data: rezFull } = await supabase.from('rezervari')
+      .select('apartament_id,data_checkout,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(nota)')
+      .gte('data_checkout', primaZi)
+      .lte('data_checkout', ultimaZi)
+      .neq('status_rezervare','anulata')
+    // Map rezFull by apartament_id+data pt lookup rapid
+    const rezByAptDay:Record<string,any> = {}
+    ;(rezFull||[]).forEach((r:any)=>{ rezByAptDay[`${r.apartament_id}_${r.data_checkout}`]=r })
     // Group by day - only days with actual checkouts
     const byDay: Record<string,{rez:any[],st:any[]}> = {}
     ;(rezData||[]).forEach((r:any) => {
@@ -148,14 +157,30 @@ export default function CuratenePage() {
       const d = s.data
       if(byDay[d]) byDay[d].st.push(s)  // only add if day has checkouts
     })
+    function calcTimp(s:any): number|null {
+      if(!s.ora_inceput||!s.ora_gata) return null
+      const [hi,mi]=s.ora_inceput.split(':').map(Number)
+      const [hg,mg]=s.ora_gata.split(':').map(Number)
+      const diff=(hg*60+mg)-(hi*60+mi)
+      return diff>0&&diff<480?diff:null
+    }
     const result = Object.entries(byDay)
       .sort(([a],[b])=>a.localeCompare(b))
-      .map(([data,{rez,st}])=>({
-        data,
-        nrCuratenii: rez.length,
-        nrGata: st.filter(s=>s.status==='gata').length,
-        apartamente: rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '),
-      }))
+      .map(([data,{rez,st}])=>{
+        const gata = st.filter((s:any)=>s.status==='gata')
+        const timpuri = gata.map((s:any)=>calcTimp(s)).filter((t:any)=>t!==null) as number[]
+        const timpMediu = timpuri.length ? Math.round(timpuri.reduce((a,b)=>a+b,0)/timpuri.length) : null
+        const totalLenjerii = rez.reduce((sum:number,r:any)=>{
+          const full = rezByAptDay[`${r.apartament?.id}_${data}`]
+          const p = Number(full?.nr_persoane||r.nr_persoane)||2
+          return sum + Math.ceil(p/2)
+        },0)
+        return {
+          data, nrCuratenii:rez.length, nrGata:gata.length,
+          apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '),
+          timpMediu, timpuri, totalLenjerii,
+        }
+      })
     setRapoarteData(result)
   }
 
@@ -490,28 +515,54 @@ export default function CuratenePage() {
               </div>
 
               {/* Tabel zilnic */}
+              {/* KPI-uri timp + lenjerii */}
+              {(()=>{
+                const timpuriAll=rapoarteData.flatMap((r:any)=>r.timpuri||[])
+                const timpGlobal=timpuriAll.length?Math.round(timpuriAll.reduce((a:number,b:number)=>a+b,0)/timpuriAll.length):null
+                const totalLen=rapoarteData.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)
+                return(
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
+                    {[
+                      {l:'Timp mediu curățenie',v:timpGlobal?`${Math.floor(timpGlobal/60)}h${timpGlobal%60>0?` ${timpGlobal%60}min`:''}`:'-',c:'#93C5FD'},
+                      {l:'Total lenjerii lună',v:totalLen||'-',c:'#FCD34D'},
+                      {l:'Zile cu timp înreg.',v:rapoarteData.filter((r:any)=>r.timpMediu).length,c:'#4ADE80'},
+                    ].map(({l,v,c})=>(
+                      <div key={l} style={{background:'rgba(11,22,42,0.7)',border:`1px solid ${c}30`,borderRadius:12,padding:'12px 14px',textAlign:'center' as const}}>
+                        <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:4}}>{v}</div>
+                        <div style={{fontSize:10,color:`${c}80`,textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
               <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
-                <div style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
-                  {['Data','Apartamente','Curățenii','Confirmate','Cost'].map(h=>(
+                <div style={{display:'grid',gridTemplateColumns:'90px 1fr 65px 65px 75px 70px 90px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
+                  {['Data','Apartamente','Cur.','Conf.','Timp med.','Lenjerii','Cost RON'].map(h=>(
                     <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
                   ))}
                 </div>
-                {rapoarteData.map(r=>(
-                  <div key={r.data} style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'10px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)'}}>
+                {rapoarteData.map((r:any)=>(
+                  <div key={r.data} style={{display:'grid',gridTemplateColumns:'90px 1fr 65px 65px 75px 70px 90px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center'}}>
                     <div style={{fontSize:12,color:'#E8F4FF',fontWeight:500}}>{r.data.slice(5).replace('-','/')}</div>
                     <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{r.apartamente}</div>
                     <div style={{fontSize:13,fontWeight:700,color:'#4ADE80',textAlign:'center' as const}}>{r.nrCuratenii}</div>
                     <div style={{fontSize:13,fontWeight:700,color:r.nrGata===r.nrCuratenii?'#22C55E':'#FCD34D',textAlign:'center' as const}}>{r.nrGata}</div>
-                    <div style={{fontSize:12,color:'#FCD34D',fontFamily:'monospace'}}>{(r.nrCuratenii*costPerCuratenie).toLocaleString('ro-RO')} RON</div>
+                    <div style={{fontSize:11,color:'#93C5FD',textAlign:'center' as const,fontFamily:'monospace'}}>
+                      {r.timpMediu?`${Math.floor(r.timpMediu/60)}h${r.timpMediu%60>0?`${r.timpMediu%60}m`:''}`:'-'}
+                    </div>
+                    <div style={{fontSize:12,color:'#FCD34D',textAlign:'center' as const,fontFamily:'monospace',fontWeight:600}}>{r.totalLenjerii||'-'}</div>
+                    <div style={{fontSize:12,color:'#FCD34D',fontFamily:'monospace'}}>{(r.nrCuratenii*costPerCuratenie).toLocaleString('ro-RO')}</div>
                   </div>
                 ))}
-                {/* Total */}
-                <div style={{display:'grid',gridTemplateColumns:'100px 1fr 80px 80px 100px',padding:'10px 14px',background:'rgba(74,222,128,0.06)',borderTop:'1px solid rgba(74,222,128,0.15)'}}>
-                  <div style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>TOTAL</div>
-                  <div/>
+                <div style={{display:'grid',gridTemplateColumns:'90px 1fr 65px 65px 75px 70px 90px',padding:'10px 14px',background:'rgba(74,222,128,0.06)',borderTop:'1px solid rgba(74,222,128,0.15)',alignItems:'center'}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>TOTAL</div><div/>
                   <div style={{fontSize:14,fontWeight:700,color:'#4ADE80',textAlign:'center' as const}}>{totalCuratenii}</div>
                   <div style={{fontSize:14,fontWeight:700,color:'#22C55E',textAlign:'center' as const}}>{totalGata}</div>
-                  <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{totalCost.toLocaleString('ro-RO')} RON</div>
+                  <div style={{fontSize:11,color:'#93C5FD',textAlign:'center' as const,fontFamily:'monospace'}}>
+                    {(()=>{const t=rapoarteData.flatMap((r:any)=>r.timpuri||[]);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`${Math.floor(m/60)}h${m%60>0?`${m%60}m`:''}`:''})()}
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',textAlign:'center' as const,fontFamily:'monospace'}}>{rapoarteData.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{totalCost.toLocaleString('ro-RO')}</div>
                 </div>
               </div>
             </>
