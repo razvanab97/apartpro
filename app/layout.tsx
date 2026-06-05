@@ -7,8 +7,14 @@ export const metadata: Metadata = {
   description: 'Platforma de administrare apartamente in regim hotelier',
   manifest: '/manifest.json',
   icons: {
-    icon: '/logo.jpg',
-    apple: '/logo.jpg',
+    icon: [
+      { url: '/favicon.png', sizes: '32x32', type: 'image/png' },
+      { url: '/logo.jpg', sizes: 'any' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: '/favicon.png',
   },
   appleWebApp: {
     capable: true,
