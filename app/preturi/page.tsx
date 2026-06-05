@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
@@ -9,95 +9,15 @@ interface BookingResult {
   isOurs: boolean; matchedCode?: string
 }
 interface ScanState {
-  status: 'idle' | 'scanning' | 'done' | 'error'
+  status: 'idle' | 'waiting' | 'done' | 'error'
   results: BookingResult[]
   total?: number; lowestPrice?: number; weAreLowest?: boolean
   ourLowestRank?: number; scannedAt?: string
   checkin?: string; checkout?: string; errorMsg?: string
 }
 
-const OUR = ['ab homes','abhomes','ab-homes','ex59','gs08','hd02','l83','l88','l94','l99','n32','n33','nt9','vm07','c64','cg40']
-
-function parsePrice(text: string): number {
-  return parseInt(text.replace(/\./g, '').replace(/[^\d]/g, '')) || 0
-}
-
-function extractFromHtml(html: string): { total: number; results: any[] } {
-  // Total proprietati
-  let total = 0
-  const tm = html.match(/au fost găsite?\s*(\d+)\s*proprietăț/i) ||
-             html.match(/(\d+)\s*proprietăț.*găsite?/i) ||
-             html.match(/found\s+(\d+)\s+propert/i) ||
-             html.match(/"nbresults":(\d+)/) ||
-             html.match(/data-results-count="(\d+)"/)
-  if (tm) total = parseInt(tm[1])
-
-  const results: any[] = []
-
-  // Metoda 1: data-testid="property-card"
-  const cardRx = /data-testid="property-card"([\s\S]*?)(?=data-testid="property-card"|id="sr_pagination|<\/main)/g
-  let m
-  while ((m = cardRx.exec(html)) !== null && results.length < 5) {
-    const b = m[1]
-    const nm = b.match(/data-testid="title"[^>]*>([^<]+)</) ||
-               b.match(/class="[^"]*f6431b446c[^"]*"[^>]*>([^<]+)</) ||
-               b.match(/class="[^"]*fcab3ed991[^"]*"[^>]*>([^<]+)</)
-    // Pret: cauta pretul curent (nu cel barat/original)
-    const pm = b.match(/data-testid="price-and-discounted-price"[^>]*>[\s\S]{0,200}?([\d]+\.?[\d]*)\s*lei/) ||
-               b.match(/class="[^"]*f894d5f9dc[^"]*"[^>]*>[\s\S]{0,100}?([\d]+)\s*<\//) ||
-               b.match(/"displayedPrice":"([\d]+)"/) ||
-               b.match(/priceBreakdown[\s\S]{0,300}?"amount":([\d.]+)/)
-    if (nm && pm) {
-      const name = nm[1].replace(/&amp;/g,'&').replace(/&#\d+;/g,'').trim()
-      const price = parsePrice(pm[1])
-      if (name && price > 50 && price < 10000 && !results.find(r => r.name === name)) {
-        results.push({ rank: results.length + 1, name, price, priceText: `${price} lei` })
-      }
-    }
-  }
-
-  // Metoda 2: fallback text
-  if (results.length < 3) {
-    const lines = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, '\n')
-      .replace(/&amp;/g,'&').replace(/&nbsp;/g,' ').replace(/&#\d+;/g,'')
-      .split('\n').map(l => l.trim()).filter(Boolean)
-
-    const seen = new Set(results.map(r => r.name))
-    const fallback: any[] = []
-
-    for (let i = 0; i < lines.length && fallback.length < 5; i++) {
-      const priceM = lines[i].match(/^(\d[\d.]*)\s*lei$/) ||
-                     lines[i].match(/Preț actual\s+([\d.]+)\s*lei/)
-      if (!priceM) continue
-      const price = parsePrice(priceM[1])
-      if (price < 50 || price > 10000) continue
-
-      let name = ''
-      for (let j = i - 1; j >= Math.max(0, i - 25); j--) {
-        const c = lines[j]
-        if (c.length < 6 || c.length > 120 || /^\d/.test(c)) continue
-        if (/^(Iaşi|Iași|Arată|Include|Anulare|Rezerv|Camere|Preț|Nou pe|Vizib|Aceast|Studio întreg|Apart întreg|Cameră|Dormitor|noapte|Se deschide|Locaţie|Superb|Fabulos|Bine|Excep|Plăcut|Scor|Suită|Hostel|Pensiune|Proprietate admin)/i.test(c)) continue
-        if (c.includes('km de centru') || c.includes('m de centru') || c.includes('evaluări') || c.includes('paturi') || c.includes('baie') || c.includes('bucătărie')) continue
-        name = c; break
-      }
-      if (name && !seen.has(name)) {
-        seen.add(name)
-        fallback.push({ rank: 0, name, price, priceText: `${price} lei` })
-      }
-    }
-
-    const combined = [...results, ...fallback]
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 5)
-      .map((r, i) => ({ ...r, rank: i + 1 }))
-    return { total, results: combined }
-  }
-
-  return { total, results: results.slice(0, 5) }
-}
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
@@ -113,6 +33,8 @@ export default function PreturiPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const pollRef = useRef<NodeJS.Timeout|null>(null)
+  const jobIdRef = useRef<string|null>(null)
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
@@ -154,6 +76,7 @@ export default function PreturiPage() {
         list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||''}})
         setPreturi(pm)
       })
+    return () => { if(pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
   async function loadOcupate(data:string, ids:string[]) {
@@ -164,8 +87,7 @@ export default function PreturiPage() {
 
   function buildUrl(baseUrl:string, platform:string, checkin:string) {
     if(!checkin) checkin=today; if(!baseUrl) return ''
-    const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1)
-    const co = fmt(coD)
+    const coD = new Date(checkin+'T12:00:00'); coD.setDate(coD.getDate()+1); const co = fmt(coD)
     if(platform==='booking'||baseUrl.includes('booking.com'))
       return baseUrl.split('?')[0]+`?checkin=${checkin}&checkout=${co}&group_adults=2&no_rooms=1`
     const rm = baseUrl.match(/airbnb\.com\/rooms\/(\d+)/)
@@ -178,7 +100,7 @@ export default function PreturiPage() {
     if(!p?.booking&&!p?.airbnb){show('error','Introdu cel puțin un preț');return}
     setSaving(aptId)
     await supabase.from('preturi_live').upsert({
-      apartament_id:aptId, data_checkin:checkin,
+      apartament_id:aptId,data_checkin:checkin,
       pret_booking:p.booking?parseInt(p.booking):null,
       pret_airbnb:p.airbnb?parseInt(p.airbnb):null,
       updated_at:new Date().toISOString()
@@ -186,11 +108,11 @@ export default function PreturiPage() {
     setSaving(null); show('success','Preț salvat!')
   }
 
-  function updatePret(aptId:string, field:'booking'|'airbnb', val:string) {
+  function updatePret(aptId:string,field:'booking'|'airbnb',val:string){
     setPreturi(prev=>({...prev,[aptId]:{...prev[aptId],[field]:val}}))
   }
 
-  function changeData(data:string) {
+  function changeData(data:string){
     setDataSelectata(data); if(!apts.length) return
     supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data)
       .then(({data:saved})=>{
@@ -201,80 +123,101 @@ export default function PreturiPage() {
       })
   }
 
-  // ── SCAN CLIENT-SIDE din browser ─────────────────────────────────────────
+  // Polling pe jobId pana vine raspunsul
+  function startPolling(jobId: string, checkin: string, checkout: string) {
+    let attempts = 0
+    const maxAttempts = 40 // 2 minute max
+    pollRef.current = setInterval(async () => {
+      attempts++
+      if (attempts > maxAttempts) {
+        clearInterval(pollRef.current!)
+        setScan({ status: 'error', results: [], errorMsg: 'Timeout — Claude in Chrome nu a răspuns în 2 minute.' })
+        return
+      }
+      const { data } = await supabase.from('booking_monitor_jobs')
+        .select('*').eq('id', jobId).single()
+      if (data?.status === 'done' && data.results?.length) {
+        clearInterval(pollRef.current!)
+        setScan({
+          status: 'done',
+          results: data.results,
+          total: data.total_properties,
+          lowestPrice: data.lowest_price,
+          weAreLowest: data.we_are_lowest,
+          ourLowestRank: data.our_lowest_rank,
+          checkin, checkout,
+          scannedAt: new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}),
+        })
+      } else if (data?.status === 'error') {
+        clearInterval(pollRef.current!)
+        setScan({ status: 'error', results: [], errorMsg: data.error_msg || 'Eroare la scanare.' })
+      }
+    }, 3000)
+  }
+
   const handleScan = useCallback(async () => {
     if(!checkinMonitor||!checkoutMonitor){show('error','Selectează perioada');return}
-    setScan({status:'scanning',results:[],checkin:checkinMonitor,checkout:checkoutMonitor})
+    if(pollRef.current) clearInterval(pollRef.current)
 
-    try {
-      const bookingUrl = `https://www.booking.com/searchresults.ro.html?ss=Ia%C8%99i%2C+Rom%C3%A2nia&checkin=${checkinMonitor}&checkout=${checkoutMonitor}&group_adults=2&no_rooms=1&order=price`
+    setScan({status:'waiting',results:[],checkin:checkinMonitor,checkout:checkoutMonitor})
 
-      // Fetch direct din browser — evita blocarea server-side
-      const proxyUrl = `/api/fivestar?url=${encodeURIComponent(bookingUrl)}`
-      let html = ''
+    // Creaza job in Supabase
+    const { data: job, error } = await supabase.from('booking_monitor_jobs').insert({
+      checkin: checkinMonitor,
+      checkout: checkoutMonitor,
+      status: 'pending',
+    }).select().single()
 
-      try {
-        // Incearca prin proxy-ul existent /api/fivestar
-        const r1 = await fetch(proxyUrl)
-        if (r1.ok) {
-          const text = await r1.text()
-          // Daca proxy returneaza JSON cu html, extrage
-          try { const j = JSON.parse(text); html = j.html || j.data || text } catch { html = text }
-        }
-      } catch {}
-
-      // Daca proxy-ul nu merge, fetch direct (CORS poate bloca, dar incercam)
-      if (!html || html.length < 1000) {
-        try {
-          const r2 = await fetch(bookingUrl, { headers: { 'Accept-Language': 'ro-RO' } })
-          if (r2.ok) html = await r2.text()
-        } catch {}
-      }
-
-      if (!html || html.length < 500) {
-        throw new Error('Nu s-a putut accesa Booking.com. Verifică conexiunea sau încearcă din nou.')
-      }
-
-      const { total, results } = extractFromHtml(html)
-
-      if (results.length === 0) {
-        throw new Error('Nu s-au găsit proprietăți. Booking.com poate fi temporar indisponibil.')
-      }
-
-      const enriched: BookingResult[] = results.map(r => {
-        const lower = r.name.toLowerCase()
-        const match = OUR.find(id => lower.includes(id))
-        return { ...r, isOurs: !!match, matchedCode: match?.toUpperCase() }
-      })
-
-      const lowestPrice = Math.min(...enriched.map(r => r.price))
-      const ourResults = enriched.filter(r => r.isOurs)
-      const weAreLowest = ourResults.some(r => r.price === lowestPrice)
-      const ourLowestRank = ourResults.length ? Math.min(...ourResults.map(r => r.rank)) : undefined
-
-      setScan({
-        status:'done', results:enriched, total, lowestPrice, weAreLowest, ourLowestRank,
-        checkin:checkinMonitor, checkout:checkoutMonitor,
-        scannedAt:new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}),
-      })
-
-      // Salveaza in Supabase prin API route
-      fetch('/api/booking-scan', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ checkin:checkinMonitor, checkout:checkoutMonitor, results:enriched, total, lowestPrice, weAreLowest, ourLowestRank: ourLowestRank||null })
-      }).catch(()=>{}) // fire and forget
-
-    } catch(err:any) {
-      setScan({status:'error',results:[],errorMsg:err.message||'Eroare necunoscută',checkin:checkinMonitor,checkout:checkoutMonitor})
+    if (error || !job) {
+      setScan({ status: 'error', results: [], errorMsg: 'Nu s-a putut crea job-ul. Verifică Supabase.' })
+      return
     }
-  },[checkinMonitor,checkoutMonitor])
+
+    jobIdRef.current = job.id
+
+    // Construieste URL-ul Booking
+    const bookingUrl = `https://www.booking.com/searchresults.ro.html?ss=Ia%C8%99i%2C+Rom%C3%A2nia&checkin=${checkinMonitor}&checkout=${checkoutMonitor}&group_adults=2&no_rooms=1&order=price`
+
+    // Construieste promptul pentru Claude in Chrome
+    // Includem jobId si endpoint-ul pentru ca Claude sa trimita rezultatele direct
+    const appUrl = window.location.origin
+    const receiveUrl = `${appUrl}/api/booking-scan`
+
+    const prompt = `Navighează la acest URL Booking.com și extrage primele 5 proprietăți listate (sortate după preț):
+
+URL: ${bookingUrl}
+
+Pași:
+1. Navighează la URL
+2. Așteaptă 3 secunde
+3. Închide orice popup/banner
+4. Extrage primele 5 proprietăți: numele exact și prețul per noapte în lei
+5. Extrage numărul total de proprietăți găsite
+6. Trimite rezultatele cu un fetch POST la: ${receiveUrl}
+
+Body-ul POST (JSON exact):
+{
+  "jobId": "${job.id}",
+  "checkin": "${checkinMonitor}",
+  "checkout": "${checkoutMonitor}",
+  "rawJson": "{\"total\": NUMAR_TOTAL, \"results\": [{\"rank\":1,\"name\":\"Nume\",\"priceText\":\"182 lei\",\"price\":182}, ...]}"
+}
+
+IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScript în consolă sau direct fetch() din pagină.`
+
+    // Deschide Claude.ai cu promptul pre-completat
+    const claudeUrl = `https://claude.ai/new?q=${encodeURIComponent(prompt)}`
+    window.open(claudeUrl, '_blank')
+
+    // Porneste polling
+    startPolling(job.id, checkinMonitor, checkoutMonitor)
+  }, [checkinMonitor, checkoutMonitor])
 
   async function loadHistory() {
     setLoadingHistory(true)
     const {data} = await supabase.from('booking_monitor_history')
       .select('*').order('scanned_at',{ascending:false}).limit(50)
-    setHistory(data||[])
-    setLoadingHistory(false)
+    setHistory(data||[]); setLoadingHistory(false)
   }
 
   function fmtDT(iso:string) {
@@ -361,8 +304,6 @@ export default function PreturiPage() {
 
         {/* BOOKING MONITOR */}
         <div style={{...panel,border:'1px solid rgba(99,179,237,0.2)',background:'rgba(15,30,55,0.6)'}}>
-
-          {/* Header */}
           <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.12)',
             display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap' as const,gap:8}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -376,7 +317,7 @@ export default function PreturiPage() {
                   {scan.scannedAt} · {scan.checkin} → {scan.checkout}
                 </span>
               )}
-              <button onClick={()=>{setShowHistory(h=>{const next=!h;if(next)loadHistory();return next})}} style={{
+              <button onClick={()=>{setShowHistory(h=>{const n=!h;if(n)loadHistory();return n})}} style={{
                 padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',
                 border:'1px solid rgba(99,179,237,0.2)',
                 background:showHistory?'rgba(99,179,237,0.12)':'transparent',
@@ -399,24 +340,38 @@ export default function PreturiPage() {
               <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Check-out</span>
               <input type="date" value={checkoutMonitor} onChange={e=>setCheckoutMonitor(e.target.value)} style={dateInp}/>
             </div>
-            <button onClick={handleScan} disabled={scan.status==='scanning'} style={{
+            <button onClick={handleScan} disabled={scan.status==='waiting'} style={{
               marginLeft:'auto',padding:'7px 18px',borderRadius:8,fontSize:12,
-              cursor:scan.status==='scanning'?'wait':'pointer',
+              cursor:scan.status==='waiting'?'wait':'pointer',
               border:'1px solid rgba(99,179,237,0.4)',
-              background:scan.status==='scanning'?'rgba(99,179,237,0.05)':'rgba(99,179,237,0.15)',
-              color:'#93C5FD',fontWeight:700,opacity:scan.status==='scanning'?0.7:1,
+              background:scan.status==='waiting'?'rgba(99,179,237,0.05)':'rgba(99,179,237,0.15)',
+              color:'#93C5FD',fontWeight:700,opacity:scan.status==='waiting'?0.7:1,
               display:'flex',alignItems:'center',gap:6,
             }}>
-              {scan.status==='scanning'?<>⏳ Se scanează...</>:'🔍 Caută pe Booking'}
+              {scan.status==='waiting'?<>⏳ Claude scanează...</>:'🔍 Caută pe Booking'}
             </button>
           </div>
 
-          {/* Scanning */}
-          {scan.status==='scanning'&&(
-            <div style={{padding:'20px 16px',textAlign:'center' as const}}>
-              <div style={{fontSize:22,marginBottom:8}}>🔍</div>
-              <div style={{fontSize:13,color:'#93C5FD',fontWeight:600,marginBottom:4}}>Se caută pe Booking.com...</div>
-              <div style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>{checkinMonitor} → {checkoutMonitor} · 2 adulți · sortat după preț</div>
+          {/* Waiting — Claude in Chrome lucreaza */}
+          {scan.status==='waiting'&&(
+            <div style={{padding:'18px 16px',background:'rgba(10,25,50,0.4)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <span style={{fontSize:20}}>🤖</span>
+                <div>
+                  <div style={{fontSize:13,color:'#93C5FD',fontWeight:600}}>Claude in Chrome scanează Booking.com...</div>
+                  <div style={{fontSize:11,color:'rgba(147,197,253,0.5)',marginTop:2}}>
+                    S-a deschis un tab nou cu Claude. Rezultatele apar automat aici în câteva secunde.
+                  </div>
+                </div>
+              </div>
+              {/* Progress bar animat */}
+              <div style={{height:2,background:'rgba(99,179,237,0.1)',borderRadius:2,overflow:'hidden'}}>
+                <div style={{
+                  height:'100%',width:'40%',background:'rgba(99,179,237,0.5)',borderRadius:2,
+                  animation:'slideProgress 2s ease-in-out infinite',
+                }}/>
+              </div>
+              <style>{`@keyframes slideProgress{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}`}</style>
             </div>
           )}
 
@@ -426,9 +381,6 @@ export default function PreturiPage() {
               <span style={{fontSize:16}}>⚠️</span>
               <div style={{flex:1}}>
                 <div style={{fontSize:12,color:'#F87171',fontWeight:600}}>{scan.errorMsg}</div>
-                <div style={{fontSize:11,color:'rgba(248,113,113,0.5)',marginTop:2}}>
-                  Booking.com poate bloca accesul automat. Încearcă din nou peste câteva secunde.
-                </div>
               </div>
               <button onClick={()=>setScan({status:'idle',results:[]})} style={{
                 padding:'4px 12px',borderRadius:6,fontSize:11,cursor:'pointer',
@@ -452,22 +404,20 @@ export default function PreturiPage() {
                     <div style={{fontSize:13,fontWeight:700,color:'#4ADE80'}}>Tu ești cel mai ieftin din piață! 🎉</div>
                   ):scan.ourLowestRank?(
                     <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>
-                      Ești pe locul #{scan.ourLowestRank} — minim piață: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
+                      Ești pe locul #{scan.ourLowestRank} — minim: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
                     </div>
                   ):(
                     <div style={{fontSize:13,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
-                      AB Homes nu e în top 5 — minim piață: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
+                      AB Homes nu e în top 5 — minim: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
                     </div>
                   )}
                   <div style={{display:'flex',alignItems:'center',gap:12,marginTop:3}}>
-                    <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>
-                      {scan.checkin} → {scan.checkout} · sortat după preț
-                    </span>
+                    <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>{scan.checkin} → {scan.checkout}</span>
                     {!!scan.total&&(
                       <span style={{fontSize:11,fontFamily:'monospace',fontWeight:600,
                         color:'rgba(147,197,253,0.7)',background:'rgba(99,179,237,0.1)',
                         padding:'1px 8px',borderRadius:4,border:'1px solid rgba(99,179,237,0.2)'}}>
-                        {scan.total} proprietăți disponibile
+                        {scan.total} proprietăți
                       </span>
                     )}
                   </div>
@@ -477,7 +427,6 @@ export default function PreturiPage() {
                   border:'1px solid rgba(99,179,237,0.25)',background:'rgba(99,179,237,0.08)',color:'rgba(147,197,253,0.7)',
                 }}>↺ Rescanează</button>
               </div>
-
               {scan.results.map((r,i)=>(
                 <div key={i} style={{
                   padding:'10px 16px',
@@ -515,7 +464,7 @@ export default function PreturiPage() {
 
           {scan.status==='idle'&&(
             <div style={{padding:'20px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
-              Apasă "Caută pe Booking" — extrage automat top 5 din Iași sortate după preț
+              Apasă "Caută pe Booking" — se deschide Claude in Chrome care extrage automat top 5
             </div>
           )}
 
@@ -528,37 +477,32 @@ export default function PreturiPage() {
                 <button onClick={loadHistory} style={{
                   padding:'3px 10px',borderRadius:5,fontSize:11,cursor:'pointer',
                   border:'1px solid rgba(99,179,237,0.2)',background:'transparent',color:'rgba(147,197,253,0.5)',
-                }}>↺ Reîncarcă</button>
+                }}>↺</button>
               </div>
               {loadingHistory?(
                 <div style={{padding:'16px',textAlign:'center' as const,color:'rgba(147,197,253,0.4)',fontSize:12}}>Se încarcă...</div>
               ):history.length===0?(
-                <div style={{padding:'16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nicio scanare salvată încă.</div>
+                <div style={{padding:'16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nicio scanare încă.</div>
               ):(
-                <div style={{overflowX:'auto' as const}}>
-                  <div style={{
-                    display:'grid',gridTemplateColumns:'90px 110px 55px 70px 45px 1fr',
-                    padding:'6px 16px',gap:8,
-                    fontSize:10,color:'rgba(147,197,253,0.35)',textTransform:'uppercase' as const,letterSpacing:'.05em',
-                    borderBottom:'1px solid rgba(99,179,237,0.08)',
-                  }}>
+                <div>
+                  <div style={{display:'grid',gridTemplateColumns:'90px 100px 50px 70px 45px 1fr',
+                    padding:'6px 16px',gap:8,fontSize:10,color:'rgba(147,197,253,0.35)',
+                    textTransform:'uppercase' as const,letterSpacing:'.05em',
+                    borderBottom:'1px solid rgba(99,179,237,0.08)'}}>
                     <span>Data/Oră</span><span>Perioadă</span><span>Total</span><span>Minim</span><span>Loc</span><span>Top 1</span>
                   </div>
                   {history.map((h,i)=>{
-                    const top1 = h.top5?.[0]
-                    return (
-                      <div key={h.id} style={{
-                        display:'grid',gridTemplateColumns:'90px 110px 55px 70px 45px 1fr',
+                    const top1=h.top5?.[0]
+                    return(
+                      <div key={h.id} style={{display:'grid',gridTemplateColumns:'90px 100px 50px 70px 45px 1fr',
                         padding:'7px 16px',gap:8,alignItems:'center',
                         borderBottom:i<history.length-1?'1px solid rgba(99,179,237,0.05)':'none',
-                        background:h.we_are_lowest?'rgba(74,222,128,0.03)':'transparent',
-                      }}>
+                        background:h.we_are_lowest?'rgba(74,222,128,0.03)':'transparent'}}>
                         <span style={{fontSize:11,fontFamily:'monospace',color:'rgba(214,228,244,0.6)'}}>{fmtDT(h.scanned_at)}</span>
                         <span style={{fontSize:11,color:'rgba(147,197,253,0.6)'}}>{h.checkin?.slice(5)} → {h.checkout?.slice(5)}</span>
                         <span style={{fontSize:11,fontFamily:'monospace',color:h.total_properties?'rgba(214,228,244,0.8)':'rgba(147,197,253,0.3)'}}>{h.total_properties??'—'}</span>
                         <span style={{fontSize:12,fontFamily:'monospace',fontWeight:600,color:h.we_are_lowest?'#4ADE80':'rgba(214,228,244,0.8)'}}>
-                          {h.lowest_price?`${h.lowest_price} lei`:'—'}
-                          {h.we_are_lowest&&<span style={{fontSize:9,marginLeft:3,color:'#4ADE80'}}>★</span>}
+                          {h.lowest_price?`${h.lowest_price} lei`:'—'}{h.we_are_lowest&&<span style={{fontSize:9,marginLeft:3,color:'#4ADE80'}}>★</span>}
                         </span>
                         <span style={{fontSize:11,color:h.our_lowest_rank?'#FCD34D':'rgba(147,197,253,0.3)'}}>
                           {h.our_lowest_rank?`#${h.our_lowest_rank}`:'—'}
@@ -574,7 +518,6 @@ export default function PreturiPage() {
             </div>
           )}
         </div>
-
       </div>
       <Toast toast={toast}/>
     </>
