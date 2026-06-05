@@ -16,6 +16,7 @@ const navItems = [
   { href: '/calendar',    icon: CalendarDays,    label: 'Calendar',       group: 'P', bottom: true },
   { href: '/taskuri',     icon: CheckSquare,     label: 'Task-uri',       group: 'O', bottom: true },
   { href: '/mesaje-masa', icon: Inbox,   label: 'Mesaje în masă', group: 'O', bottom: true },
+  { href: '/sabloane',    icon: FileText, label: 'Șabloane mesaje', group: 'O', bottom: true },
   { href: '/curatenie',   icon: Zap,         label: 'Curățenie',      group: 'O', bottom: true },
   { href: '/apartamente', icon: Building2,       label: 'Apartamente',    group: 'P', bottom: false },
   { href: '/proprietari', icon: Users,           label: 'Proprietari',    group: 'P', bottom: false },

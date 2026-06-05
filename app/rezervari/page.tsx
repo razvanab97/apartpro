@@ -41,6 +41,25 @@ export default function RezervariPage() {
   const [dateTo, setDateTo] = useState('')
   const [showCalc, setShowCalc] = useState(false)
   const { toast, show } = useToast()
+  
+  async function deschideSabloane(rez: any) {
+    setSabloanePop({rez})
+    const {data} = await supabase.from('sabloane_mesaje')
+      .select('*').eq('apartament_id', rez.apartament_id).order('tip')
+    setSabloane(data||[])
+  }
+  
+  function trimiteWA(rez: any, s: any) {
+    const phone = (rez.telefon_client||'').replace(/\D/g,'')
+    const nr = phone.startsWith('40') ? phone : '4' + phone.replace(/^0/,'')
+    const firstName = (rez.nume_client||'').split(' ')[0]
+    let msg = (s.text||'').replace(/{nume}/g, firstName)
+    if (s.poze?.length) msg += '
+
+' + s.poze.join('
+')
+    window.open(`https://wa.me/${nr}?text=${encodeURIComponent(msg)}`, '_blank')
+  }
 
   useEffect(() => { load() }, [])
 
@@ -298,6 +317,15 @@ export default function RezervariPage() {
                               <MessageCircle size={13}/>
                             </a>
                           )}
+                          {r.telefon_client && (
+                            <button onClick={e=>{e.stopPropagation();deschideSabloane(r)}}
+                              title="Trimite șablon WhatsApp"
+                              style={{display:'inline-flex',alignItems:'center',justifyContent:'center',
+                                width:28,height:28,borderRadius:7,border:'1px solid rgba(77,163,255,0.3)',
+                                background:'rgba(77,163,255,0.1)',color:'#7BC8FF',cursor:'pointer'}}>
+                              📋
+                            </button>
+                          )}
                           <Button variant="ghost" size="sm" icon={<Edit2 size={13}/>} onClick={()=>openEdit(r)}/>
                           <Button variant="ghost" size="sm" icon={<Trash2 size={13}/>} onClick={()=>setDeleteId(r.id)}/>
                         </div>
@@ -457,6 +485,55 @@ export default function RezervariPage() {
         </div>
       )}
       <Toast toast={toast}/>
+
+      {/* Popup sabloane */}
+      {sabloanePop && (
+        <div onClick={()=>setSabloanePop(null)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{width:'100%',maxWidth:480,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:16,padding:20,maxHeight:'80vh',overflowY:'auto' as const}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Trimite șablon</div>
+                <div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:2}}>{sabloanePop.rez.nume_client} · {sabloanePop.rez.telefon_client}</div>
+              </div>
+              <button onClick={()=>setSabloanePop(null)} style={{background:'none',border:'none',color:'rgba(159,215,255,0.4)',fontSize:20,cursor:'pointer'}}>✕</button>
+            </div>
+            {sabloane.length===0 && (
+              <div style={{textAlign:'center' as const,padding:'24px 0',color:'rgba(159,215,255,0.3)',fontSize:13}}>
+                Niciun șablon pentru acest apartament.<br/>
+                <a href="/sabloane" target="_blank" style={{color:'#7BC8FF',fontSize:12}}>→ Adaugă din pagina Șabloane</a>
+              </div>
+            )}
+            {sabloane.map((s:any) => {
+              const firstName = (sabloanePop.rez.nume_client||'').split(' ')[0]
+              const preview = (s.text||'').replace(/{nume}/g, firstName)
+              return (
+                <div key={s.id} style={{background:'rgba(11,22,42,0.7)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:12,padding:14,marginBottom:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                    <span style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{s.titlu}</span>
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(77,163,255,0.12)',color:'#7BC8FF',border:'1px solid rgba(77,163,255,0.2)'}}>{s.tip}</span>
+                  </div>
+                  <div style={{fontSize:12,color:'rgba(159,215,255,0.6)',whiteSpace:'pre-wrap' as const,lineHeight:1.5,marginBottom:s.poze?.length?8:0,maxHeight:100,overflow:'hidden'}}>
+                    {preview}
+                  </div>
+                  {s.poze?.length>0 && (
+                    <div style={{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap' as const}}>
+                      {s.poze.map((url:string,i:number)=>(
+                        <img key={i} src={url} alt="" style={{width:56,height:56,borderRadius:6,objectFit:'cover' as const,border:'1px solid rgba(100,160,255,0.2)'}}/>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={()=>trimiteWA(sabloanePop.rez, s)}
+                    style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#22C55E,#16A34A)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                    💬 Trimite pe WhatsApp
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </>
   )
 }
