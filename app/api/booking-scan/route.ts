@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 function parsePrice(text: string): number {
   const cleaned = text.replace(/\./g, '').replace(',', '.').replace(/[^\d]/g, '')
@@ -16,33 +18,25 @@ function buildUrl(checkin: string, checkout: string): string {
 }
 
 function extractFromHtml(html: string): { total: number; results: any[] } {
-  // Total proprietati
   let total = 0
   const totalMatch = html.match(/au fost găsite?\s*(\d+)\s*proprietăț/i) ||
                      html.match(/(\d+)\s*proprietăț.*găsite?/i) ||
                      html.match(/>(\d+)\s*proprietăț/i)
   if (totalMatch) total = parseInt(totalMatch[1])
 
-  // Extrage blocuri de proprietati
   const results: any[] = []
 
-  // Metoda 1: data-testid="property-card"
   const cardRegex = /data-testid="property-card"([\s\S]*?)(?=data-testid="property-card"|id="sr_pagination|<footer)/g
   let match
   while ((match = cardRegex.exec(html)) !== null && results.length < 5) {
     const block = match[1]
-
-    // Nume: data-testid="title" sau aria-label cu numele
     const nameMatch = block.match(/data-testid="title"[^>]*>\s*([^<]+)\s*</) ||
                       block.match(/class="[^"]*f6431b446c[^"]*"[^>]*>\s*([^<]+)\s*</) ||
                       block.match(/class="[^"]*fcab3ed991[^"]*"[^>]*>\s*([^<]+)\s*</)
-
-    // Pret curent (nu cel barat)
     const priceMatch = block.match(/data-testid="price-and-discounted-price"[^>]*>[\s\S]*?<[^>]*>\s*([\d.,]+)\s*lei/) ||
                        block.match(/aria-label="Prețul curent este:\s*([\d.,]+)\s*lei"/) ||
                        block.match(/class="[^"]*f894d5f9dc[^"]*"[^>]*>[\s\S]*?([\d.,]+)\s*lei/) ||
                        block.match(/<span[^>]*>\s*([\d.,]+)\s*<\/span>\s*lei/)
-
     if (nameMatch && priceMatch) {
       const name = nameMatch[1].replace(/&amp;/g, '&').replace(/&#\d+;/g, '').trim()
       const price = parsePrice(priceMatch[1])
@@ -52,7 +46,6 @@ function extractFromHtml(html: string): { total: number; results: any[] } {
     }
   }
 
-  // Metoda 2: fallback din text daca metoda 1 nu a dat rezultate
   if (results.length < 3) {
     const text = html
       .replace(/<script[\s\S]*?<\/script>/gi, '')
@@ -63,31 +56,25 @@ function extractFromHtml(html: string): { total: number; results: any[] } {
 
     const fallback: any[] = []
     for (let i = 0; i < text.length && fallback.length < 5; i++) {
-      // Linie pret: "182 lei" sau "Preț actual 182 lei"
       const pm = text[i].match(/^(\d[\d.]+)\s*lei$/) ||
                  text[i].match(/Preț actual\s+([\d.]+)\s*lei/) ||
                  text[i].match(/^([\d.]+)\s*lei\s*$/)
       if (!pm) continue
       const price = parsePrice(pm[1])
       if (price < 50 || price > 10000) continue
-
-      // Cauta numele inapoi
       let name = ''
       for (let j = i - 1; j >= Math.max(0, i - 20); j--) {
         const c = text[j]
         if (c.length < 5 || c.length > 120) continue
         if (/^\d/.test(c)) continue
-        if (/^(Iaşi|Iași|Arată|Include|Anulare|Rezerv|Camere|Preț|Nou|Vizib|Aceast|Proprietate|Studio întreg|Apart|Cameră|Dormitor|1 noapte|Se deschide|Locaţie|Superb|Fabulos|Bine|Excep|Plăcut|Scor|Suită|Hostel|Pensiune)/i.test(c)) continue
+        if (/^(Iaşi|Iași|Arată|Include|Anulare|Rezerv|Camere|Preț|Nou|Vizib|Aceast|Proprietate|Studio întreg|Apart|Cameră|Dormitor|1 noapte|Se deschide|Locaţie|Superb|Fabulos|Bine|Excep|Plăcut|Scor|Suită)/i.test(c)) continue
         if (c.includes('km de centru') || c.includes('m de centru') || c.includes('paturi') || c.includes('baie') || c.includes('bucătărie') || c.includes('evaluări')) continue
-        name = c
-        break
+        name = c; break
       }
-
       if (name && !fallback.find(r => r.name === name) && !results.find(r => r.name === name)) {
         fallback.push({ rank: fallback.length + 1, name, price, priceText: `${price} lei` })
       }
     }
-
     if (fallback.length > results.length) {
       return { total, results: fallback.slice(0, 5).map((r, i) => ({ ...r, rank: i + 1 })) }
     }
@@ -104,15 +91,12 @@ export async function POST(req: NextRequest) {
     }
 
     const bookingUrl = buildUrl(checkin, checkout)
-
     const resp = await fetch(bookingUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept-Language': 'ro-RO,ro;q=0.9,en;q=0.8',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
       }
     })
 
@@ -123,7 +107,6 @@ export async function POST(req: NextRequest) {
     const html = await resp.text()
     const { total, results } = extractFromHtml(html)
 
-    // Detecteaza proprietatile noastre
     const OUR = ['ab homes','abhomes','ab-homes','ex59','gs08','hd02','l83','l88','l94','l99','n32','n33','nt9','vm07','c64','cg40']
     const enriched = results.map(r => {
       const lower = r.name.toLowerCase()
@@ -136,10 +119,10 @@ export async function POST(req: NextRequest) {
     const weAreLowest = ourResults.some(r => r.price === lowestPrice)
     const ourLowestRank = ourResults.length ? Math.min(...ourResults.map(r => r.rank)) : null
 
-    // Salveaza in Supabase
-    await supabase.from('booking_monitor_history').insert({
-      checkin,
-      checkout,
+    // Salveaza in Supabase - initializat in functie, nu la nivel de modul
+    const db = getSupabase()
+    await db.from('booking_monitor_history').insert({
+      checkin, checkout,
       total_properties: total || null,
       lowest_price: lowestPrice,
       top5: enriched,
