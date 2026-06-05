@@ -310,7 +310,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontSize:16}}>🔍</span>
               <span style={{fontSize:13,fontWeight:700,color:'#93C5FD'}}>Monitorizare Booking</span>
-              <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>TOP 5 · IAȘI</span>
+              <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>TOP 10 · IAȘI</span>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               {scan.scannedAt&&(
