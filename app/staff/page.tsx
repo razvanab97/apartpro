@@ -8,6 +8,7 @@ const fmtDate = (d:string) => { try { const dt=new Date(d+'T12:00:00'); return `
 const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
 const todayStr = () => new Date().toISOString().slice(0,10)
+function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||2; return Math.ceil(Math.max(2,p)/2) }
 
 type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar'
 
@@ -294,6 +295,17 @@ export default function StaffPage() {
                     Checkin azi: <span style={{fontWeight:600}}>{ci.nume_client}</span>
                     {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
                   </div>}
+                  {ci&&(()=>{
+                    const l=nrLenSmart(ci)
+                    return(
+                      <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:4,padding:'4px 10px',borderRadius:8,
+                        background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
+                        <span style={{fontSize:14}}>🛏</span>
+                        <span style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>{l} {l===1?'lenjerie':'lenjerii'}</span>
+                        <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>({Number(ci.nr_persoane)||2} pers.)</span>
+                      </div>
+                    )
+                  })()}
                   {st&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginTop:4}}>
                     {isInceput&&!isGata&&`▶ Început la ${st.ora_inceput}`}
                     {isGata&&`✓ Terminat la ${st.ora_gata}${st.ora_inceput?` (început ${st.ora_inceput})`:''}` }
