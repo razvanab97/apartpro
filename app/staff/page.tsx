@@ -275,8 +275,8 @@ export default function StaffPage() {
                       <span style={{fontSize:12,color:'rgba(159,215,255,0.45)'}}>{apt.nume}</span>
                       {ci&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>⚡ URGENT</span>}
                       {st?.eliberat&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>🚪 Eliberat{st.eliberat_la?' '+st.eliberat_la:''}</span>}
-                      {st?.special==='anulat'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>✕ Curățenie anulată</span>}
-                      {st?.special==='doar_lenjerie'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>🛏 Doar lenjerie</span>}
+                      {st?.status==='anulat'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>✕ Curățenie anulată</span>}
+                      {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>🛏 Doar lenjerie</span>}
                       {!st?.eliberat&&!isInceput&&!isGata&&!st?.special&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.1)',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>⏳ Așteaptă</span>}
                     </div>
                     <span style={{fontSize:28}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>

@@ -105,14 +105,21 @@ export default function CuratenePage() {
     }).catch(()=>{})
   }
 
-  async function setSpecialStatus(aptId: string, aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
-    const { error: updErr } = await supabase.from('curatenie_status')
-      .update({ status: tip || 'liber', special: tip })
-      .eq('apartament_id', aptId).eq('data', selectedDate)
-    if (updErr) {
+  async function setSpecialStatus(aptId: string, _aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
+    const newStatus = tip || 'liber'
+    // Try update first
+    const { error: updErr, count } = await supabase.from('curatenie_status')
+      .update({ status: newStatus })
+      .eq('apartament_id', aptId)
+      .eq('data', selectedDate)
+      .select('id', { count: 'exact', head: true })
+    
+    if (updErr || count === 0) {
+      // Row doesn't exist yet, insert
       await supabase.from('curatenie_status').insert({
-        apartament_id: aptId, data: selectedDate,
-        status: tip || 'liber', special: tip, eliberat: false
+        apartament_id: aptId,
+        data: selectedDate,
+        status: newStatus,
       })
     }
     loadStaffStatus()
@@ -313,17 +320,17 @@ export default function CuratenePage() {
                   {/* Buton Anulare / Doar lenjerie */}
                   {apt?.id&&(()=>{
                     const st = staffStatus[apt.id]
-                    const special = st?.special
+                    const special = (st?.status === 'anulat' || st?.status === 'doar_lenjerie') ? st?.status : null
                     return (
                       <div style={{display:'flex',gap:4}}>
-                        <button onClick={()=>setSpecialStatus(apt.id, apt?.nota||'', special==='anulat'?null:'anulat')}
+                        <button onClick={()=>setSpecialStatus(apt.id, '', special==='anulat'?null:'anulat')}
                           style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
                             border:`1px solid ${special==='anulat'?'rgba(248,113,113,0.5)':'rgba(248,113,113,0.2)'}`,
                             background:special==='anulat'?'rgba(248,113,113,0.15)':'rgba(248,113,113,0.06)',
                             color:special==='anulat'?'#F87171':'rgba(248,113,113,0.5)'}}>
                           {special==='anulat'?'✕ Anulat':'✕ Anulează'}
                         </button>
-                        <button onClick={()=>setSpecialStatus(apt.id, apt?.nota||'', special==='doar_lenjerie'?null:'doar_lenjerie')}
+                        <button onClick={()=>setSpecialStatus(apt.id, '', special==='doar_lenjerie'?null:'doar_lenjerie')}
                           style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
                             border:`1px solid ${special==='doar_lenjerie'?'rgba(167,139,250,0.5)':'rgba(167,139,250,0.2)'}`,
                             background:special==='doar_lenjerie'?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.06)',
