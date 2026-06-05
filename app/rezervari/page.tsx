@@ -40,6 +40,8 @@ export default function RezervariPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [showCalc, setShowCalc] = useState(false)
+  const [sabloanePop, setSabloanePop] = useState<any>(null)
+  const [sabloane, setSabloane] = useState<any[]>([])
   const { toast, show } = useToast()
   
   async function deschideSabloane(rez: any) {
