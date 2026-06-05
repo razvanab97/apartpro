@@ -51,6 +51,14 @@ export default function PreturiPage() {
     { label: '+7 zile', val: add(7) },
   ]
 
+  async function loadHistory() {
+    setLoadingHistory(true)
+    const {data} = await supabase.from('booking_monitor_history')
+      .select('*').order('scanned_at',{ascending:false}).limit(50)
+    setHistory(data||[])
+    setLoadingHistory(false)
+  }
+
   useEffect(() => {
     const ci = add(1)
     const d = new Date(ci+'T12:00:00'); d.setDate(d.getDate()+1)
@@ -214,12 +222,6 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     startPolling(job.id, checkinMonitor, checkoutMonitor)
   }, [checkinMonitor, checkoutMonitor])
 
-  async function loadHistory() {
-    setLoadingHistory(true)
-    const {data} = await supabase.from('booking_monitor_history')
-      .select('*').order('scanned_at',{ascending:false}).limit(50)
-    setHistory(data||[]); setLoadingHistory(false)
-  }
 
   function fmtDT(iso:string) {
     const d = new Date(iso)
