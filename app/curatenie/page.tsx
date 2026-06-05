@@ -71,31 +71,38 @@ export default function CuratenePage() {
     setProbleme(data||[])
   }
 
-  async function toggleEliberat(aptId: string) {
+  async function toggleEliberat(aptId: string, aptNota: string) {
     const isEl = eliberat.has(aptId)
-    const { error } = await supabase.from('curatenie_status').upsert({
-      apartament_id: aptId,
-      data: selectedDate,
-      eliberat: !isEl,
-      eliberat_la: isEl ? null : new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}),
-    }, { onConflict: 'apartament_id,data' })
-    if (!error) {
-      setEliberat(prev => {
-        const n = new Set(prev)
-        isEl ? n.delete(aptId) : n.add(aptId)
-        return n
+    const ora = new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
+    
+    // Try update first (row exists), then insert
+    const { error: updErr } = await supabase.from('curatenie_status')
+      .update({ eliberat: !isEl, eliberat_la: isEl ? null : ora })
+      .eq('apartament_id', aptId).eq('data', selectedDate)
+    
+    if (updErr) {
+      // Row doesn't exist, insert it
+      await supabase.from('curatenie_status').insert({
+        apartament_id: aptId, data: selectedDate,
+        status: 'liber', eliberat: !isEl, eliberat_la: isEl ? null : ora
       })
-      // Trimite notificare push catre angajat
-      fetch('/api/push-send', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          title: isEl ? `⏳ Asteapta — ${aptId}` : `🚪 Eliberat! Poti merge la curatatenie`,
-          body: `Apartament ${aptId} — ${selectedDate}`,
-          url: '/staff',
-          tag: 'eliberat-' + aptId
-        })
-      }).catch(()=>{})
     }
+    
+    setEliberat(prev => {
+      const n = new Set(prev)
+      isEl ? n.delete(aptId) : n.add(aptId)
+      return n
+    })
+    
+    // Push notification catre staff
+    fetch('/api/push-send', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        title: isEl ? `⏳ ${aptNota} — Oaspeții nu au plecat` : `🚪 ${aptNota} — Eliberat! Poți merge`,
+        body: isEl ? 'Marcat ca neeliberat' : `Eliberat la ${ora}`,
+        url: '/staff', tag: 'eliberat-' + aptId
+      })
+    }).catch(()=>{})
   }
 
   async function loadRapoarte(lunaParam?: string) {
@@ -282,7 +289,7 @@ export default function CuratenePage() {
                   )}
                   {/* Buton Eliberat */}
                   {apt?.id&&(
-                    <button onClick={()=>toggleEliberat(apt.id)}
+                    <button onClick={()=>toggleEliberat(apt.id, apt?.nota||'')}
                       style={{padding:'2px 10px',borderRadius:5,border:`1px solid ${eliberat.has(apt.id)?'rgba(74,222,128,0.4)':'rgba(252,211,77,0.3)'}`,
                         background:eliberat.has(apt.id)?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.08)',
                         color:eliberat.has(apt.id)?'#4ADE80':'#FCD34D',
