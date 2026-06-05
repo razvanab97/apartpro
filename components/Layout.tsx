@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
 import { usePathname } from 'next/navigation'
 import { ReactNode, useState } from 'react'
@@ -74,9 +75,10 @@ export default function Layout({ children }: { children: ReactNode }) {
       }} className="desktop-sidebar">
         {/* Logo */}
         <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid rgba(159,215,255,0.07)', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(77,163,255,0.16)', border: '1px solid rgba(159,215,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🏢</div>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(77,163,255,0.16)', border: '1px solid rgba(159,215,255,0.15)', overflow: 'hidden', padding: 0 }}>
+            <Image src="/logo.jpg" alt="AB Homes" width={28} height={28} style={{ objectFit: 'cover', width: '100%', height: '100%', display: 'block' }} /></div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF' }}>ApartPro</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF', letterSpacing: '.02em' }}>XapartPro</div>
             <div style={{ fontSize: 9, color: 'rgba(159,215,255,0.35)', fontFamily: 'monospace' }}>AB Homes Iași</div>
           </div>
         </div>
