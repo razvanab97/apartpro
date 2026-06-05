@@ -41,6 +41,8 @@ export default function CuratenePage() {
   const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
   const [costPerCuratenie, setCostPerCuratenie] = useState(150)
   const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
+  const [filtruAptRaport, setFiltruAptRaport] = useState<Set<string>>(new Set())
+  const [aptListRaport, setAptListRaport] = useState<string[]>([])
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -187,7 +189,13 @@ export default function CuratenePage() {
         const ziSapt = new Date(data+'T12:00:00').getDay()
         return { data, nrCuratenii:rez.length, nrGata:gata.length, apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '), timpMediu, timpuri, totalLenjerii, detalii, oraMedieMin, ziSapt }
       })
+    // Aplica filtru locatii daca e setat
     setRapoarteData(result)
+    // Salvam si lista de apartamente unice pentru selector
+    const aptUniq = Array.from(new Set(result.flatMap((r:any)=>
+      (r.apartamente||'').split(', ').filter(Boolean)
+    ))).sort()
+    setAptListRaport(aptUniq)
   }
 
   async function addProblema() {
@@ -254,6 +262,27 @@ export default function CuratenePage() {
 
   const isToday=selectedDate===todayIso
   const isTomorrow=selectedDate===new Date(Date.now()+86400000).toISOString().split('T')[0]
+
+  // Rapoarte filtrate dupa locatiile selectate
+  const filteredRapoarte = rapoarteData.map(zi=>({
+    ...zi,
+    detalii: (zi.detalii||[]).filter((d:any)=>filtruAptRaport.size===0||filtruAptRaport.has(d.nota)),
+    nrCuratenii: filtruAptRaport.size===0 ? zi.nrCuratenii :
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)).length,
+    nrGata: filtruAptRaport.size===0 ? zi.nrGata :
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)&&d.status==='gata').length,
+    totalLenjerii: filtruAptRaport.size===0 ? zi.totalLenjerii :
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)).reduce((s:number,d:any)=>s+(d.lenjerii||1),0),
+    timpuri: filtruAptRaport.size===0 ? zi.timpuri :
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)&&d.durata).map((d:any)=>d.durata),
+    timpMediu: (()=>{
+      const t = filtruAptRaport.size===0 ? zi.timpuri :
+        (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)&&d.durata).map((d:any)=>d.durata)
+      return t?.length ? Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length) : null
+    })(),
+    apartamente: filtruAptRaport.size===0 ? zi.apartamente :
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)).map((d:any)=>d.nota).join(', '),
+  })).filter(zi=>zi.nrCuratenii>0)
 
   const s={
     card:{display:'flex',alignItems:'center',gap:12,padding:'13px 14px',background:'rgba(20,35,58,0.6)',borderRadius:10,marginBottom:8,flexWrap:'wrap' as const} as React.CSSProperties,
@@ -498,18 +527,56 @@ export default function CuratenePage() {
           </div>
         </div>
 
-        {rapoarteData.length>0&&(
+        {/* Selector locatii */}
+        {aptListRaport.length>0&&(
+          <div style={{marginBottom:16,background:'rgba(11,22,42,0.5)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:12,padding:'10px 14px'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+              <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',textTransform:'uppercase' as const,letterSpacing:'.06em',fontWeight:600}}>Filtrează locații</span>
+              <div style={{display:'flex',gap:8}}>
+                <button onClick={()=>setFiltruAptRaport(new Set())}
+                  style={{fontSize:11,color:'rgba(77,163,255,0.7)',background:'transparent',border:'none',cursor:'pointer',padding:'2px 6px'}}>
+                  Toate
+                </button>
+                <button onClick={()=>setFiltruAptRaport(new Set(aptListRaport))}
+                  style={{fontSize:11,color:'rgba(159,215,255,0.4)',background:'transparent',border:'none',cursor:'pointer',padding:'2px 6px'}}>
+                  Niciuna
+                </button>
+              </div>
+            </div>
+            <div style={{display:'flex',flexWrap:'wrap' as const,gap:6}}>
+              {aptListRaport.map(nota=>{
+                const activ = filtruAptRaport.size===0||filtruAptRaport.has(nota)
+                return(
+                  <button key={nota} onClick={()=>setFiltruAptRaport(prev=>{
+                    const n=new Set(prev.size===0?aptListRaport:[...prev])
+                    n.has(nota)?n.delete(nota):n.add(nota)
+                    if(n.size===aptListRaport.length) return new Set()
+                    return n
+                  })} style={{
+                    padding:'4px 12px',borderRadius:7,fontSize:12,cursor:'pointer',fontWeight:600,
+                    fontFamily:'monospace',transition:'all .15s',
+                    border:`1px solid ${activ?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.1)'}`,
+                    background:activ?'rgba(77,163,255,0.15)':'rgba(159,215,255,0.04)',
+                    color:activ?'#7BC8FF':'rgba(159,215,255,0.3)',
+                  }}>{nota}</button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {filteredRapoarte.length>0&&(
           <div style={{display:'flex',gap:6,marginBottom:14}}>
             {([['sumar','📊 Sumar'],['detaliat','🧹 Per curățenie'],['checkout','🕐 Ore checkout']] as [string,string][]).map(([k,l])=>(
               <button key={k} onClick={()=>setRaportTab(k as any)} style={{padding:'6px 14px',borderRadius:8,fontSize:12,cursor:'pointer',fontWeight:600,border:`1px solid ${raportTab===k?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,background:raportTab===k?'rgba(77,163,255,0.15)':'transparent',color:raportTab===k?'#7BC8FF':'rgba(159,215,255,0.5)'}}>{l}</button>
             ))}
           </div>
         )}
-        {rapoarteData.length>0&&(()=>{
-          const totalCuratenii = rapoarteData.reduce((s:number,r:any)=>s+r.nrCuratenii,0)
-          const totalGata = rapoarteData.reduce((s:number,r:any)=>s+r.nrGata,0)
+        {filteredRapoarte.length>0&&(()=>{
+          const totalCuratenii = filteredRapoarte.reduce((s:number,r:any)=>s+r.nrCuratenii,0)
+          const totalGata = filteredRapoarte.reduce((s:number,r:any)=>s+r.nrGata,0)
           const totalCost = totalCuratenii * costPerCuratenie
-          const zileActive = rapoarteData.length
+          const zileActive = filteredRapoarte.length
           return (
             <>
               {/* KPI-uri principale */}
@@ -529,16 +596,16 @@ export default function CuratenePage() {
 
               {/* TAB SUMAR */}
               {raportTab==='sumar'&&(()=>{
-                const timpuriAll=rapoarteData.flatMap((r:any)=>r.timpuri||[])
+                const timpuriAll=filteredRapoarte.flatMap((r:any)=>r.timpuri||[])
                 const timpGlobal=timpuriAll.length?Math.round(timpuriAll.reduce((a:number,b:number)=>a+b,0)/timpuriAll.length):null
-                const totalLen=rapoarteData.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)
+                const totalLen=filteredRapoarte.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)
                 return(
                   <>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}}>
                       {[
                         {l:'Timp mediu curățenie',v:timpGlobal?`${Math.floor(timpGlobal/60)}h${timpGlobal%60>0?` ${timpGlobal%60}min`:''}`:'-',c:'#93C5FD'},
                         {l:'Total lenjerii lună',v:totalLen||'-',c:'#FCD34D'},
-                        {l:'Zile cu timp înreg.',v:rapoarteData.filter((r:any)=>r.timpMediu).length,c:'#4ADE80'},
+                        {l:'Zile cu timp înreg.',v:filteredRapoarte.filter((r:any)=>r.timpMediu).length,c:'#4ADE80'},
                       ].map(({l,v,c})=>(
                         <div key={l} style={{background:'rgba(11,22,42,0.7)',border:`1px solid ${c}30`,borderRadius:12,padding:'12px 14px',textAlign:'center' as const}}>
                           <div style={{fontSize:20,fontWeight:700,color:c,marginBottom:4}}>{v}</div>
@@ -552,7 +619,7 @@ export default function CuratenePage() {
                           <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
                         ))}
                       </div>
-                      {rapoarteData.map((r:any)=>(
+                      {filteredRapoarte.map((r:any)=>(
                         <div key={r.data} style={{display:'grid',gridTemplateColumns:'90px 1fr 65px 65px 75px 70px 90px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center'}}>
                           <div style={{fontSize:12,color:'#E8F4FF',fontWeight:500}}>{r.data.slice(5).replace('-','/')}</div>
                           <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{r.apartamente}</div>
@@ -570,9 +637,9 @@ export default function CuratenePage() {
                         <div style={{fontSize:14,fontWeight:700,color:'#4ADE80',textAlign:'center' as const}}>{totalCuratenii}</div>
                         <div style={{fontSize:14,fontWeight:700,color:'#22C55E',textAlign:'center' as const}}>{totalGata}</div>
                         <div style={{fontSize:11,color:'#93C5FD',textAlign:'center' as const,fontFamily:'monospace'}}>
-                          {(()=>{const t=rapoarteData.flatMap((r:any)=>r.timpuri||[]);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}m`:''})()}
+                          {(()=>{const t=filteredRapoarte.flatMap((r:any)=>r.timpuri||[]);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}m`:''})()}
                         </div>
-                        <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',textAlign:'center' as const,fontFamily:'monospace'}}>{rapoarteData.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',textAlign:'center' as const,fontFamily:'monospace'}}>{filteredRapoarte.reduce((s:number,r:any)=>s+(r.totalLenjerii||0),0)}</div>
                         <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{totalCost.toLocaleString('ro-RO')}</div>
                       </div>
                     </div>
@@ -588,7 +655,7 @@ export default function CuratenePage() {
                       <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
                     ))}
                   </div>
-                  {rapoarteData.flatMap((zi:any)=>zi.detalii.map((d:any,i:number)=>(
+                  {filteredRapoarte.flatMap((zi:any)=>zi.detalii.map((d:any,i:number)=>(
                     <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 55px 1fr 70px 70px 70px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
                       <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</div>
                       <div style={{fontSize:12,fontWeight:700,color:'#4DA3FF',fontFamily:'monospace'}}>{d.nota}</div>
@@ -604,9 +671,9 @@ export default function CuratenePage() {
                     </div>
                   )))}
                   <div style={{padding:'10px 14px',background:'rgba(74,222,128,0.05)',borderTop:'1px solid rgba(74,222,128,0.1)',display:'flex',gap:20}}>
-                    <span style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>{rapoarteData.flatMap((z:any)=>z.detalii).length} curățenii</span>
-                    <span style={{fontSize:12,color:'#4ADE80'}}>{rapoarteData.flatMap((z:any)=>z.detalii).filter((d:any)=>d.status==='gata').length} confirmate</span>
-                    <span style={{fontSize:12,color:'#93C5FD'}}>{(()=>{const t=rapoarteData.flatMap((z:any)=>z.detalii).map((d:any)=>d.durata).filter(Boolean);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`⌀ ${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}min`:''})()}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>{filteredRapoarte.flatMap((z:any)=>z.detalii).length} curățenii</span>
+                    <span style={{fontSize:12,color:'#4ADE80'}}>{filteredRapoarte.flatMap((z:any)=>z.detalii).filter((d:any)=>d.status==='gata').length} confirmate</span>
+                    <span style={{fontSize:12,color:'#93C5FD'}}>{(()=>{const t=filteredRapoarte.flatMap((z:any)=>z.detalii).map((d:any)=>d.durata).filter(Boolean);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`⌀ ${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}min`:''})()}</span>
                   </div>
                 </div>
               )}
@@ -615,7 +682,7 @@ export default function CuratenePage() {
               {raportTab==='checkout'&&(()=>{
                 const ZILE=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']
                 const byZiSapt:Record<number,number[]>={0:[],1:[],2:[],3:[],4:[],5:[],6:[]}
-                rapoarteData.forEach((zi:any)=>{ if(zi.oraMedieMin!==null) byZiSapt[zi.ziSapt]?.push(zi.oraMedieMin) })
+                filteredRapoarte.forEach((zi:any)=>{ if(zi.oraMedieMin!==null) byZiSapt[zi.ziSapt]?.push(zi.oraMedieMin) })
                 const fmtMin=(m:number)=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`
                 return(
                   <div style={{display:'flex',flexDirection:'column' as const,gap:14}}>
@@ -640,7 +707,7 @@ export default function CuratenePage() {
                       <div style={{display:'grid',gridTemplateColumns:'100px 60px 1fr 110px',padding:'6px 16px',borderBottom:'1px solid rgba(100,160,255,0.06)',fontSize:10,color:'rgba(147,197,253,0.35)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>
                         <span>Data</span><span>Zi</span><span>Apartamente</span><span>Ora medie start</span>
                       </div>
-                      {rapoarteData.filter((z:any)=>z.oraMedieMin!==null).sort((a:any,b:any)=>a.data.localeCompare(b.data)).map((zi:any)=>(
+                      {filteredRapoarte.filter((z:any)=>z.oraMedieMin!==null).sort((a:any,b:any)=>a.data.localeCompare(b.data)).map((zi:any)=>(
                         <div key={zi.data} style={{display:'grid',gridTemplateColumns:'100px 60px 1fr 110px',padding:'8px 16px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center'}}>
                           <span style={{fontSize:12,color:'#E8F4FF',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</span>
                           <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>{ZILE[zi.ziSapt]}</span>
@@ -656,7 +723,7 @@ export default function CuratenePage() {
           )
         })()}
 
-        {rapoarteData.length===0&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.3)',fontSize:13}}>Selectează luna și apasă Generează</div>}
+        {rapoarteData.length===0&&filteredRapoarte.length===0&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.3)',fontSize:13}}>Selectează luna și apasă Generează</div>}
       </div>}
 
       <Toast toast={toast}/>
