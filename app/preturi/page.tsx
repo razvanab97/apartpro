@@ -76,6 +76,7 @@ export default function PreturiPage() {
         list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||''}})
         setPreturi(pm)
       })
+    loadHistory()
     return () => { if(pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
@@ -326,149 +327,109 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             </div>
           </div>
 
-          {/* Controls */}
-          <div style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:10,
-            flexWrap:'wrap' as const,borderBottom:'1px solid rgba(99,179,237,0.08)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Check-in</span>
-              <input type="date" value={checkinMonitor} onChange={e=>{
-                setCheckinMonitor(e.target.value)
-                const d=new Date(e.target.value+'T12:00:00');d.setDate(d.getDate()+1);setCheckoutMonitor(fmt(d))
-              }} style={dateInp}/>
+          {/* Info + Reload */}
+          <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(99,179,237,0.08)',
+            display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap' as const}}>
+            <div style={{fontSize:11,color:'rgba(147,197,253,0.45)',display:'flex',alignItems:'center',gap:6}}>
+              <span>💻</span>
+              <span>Terminal: <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'1px 6px',borderRadius:4,color:'#93C5FD'}}>python3 ~/Desktop/booking_scan.py</code></span>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Check-out</span>
-              <input type="date" value={checkoutMonitor} onChange={e=>setCheckoutMonitor(e.target.value)} style={dateInp}/>
-            </div>
-            <button onClick={handleScan} disabled={scan.status==='waiting'} style={{
-              marginLeft:'auto',padding:'7px 18px',borderRadius:8,fontSize:12,
-              cursor:scan.status==='waiting'?'wait':'pointer',
-              border:'1px solid rgba(99,179,237,0.4)',
-              background:scan.status==='waiting'?'rgba(99,179,237,0.05)':'rgba(99,179,237,0.15)',
-              color:'#93C5FD',fontWeight:700,opacity:scan.status==='waiting'?0.7:1,
-              display:'flex',alignItems:'center',gap:6,
-            }}>
-              {scan.status==='waiting'?<>⏳ Claude scanează...</>:'🔍 Caută pe Booking'}
-            </button>
+            <button onClick={()=>loadHistory()} disabled={loadingHistory} style={{
+              padding:'5px 14px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
+              border:'1px solid rgba(99,179,237,0.3)',background:'rgba(99,179,237,0.1)',color:'#93C5FD',
+              opacity:loadingHistory?0.5:1,
+            }}>{loadingHistory?'...' :'↺ Reîncarcă'}</button>
           </div>
 
-          {/* Waiting — Claude in Chrome lucreaza */}
-          {scan.status==='waiting'&&(
-            <div style={{padding:'18px 16px',background:'rgba(10,25,50,0.4)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                <span style={{fontSize:20}}>🤖</span>
-                <div>
-                  <div style={{fontSize:13,color:'#93C5FD',fontWeight:600}}>Claude in Chrome scanează Booking.com...</div>
-                  <div style={{fontSize:11,color:'rgba(147,197,253,0.5)',marginTop:2}}>
-                    S-a deschis un tab nou cu Claude. Rezultatele apar automat aici în câteva secunde.
-                  </div>
-                </div>
-              </div>
-              {/* Progress bar animat */}
-              <div style={{height:2,background:'rgba(99,179,237,0.1)',borderRadius:2,overflow:'hidden'}}>
+          {/* Ultima scanare */}
+          {!loadingHistory&&history.length>0&&(()=>{
+            const last = history[0]
+            const top5 = (last.top5||[]) as any[]
+            return(
+              <div>
                 <div style={{
-                  height:'100%',width:'40%',background:'rgba(99,179,237,0.5)',borderRadius:2,
-                  animation:'slideProgress 2s ease-in-out infinite',
-                }}/>
-              </div>
-              <style>{`@keyframes slideProgress{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}`}</style>
-            </div>
-          )}
-
-          {/* Error */}
-          {scan.status==='error'&&(
-            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
-              <span style={{fontSize:16}}>⚠️</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:12,color:'#F87171',fontWeight:600}}>{scan.errorMsg}</div>
-              </div>
-              <button onClick={()=>setScan({status:'idle',results:[]})} style={{
-                padding:'4px 12px',borderRadius:6,fontSize:11,cursor:'pointer',
-                border:'1px solid rgba(248,113,113,0.2)',background:'transparent',color:'rgba(248,113,113,0.5)',
-              }}>✕</button>
-            </div>
-          )}
-
-          {/* Results */}
-          {scan.status==='done'&&scan.results.length>0&&(
-            <div>
-              <div style={{
-                padding:'12px 16px',
-                background:scan.weAreLowest?'rgba(74,222,128,0.08)':scan.ourLowestRank?'rgba(252,211,77,0.06)':'rgba(99,179,237,0.04)',
-                borderBottom:'1px solid rgba(99,179,237,0.08)',
-                display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,
-              }}>
-                <span style={{fontSize:20}}>{scan.weAreLowest?'🏆':scan.ourLowestRank?'📍':'👀'}</span>
-                <div style={{flex:1}}>
-                  {scan.weAreLowest?(
-                    <div style={{fontSize:13,fontWeight:700,color:'#4ADE80'}}>Tu ești cel mai ieftin din piață! 🎉</div>
-                  ):scan.ourLowestRank?(
-                    <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>
-                      Ești pe locul #{scan.ourLowestRank} — minim: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
-                    </div>
-                  ):(
-                    <div style={{fontSize:13,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
-                      AB Homes nu e în top 5 — minim: <span style={{fontFamily:'monospace'}}>{scan.lowestPrice} lei</span>
-                    </div>
-                  )}
-                  <div style={{display:'flex',alignItems:'center',gap:12,marginTop:3}}>
-                    <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>{scan.checkin} → {scan.checkout}</span>
-                    {!!scan.total&&(
-                      <span style={{fontSize:11,fontFamily:'monospace',fontWeight:600,
-                        color:'rgba(147,197,253,0.7)',background:'rgba(99,179,237,0.1)',
-                        padding:'1px 8px',borderRadius:4,border:'1px solid rgba(99,179,237,0.2)'}}>
-                        {scan.total} proprietăți
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button onClick={handleScan} style={{
-                  padding:'5px 14px',borderRadius:6,fontSize:11,cursor:'pointer',
-                  border:'1px solid rgba(99,179,237,0.25)',background:'rgba(99,179,237,0.08)',color:'rgba(147,197,253,0.7)',
-                }}>↺ Rescanează</button>
-              </div>
-              {scan.results.map((r,i)=>(
-                <div key={i} style={{
-                  padding:'10px 16px',
-                  borderBottom:i<scan.results.length-1?'1px solid rgba(99,179,237,0.06)':'none',
-                  display:'flex',alignItems:'center',gap:12,
-                  background:r.isOurs?'rgba(74,222,128,0.04)':'transparent',
+                  padding:'12px 16px',
+                  background:last.we_are_lowest?'rgba(74,222,128,0.08)':last.our_lowest_rank?'rgba(252,211,77,0.06)':'rgba(99,179,237,0.04)',
+                  borderBottom:'1px solid rgba(99,179,237,0.08)',
+                  display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,
                 }}>
-                  <div style={{
-                    width:26,height:26,borderRadius:'50%',flexShrink:0,
-                    display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:11,fontWeight:700,fontFamily:'monospace',
-                    background:r.rank===1?'rgba(252,211,77,0.15)':'rgba(99,179,237,0.08)',
-                    color:r.rank===1?'#FCD34D':'rgba(147,197,253,0.5)',
-                    border:`1px solid ${r.rank===1?'rgba(252,211,77,0.3)':'rgba(99,179,237,0.15)'}`,
-                  }}>{r.rank}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,fontWeight:r.isOurs?700:500,
-                      color:r.isOurs?'#4ADE80':'#E8F4FF',
-                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
-                      {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
-                    </div>
-                    {r.isOurs&&r.matchedCode&&(
-                      <div style={{fontSize:10,color:'rgba(74,222,128,0.5)',marginTop:1}}>AB Homes · {r.matchedCode}</div>
+                  <span style={{fontSize:20}}>{last.we_are_lowest?'🏆':last.our_lowest_rank?'📍':'👀'}</span>
+                  <div style={{flex:1}}>
+                    {last.we_are_lowest?(
+                      <div style={{fontSize:13,fontWeight:700,color:'#4ADE80'}}>Tu ești cel mai ieftin din piață! 🎉</div>
+                    ):last.our_lowest_rank?(
+                      <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>
+                        Ești pe locul #{last.our_lowest_rank} — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
+                      </div>
+                    ):(
+                      <div style={{fontSize:13,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                        AB Homes nu e în top 5 — minim: <span style={{fontFamily:'monospace'}}>{last.lowest_price} lei</span>
+                      </div>
                     )}
-                  </div>
-                  <div style={{fontFamily:'monospace',fontSize:14,fontWeight:700,flexShrink:0,
-                    color:r.price===scan.lowestPrice?'#4ADE80':r.isOurs?'#93C5FD':'rgba(214,228,244,0.8)'}}>
-                    {r.priceText}
-                    {r.price===scan.lowestPrice&&<span style={{fontSize:9,marginLeft:4,color:'#4ADE80',verticalAlign:'super'}}>MIN</span>}
+                    <div style={{display:'flex',alignItems:'center',gap:12,marginTop:3,flexWrap:'wrap' as const}}>
+                      <span style={{fontSize:10,color:'rgba(147,197,253,0.4)'}}>{last.checkin} → {last.checkout}</span>
+                      {last.total_properties&&(
+                        <span style={{fontSize:11,fontFamily:'monospace',fontWeight:600,
+                          color:'rgba(147,197,253,0.7)',background:'rgba(99,179,237,0.1)',
+                          padding:'1px 8px',borderRadius:4,border:'1px solid rgba(99,179,237,0.2)'}}>
+                          {last.total_properties} proprietăți
+                        </span>
+                      )}
+                      <span style={{fontSize:10,color:'rgba(147,197,253,0.3)',fontFamily:'monospace'}}>
+                        {new Date(last.scanned_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              ))}
+                {top5.map((r:any,i:number)=>(
+                  <div key={i} style={{
+                    padding:'10px 16px',
+                    borderBottom:i<top5.length-1?'1px solid rgba(99,179,237,0.06)':'none',
+                    display:'flex',alignItems:'center',gap:12,
+                    background:r.isOurs?'rgba(74,222,128,0.04)':'transparent',
+                  }}>
+                    <div style={{width:26,height:26,borderRadius:'50%',flexShrink:0,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      fontSize:11,fontWeight:700,fontFamily:'monospace',
+                      background:r.rank===1?'rgba(252,211,77,0.15)':'rgba(99,179,237,0.08)',
+                      color:r.rank===1?'#FCD34D':'rgba(147,197,253,0.5)',
+                      border:`1px solid ${r.rank===1?'rgba(252,211,77,0.3)':'rgba(99,179,237,0.15)'}`}}>
+                      {r.rank}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:r.isOurs?700:500,
+                        color:r.isOurs?'#4ADE80':'#E8F4FF',
+                        overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                        {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
+                      </div>
+                      {r.isOurs&&r.matchedCode&&(
+                        <div style={{fontSize:10,color:'rgba(74,222,128,0.5)',marginTop:1}}>AB Homes · {r.matchedCode}</div>
+                      )}
+                    </div>
+                    <div style={{fontFamily:'monospace',fontSize:14,fontWeight:700,flexShrink:0,
+                      color:r.price===last.lowest_price?'#4ADE80':r.isOurs?'#93C5FD':'rgba(214,228,244,0.8)'}}>
+                      {r.priceText||`${r.price} lei`}
+                      {r.price===last.lowest_price&&<span style={{fontSize:9,marginLeft:4,color:'#4ADE80',verticalAlign:'super'}}>MIN</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+
+          {!loadingHistory&&history.length===0&&(
+            <div style={{padding:'24px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+              Nicio scanare încă — rulează scriptul din Terminal
             </div>
           )}
 
-          {scan.status==='idle'&&(
-            <div style={{padding:'20px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
-              Apasă "Caută pe Booking" — se deschide Claude in Chrome care extrage automat top 5
+          {loadingHistory&&(
+            <div style={{padding:'24px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+              Se încarcă...
             </div>
           )}
 
-          {/* ISTORIC */}
+                    {/* ISTORIC */}
           {showHistory&&(
             <div style={{borderTop:'1px solid rgba(99,179,237,0.12)'}}>
               <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(99,179,237,0.08)',
