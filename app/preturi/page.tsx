@@ -280,9 +280,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
       </div>
       <div style={{padding:'14px 16px',overflowY:'auto',flex:1}}>
 
-        {mainTab==='preturi'&&(<><div style={{...panel}}>
-          <div style={{padding:'12px 16px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
-  
+        {mainTab==='preturi'&&(<>
+        <div style={{...panel}}>
           <div style={{padding:'10px 16px 6px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
             {QUICK.map(({label,val})=>(
               <button key={val} onClick={()=>changeData(val)} style={{
