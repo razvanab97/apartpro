@@ -32,6 +32,7 @@ export default function CuratenePage() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
+  const [eliberat, setEliberat] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'|'rapoarte'>('curatenie')
   const [probleme, setProbleme] = useState<any[]>([])
   const [newProblema, setNewProblema] = useState({apartament_id:'',titlu:'',descriere:'',prioritate:'normal'})
@@ -52,7 +53,14 @@ export default function CuratenePage() {
 
   async function loadStaffStatus() {
     const { data } = await supabase.from('curatenie_status').select('*').eq('data', selectedDate)
-    const m:Record<string,any>={};(data||[]).forEach((s:any)=>{ m[s.apartament_id]=s });setStaffStatus(m)
+    const m:Record<string,any>={}
+    const elib = new Set<string>()
+    ;(data||[]).forEach((s:any)=>{ 
+      m[s.apartament_id]=s
+      if(s.eliberat) elib.add(s.apartament_id)
+    })
+    setStaffStatus(m)
+    setEliberat(elib)
   }
 
   async function loadProbleme() {
@@ -61,6 +69,33 @@ export default function CuratenePage() {
       .neq('status','rezolvat')
       .order('created_at',{ascending:false})
     setProbleme(data||[])
+  }
+
+  async function toggleEliberat(aptId: string) {
+    const isEl = eliberat.has(aptId)
+    const { error } = await supabase.from('curatenie_status').upsert({
+      apartament_id: aptId,
+      data: selectedDate,
+      eliberat: !isEl,
+      eliberat_la: isEl ? null : new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}),
+    }, { onConflict: 'apartament_id,data' })
+    if (!error) {
+      setEliberat(prev => {
+        const n = new Set(prev)
+        isEl ? n.delete(aptId) : n.add(aptId)
+        return n
+      })
+      // Trimite notificare push catre angajat
+      fetch('/api/push-send', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          title: isEl ? `⏳ Asteapta — ${aptId}` : `🚪 Eliberat! Poti merge la curatatenie`,
+          body: `Apartament ${aptId} — ${selectedDate}`,
+          url: '/staff',
+          tag: 'eliberat-' + aptId
+        })
+      }).catch(()=>{})
+    }
   }
 
   async function loadRapoarte(lunaParam?: string) {
@@ -244,6 +279,16 @@ export default function CuratenePage() {
                       color:staffStatus[apt.id].status==='gata'?'#4ADE80':'#FB923C'}}>
                       {staffStatus[apt.id].status==='gata'?`✅ Gata ${staffStatus[apt.id].ora_gata||''}`:staffStatus[apt.id].status==='inceput'?`🧹 început ${staffStatus[apt.id].ora_inceput||''}`:'' }
                     </span>
+                  )}
+                  {/* Buton Eliberat */}
+                  {apt?.id&&(
+                    <button onClick={()=>toggleEliberat(apt.id)}
+                      style={{padding:'2px 10px',borderRadius:5,border:`1px solid ${eliberat.has(apt.id)?'rgba(74,222,128,0.4)':'rgba(252,211,77,0.3)'}`,
+                        background:eliberat.has(apt.id)?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.08)',
+                        color:eliberat.has(apt.id)?'#4ADE80':'#FCD34D',
+                        fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                      {eliberat.has(apt.id)?'✓ Eliberat':'🚪 Eliberat?'}
+                    </button>
                   )}
                   <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>

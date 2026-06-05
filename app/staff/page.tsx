@@ -56,6 +56,7 @@ export default function StaffPage() {
     const m:Record<string,any>={}
     ;(st.data||[]).forEach((s:any)=>{ m[s.apartament_id]=s })
     setStatusuri(m)
+    // setEliberatIds din curatenie_status
     setLoading(false)
   }
 
@@ -273,6 +274,8 @@ export default function StaffPage() {
                       <span style={{fontSize:20,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
                       <span style={{fontSize:12,color:'rgba(159,215,255,0.45)'}}>{apt.nume}</span>
                       {ci&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>⚡ URGENT</span>}
+                      {st?.eliberat&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>🚪 Eliberat{st.eliberat_la?' '+st.eliberat_la:''}</span>}
+                      {!st?.eliberat&&!isInceput&&!isGata&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.1)',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>⏳ Așteaptă</span>}
                     </div>
                     <span style={{fontSize:28}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
                   </div>
