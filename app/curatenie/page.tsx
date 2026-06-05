@@ -175,14 +175,15 @@ export default function CuratenePage() {
         const timpMediu = timpuri.length ? Math.round(timpuri.reduce((a,b)=>a+b,0)/timpuri.length) : null
         const totalLenjerii = rez.reduce((sum:number,r:any)=>{
           const full = rezByAptDay[`${r.apartament?.id}_${data}`]
-          const p = Number(full?.nr_persoane||r.nr_persoane)||2
-          return sum + Math.ceil(p/2)
+          return sum + nrLenSmart(full||r)
         },0)
         const detalii = rez.map((r:any)=>{
           const aptId = r.apartament?.id
           const st = (stData||[]).find((s:any)=>s.apartament_id===aptId&&s.data===data)
           const durata = st ? calcTimp(st) : null
-          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, durata, status:st?.status||'neînceput' }
+          const full = rezByAptDay[`${aptId}_${data}`]
+          const lenjerii = nrLenSmart(full||r)
+          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, durata, status:st?.status||'neînceput', lenjerii }
         })
         const oreInceput = detalii.map((d:any)=>d.oraInceput).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
         const oraMedieMin = oreInceput.length ? Math.round(oreInceput.reduce((a:number,b:number)=>a+b,0)/oreInceput.length) : null
@@ -272,7 +273,7 @@ export default function CuratenePage() {
     nrGata: filtruAptRaport.size===0 ? zi.nrGata :
       (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)&&d.status==='gata').length,
     totalLenjerii: filtruAptRaport.size===0 ? zi.totalLenjerii :
-      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)).reduce((s:number,d:any)=>s+(d.lenjerii||1),0),
+      (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)).reduce((s:number,d:any)=>s+(d.lenjerii||0),0),
     timpuri: filtruAptRaport.size===0 ? zi.timpuri :
       (zi.detalii||[]).filter((d:any)=>filtruAptRaport.has(d.nota)&&d.durata).map((d:any)=>d.durata),
     timpMediu: (()=>{
@@ -650,13 +651,13 @@ export default function CuratenePage() {
               {/* TAB DETALIAT */}
               {raportTab==='detaliat'&&(
                 <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'80px 55px 1fr 70px 70px 70px 70px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
-                    {['Data','Apt','Nume','Început','Terminat','Durată','Status'].map(h=>(
+                  <div style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 60px 60px 65px 50px 70px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
+                    {['Data','Apt','Nume','Început','Terminat','Durată','🛏','Status'].map(h=>(
                       <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
                     ))}
                   </div>
                   {filteredRapoarte.flatMap((zi:any)=>zi.detalii.map((d:any,i:number)=>(
-                    <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 55px 1fr 70px 70px 70px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
+                    <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 60px 60px 65px 50px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
                       <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</div>
                       <div style={{fontSize:12,fontWeight:700,color:'#4DA3FF',fontFamily:'monospace'}}>{d.nota}</div>
                       <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{d.nume}</div>
@@ -665,6 +666,7 @@ export default function CuratenePage() {
                       <div style={{fontSize:12,fontFamily:'monospace',fontWeight:700,color:d.durata?(d.durata<45?'#4ADE80':d.durata<90?'#FCD34D':'#F87171'):'rgba(159,215,255,0.3)'}}>
                         {d.durata?`${Math.floor(d.durata/60)?Math.floor(d.durata/60)+'h ':''}${d.durata%60}min`:'-'}
                       </div>
+                      <div style={{fontSize:13,fontFamily:'monospace',fontWeight:700,color:'#FCD34D',textAlign:'center' as const}}>{d.lenjerii??'—'}</div>
                       <div style={{fontSize:10,fontWeight:600,padding:'2px 6px',borderRadius:4,background:d.status==='gata'?'rgba(74,222,128,0.15)':d.status==='inceput'?'rgba(251,146,60,0.15)':'rgba(159,215,255,0.08)',color:d.status==='gata'?'#4ADE80':d.status==='inceput'?'#FB923C':'rgba(159,215,255,0.4)'}}>
                         {d.status==='gata'?'✅ Gata':d.status==='inceput'?'🧹 Început':'—'}
                       </div>
@@ -673,6 +675,7 @@ export default function CuratenePage() {
                   <div style={{padding:'10px 14px',background:'rgba(74,222,128,0.05)',borderTop:'1px solid rgba(74,222,128,0.1)',display:'flex',gap:20}}>
                     <span style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>{filteredRapoarte.flatMap((z:any)=>z.detalii).length} curățenii</span>
                     <span style={{fontSize:12,color:'#4ADE80'}}>{filteredRapoarte.flatMap((z:any)=>z.detalii).filter((d:any)=>d.status==='gata').length} confirmate</span>
+                    <span style={{fontSize:12,fontWeight:700,color:'#FCD34D'}}>🛏 {filteredRapoarte.flatMap((z:any)=>z.detalii).reduce((s:number,d:any)=>s+(d.lenjerii||0),0)} lenjerii</span>
                     <span style={{fontSize:12,color:'#93C5FD'}}>{(()=>{const t=filteredRapoarte.flatMap((z:any)=>z.detalii).map((d:any)=>d.durata).filter(Boolean);const m=t.length?Math.round(t.reduce((a:number,b:number)=>a+b,0)/t.length):null;return m?`⌀ ${Math.floor(m/60)?Math.floor(m/60)+'h ':''}${m%60}min`:''})()}</span>
                   </div>
                 </div>
