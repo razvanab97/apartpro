@@ -567,8 +567,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={36}/>
                       <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
                         labelStyle={{color:'#93C5FD',fontWeight:600}}
-                        formatter={(v:any,n:string)=>[`${v} lei`,n==='booking'?'🏨 Booking':'🏠 Airbnb']}/>
-                      <Legend formatter={(v:string)=>v==='booking'?'🏨 Booking':'🏠 Airbnb'} wrapperStyle={{fontSize:11}}/>
+                        formatter={(v:any,n:any)=>[`${v} lei`,n==='booking'?'🏨 Booking':'🏠 Airbnb'] as [string,string]}/>
+                      <Legend formatter={(v:any)=>v==='booking'?'🏨 Booking':'🏠 Airbnb'} wrapperStyle={{fontSize:11}}/>
                       <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={2} dot={{fill:'#7BC8FF',r:3}} connectNulls/>
                       <Line type="monotone" dataKey="airbnb" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:3}} connectNulls/>
                     </LineChart>
