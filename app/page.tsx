@@ -433,7 +433,7 @@ export default function DashboardPage() {
           {[
             {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
             {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
-            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNet||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:`RON net · brut ${stats.incasariLuna.toLocaleString('ro-RO')}`},
+            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNet||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:`RON net · brut ${stats.incasariNet.toLocaleString('ro-RO')}`},
             {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
             {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
             {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#EF4444':'#22C55E',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
@@ -721,7 +721,7 @@ export default function DashboardPage() {
               <RevenueChart data={DEMO_REVENUE}/>
               <div style={{display:'flex',gap:16,marginTop:10}}>
                 <div>
-                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#4DA3FF'}}>{stats.incasariLuna>0?stats.incasariLuna.toLocaleString('ro-RO'):'11.400'}</div>
+                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#4DA3FF'}}>{stats.incasariNet>0?stats.incasariNet.toLocaleString('ro-RO'):'11.400'}</div>
                   <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>RON luna curentă</div>
                 </div>
                 <div style={{marginLeft:'auto'}}>
@@ -739,15 +739,15 @@ export default function DashboardPage() {
                       Acoperire cheltuieli luna anterioară
                     </span>
                     <span style={{fontSize:14,fontWeight:700,fontFamily:'monospace',
-                      color:stats.incasariLuna>=cheltuieliLP.total?'#4ADE80':stats.incasariLuna>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'}}>
-                      {cheltuieliLP.total>0?Math.round(Math.min(100,stats.incasariLuna/cheltuieliLP.total*100)):0}%
+                      color:stats.incasariNet>=cheltuieliLP.total?'#4ADE80':stats.incasariNet>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'}}>
+                      {cheltuieliLP.total>0?Math.round(Math.min(100,stats.incasariNet/cheltuieliLP.total*100)):0}%
                     </span>
                   </div>
                   <div style={{height:5,background:'rgba(159,215,255,0.08)',borderRadius:3,overflow:'hidden'}}>
                     <div style={{
                       height:'100%',borderRadius:3,transition:'width .5s',
-                      width:`${cheltuieliLP.total>0?Math.min(100,stats.incasariLuna/cheltuieliLP.total*100):0}%`,
-                      background:stats.incasariLuna>=cheltuieliLP.total?'#4ADE80':stats.incasariLuna>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'
+                      width:`${cheltuieliLP.total>0?Math.min(100,stats.incasariNet/cheltuieliLP.total*100):0}%`,
+                      background:stats.incasariNet>=cheltuieliLP.total?'#4ADE80':stats.incasariNet>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'
                     }}/>
                   </div>
                   <div style={{display:'flex',justifyContent:'space-between',marginTop:5}}>
@@ -755,7 +755,7 @@ export default function DashboardPage() {
                       Cheltuieli: {cheltuieliLP.total.toLocaleString('ro-RO')} RON
                     </span>
                     <span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
-                      Încasat: {stats.incasariLuna.toLocaleString('ro-RO')} RON
+                      Încasat: {stats.incasariNet.toLocaleString('ro-RO')} RON
                     </span>
                   </div>
                 </div>
