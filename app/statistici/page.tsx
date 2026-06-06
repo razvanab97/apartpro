@@ -117,6 +117,8 @@ export default function StatisticiPage() {
       extracted: null,
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
     }))
+    // CSV hint
+    Array.from(files).forEach(f => { if(f.name.endsWith('.csv')) console.log('CSV detected:', f.name) })
     setUploads(prev => [...prev, ...newItems])
   }
 
@@ -143,63 +145,21 @@ export default function StatisticiPage() {
 
   async function extractWithAI(item: UploadItem): Promise<Partial<StatRow>> {
     const base64 = await fileToBase64(item.file)
-    const isPdf = item.file.type === 'application/pdf'
     const apt = apts.find(a => a.id === item.aptId)
-
-    const prompt = `Ești un extractor de date. Din acest screenshot/PDF de la ${item.platforma === 'booking' ? 'Booking.com extranet' : 'Airbnb host dashboard'} pentru apartamentul "${apt?.nota} - ${apt?.nume}", extrage TOATE valorile numerice vizibile.
-
-Răspunde DOAR cu JSON valid, fără text suplimentar, cu această structură exactă (pune null dacă nu găsești valoarea):
-{
-  "vizualizari_cautari": număr sau null,
-  "vizualizari_pagina": număr sau null,
-  "rata_conversie_cautari": procent ca număr (ex: 1.63) sau null,
-  "rata_conversie_pagina": procent ca număr (ex: 2.24) sau null,
-  "rezervari_confirmate": număr sau null,
-  "scor_pozitie_text": "ex: 555 din 689" sau null,
-  "rata_anulari": procent ca număr sau null,
-  "adr": număr RON sau null,
-  "innoptari": număr sau null,
-  "venituri_ron": număr sau null,
-  "scor_comentarii": număr (ex: 9.1) sau null,
-  "completare_pagina": număr procent sau null,
-  "rata_ocupare": procent ca număr (ex: 70.4) sau null,
-  "nopti_rezervate": număr sau null,
-  "nopti_blocate": număr sau null,
-  "tarif_mediu_noapte": număr RON sau null,
-  "wishlist_total": număr sau null,
-  "scor_5stele": procent ca număr (ex: 62.5) sau null,
-  "scor_acuratete": procent sau null,
-  "scor_checkin": procent sau null,
-  "scor_curatenie": procent sau null,
-  "scor_comunicare": procent sau null,
-  "scor_pozitie": procent sau null,
-  "scor_valoare": procent sau null,
-  "rata_conversie_globala": procent ca număr (ex: 0.37) sau null,
-  "rata_afisari_p1": procent ca număr (ex: 60.2) sau null
-}`
-
-    const messages: any[] = [{
-      role: 'user',
-      content: isPdf
-        ? [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: prompt }
-          ]
-        : [
-            { type: 'image', source: { type: 'base64', media_type: item.file.type, data: base64 } },
-            { type: 'text', text: prompt }
-          ]
-    }]
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/statistici-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages })
+      body: JSON.stringify({
+        base64Data: base64,
+        mimeType: item.file.type || (item.file.name.endsWith('.csv') ? 'text/csv' : 'application/octet-stream'),
+        filename: item.file.name,
+        platforma: item.platforma,
+        aptNume: apt ? apt.nota + ' ' + apt.nume : 'necunoscut'
+      })
     })
     const data = await res.json()
-    const text = data.content?.find((c: any) => c.type === 'text')?.text || '{}'
-    const clean = text.replace(/```json|```/g, '').trim()
-    return JSON.parse(clean)
+    if(data.error) throw new Error(data.error)
+    return data
   }
 
   async function fileToBase64(file: File): Promise<string> {
@@ -328,7 +288,7 @@ Răspunde DOAR cu JSON valid, fără text suplimentar, cu această structură ex
                 <div style={{ fontSize: 14, color: 'rgba(159,215,255,0.7)' }}>Click sau trage fișierele aici</div>
                 <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginTop: 4 }}>PNG, JPG, PDF — multiple fișiere acceptate</div>
               </div>
-              <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf" style={{ display: 'none' }}
+              <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.csv" style={{ display: 'none' }}
                 onChange={e => handleFiles(e.target.files)} />
             </div>
 
