@@ -52,6 +52,9 @@ function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [chirie, setChirie] = useState(0)
+  const [chirieEUR, setChirieEUR] = useState(0)
+  const [chirieMoneda, setChirieMoneda] = useState('RON')
+  const [cursEUR, setCursEUR] = useState(5.0)
   const [eonCurent, setEonCurent] = useState(0)
   const [eonGaz, setEonGaz] = useState(0)
   const [asociatie, setAsociatie] = useState(0)
@@ -61,7 +64,7 @@ function Calc({ apt }: { apt: any }) {
   const [consumabile, setConsumabile] = useState(100)
   const [lenjerii, setLenjerii] = useState(80)
   const [altVar, setAltVar] = useState(0)
-  const [zile, setZile] = useState(20)
+  const [zile, setZile] = useState(25)
   const [loadingCh, setLoadingCh] = useState(false)
 
   async function preiadinCheltuieli() {
@@ -71,8 +74,34 @@ function Calc({ apt }: { apt: any }) {
     const luna = now.getMonth() + 1
     const primaZi = an+'-'+pad(luna)+'-01'
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+
+    // Preia curs BNR
+    let curs = 5.0
+    try {
+      const res = await fetch('https://www.bnr.ro/nbrfxrates.xml')
+      const txt = await res.text()
+      const match = txt.match(/<Rate currency="EUR">([\d.]+)<\/Rate>/)
+      if(match) curs = parseFloat(match[1])
+    } catch {}
+    setCursEUR(curs)
+
+    // Preia chiria fixa din chirii_fixe
+    const { data: chirieData } = await supabase.from('chirii_fixe')
+      .select('valoare,moneda').eq('apartament_id', apt.id).eq('activ', true).single()
+    if(chirieData) {
+      setChirieMoneda(chirieData.moneda)
+      if(chirieData.moneda === 'EUR') {
+        setChirieEUR(chirieData.valoare)
+        setChirie(Math.round(chirieData.valoare * curs))
+      } else {
+        setChirie(chirieData.valoare)
+        setChirieEUR(0)
+      }
+    }
+
+    // Preia cheltuielile reale din luna curenta
     const { data } = await supabase.from('cheltuieli')
-      .select('categorie,valoare,descriere')
+      .select('categorie,valoare')
       .eq('apartament_id', apt.id)
       .gte('data', primaZi)
       .lte('data', ultimaZi)
@@ -80,18 +109,14 @@ function Calc({ apt }: { apt: any }) {
       const sum = (cat: string) => data
         .filter((x:any) => x.categorie === cat)
         .reduce((s:number,x:any) => s + Number(x.valoare||0), 0)
-      const chirieDB = sum('chirie')
-      setChirie(chirieDB > 0 ? chirieDB : apt.pret_standard||0)
-      setEonCurent(sum('eon_curent') + sum('eon_duo'))
-      setEonGaz(sum('eon_gaz'))
-      setAsociatie(sum('asociatie'))
-      setInternet(sum('internet'))
-      const curatDB = sum('curatenie')
-      if(curatDB > 0) setCuratenie(curatDB)
-      const consDB = sum('consumabile')
-      if(consDB > 0) setConsumabile(consDB)
-    } else {
-      setChirie(apt.pret_standard||0)
+      const eon = sum('eon_curent') + sum('eon_duo')
+      const gaz = sum('eon_gaz')
+      const asoc = sum('asociatie')
+      const inet = sum('internet')
+      if(eon > 0) setEonCurent(Math.round(eon))
+      if(gaz > 0) setEonGaz(Math.round(gaz))
+      if(asoc > 0) setAsociatie(Math.round(asoc))
+      if(inet > 0) setInternet(Math.round(inet))
     }
     setLoaded(true)
     setLoadingCh(false)
@@ -158,7 +183,7 @@ function Calc({ apt }: { apt: any }) {
           <div>
             <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Cheltuieli fixe / lună</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-              {([['Chirie/Rată',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
+              {([[chirieMoneda==='EUR'?'Chirie ('+chirieEUR+' EUR × '+cursEUR.toFixed(2)+')':'Chirie/Rată',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
                 <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
               ))}
             </div>
