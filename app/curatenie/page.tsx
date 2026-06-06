@@ -66,7 +66,7 @@ export default function CuratenePage() {
     })
     setStaffStatus(m)
     setEliberat(elib)
-    if(Object.keys(lenFromDb).length>0) setLen(prev=>({...lenFromDb,...prev}))
+    if(Object.keys(lenFromDb).length>0) setLen(prev=>({...prev,...lenFromDb}))
   }
 
   async function loadProbleme() {
@@ -217,7 +217,7 @@ export default function CuratenePage() {
   async function load(date:string){
     setLoading(true)
     setLen({})
-    const [{data:coData},{data:ciData}] = await Promise.all([
+    const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
       supabase.from('rezervari')
         .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
         .eq('data_checkout', date)
@@ -228,25 +228,34 @@ export default function CuratenePage() {
         .eq('data_checkin', date)
         .eq('apartament.status', 'activ')
         .neq('status_rezervare', 'anulata'),
+      supabase.from('curatenie_status').select('apartament_id,nr_lenjerii').eq('data', date)
     ])
     setCo(coData||[])
     setCi(ciData||[])
-    // init lenjerii din CI — salveaza in DB daca nu exista deja
-    const init:Record<string,number>={}
-    ;(ciData||[]).forEach((r:any)=>{ init[r.apartament?.id]=nrLenSmart(r) })
-    setLen(init)
-    setLoading(false)
-    // Salveaza nr_lenjerii calculat pentru fiecare apt cu CI — doar daca nu e deja setat manual
-    const upserts = Object.entries(init).map(([aptId, nrLen]) => ({
-      apartament_id: aptId, data: date, nr_lenjerii: nrLen
-    }))
-    if (upserts.length > 0) {
-      // Upsert doar nr_lenjerii, nu suprascrie status/ora deja setate
-      for (const u of upserts) {
-        await supabase.from('curatenie_status')
-          .upsert(u, { onConflict: 'apartament_id,data', ignoreDuplicates: false })
-          .is('nr_lenjerii', null) // nu suprascrie daca e deja setat manual
+
+    // 1. Valori manuale din DB (prioritate maximă)
+    const lenInit:Record<string,number>={}
+    ;(statusData||[]).forEach((s:any)=>{ if(s.nr_lenjerii) lenInit[s.apartament_id]=s.nr_lenjerii })
+
+    // 2. Pentru apartamentele fără valoare manuală, calculează din CI și salvează în DB
+    const toInsert: {apartament_id:string, data:string, nr_lenjerii:number}[] = []
+    ;(ciData||[]).forEach((r:any)=>{
+      const aptId = r.apartament?.id
+      if(!aptId) return
+      if(!lenInit[aptId]) {
+        const calc = nrLenSmart(r)
+        lenInit[aptId] = calc
+        toInsert.push({ apartament_id: aptId, data: date, nr_lenjerii: calc })
       }
+    })
+
+    setLen(lenInit)
+    setLoading(false)
+
+    // Salvează doar valorile calculate (cele manuale există deja în DB)
+    for (const u of toInsert) {
+      await supabase.from('curatenie_status')
+        .upsert(u, { onConflict: 'apartament_id,data', ignoreDuplicates: true })
     }
   }
 
