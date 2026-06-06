@@ -95,10 +95,22 @@ function msgAcces(r:any){
   return `Bună ziua, ${firstName(r.nume_client)}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
 
-function msgCheckout(r:any){
+function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   const apt = r.apartament?.nume || 'apartament'
+  const aptId = r.apartament?.id || ''
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
-  return `Bună ziua, ${firstName(r.nume_client)}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
+  const nume = firstName(r.nume_client)
+  // Daca exista sablon pentru acest apartament, foloseste-l
+  const sablon = sabloane[aptId]
+  if(sablon){
+    return sablon
+      .replace(/\{nume\}/gi, nume)
+      .replace(/\{apartament\}/gi, apt)
+      .replace(/\{data_checkout\}/gi, co)
+      .replace(/\{data\}/gi, co)
+  }
+  // Fallback generic
+  return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
@@ -123,6 +135,7 @@ export default function DashboardPage() {
   const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
+  const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
 
   useEffect(()=>{loadData()},[])
 
@@ -151,7 +164,7 @@ export default function DashboardPage() {
     const [
       {count:apCount},{data:rezAziCount},{data:rezLuna},
       {data:ciAzi},{data:coAzi},{data:recente},{data:deconturi},{count:taskCount},
-      {data:aptData},{data:chData},{data:actRez},{count:rezLunaCount},
+      {data:aptData},{data:chData},{data:actRez},{count:rezLunaCount},{data:sablCOData},
     ]=await Promise.all([
       // apartamente active
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
@@ -177,6 +190,8 @@ export default function DashboardPage() {
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
+      // sabloane checkout per apartament
+      supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout'),
     ])
     // Pro-rata helper: nopti in luna curenta / total nopti * suma bruta (identic cu 5starDesk)
     const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
@@ -230,6 +245,10 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
+    // sabloane checkout per apartament
+    const coMap:Record<string,string>={}
+    ;(sablCOData||[]).forEach((s:any)=>{ if(s.apartament_id && s.text) coMap[s.apartament_id]=s.text })
+    setSabloaneCO(coMap)
 
     // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
     const lunaVitoare = luna===12 ? 1 : luna+1
@@ -391,7 +410,7 @@ export default function DashboardPage() {
             </a>
           </>)}
           {!isCI&&(
-            <a href={waLink(phone,msgCheckout(r))} target="_blank" rel="noreferrer"
+            <a href={waLink(phone,msgCheckoutGen(r,sabloaneCO))} target="_blank" rel="noreferrer"
               style={waBtn('rgba(192,132,252,0.9)','rgba(192,132,252,0.08)')}>
               <LogOut size={12}/>Check-out
             </a>
