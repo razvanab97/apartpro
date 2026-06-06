@@ -217,30 +217,34 @@ export default function StaffPage() {
 
       {/* Header */}
       <div style={{background:'rgba(6,13,26,0.98)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',paddingTop:'calc(12px + env(safe-area-inset-top)',position:'sticky',top:0,zIndex:20}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
           <div>
             <div style={{fontSize:15,fontWeight:700,color:'#F0F8FF'}}>
-              {deCuratat.length>0 ? nrGata+'/'+deCuratat.length+' curățate' : '✓ Totul e curat'}
+              {deCuratat.length>0 ? (nrGata+'/'+deCuratat.length+' curatate') : 'Totul e curat'}
             </div>
-            <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:1}}>AB Homes Iași</div>
+            <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:1}}>AB Homes</div>
           </div>
           {/* Navigare zile */}
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <button onClick={()=>setData(addDays(data,-1))}
-              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>‹</button>
+              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+              {'<'}
+            </button>
             <button onClick={()=>setData(todayStr())}
               style={{padding:'0 12px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
               {fmtFull(data)}
             </button>
             <button onClick={()=>setData(addDays(data,1))}
-              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>›</button>
+              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
+              {'>'}
+            </button>
           </div>
         </div>
 
         {/* Progress */}
         {deCuratat.length>0&&(
-          <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2}}>
-            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:(nrGata/deCuratat.length*100)+'%',transition:'width .5s ease'}}/>
+          <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:((nrGata/deCuratat.length*100)+'%'),transition:'width .5s ease'}}/>
           </div>
         )}
       </div>
@@ -256,7 +260,9 @@ export default function StaffPage() {
       </div>
 
       {/* Content */}
-        {/* ── CURĂȚENIE ── */}
+      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
+
+        {/* CURATENIE */}
         {tab==='curatenie'&&(
           deCuratat.length===0
           ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>
@@ -269,63 +275,61 @@ export default function StaffPage() {
             const isOpen=expandedApt===apt.id
             const borderColor=isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
             const bgColor=isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
-            return(
-              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'1.5px solid '+borderColor,background:bgColor,marginBottom:8,boxSizing:'border-box' as any,width:'100%'}}>
-                {/* ROW COMPACT */}
+            return (
+              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'1.5px solid '+borderColor,background:bgColor,marginBottom:8,width:'100%'}}>
                 <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
-                  style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none' as any}}>
+                  style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
                   <span style={{fontSize:22,flexShrink:0}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
                       <span style={{fontSize:17,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
-                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{apt.nume}</span>
+                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt.nume}</span>
                     </div>
-                    <div style={{display:'flex',gap:5,marginTop:4,flexWrap:'wrap' as const}}>
-                      {isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(34,197,94,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(34,197,94,0.25)'}}>Gata{st?.ora_gata?' '+st.ora_gata:''}</span>}
+                    <div style={{display:'flex',gap:5,marginTop:4,flexWrap:'wrap'}}>
+                      {isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(34,197,94,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(34,197,94,0.25)'}}>{'Gata'+(st?.ora_gata?' '+st.ora_gata:'')}</span>}
                       {isInceput&&!isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(251,146,60,0.15)',color:'#FB923C',fontWeight:700,border:'1px solid rgba(251,146,60,0.25)'}}>In lucru</span>}
                       {!isInceput&&!isGata&&st?.status!=='anulat'&&st?.status!=='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(255,255,255,0.05)',color:'rgba(159,215,255,0.4)',border:'1px solid rgba(255,255,255,0.08)'}}>Neinceput</span>}
                       {st?.status==='anulat'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>Anulat</span>}
                       {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>Doar lenjerie</span>}
                       {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
-                      {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>Eliberat{st.eliberat_la?' '+st.eliberat_la:''}</span>}
+                      {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>{'Eliberat'+(st.eliberat_la?' '+st.eliberat_la:'')}</span>}
                     </div>
                   </div>
-                  <span style={{fontSize:18,color:'rgba(159,215,255,0.3)',transform:isOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.2s',flexShrink:0}}>›</span>
+                  <span style={{fontSize:18,color:'rgba(159,215,255,0.3)',transform:isOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.2s',flexShrink:0}}>{'>'}</span>
                 </div>
-                {/* DETALII EXPANDATE */}
                 {isOpen&&(
                   <div style={{borderTop:'1px solid '+borderColor,padding:'14px 14px 0'}}>
                     {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:6}}>
-                      Checkout: <span style={{color:'rgba(255,255,255,0.8)',fontWeight:600}}>{co.nume_client}</span>
-                      {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
-                      {co.nr_nopti&&<span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>- {co.nr_nopti} nopti</span>}
+                      {'Checkout: '}<span style={{color:'rgba(255,255,255,0.8)',fontWeight:600}}>{co.nume_client}</span>
+                      {co.telefon_client&&<a href={'tel:'+co.telefon_client} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
+                      {co.nr_nopti&&<span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>{'- '+co.nr_nopti+' nopti'}</span>}
                     </div>}
                     {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:6}}>
-                      Check-in azi: <span style={{fontWeight:700}}>{ci.nume_client}</span>
-                      {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>Suna</a>}
+                      {'Check-in azi: '}<span style={{fontWeight:700}}>{ci.nume_client}</span>
+                      {ci.telefon_client&&<a href={'tel:'+ci.telefon_client} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>Suna</a>}
                     </div>}
                     {ci&&(()=>{
                       const stLen=statusuri[apt.id]?.nr_lenjerii
                       const l=stLen||nrLenSmart(ci)
-                      return(
+                      return (
                         <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:8,padding:'5px 12px',borderRadius:8,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
                           <span style={{fontSize:15}}>🛏</span>
-                          <span style={{fontSize:14,fontWeight:700,color:'#FCD34D'}}>{l} {l===1?'lenjerie':'lenjerii'}</span>
-                          <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>({Number(ci.nr_persoane)||2} pers.)</span>
+                          <span style={{fontSize:14,fontWeight:700,color:'#FCD34D'}}>{l+' '+(l===1?'lenjerie':'lenjerii')}</span>
+                          <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>{'('+( Number(ci.nr_persoane)||2)+' pers.)'}</span>
                         </div>
                       )
                     })()}
                     {(st?.co_tarziu||st?.ci_devreme)&&(
-                      <div style={{display:'flex',flexDirection:'column' as any,gap:5,marginBottom:8}}>
-                        {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>CO tarziu: {st.co_tarziu}</div>}
-                        {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>CI devreme: {st.ci_devreme}</div>}
+                      <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8}}>
+                        {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>{'CO tarziu: '+st.co_tarziu}</div>}
+                        {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>{'CI devreme: '+st.ci_devreme}</div>}
                       </div>
                     )}
                     {st&&(isInceput||isGata)&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginBottom:8}}>
-                      {isInceput&&!isGata&&("Inceput la "+st.ora_inceput)}
-                      {isGata&&("Terminat la "+st.ora_gata+(st.ora_inceput?" (inceput "+st.ora_inceput+")":""))}
+                      {isInceput&&!isGata&&('Inceput la '+st.ora_inceput)}
+                      {isGata&&('Terminat la '+st.ora_gata+(st.ora_inceput?' (inceput '+st.ora_inceput+')':''))}
                     </div>}
-                    <div style={{paddingBottom:14,display:'flex',gap:8,boxSizing:'border-box' as any}}>
+                    <div style={{paddingBottom:14,display:'flex',gap:8}}>
                       {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Incepe curatenia</button>}
                       {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Am terminat!</button>}
                       {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>Reincepe</button>}
@@ -337,27 +341,27 @@ export default function StaffPage() {
           })
         )}
 
-        {/* ── LIBERE ── */}
+        {/* LIBERE */}
         {tab==='disponibile'&&(disponibile.length===0
-          ?<div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Toate ocupate</div>
-          :disponibile.map(apt=>(
+          ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Toate ocupate</div>
+          : disponibile.map(apt=>(
             <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(74,222,128,0.15)',background:'rgba(74,222,128,0.04)',display:'flex',alignItems:'center',gap:12,marginBottom:8}}>
               <div style={{width:10,height:10,borderRadius:'50%',background:'#4ADE80',flexShrink:0,boxShadow:'0 0 6px rgba(74,222,128,0.5)'}}/>
               <div style={{flex:1}}>
                 <span style={{fontSize:16,fontWeight:700,color:'#F0F8FF'}}>{apt.nota}</span>
                 <span style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginLeft:8}}>{apt.nume}</span>
-                {ciSet.has(apt.id)&&<div style={{fontSize:12,color:'#FCD34D',marginTop:2}}>Checkin azi: {checkins.find((r:any)=>r.apartament_id===apt.id)?.nume_client}</div>}
+                {ciSet.has(apt.id)&&<div style={{fontSize:12,color:'#FCD34D',marginTop:2}}>{'Checkin azi: '+checkins.find((r:any)=>r.apartament_id===apt.id)?.nume_client}</div>}
               </div>
             </div>
           ))
         )}
 
-        {/* ── OCUPATE ── */}
+        {/* OCUPATE */}
         {tab==='ocupate'&&(ocupateApts.length===0
-          ?<div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Nicio rezervare activă</div>
-          :ocupateApts.map(apt=>{
+          ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Nicio rezervare activa</div>
+          : ocupateApts.map(apt=>{
             const rez=ocupate.find((r:any)=>r.apartament_id===apt.id)
-            return(
+            return (
               <div key={apt.id} style={{borderRadius:14,padding:'14px 16px',border:'1px solid rgba(248,113,113,0.15)',background:'rgba(248,113,113,0.04)',marginBottom:8}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
                   <div style={{width:10,height:10,borderRadius:'50%',background:'#F87171',flexShrink:0}}/>
@@ -366,76 +370,69 @@ export default function StaffPage() {
                 </div>
                 {rez&&<div style={{paddingLeft:22}}>
                   <div style={{fontSize:13,color:'rgba(255,255,255,0.75)',fontWeight:500,marginBottom:4}}>{rez.nume_client}</div>
-                  <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginBottom:6}}>{fmtDate(rez.data_checkin)} → {fmtDate(rez.data_checkout)}</div>
-                  {rez.telefon_client&&<a href={`tel:${rez.telefon_client}`} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:10,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#7BC8FF',textDecoration:'none',fontSize:13,fontWeight:600}}>📞 {rez.telefon_client}</a>}
+                  <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',marginBottom:6}}>{fmtDate(rez.data_checkin)+' - '+fmtDate(rez.data_checkout)}</div>
+                  {rez.telefon_client&&<a href={'tel:'+rez.telefon_client} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:10,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#7BC8FF',textDecoration:'none',fontSize:13,fontWeight:600}}>{'📞 '+rez.telefon_client}</a>}
                 </div>}
               </div>
             )
           })
         )}
 
-        {/* ── PROBLEME ── */}
+        {/* PROBLEME */}
         {tab==='probleme'&&(
           <div>
-            {/* Form adaugare */}
             <div style={{borderRadius:18,border:'1px solid rgba(251,146,60,0.25)',background:'rgba(251,146,60,0.05)',padding:16,marginBottom:14}}>
-              <div style={{fontSize:14,fontWeight:700,color:'#FB923C',marginBottom:12}}>🔧 Raportează o problemă</div>
+              <div style={{fontSize:14,fontWeight:700,color:'#FB923C',marginBottom:12}}>Raporteaza o problema</div>
               <select value={newProbStaff.apartament_id} onChange={e=>setNewProbStaff(p=>({...p,apartament_id:e.target.value}))}
-                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box' as const}}>
-                <option value="">— Apartament (opțional) —</option>
-                {apts.map(a=><option key={a.id} value={a.id}>{a.nota} — {a.nume}</option>)}
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box'}}>
+                <option value="">Apartament (optional)</option>
+                {apts.map(a=><option key={a.id} value={a.id}>{a.nota+' - '+a.nume}</option>)}
               </select>
               <input value={newProbStaff.titlu} onChange={e=>setNewProbStaff(p=>({...p,titlu:e.target.value}))}
-                placeholder="Ce problemă ai găsit? *"
-                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box' as const}}/>
+                placeholder="Ce problema ai gasit? *"
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,boxSizing:'border-box'}}/>
               <textarea value={newProbStaff.descriere} onChange={e=>setNewProbStaff(p=>({...p,descriere:e.target.value}))}
-                placeholder="Detalii (opțional)..." rows={3}
-                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,resize:'none' as const,fontFamily:'inherit',boxSizing:'border-box' as const}}/>
+                placeholder="Detalii (optional)..." rows={3}
+                style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,color:'rgba(214,228,244,0.8)',fontSize:14,padding:'12px 10px',outline:'none',marginBottom:10,resize:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
               <div style={{display:'flex',gap:8,marginBottom:10}}>
                 {['normal','urgent','critic'].map(p=>(
                   <button key={p} onClick={()=>setNewProbStaff(prev=>({...prev,prioritate:p}))}
-                    style={{flex:1,padding:'10px',borderRadius:10,border:'1px solid '+(newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.5)':p==='urgent'?'rgba(251,146,60,0.5)':'rgba(77,163,255,0.5)'):'rgba(255,255,255,0.1)'),
+                    style={{flex:1,padding:'10px',borderRadius:10,
+                    border:'1px solid '+(newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.5)':p==='urgent'?'rgba(251,146,60,0.5)':'rgba(77,163,255,0.5)'):'rgba(255,255,255,0.1)'),
                     background:newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.15)':p==='urgent'?'rgba(251,146,60,0.15)':'rgba(77,163,255,0.15)'):'transparent',
                     color:newProbStaff.prioritate===p?(p==='critic'?'#F87171':p==='urgent'?'#FB923C':'#7BC8FF'):'rgba(159,215,255,0.4)',
                     fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
-                    {p==='critic'?'🔴 Critic':p==='urgent'?'🟡 Urgent':'🔵 Normal'}
+                    {p==='critic'?'Critic':p==='urgent'?'Urgent':'Normal'}
                   </button>
                 ))}
               </div>
               <button onClick={addProblemaStaff} disabled={!newProbStaff.titlu||savingProb}
                 style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:newProbStaff.titlu?'#FB923C':'rgba(159,215,255,0.08)',color:newProbStaff.titlu?'#fff':'rgba(159,215,255,0.3)',fontSize:15,fontWeight:700,cursor:newProbStaff.titlu?'pointer':'not-allowed',WebkitTapHighlightColor:'transparent'}}>
-                {savingProb?'Se trimite...':'📤 Trimite raportul'}
+                {savingProb?'Se trimite...':'Trimite raportul'}
               </button>
             </div>
-
-            {/* Lista probleme existente */}
-            {problemeStaff.length>0&&(
-              <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:10}}>
-                Probleme deschise ({problemeStaff.length})
-              </div>
-            )}
             {problemeStaff.map(p=>{
-              const c=p.prioritate==='critic'?'#F87171':p.prioritate==='urgent'?'#FB923C':'#7BC8FF'
-              return(
-                <div key={p.id} style={{borderRadius:14,border:'1px solid '+c+'22',background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
+              const col=p.prioritate==='critic'?'#F87171':p.prioritate==='urgent'?'#FB923C':'#7BC8FF'
+              return (
+                <div key={p.id} style={{borderRadius:14,border:'1px solid '+col+'22',background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:c+'18',color:c,fontWeight:700,textTransform:'uppercase' as const}}>{p.prioritate}</span>
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:col+'18',color:col,fontWeight:700,textTransform:'uppercase'}}>{p.prioritate}</span>
                     {p.apartament&&<span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{p.apartament.nota}</span>}
-                    <span style={{fontSize:10,color:'rgba(159,215,255,0.25)',marginLeft:'auto'}}>{p.status==='in_lucru'?'🟡 În lucru':'🔴 Deschis'}</span>
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.25)',marginLeft:'auto'}}>{p.status==='in_lucru'?'In lucru':'Deschis'}</span>
                   </div>
                   <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{p.titlu}</div>
                   {p.descriere&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:3}}>{p.descriere}</div>}
                 </div>
               )
             })}
-            {problemeStaff.length===0&&<div style={{textAlign:'center' as const,padding:'24px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>✓ Nicio problemă deschisă</div>}
+            {problemeStaff.length===0&&<div style={{textAlign:'center',padding:'24px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>Nicio problema deschisa</div>}
           </div>
         )}
 
-        {/* ── CALENDAR ── */}
+        {/* CALENDAR */}
         {tab==='calendar'&&(
           <div>
-            <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:12}}>7 zile — {fmtFull(addDays(data,-1))} → {fmtFull(addDays(data,5))}</div>
+            <div style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:12}}>{'7 zile: '+fmtFull(addDays(data,-1))+' - '+fmtFull(addDays(data,5))}</div>
             {apts.map(apt=>(
               <div key={apt.id} style={{marginBottom:8,borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)',background:'rgba(255,255,255,0.02)'}}>
                 <div style={{padding:'8px 12px',background:'rgba(11,22,42,0.6)',display:'flex',alignItems:'center',gap:8}}>
@@ -445,13 +442,11 @@ export default function StaffPage() {
                 <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
                   {calDays.map(zi=>{
                     const rez=calData.find((r:any)=>r.apartament_id===apt.id&&r.data_checkin<=zi&&r.data_checkout>zi)
-                    const isCo=checkouts.some((r:any)=>r.apartament_id===apt.id&&zi===data)
-                    const isCi=checkins.some((r:any)=>r.apartament_id===apt.id&&zi===data)
                     const isToday=zi===todayStr()
                     const isSelected=zi===data
-                    return(
+                    return (
                       <div key={zi} onClick={()=>setData(zi)}
-                        style={{padding:'8px 4px',textAlign:'center',cursor:'pointer',background:rez?'rgba(248,113,113,0.2)':'transparent',borderLeft:'1px solid rgba(255,255,255,0.05)',borderBottom: isSelected?'2px solid #7BC8FF':'2px solid transparent'}}>
+                        style={{padding:'8px 4px',textAlign:'center',cursor:'pointer',background:rez?'rgba(248,113,113,0.2)':'transparent',borderLeft:'1px solid rgba(255,255,255,0.05)',borderBottom:isSelected?'2px solid #7BC8FF':'2px solid transparent'}}>
                         <div style={{fontSize:9,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.35)',fontWeight:isToday||isSelected?700:400,marginBottom:2}}>{fmtFull(zi).slice(0,3)}</div>
                         <div style={{fontSize:10,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.5)',fontWeight:isToday?700:400}}>{zi.slice(8)}</div>
                         {rez&&<div style={{fontSize:8,color:'rgba(248,113,113,0.8)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',padding:'0 2px'}}>{rez.nume_client?.split(' ')[0]}</div>}
@@ -464,9 +459,8 @@ export default function StaffPage() {
             ))}
           </div>
         )}
+
       </div>
-
-
     </div>
   )
 }
