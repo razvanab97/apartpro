@@ -469,6 +469,9 @@ export default function FacturiPage() {
     setSaving(f.id)
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
+    const dataEmitereFortat = f.data_emitere
+      ? f.data_emitere.slice(0,7)+'-01'
+      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`
     const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
@@ -482,7 +485,7 @@ export default function FacturiPage() {
       categorie: colKey,
       descriere: `${f.categorieLabel} — ${f.furnizor}`,
       valoare: f.suma_totala,
-      data: dataScadenta,
+      data: dataEmitereFortat,
       status: 'nevalidat',
       suportat_de: 'administrator',
       tva: 0,

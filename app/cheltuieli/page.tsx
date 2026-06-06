@@ -437,6 +437,18 @@ export default function CheltuieliPage(){
       setUtil({...u})
     }
     if(shouldSeed) seededRef.current = seedKey
+    // Muta cheltuielile neplatite la data scadentei daca a trecut
+    const azi = new Date().toISOString().slice(0,10)
+    const neplatiteScadente = (chData||[]).filter((ch:any)=>
+      ch.data_scadenta && ch.data_scadenta <= azi &&
+      !['platit','validat'].includes(ch.status||'') &&
+      ch.data !== ch.data_scadenta
+    )
+    if(neplatiteScadente.length > 0){
+      await Promise.all(neplatiteScadente.map((ch:any)=>
+        supabase.from('cheltuieli').update({data:ch.data_scadenta}).eq('id',ch.id)
+      ))
+    }
     setLoading(false)
   }
 
