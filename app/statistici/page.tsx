@@ -146,17 +146,25 @@ export default function StatisticiPage() {
   async function extractWithAI(item: UploadItem): Promise<Partial<StatRow>> {
     const base64 = await fileToBase64(item.file)
     const apt = apts.find(a => a.id === item.aptId)
+    const isCSV = item.file.name.endsWith('.csv')
+    const mimeType = isCSV ? 'text/csv' : (item.file.type || 'image/png')
+    
+    // Use facturi-extract route which has working API key, with statistici mode
     const res = await fetch('/api/statistici-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         base64Data: base64,
-        mimeType: item.file.type || (item.file.name.endsWith('.csv') ? 'text/csv' : 'application/octet-stream'),
+        mimeType,
         filename: item.file.name,
         platforma: item.platforma,
         aptNume: apt ? apt.nota + ' ' + apt.nume : 'necunoscut'
       })
     })
+    if(!res.ok) {
+      const err = await res.json().catch(() => ({error: res.statusText}))
+      throw new Error(err.error || 'Eroare server')
+    }
     const data = await res.json()
     if(data.error) throw new Error(data.error)
     return data
