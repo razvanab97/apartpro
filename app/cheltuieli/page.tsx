@@ -165,6 +165,46 @@ export default function CheltuieliPage(){
   const [fContab,setFContab]=useState({descriere:'',furnizor:'',valoare:'',data:''})
 
   const {toast,show}=useToast()
+  const [modalSinc,setModalSinc]=useState(false)
+  const [factNeidentificate,setFactNeidentificate]=useState<any[]>([])
+  const [sincLoading,setSincLoading]=useState(false)
+  const [sincSaving,setSincSaving]=useState(false)
+  const [sincAptMap,setSincAptMap]=useState<Record<string,string>>({})
+
+  async function sincronizeazaFacturi() {
+    setSincLoading(true)
+    setModalSinc(true)
+    const pz=`${an}-${pad(luna)}-01`
+    const uz=new Date(an,luna,0).toISOString().slice(0,10)
+    // Cauta cheltuieli din luna cu fisier_url dar fara apartament_id SAU cu status nevalidat
+    const {data} = await supabase.from('cheltuieli')
+      .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
+      .not('fisier_url','is',null)
+      .gte('data',pz)
+      .lte('data',uz)
+      .is('apartament_id',null)
+    setFactNeidentificate(data||[])
+    // Init map cu string gol
+    const m:Record<string,string>={}
+    ;(data||[]).forEach((f:any)=>{ m[f.id]='' })
+    setSincAptMap(m)
+    setSincLoading(false)
+  }
+
+  async function salveazaSinc() {
+    setSincSaving(true)
+    let ok=0, skip=0
+    for(const f of factNeidentificate){
+      const aptId=sincAptMap[f.id]
+      if(!aptId){skip++;continue}
+      const {error}=await supabase.from('cheltuieli').update({apartament_id:aptId,status:'nevalidat'}).eq('id',f.id)
+      if(!error) ok++
+    }
+    setSincSaving(false)
+    setModalSinc(false)
+    show('success',`Asociate ${ok} facturi${skip>0?' ('+skip+' omise)':''}`)
+    load()
+  }
 
   async function loadSalarii(l=luna,a=an) {
     const pad=(n:number)=>String(n).padStart(2,'0')
@@ -1175,6 +1215,10 @@ export default function CheltuieliPage(){
               style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'rgba(248,113,113,0.7)',fontSize:11,cursor:'pointer',fontWeight:500}}>
               🧹 Curăță duplicate
             </button>
+            <button onClick={sincronizeazaFacturi} disabled={loading}
+              style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:11,cursor:'pointer',fontWeight:600,display:'flex',alignItems:'center',gap:5}}>
+              📥 Asociază facturi
+            </button>
             <button onClick={seedDefaults} disabled={seeding||loading}
               style={{display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.8)',cursor:'pointer'}}>
               <Plus size={13}/>{seeding?'Se importă...':'Import valori fixe'}
@@ -1437,6 +1481,58 @@ export default function CheltuieliPage(){
       </div>
 
       <style>{`input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}`}</style>
+      {/* Modal Asociere Facturi Neidentificate */}
+      {modalSinc&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div style={{background:'#0d1b2e',border:'1px solid rgba(77,163,255,0.2)',borderRadius:16,width:'100%',maxWidth:600,maxHeight:'80vh',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:'#fff'}}>📥 Asociere facturi neidentificate</div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>{LUNI[luna]} {an} — {factNeidentificate.length} facturi fără apartament</div>
+              </div>
+              <button onClick={()=>setModalSinc(false)} style={{background:'none',border:'none',color:'rgba(159,215,255,0.5)',cursor:'pointer',fontSize:18}}>✕</button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'12px 20px'}}>
+              {sincLoading&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.5)'}}>Se încarcă...</div>}
+              {!sincLoading&&factNeidentificate.length===0&&(
+                <div style={{textAlign:'center',padding:40,color:'rgba(74,222,128,0.7)'}}>
+                  <div style={{fontSize:32,marginBottom:8}}>✅</div>
+                  <div style={{fontSize:14}}>Toate facturile din {LUNI[luna]} sunt asociate!</div>
+                </div>
+              )}
+              {!sincLoading&&factNeidentificate.map(f=>(
+                <div key={f.id} style={{padding:'12px 14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:10,marginBottom:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                    <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.12)',color:'#FCD34D',border:'1px solid rgba(252,211,77,0.2)',fontWeight:600}}>{f.categorie}</span>
+                    <span style={{fontSize:13,fontWeight:600,color:'#fff'}}>{f.valoare} RON</span>
+                    <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.descriere}</span>
+                  </div>
+                  {f.nota&&<div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:8,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.nota}</div>}
+                  <select value={sincAptMap[f.id]||''} onChange={e=>setSincAptMap(m=>({...m,[f.id]:e.target.value}))}
+                    style={{width:'100%',background:'rgba(20,38,65,0.9)',border:'1px solid '+(sincAptMap[f.id]?'rgba(74,222,128,0.4)':'rgba(77,163,255,0.25)'),borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none'}}>
+                    <option value="">— Selectează apartamentul —</option>
+                    {apts.filter(a=>a.status==='activ').map(a=>(
+                      <option key={a.id} value={a.id}>[{a.nota}] {a.nume}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            {!sincLoading&&factNeidentificate.length>0&&(
+              <div style={{padding:'12px 20px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:8}}>
+                <button onClick={salveazaSinc} disabled={sincSaving||Object.values(sincAptMap).every(v=>!v)}
+                  style={{flex:1,padding:'11px',borderRadius:10,border:'none',background:Object.values(sincAptMap).some(v=>v)?'#4DA3FF':'rgba(77,163,255,0.15)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:sincSaving?0.6:1}}>
+                  {sincSaving?'Se salvează...':'💾 Salvează asocierile'}
+                </button>
+                <button onClick={()=>setModalSinc(false)}
+                  style={{padding:'11px 20px',borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>
+                  Anulează
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <Toast toast={toast}/>
     </>
   )
