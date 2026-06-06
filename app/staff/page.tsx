@@ -220,7 +220,7 @@ export default function StaffPage() {
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <div>
             <div style={{fontSize:15,fontWeight:700,color:'#F0F8FF'}}>
-              {deCuratat.length>0 ? `${nrGata}/${deCuratat.length} curățate` : '✓ Totul e curat'}
+              {deCuratat.length>0 ? nrGata+'/'+deCuratat.length+' curățate' : '✓ Totul e curat'}
             </div>
             <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:1}}>AB Homes Iași</div>
           </div>
@@ -229,7 +229,7 @@ export default function StaffPage() {
             <button onClick={()=>setData(addDays(data,-1))}
               style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>‹</button>
             <button onClick={()=>setData(todayStr())}
-              style={{padding:'0 12px',height:36,borderRadius:10,border:`1px solid ${data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'}`,background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+              style={{padding:'0 12px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
               {fmtFull(data)}
             </button>
             <button onClick={()=>setData(addDays(data,1))}
@@ -240,7 +240,7 @@ export default function StaffPage() {
         {/* Progress */}
         {deCuratat.length>0&&(
           <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2}}>
-            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:`${nrGata/deCuratat.length*100}%`,transition:'width .5s ease'}}/>
+            <div style={{height:'100%',borderRadius:2,background:'linear-gradient(90deg,#22C55E,#4ADE80)',width:(nrGata/deCuratat.length*100)+'%',transition:'width .5s ease'}}/>
           </div>
         )}
       </div>
@@ -250,7 +250,7 @@ export default function StaffPage() {
         {TABS.map(t=>(
           <button key={t.k} onClick={()=>setTab(t.k)}
             style={{flex:1,padding:'11px 4px',border:'none',background:'transparent',color:tab===t.k?'#7BC8FF':'rgba(159,215,255,0.35)',fontSize:11,fontWeight:600,cursor:'pointer',borderBottom:'2px solid '+(tab===t.k?'#7BC8FF':'transparent'),transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
-            {t.l}{t.n!==undefined?` (${t.n})`:''}
+            {t.l}{t.n!==undefined?' ('+t.n+')':''}
           </button>
         ))}
       </div>
@@ -270,7 +270,7 @@ export default function StaffPage() {
             const borderColor=isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
             const bgColor=isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
             return(
-              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:`1.5px solid ${borderColor}`,background:bgColor,marginBottom:8,boxSizing:'border-box' as any,width:'100%'}}>
+              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'1.5px solid '+borderColor,background:bgColor,marginBottom:8,boxSizing:'border-box' as any,width:'100%'}}>
                 {/* ROW COMPACT */}
                 <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
                   style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none' as any}}>
@@ -294,7 +294,7 @@ export default function StaffPage() {
                 </div>
                 {/* DETALII EXPANDATE */}
                 {isOpen&&(
-                  <div style={{borderTop:`1px solid ${borderColor}`,padding:'14px 14px 0'}}>
+                  <div style={{borderTop:'1px solid '+borderColor,padding:'14px 14px 0'}}>
                     {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:6}}>
                       Checkout: <span style={{color:'rgba(255,255,255,0.8)',fontWeight:600}}>{co.nume_client}</span>
                       {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
@@ -394,7 +394,7 @@ export default function StaffPage() {
               <div style={{display:'flex',gap:8,marginBottom:10}}>
                 {['normal','urgent','critic'].map(p=>(
                   <button key={p} onClick={()=>setNewProbStaff(prev=>({...prev,prioritate:p}))}
-                    style={{flex:1,padding:'10px',borderRadius:10,border:`1px solid ${newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.5)':p==='urgent'?'rgba(251,146,60,0.5)':'rgba(77,163,255,0.5)'):'rgba(255,255,255,0.1)'}`,
+                    style={{flex:1,padding:'10px',borderRadius:10,border:'1px solid '+(newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.5)':p==='urgent'?'rgba(251,146,60,0.5)':'rgba(77,163,255,0.5)'):'rgba(255,255,255,0.1)'),
                     background:newProbStaff.prioritate===p?(p==='critic'?'rgba(248,113,113,0.15)':p==='urgent'?'rgba(251,146,60,0.15)':'rgba(77,163,255,0.15)'):'transparent',
                     color:newProbStaff.prioritate===p?(p==='critic'?'#F87171':p==='urgent'?'#FB923C':'#7BC8FF'):'rgba(159,215,255,0.4)',
                     fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
@@ -419,7 +419,7 @@ export default function StaffPage() {
               return(
                 <div key={p.id} style={{borderRadius:14,border:'1px solid '+c+'22',background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
-                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:`${c}18`,color:c,fontWeight:700,textTransform:'uppercase' as const}}>{p.prioritate}</span>
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:c+'18',color:c,fontWeight:700,textTransform:'uppercase' as const}}>{p.prioritate}</span>
                     {p.apartament&&<span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{p.apartament.nota}</span>}
                     <span style={{fontSize:10,color:'rgba(159,215,255,0.25)',marginLeft:'auto'}}>{p.status==='in_lucru'?'🟡 În lucru':'🔴 Deschis'}</span>
                   </div>
