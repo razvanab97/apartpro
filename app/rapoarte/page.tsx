@@ -158,6 +158,7 @@ export default function RapoartePage() {
       setApartamente(data || [])
       setAllApts(data || [])
       setGraficeApts((data||[]).map((a:any)=>a.id))  // all selected by default
+      setSelectedApts((data||[]).map((a:any)=>a.id))  // raport: toate selectate by default
     })
   }, [])
 
