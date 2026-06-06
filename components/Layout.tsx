@@ -107,13 +107,13 @@ export default function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── MOBILE HEADER ── */}
-      <div style={{
+      {!isStaff&&<div style={{
         display: 'none', position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         background: 'rgba(11,18,32,0.95)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(159,215,255,0.1)',
         padding: '12px 16px', alignItems: 'center', justifyContent: 'space-between',
         height: 52,
-      }} className={isStaff?'mobile-header staff-hidden':'mobile-header'}>
+      }} className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16 }}>🏢</span>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF' }}>ApartPro</span>
@@ -125,7 +125,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         }}>
           {mobileMenuOpen ? <X size={18}/> : <Menu size={18}/>}
         </button>
-      </div>
+      </div>}
 
       {/* ── MOBILE DRAWER ── */}
       {mobileMenuOpen && (
@@ -161,18 +161,18 @@ export default function Layout({ children }: { children: ReactNode }) {
       )}
 
       {/* ── MAIN CONTENT ── */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minWidth: 0 }} className="main-content">
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minWidth: 0, paddingTop: isStaff?0:undefined, paddingBottom: isStaff?0:undefined }} className="main-content">
         {children}
       </main>
 
       {/* ── MOBILE BOTTOM NAV ── */}
-      <nav style={{
+      {!isStaff&&<nav style={{
         display: 'none', position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40,
         background: 'rgba(11,18,32,0.97)', backdropFilter: 'blur(20px)',
         borderTop: '1px solid rgba(159,215,255,0.1)',
         padding: '6px 0 env(safe-area-inset-bottom, 6px)',
         justifyContent: 'space-around', alignItems: 'center',
-      }} className={isStaff?'mobile-bottom-nav staff-hidden':'mobile-bottom-nav'}>
+      }} className="mobile-bottom-nav">
         {bottomItems.map(item => {
           const active = pathname === item.href
           return (
@@ -190,7 +190,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           <Menu size={20}/>
           <span style={{ fontSize: 10 }}>Mai mult</span>
         </button>
-      </nav>
+      </nav>}
 
       <Chatbot/>
 
