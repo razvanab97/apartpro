@@ -63,6 +63,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const bottomItems = navItems.filter(i => i.bottom)
+  const isStaff = pathname === '/staff'
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'auto', position: 'relative' }}>
@@ -73,7 +74,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         height: '100dvh', background: 'rgba(11,18,32,0.85)',
         backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)',
         borderRight: '1px solid rgba(159,215,255,0.08)',
-      }} className="desktop-sidebar">
+      }} className="desktop-sidebar" style={isStaff?{display:'none'}:{}}>
         {/* Logo */}
         <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid rgba(159,215,255,0.07)', display: 'flex', alignItems: 'center', gap: 9 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(77,163,255,0.16)', border: '1px solid rgba(159,215,255,0.15)', overflow: 'hidden', padding: 0 }}>
@@ -117,7 +118,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         borderBottom: '1px solid rgba(159,215,255,0.1)',
         padding: '12px 16px', alignItems: 'center', justifyContent: 'space-between',
         height: 52,
-      }} className="mobile-header">
+      }} className={isStaff?'mobile-header staff-hidden':'mobile-header'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16 }}>🏢</span>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#FFFFFF' }}>ApartPro</span>
@@ -176,7 +177,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         borderTop: '1px solid rgba(159,215,255,0.1)',
         padding: '6px 0 env(safe-area-inset-bottom, 6px)',
         justifyContent: 'space-around', alignItems: 'center',
-      }} className="mobile-bottom-nav">
+      }} className={isStaff?'mobile-bottom-nav staff-hidden':'mobile-bottom-nav'}>
         {bottomItems.map(item => {
           const active = pathname === item.href
           return (
@@ -199,11 +200,13 @@ export default function Layout({ children }: { children: ReactNode }) {
       <Chatbot/>
 
       <style>{`
+        .staff-hidden { display: none !important; }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
           .mobile-header { display: flex !important; }
           .mobile-bottom-nav { display: flex !important; }
           .main-content { padding-top: 52px; padding-bottom: 72px; }
+          body:has([data-staff]) .main-content { padding-top: 0; padding-bottom: 0; }
           @media (max-width: 768px) {
             .desktop-sidebar { display: none !important; }
             .mobile-header { display: flex !important; }

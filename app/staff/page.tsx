@@ -8,7 +8,7 @@ const fmtDate = (d:string) => { try { const dt=new Date(d+'T12:00:00'); return `
 const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
 const todayStr = () => new Date().toISOString().slice(0,10)
-function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||2; return Math.ceil(Math.max(2,p)/2) }
+function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||0; if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
 
 type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar'
 
@@ -296,7 +296,8 @@ export default function StaffPage() {
                     {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
                   </div>}
                   {ci&&(()=>{
-                    const l=nrLenSmart(ci)
+                    const stLen=statusuri[apt.id]?.nr_lenjerii
+                    const l=stLen||nrLenSmart(ci)
                     return(
                       <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:4,padding:'4px 10px',borderRadius:8,
                         background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
