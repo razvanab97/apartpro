@@ -183,6 +183,7 @@ export default function CheltuieliPage(){
       .gte('data',pz)
       .lte('data',uz)
       .is('apartament_id',null)
+      .in('categorie',['eon_curent','eon_gaz','eon_duo','asociatie','internet','salubris','alte','alta'])
     setFactNeidentificate(data||[])
     // Init map cu string gol
     const m:Record<string,string>={}
