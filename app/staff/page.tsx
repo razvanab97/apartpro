@@ -25,6 +25,7 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(false)
   const [flash, setFlash] = useState<{msg:string,ok:boolean}|null>(null)
   const [tab, setTab] = useState<Tab>('curatenie')
+  const [expandedApt, setExpandedApt] = useState<string|null>(null)
   const [calData, setCalData] = useState<any[]>([])
   const [problemeStaff, setProblemeStaff] = useState<any[]>([])
   const [newProbStaff, setNewProbStaff] = useState({titlu:'',descriere:'',prioritate:'normal',apartament_id:''})
@@ -255,78 +256,82 @@ export default function StaffPage() {
       </div>
 
       {/* Content */}
-      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
-
         {/* ── CURĂȚENIE ── */}
         {tab==='curatenie'&&(
           deCuratat.length===0
-          ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>✓ Niciun checkout {data===todayStr()?'azi':'în ziua asta'}</div>
+          ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>
           : deCuratat.map(apt=>{
             const st=statusuri[apt.id]
             const isGata=st?.status==='gata'
             const isInceput=st?.status==='inceput'
             const co=checkouts.find((r:any)=>r.apartament_id===apt.id)
             const ci=checkins.find((r:any)=>r.apartament_id===apt.id)
+            const isOpen=expandedApt===apt.id
+            const borderColor=isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
+            const bgColor=isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
             return(
-              <div key={apt.id} style={{borderRadius:18,overflow:'hidden',border:`1.5px solid ${isGata?'rgba(34,197,94,0.35)':ci?'rgba(252,211,77,0.35)':'rgba(255,255,255,0.08)'}`,background:isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)',marginBottom:10,boxSizing:'border-box' as any,width:'100%'}}>
-                <div style={{padding:'16px 16px 12px'}}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span style={{fontSize:20,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
-                      <span style={{fontSize:12,color:'rgba(159,215,255,0.45)'}}>{apt.nume}</span>
-                      {ci&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>⚡ URGENT</span>}
-                      {st?.eliberat&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>🚪 Eliberat{st.eliberat_la?' '+st.eliberat_la:''}</span>}
-                      {st?.status==='anulat'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>✕ Curățenie anulată</span>}
-                      {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>🛏 Doar lenjerie</span>}
-                      {!st?.eliberat&&!isInceput&&!isGata&&st?.status!=='anulat'&&st?.status!=='doar_lenjerie'&&(
-                        ci
-                          ? <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(248,113,113,0.1)',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>⏳ Așteaptă check-out</span>
-                          : <span style={{fontSize:10,padding:'2px 8px',borderRadius:20,background:'rgba(77,163,255,0.1)',color:'rgba(77,163,255,0.7)',border:'1px solid rgba(77,163,255,0.2)'}}>🔓 Liber după checkout</span>
-                      )}
+              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:`1.5px solid ${borderColor}`,background:bgColor,marginBottom:8,boxSizing:'border-box' as any,width:'100%'}}>
+                {/* ROW COMPACT */}
+                <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
+                  style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none' as any}}>
+                  <span style={{fontSize:22,flexShrink:0}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:17,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
+                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{apt.nume}</span>
                     </div>
-                    <span style={{fontSize:28}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
+                    <div style={{display:'flex',gap:5,marginTop:4,flexWrap:'wrap' as const}}>
+                      {isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(34,197,94,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(34,197,94,0.25)'}}>Gata{st?.ora_gata?' '+st.ora_gata:''}</span>}
+                      {isInceput&&!isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(251,146,60,0.15)',color:'#FB923C',fontWeight:700,border:'1px solid rgba(251,146,60,0.25)'}}>In lucru</span>}
+                      {!isInceput&&!isGata&&st?.status!=='anulat'&&st?.status!=='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(255,255,255,0.05)',color:'rgba(159,215,255,0.4)',border:'1px solid rgba(255,255,255,0.08)'}}>Neinceput</span>}
+                      {st?.status==='anulat'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>Anulat</span>}
+                      {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>Doar lenjerie</span>}
+                      {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
+                      {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>Eliberat{st.eliberat_la?' '+st.eliberat_la:''}</span>}
+                    </div>
                   </div>
-                  {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:4}}>
-                    Checkout: <span style={{color:'rgba(255,255,255,0.75)',fontWeight:500}}>{co.nume_client}</span>
-                    {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
-                    <span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>· {co.nr_nopti} nopți</span>
-                  </div>}
-                  {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:4}}>
-                    Checkin azi: <span style={{fontWeight:600}}>{ci.nume_client}</span>
-                    {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>📞 Sună</a>}
-                  </div>}
-                  {ci&&(()=>{
-                    const stLen=statusuri[apt.id]?.nr_lenjerii
-                    const l=stLen||nrLenSmart(ci)
-                    return(
-                      <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:4,padding:'4px 10px',borderRadius:8,
-                        background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
-                        <span style={{fontSize:14}}>🛏</span>
-                        <span style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>{l} {l===1?'lenjerie':'lenjerii'}</span>
-                        <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>({Number(ci.nr_persoane)||2} pers.)</span>
+                  <span style={{fontSize:18,color:'rgba(159,215,255,0.3)',transform:isOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.2s',flexShrink:0}}>›</span>
+                </div>
+                {/* DETALII EXPANDATE */}
+                {isOpen&&(
+                  <div style={{borderTop:`1px solid ${borderColor}`,padding:'14px 14px 0'}}>
+                    {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:6}}>
+                      Checkout: <span style={{color:'rgba(255,255,255,0.8)',fontWeight:600}}>{co.nume_client}</span>
+                      {co.telefon_client&&<a href={`tel:${co.telefon_client}`} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
+                      {co.nr_nopti&&<span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>- {co.nr_nopti} nopti</span>}
+                    </div>}
+                    {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:6}}>
+                      Check-in azi: <span style={{fontWeight:700}}>{ci.nume_client}</span>
+                      {ci.telefon_client&&<a href={`tel:${ci.telefon_client}`} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>Suna</a>}
+                    </div>}
+                    {ci&&(()=>{
+                      const stLen=statusuri[apt.id]?.nr_lenjerii
+                      const l=stLen||nrLenSmart(ci)
+                      return(
+                        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:8,padding:'5px 12px',borderRadius:8,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
+                          <span style={{fontSize:15}}>🛏</span>
+                          <span style={{fontSize:14,fontWeight:700,color:'#FCD34D'}}>{l} {l===1?'lenjerie':'lenjerii'}</span>
+                          <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>({Number(ci.nr_persoane)||2} pers.)</span>
+                        </div>
+                      )
+                    })()}
+                    {(st?.co_tarziu||st?.ci_devreme)&&(
+                      <div style={{display:'flex',flexDirection:'column' as any,gap:5,marginBottom:8}}>
+                        {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>CO tarziu: {st.co_tarziu}</div>}
+                        {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>CI devreme: {st.ci_devreme}</div>}
                       </div>
-                    )
-                  })()}
-                  {(st?.co_tarziu||st?.ci_devreme)&&(
-                    <div style={{marginTop:6,marginBottom:2,display:'flex',flexDirection:'column' as any,gap:4}}>
-                      {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>
-                        🕐 CO târziu: {st.co_tarziu}
-                      </div>}
-                      {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>
-                        🕐 CI devreme: {st.ci_devreme}
-                      </div>}
+                    )}
+                    {st&&(isInceput||isGata)&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginBottom:8}}>
+                      {isInceput&&!isGata&&`Inceput la ${st.ora_inceput}`}
+                      {isGata&&`Terminat la ${st.ora_gata}${st.ora_inceput?` (inceput ${st.ora_inceput})`:''}`}
+                    </div>}
+                    <div style={{paddingBottom:14,display:'flex',gap:8,boxSizing:'border-box' as any}}>
+                      {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Incepe curatenia</button>}
+                      {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Am terminat!</button>}
+                      {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>Reincepe</button>}
                     </div>
-                  )}
-                  {st&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginTop:4}}>
-                    {isInceput&&!isGata&&`▶ Început la ${st.ora_inceput}`}
-                    {isGata&&`✓ Terminat la ${st.ora_gata}${st.ora_inceput?` (început ${st.ora_inceput})`:''}` }
-                  </div>}
-                </div>
-                <div style={{padding:'0 12px 12px',display:'flex',gap:8}}>
-                  {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>▶ Începe curățenia</button>}
-                  {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>✅ Am terminat!</button>}
-                  {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>↩ Reîncepe</button>}
-                </div>
+                  </div>
+                )}
               </div>
             )
           })
