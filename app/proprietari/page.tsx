@@ -89,8 +89,8 @@ export default function ProprietariPage() {
       if (!chirie) return
 
       const valRON = chirie.moneda === 'EUR'
-        ? Math.round(chirie.valoare * cursEUR)
-        : chirie.valoare
+        ? Math.round(chirie.suma * cursEUR)
+        : chirie.suma
 
       // Utilități pentru acest apartament în luna selectată
       const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id)
@@ -102,7 +102,7 @@ export default function ProprietariPage() {
 
       detalii.push({
         apt,
-        chirie: { valoare: chirie.valoare, moneda: chirie.moneda, valRON },
+        chirie: { valoare: chirie.suma, moneda: chirie.moneda, valRON },
         util: { eon: Math.round(eon), asoc: Math.round(asoc), total: utilTotal },
         subtotal: valRON + utilTotal,
       })

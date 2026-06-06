@@ -87,14 +87,14 @@ function Calc({ apt }: { apt: any }) {
 
     // Preia chiria fixa din chirii_fixe
     const { data: chirieData } = await supabase.from('chirii_fixe')
-      .select('valoare,moneda').eq('apartament_id', apt.id).eq('activ', true).single()
+      .select('suma,moneda').eq('apartament_id', apt.id).eq('activ', true).single()
     if(chirieData) {
       setChirieMoneda(chirieData.moneda)
       if(chirieData.moneda === 'EUR') {
-        setChirieEUR(chirieData.valoare)
-        setChirie(Math.round(chirieData.valoare * curs))
+        setChirieEUR(chirieData.suma)
+        setChirie(Math.round(chirieData.suma * curs))
       } else {
-        setChirie(chirieData.valoare)
+        setChirie(chirieData.suma)
         setChirieEUR(0)
       }
     }
