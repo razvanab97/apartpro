@@ -334,6 +334,13 @@ export default function StaffPage() {
                       {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Am terminat!</button>}
                       {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>Reincepe</button>}
                     </div>
+                    <button onClick={()=>{
+                      setNewProbStaff({titlu:'',descriere:'',prioritate:'normal',apartament_id:apt.id})
+                      setTab('probleme')
+                      setExpandedApt(null)
+                    }} style={{width:'100%',marginBottom:14,padding:'10px',borderRadius:12,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.06)',color:'#F87171',fontSize:13,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent',textAlign:'center' as const}}>
+                      🔧 Raporteaza problema
+                    </button>
                   </div>
                 )}
               </div>
