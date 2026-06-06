@@ -268,7 +268,7 @@ export default function StaffPage() {
             const co=checkouts.find((r:any)=>r.apartament_id===apt.id)
             const ci=checkins.find((r:any)=>r.apartament_id===apt.id)
             return(
-              <div key={apt.id} style={{borderRadius:18,overflow:'hidden',border:`1.5px solid ${isGata?'rgba(34,197,94,0.35)':ci?'rgba(252,211,77,0.35)':'rgba(255,255,255,0.08)'}`,background:isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)',marginBottom:10}}>
+              <div key={apt.id} style={{borderRadius:18,overflow:'hidden',border:`1.5px solid ${isGata?'rgba(34,197,94,0.35)':ci?'rgba(252,211,77,0.35)':'rgba(255,255,255,0.08)'}`,background:isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)',marginBottom:10,boxSizing:'border-box' as any,width:'100%'}}>
                 <div style={{padding:'16px 16px 12px'}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -306,6 +306,16 @@ export default function StaffPage() {
                       </div>
                     )
                   })()}
+                  {(st?.co_tarziu||st?.ci_devreme)&&(
+                    <div style={{marginTop:6,marginBottom:2,display:'flex',flexDirection:'column' as any,gap:4}}>
+                      {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>
+                        🕐 CO târziu: {st.co_tarziu}
+                      </div>}
+                      {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>
+                        🕐 CI devreme: {st.ci_devreme}
+                      </div>}
+                    </div>
+                  )}
                   {st&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginTop:4}}>
                     {isInceput&&!isGata&&`▶ Început la ${st.ora_inceput}`}
                     {isGata&&`✓ Terminat la ${st.ora_gata}${st.ora_inceput?` (început ${st.ora_inceput})`:''}` }

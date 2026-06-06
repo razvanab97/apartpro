@@ -33,6 +33,7 @@ export default function CuratenePage() {
   const [loading, setLoading] = useState(true)
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
   const [eliberat, setEliberat] = useState<Set<string>>(new Set())
+  const [oraSpeciala, setOraSpeciala] = useState<Record<string,{co_tarziu:string,ci_devreme:string}>>({})
   const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'|'rapoarte'>('curatenie')
   const [probleme, setProbleme] = useState<any[]>([])
   const [newProblema, setNewProblema] = useState({apartament_id:'',titlu:'',descriere:'',prioritate:'normal'})
@@ -59,13 +60,16 @@ export default function CuratenePage() {
     const m:Record<string,any>={}
     const elib = new Set<string>()
     const lenFromDb:Record<string,number> = {}
+    const oraInit:Record<string,{co_tarziu:string,ci_devreme:string}> = {}
     ;(data||[]).forEach((s:any)=>{ 
       m[s.apartament_id]=s
       if(s.eliberat) elib.add(s.apartament_id)
       if(s.nr_lenjerii) lenFromDb[s.apartament_id]=s.nr_lenjerii
+      oraInit[s.apartament_id]={co_tarziu:s.co_tarziu||'',ci_devreme:s.ci_devreme||''}
     })
     setStaffStatus(m)
     setEliberat(elib)
+    setOraSpeciala(prev=>({...prev,...oraInit}))
     if(Object.keys(lenFromDb).length>0) setLen(prev=>({...prev,...lenFromDb}))
   }
 
@@ -278,6 +282,13 @@ export default function CuratenePage() {
     )
   }
 
+  async function saveOraSpeciala(aptId: string, field: 'co_tarziu'|'ci_devreme', val: string) {
+    await supabase.from('curatenie_status').upsert(
+      { apartament_id: aptId, data: selectedDate, [field]: val || null },
+      { onConflict: 'apartament_id,data', ignoreDuplicates: false }
+    )
+  }
+
   function waEchipa(){
     const linii=locatii.map(({apt,ciRez})=>{
       const l=len[apt?.id]??(ciRez?nrLenSmart(ciRez):1)
@@ -454,6 +465,31 @@ export default function CuratenePage() {
                   <button onClick={()=>setLen(v=>{const n=Math.max(1,(v[aptId]??lenDef)-1);saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Minus size={14}/></button>
                   <span style={{fontSize:24,fontWeight:700,color:'#FCD34D',minWidth:32,textAlign:'center' as const}}>{l}</span>
                   <button onClick={()=>setLen(v=>{const n=(v[aptId]??lenDef)+1;saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Plus size={14}/></button>
+                </div>
+              </div>
+              {/* CO tarziu / CI devreme */}
+              <div style={{padding:'10px 14px 12px',borderTop:'1px solid rgba(255,255,255,0.05)',display:'flex',gap:10,flexWrap:'wrap' as const}}>
+                <div style={{flex:1,minWidth:160}}>
+                  <div style={{fontSize:10,color:'rgba(248,113,113,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Checkout târziu</div>
+                  <input
+                    type="text"
+                    placeholder="ex: ora 13:00"
+                    value={oraSpeciala[aptId]?.co_tarziu||''}
+                    onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],co_tarziu:e.target.value,ci_devreme:v[aptId]?.ci_devreme||''}}))}
+                    onBlur={e=>saveOraSpeciala(aptId,'co_tarziu',e.target.value)}
+                    style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:8,padding:'6px 10px',color:'#FCA5A5',fontSize:12,outline:'none'}}
+                  />
+                </div>
+                <div style={{flex:1,minWidth:160}}>
+                  <div style={{fontSize:10,color:'rgba(77,163,255,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Check-in devreme</div>
+                  <input
+                    type="text"
+                    placeholder="ex: ora 10:00"
+                    value={oraSpeciala[aptId]?.ci_devreme||''}
+                    onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],ci_devreme:e.target.value,co_tarziu:v[aptId]?.co_tarziu||''}}))}
+                    onBlur={e=>saveOraSpeciala(aptId,'ci_devreme',e.target.value)}
+                    style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:8,padding:'6px 10px',color:'#93C5FD',fontSize:12,outline:'none'}}
+                  />
                 </div>
               </div>
             </div>
