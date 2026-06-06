@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
-function nrLen(p:number){ return Math.ceil(p/2) }
+function nrLen(p:number){ if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
 function nrLenSmart(r:any){
   let p = Number(r.nr_persoane)||0
   // daca nr_persoane e 0 sau 1 (default), estimeaza din valoare_bruta/nr_nopti
@@ -436,15 +436,9 @@ export default function CuratenePage() {
                     </div>
                     {(()=>{
                       const pers = Number(ciRez.nr_persoane)||2
-                      const lenNecesar = Math.ceil(pers/2)
-                      const lenStandard = 1
-                      const extra = lenNecesar - lenStandard
-                      return extra > 0 ? (
-                        <div style={{fontSize:11,padding:'4px 9px',borderRadius:6,background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.25)',color:'#FCD34D',fontWeight:600,display:'inline-block',marginTop:2}}>
-                          🛏 Necesită {extra} {extra===1?'lenjerie':'lenjerii'} în plus ({pers} persoane)
-                        </div>
-                      ) : (
-                        <div style={{fontSize:11,color:'rgba(74,222,128,0.6)',marginTop:2}}>✓ Lenjerie standard ok ({pers} pers.)</div>
+                      const lenActual = l
+                      return (
+                        <div style={{fontSize:11,color:'rgba(74,222,128,0.6)',marginTop:2}}>✓ {lenActual} {lenActual===1?'lenjerie':'lenjerii'} ({pers} pers.)</div>
                       )
                     })()}
                   </div>
