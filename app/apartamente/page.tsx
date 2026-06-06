@@ -82,7 +82,7 @@ function Calc({ apt }: { apt: any }) {
         .reduce((s:number,x:any) => s + Number(x.valoare||0), 0)
       const chirieDB = sum('chirie')
       setChirie(chirieDB > 0 ? chirieDB : apt.pret_standard||0)
-      setEonCurent(sum('eon_curent'))
+      setEonCurent(sum('eon_curent') + sum('eon_duo'))
       setEonGaz(sum('eon_gaz'))
       setAsociatie(sum('asociatie'))
       setInternet(sum('internet'))
@@ -582,6 +582,11 @@ function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean;
           {a.link_airbnb && (
             <button onClick={e=>cp(e,a.link_airbnb)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(239,68,68,0.2)', background:'rgba(239,68,68,0.08)', color:'#F87171', fontSize:9, cursor:'pointer', fontWeight:600 }}>
               <Copy size={8}/> Airbnb
+            </button>
+          )}
+          {((a.booking_links as string[])||[]).filter(Boolean)[0] && (
+            <button onClick={e=>cp(e,((a.booking_links as string[])||[]).filter(Boolean)[0])} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(96,165,250,0.2)', background:'rgba(96,165,250,0.08)', color:'#60A5FA', fontSize:9, cursor:'pointer', fontWeight:600 }}>
+              <Copy size={8}/> Booking
             </button>
           )}
         </div>

@@ -6,12 +6,12 @@ import { Toast, useToast } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle } from 'lucide-react'
 
 const FURNIZORI_LIST = [
-  'E.ON Curent','E.ON Gaz','Urbica','TermoService','Salubris',
+  'E.ON Curent','E.ON Gaz','E.ON DUO','Urbica','TermoService','Salubris',
   'Orange','Vodafone','Royal','Internet','Asociatie','Alta',
 ]
 
 const FURNIZOR_COLORS: Record<string,string> = {
-  'E.ON Curent':  '#FCD34D','E.ON Gaz':    '#FB923C',
+  'E.ON Curent':  '#FCD34D','E.ON Gaz':    '#FB923C','E.ON DUO': '#FBBF24',
   'Urbica':       '#60A5FA','TermoService':'#F87171',
   'Salubris':     '#4ADE80','Orange':      '#FB923C',
   'Vodafone':     '#F87171','Royal':       '#C084FC',
@@ -247,7 +247,7 @@ export default function FacturiPage() {
       // Data: luna emiterii (data facturii) dar cu ziua scadentei
       const dataFactura = f.data || new Date().toISOString().slice(0,10)
       const categorieToColKey: Record<string,string> = {
-        'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent',
+        'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','E.ON DUO':'eon_curent',
         'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
         'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
       }
@@ -438,7 +438,7 @@ export default function FacturiPage() {
     // Pastreaza data scadentei exacta din factura - nu o modifica niciodata
     const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     const categorieToColKey: Record<string,string> = {
-      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','eon_energie':'eon_curent',
+      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','E.ON DUO':'eon_curent','eon_energie':'eon_curent',
       'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
       'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
     }
@@ -472,7 +472,7 @@ export default function FacturiPage() {
     const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
-      'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
+      'E.ON Curent': 'eon_curent', 'E.ON DUO': 'eon_curent', 'eon_curent': 'eon_curent',
       'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
       'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
     }
@@ -523,7 +523,7 @@ export default function FacturiPage() {
     const categorieToColKey: Record<string,string> = {
       // E.ON
       'E.ON Gaz': 'eon_gaz', 'eon_gaz': 'eon_gaz',
-      'E.ON Curent': 'eon_curent', 'eon_curent': 'eon_curent',
+      'E.ON Curent': 'eon_curent', 'E.ON DUO': 'eon_curent', 'eon_curent': 'eon_curent',
       // Asociatie / intretinere - Urbica, Ebloc, Newton Park etc → sectiunea asociatie
       'Urbica': 'asociatie', 'urbica': 'asociatie',
       'Asociatie': 'asociatie', 'asociatie': 'asociatie',
@@ -637,7 +637,7 @@ export default function FacturiPage() {
                                 onChange={e => setFacturi(list => list.map(x => x.id===f.id ? {...x, categorieLabel: e.target.value} : x))}
                                 style={{ fontSize:11, fontWeight:600, color, background:`${color}18`, padding:'2px 8px', borderRadius:5, textTransform:'uppercase' as const, letterSpacing:'.04em', border:`1px solid ${color}40`, outline:'none', cursor:'pointer' }}
                               >
-                                {['E.ON Energie','E.ON Gaz','Urbica','TermoService','Salubris','Internet','Asociatie','Royal','Alta'].map(c=>(
+                                {['E.ON Energie','E.ON Gaz','E.ON DUO','Urbica','TermoService','Salubris','Internet','Asociatie','Royal','Alta'].map(c=>(
                                   <option key={c} value={c} style={{ background:'#0E1B2B', color:'#E8F4FF', textTransform:'none' }}>{c}</option>
                                 ))}
                               </select>
