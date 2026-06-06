@@ -322,8 +322,8 @@ export default function StaffPage() {
                       </div>
                     )}
                     {st&&(isInceput||isGata)&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginBottom:8}}>
-                      {isInceput&&!isGata&&`Inceput la ${st.ora_inceput}`}
-                      {isGata&&`Terminat la ${st.ora_gata}${st.ora_inceput?` (inceput ${st.ora_inceput})`:''}`}
+                      {isInceput&&!isGata&&("Inceput la "+st.ora_inceput)}
+                      {isGata&&("Terminat la "+st.ora_gata+(st.ora_inceput?" (inceput "+st.ora_inceput+")":""))}
                     </div>}
                     <div style={{paddingBottom:14,display:'flex',gap:8,boxSizing:'border-box' as any}}>
                       {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Incepe curatenia</button>}
