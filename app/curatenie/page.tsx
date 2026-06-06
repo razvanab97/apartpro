@@ -343,7 +343,7 @@ export default function CuratenePage() {
         ))}
       </div>
 
-      {activeTab==='curatenie'&&<div style={{flex:1,overflowY:'auto',padding:'12px 14px 40px'}}>
+      {activeTab==='curatenie'&&<div style={{flex:1,overflowY:'auto',padding:'12px 14px 90px'}}>
 
         {/* Selector data */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,background:'rgba(20,35,58,0.6)',border:'0.5px solid rgba(159,215,255,0.1)',borderRadius:10,padding:'10px 14px'}}>
@@ -498,7 +498,7 @@ export default function CuratenePage() {
       </div>}
 
       {/* ── TAB PROBLEME ── */}
-      {activeTab==='probleme'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 40px'}}>
+      {activeTab==='probleme'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 90px'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
           <div style={{fontSize:13,color:'rgba(159,215,255,0.5)'}}>{probleme.length} probleme deschise</div>
           <button onClick={()=>setShowAddProblema(true)}
@@ -564,7 +564,7 @@ export default function CuratenePage() {
       </div>}
 
       {/* ── TAB RAPOARTE ── */}
-      {activeTab==='rapoarte'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 40px'}}>
+      {activeTab==='rapoarte'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 90px'}}>
 
         {/* Selector luna + cost */}
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap' as const}}>
