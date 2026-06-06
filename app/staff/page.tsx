@@ -249,7 +249,7 @@ export default function StaffPage() {
       <div style={{display:'flex',background:'rgba(6,13,26,0.98)',borderBottom:'1px solid rgba(255,255,255,0.06)',position:'sticky',top:72,zIndex:19}}>
         {TABS.map(t=>(
           <button key={t.k} onClick={()=>setTab(t.k)}
-            style={{flex:1,padding:'11px 4px',border:'none',background:'transparent',color:tab===t.k?'#7BC8FF':'rgba(159,215,255,0.35)',fontSize:11,fontWeight:600,cursor:'pointer',borderBottom:`2px solid ${tab===t.k?'#7BC8FF':'transparent'}`,transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+            style={{flex:1,padding:'11px 4px',border:'none',background:'transparent',color:tab===t.k?'#7BC8FF':'rgba(159,215,255,0.35)',fontSize:11,fontWeight:600,cursor:'pointer',borderBottom:'2px solid '+(tab===t.k?'#7BC8FF':'transparent'),transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
             {t.l}{t.n!==undefined?` (${t.n})`:''}
           </button>
         ))}
@@ -417,7 +417,7 @@ export default function StaffPage() {
             {problemeStaff.map(p=>{
               const c=p.prioritate==='critic'?'#F87171':p.prioritate==='urgent'?'#FB923C':'#7BC8FF'
               return(
-                <div key={p.id} style={{borderRadius:14,border:`1px solid ${c}22`,background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
+                <div key={p.id} style={{borderRadius:14,border:'1px solid '+c+'22',background:'rgba(11,22,42,0.6)',padding:'12px 14px',marginBottom:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
                     <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:`${c}18`,color:c,fontWeight:700,textTransform:'uppercase' as const}}>{p.prioritate}</span>
                     {p.apartament&&<span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{p.apartament.nota}</span>}
@@ -451,7 +451,7 @@ export default function StaffPage() {
                     const isSelected=zi===data
                     return(
                       <div key={zi} onClick={()=>setData(zi)}
-                        style={{padding:'8px 4px',textAlign:'center',cursor:'pointer',background:rez?'rgba(248,113,113,0.2)':'transparent',borderLeft:'1px solid rgba(255,255,255,0.05)',borderBottom: isSelected?`2px solid #7BC8FF`:'2px solid transparent'}}>
+                        style={{padding:'8px 4px',textAlign:'center',cursor:'pointer',background:rez?'rgba(248,113,113,0.2)':'transparent',borderLeft:'1px solid rgba(255,255,255,0.05)',borderBottom: isSelected?'2px solid #7BC8FF':'2px solid transparent'}}>
                         <div style={{fontSize:9,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.35)',fontWeight:isToday||isSelected?700:400,marginBottom:2}}>{fmtFull(zi).slice(0,3)}</div>
                         <div style={{fontSize:10,color:isToday?'#4ADE80':isSelected?'#7BC8FF':'rgba(159,215,255,0.5)',fontWeight:isToday?700:400}}>{zi.slice(8)}</div>
                         {rez&&<div style={{fontSize:8,color:'rgba(248,113,113,0.8)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',padding:'0 2px'}}>{rez.nume_client?.split(' ')[0]}</div>}
