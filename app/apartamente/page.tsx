@@ -50,7 +50,8 @@ function CopyBtn({ text }: { text: string }) {
 
 function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
-  const [chirie, setChirie] = useState(apt.pret_standard||0)
+  const [loaded, setLoaded] = useState(false)
+  const [chirie, setChirie] = useState(0)
   const [eonCurent, setEonCurent] = useState(0)
   const [eonGaz, setEonGaz] = useState(0)
   const [asociatie, setAsociatie] = useState(0)
@@ -61,7 +62,6 @@ function Calc({ apt }: { apt: any }) {
   const [lenjerii, setLenjerii] = useState(80)
   const [altVar, setAltVar] = useState(0)
   const [zile, setZile] = useState(20)
-
   const [loadingCh, setLoadingCh] = useState(false)
 
   async function preiadinCheltuieli() {
@@ -69,92 +69,138 @@ function Calc({ apt }: { apt: any }) {
     const now = new Date()
     const an = now.getFullYear()
     const luna = now.getMonth() + 1
-    // Cauta in ultimele 3 luni - facturile pot fi salvate cu date diferite
-    // Luna curenta - toate cheltuielile indiferent de status
-    const primaZi = `${an}-${pad(luna)}-01`
+    const primaZi = an+'-'+pad(luna)+'-01'
     const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
     const { data } = await supabase.from('cheltuieli')
-      .select('categorie,valoare')
+      .select('categorie,valoare,descriere')
       .eq('apartament_id', apt.id)
       .gte('data', primaZi)
       .lte('data', ultimaZi)
     if (data && data.length > 0) {
       const sum = (cat: string) => data
-        .filter((c:any) => c.categorie === cat)
-        .reduce((s:number,c:any) => s + Number(c.valoare||0), 0)
+        .filter((x:any) => x.categorie === cat)
+        .reduce((s:number,x:any) => s + Number(x.valoare||0), 0)
       const chirieDB = sum('chirie')
-      if (chirieDB > 0) setChirie(chirieDB)
+      setChirie(chirieDB > 0 ? chirieDB : apt.pret_standard||0)
       setEonCurent(sum('eon_curent'))
       setEonGaz(sum('eon_gaz'))
       setAsociatie(sum('asociatie'))
       setInternet(sum('internet'))
+      const curatDB = sum('curatenie')
+      if(curatDB > 0) setCuratenie(curatDB)
+      const consDB = sum('consumabile')
+      if(consDB > 0) setConsumabile(consDB)
+    } else {
+      setChirie(apt.pret_standard||0)
     }
+    setLoaded(true)
     setLoadingCh(false)
+  }
+
+  // Auto-load on open
+  const handleOpen = () => {
+    const newOpen = !open
+    setOpen(newOpen)
+    if(newOpen && !loaded) preiadinCheltuieli()
   }
 
   const totalFix = Number(chirie)+Number(eonCurent)+Number(eonGaz)+Number(asociatie)+Number(internet)+Number(alteFix)
   const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
   const totalLuna = totalFix+totalVar
   const costN = zile>0?Math.round(totalLuna/zile):0
-  const p10=Math.round(costN*1.10), p20=Math.round(costN*1.20), p30=Math.round(costN*1.30)
-  const pBooking=Math.round(p20/0.83), pAirbnb=Math.round(p20/0.85), pDirect=p20
-  const inp: React.CSSProperties={width:'100%',background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,color:'#fff',fontSize:12,padding:'5px 8px',outline:'none'}
-  const lbl: React.CSSProperties={fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase' as const,letterSpacing:'.05em'}
+  const p15=Math.round(costN*1.15), p25=Math.round(costN*1.25), p40=Math.round(costN*1.40)
+  const pBooking=Math.round(p25/0.83), pAirbnb=Math.round(p25/0.85), pDirect=p25
+
+  const inp: React.CSSProperties={width:'100%',background:'rgba(255,255,255,0.05)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:6,color:'#fff',fontSize:12,padding:'5px 8px',outline:'none',boxSizing:'border-box' as const}
+  const lbl: React.CSSProperties={fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:3,textTransform:'uppercase' as const,letterSpacing:'.05em'}
+
   return (
-    <div style={{ borderTop:'1px solid rgba(159,215,255,0.07)', marginTop:12, paddingTop:12 }}>
-      <button onClick={()=>setOpen(!open)} style={{ display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', color:'rgba(159,215,255,0.5)', fontSize:11, width:'100%' }}>
-        <Calculator size={11}/><span>Calculator preț & rentabilitate</span>
-        <span style={{ marginLeft:'auto' }}>{open?<ChevronUp size={10}/>:<ChevronDown size={10}/>}</span>
+    <div style={{ borderTop:'1px solid rgba(159,215,255,0.07)', marginTop:8, paddingTop:12 }}>
+      <button onClick={handleOpen} style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:8, padding:'8px 12px', cursor:'pointer', color:'rgba(159,215,255,0.7)', fontSize:11, width:'100%', fontWeight:600 }}>
+        <Calculator size={12}/>
+        <span>Calculator preț & rentabilitate</span>
+        {costN > 0 && !open && <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{costN} RON/n minim</span>}
+        <span style={{ marginLeft:costN>0&&!open?4:'auto' }}>{open?<ChevronUp size={11}/>:<ChevronDown size={11}/>}</span>
       </button>
+
       {open && (
-        <div style={{ marginTop:10 }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-            <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli fixe / lună</div>
-            <button onClick={preiadinCheltuieli} disabled={loadingCh}
-              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', cursor:'pointer', opacity:loadingCh?0.6:1 }}>
-              {loadingCh ? '⏳' : '↓ Preia din Cheltuieli'}
-            </button>
+        <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:10 }}>
+
+          {/* Preț minim hero */}
+          {costN > 0 && (
+            <div style={{ background:'linear-gradient(135deg,rgba(74,222,128,0.1),rgba(77,163,255,0.08))', border:'1px solid rgba(74,222,128,0.25)', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div>
+                <div style={{ fontSize:10, color:'rgba(74,222,128,0.7)', fontWeight:600, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:2 }}>Preț minim/noapte</div>
+                <div style={{ fontSize:28, fontWeight:800, color:'#4ADE80', fontFamily:'monospace', lineHeight:1 }}>{costN} <span style={{ fontSize:13, fontWeight:500, color:'rgba(74,222,128,0.6)' }}>RON</span></div>
+                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginTop:3 }}>Total lună: {totalLuna.toLocaleString('ro-RO')} RON / {zile} zile</div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:6 }}>Prețuri de listat</div>
+                <div style={{ display:'flex', gap:6 }}>
+                  {([['Booking',pBooking,'#60A5FA'],['Airbnb',pAirbnb,'#F87171'],['Direct',pDirect,'#4ADE80']] as any[]).map(([l,v,col])=>(
+                    <div key={l} style={{ background:'rgba(255,255,255,0.04)', borderRadius:6, padding:'4px 8px', textAlign:'center' }}>
+                      <div style={{ fontSize:8, color:'rgba(159,215,255,0.35)' }}>{l}</div>
+                      <div style={{ fontSize:13, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reîncarcă cheltuieli */}
+          <button onClick={preiadinCheltuieli} disabled={loadingCh}
+            style={{ fontSize:11, padding:'6px 12px', borderRadius:7, border:'1px solid rgba(77,163,255,0.25)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', opacity:loadingCh?0.6:1, display:'flex', alignItems:'center', gap:6 }}>
+            {loadingCh ? '⏳ Se încarcă...' : '↓ Reîncarcă din Cheltuieli luna curentă'}
+          </button>
+
+          {/* Cheltuieli fixe */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Cheltuieli fixe / lună</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              {([['Chirie/Rată',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
+                <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
+              ))}
+            </div>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
-            {([['Chirie',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
-              <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
-            ))}
+
+          {/* Cheltuieli variabile */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:'rgba(252,211,77,0.7)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Cheltuieli variabile / lună</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              {([['Curățenie',curatenie,setCuratenie],['Consumabile',consumabile,setConsumabile],['Lenjerii',lenjerii,setLenjerii],['Altele var.',altVar,setAltVar]] as any[]).map(([l,v,s])=>(
+                <div key={l}><div style={lbl}>{l}</div><input type="number" onChange={e=>s(Number(e.target.value))} value={v} style={inp}/></div>
+              ))}
+            </div>
           </div>
-          <div style={{ fontSize:10, fontWeight:600, color:'rgba(252,211,77,0.7)', marginBottom:6, textTransform:'uppercase', letterSpacing:'.06em' }}>Cheltuieli variabile / lună</div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:10 }}>
-            {([['Curățenie',curatenie,setCuratenie],['Consumabile',consumabile,setConsumabile],['Lenjerii',lenjerii,setLenjerii],['Altele var.',altVar,setAltVar]] as any[]).map(([l,v,s])=>(
-              <div key={l}><div style={lbl}>{l}</div><input type="number" onChange={e=>s(Number(e.target.value))} value={v} style={inp}/></div>
-            ))}
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:12 }}>
+
+          {/* Zile ocupate + totale */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
             <div><div style={lbl}>Zile ocupate/lună</div><input type="number" value={zile} onChange={e=>setZile(Number(e.target.value))} style={inp}/></div>
-            <div style={{ background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,padding:'5px 8px',display:'flex',flexDirection:'column',justifyContent:'center' }}>
-              <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>TOTAL/LUNĂ</div>
-              <div style={{ fontSize:13, fontWeight:700, color:'#7BC8FF', fontFamily:'monospace' }}>{totalLuna.toLocaleString('ro-RO')} RON</div>
+            <div style={{ background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,padding:'5px 8px' }}>
+              <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>FIXE/LUNĂ</div>
+              <div style={{ fontSize:12, fontWeight:700, color:'#7BC8FF', fontFamily:'monospace' }}>{totalFix.toLocaleString('ro-RO')}</div>
+            </div>
+            <div style={{ background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.12)',borderRadius:6,padding:'5px 8px' }}>
+              <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>VAR/LUNĂ</div>
+              <div style={{ fontSize:12, fontWeight:700, color:'#FCD34D', fontFamily:'monospace' }}>{totalVar.toLocaleString('ro-RO')}</div>
             </div>
           </div>
-          <div style={{ background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:8,padding:'10px 12px',marginBottom:10 }}>
-            <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6 }}>Cost/noapte · Prețuri recomandate</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
-              {([['Cost',costN,'rgba(159,215,255,0.5)'],['+10%',p10,'#7BC8FF'],['+20%',p20,'#4DA3FF'],['+30%',p30,'#4ADE80']] as any[]).map(([l,v,col])=>(
-                <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'6px 8px',textAlign:'center' as const }}>
-                  <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:3 }}>{l}</div>
-                  <div style={{ fontSize:14, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+
+          {/* Scenarii profitabilitate */}
           <div style={{ background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:8,padding:'10px 12px' }}>
-            <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6 }}>Preț de listat pentru {p20} RON net</div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:5 }}>
-              {([['Booking -17%',pBooking,'#60A5FA'],['Airbnb -15%',pAirbnb,'#F87171'],['Direct',pDirect,'#4ADE80']] as any[]).map(([l,v,col])=>(
-                <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'6px 8px',textAlign:'center' as const }}>
-                  <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:3 }}>{l}</div>
-                  <div style={{ fontSize:15, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
+            <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:8 }}>Scenarii profitabilitate (net după comisioane platforme)</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
+              {([['Break-even',costN,'rgba(159,215,255,0.5)',0],['+15%',p15,'#7BC8FF',Math.round((p15-costN)*zile)],['+25%',p25,'#4DA3FF',Math.round((p25-costN)*zile)],['+40%',p40,'#4ADE80',Math.round((p40-costN)*zile)]] as any[]).map(([l,v,col,profit])=>(
+                <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'7px 8px',textAlign:'center' as const }}>
+                  <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:2 }}>{l}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
+                  {profit > 0 && <div style={{ fontSize:8, color:col, marginTop:2, opacity:0.7 }}>+{profit.toLocaleString('ro-RO')}/lună</div>}
                 </div>
               ))}
             </div>
           </div>
+
         </div>
       )}
     </div>
@@ -497,20 +543,52 @@ export default function ApartamentePage() {
 function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void }) {
   const sc = SC[a.status]||'#94A3B8'
   const isActiv = a.status === 'activ'
+  const cp = (e:React.MouseEvent, text:string) => { e.stopPropagation(); navigator.clipboard.writeText(text).catch(()=>{}) }
+  const hasLinks = a.link_site||a.link_booking||a.link_airbnb
   return (
-    <div style={{ padding:'10px 12px', background: selected?'rgba(77,163,255,0.12)':'rgba(214,228,244,0.04)', border: selected?'1px solid rgba(77,163,255,0.35)':'1px solid rgba(159,215,255,0.08)', borderRadius:9, transition:'all 0.12s', borderLeft:`3px solid ${selected?'#4DA3FF':sc+'50'}`, opacity:isActiv?1:0.5 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+    <div style={{ padding:'10px 12px', background: selected?'rgba(77,163,255,0.12)':'rgba(214,228,244,0.04)', border: selected?'1px solid rgba(77,163,255,0.35)':'1px solid rgba(159,215,255,0.08)', borderRadius:9, transition:'all 0.12s', borderLeft:'3px solid '+(selected?'#4DA3FF':sc+'50'), opacity:isActiv?1:0.5 }}>
+      {/* Header row */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
         <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:6, flex:1, cursor:'pointer', minWidth:0 }}>
           {a.nota && <span style={{ fontSize:10, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace', background:'rgba(77,163,255,0.12)', padding:'1px 6px', borderRadius:4, flexShrink:0 }}>{a.nota}</span>}
-          <span style={{ fontSize:7, padding:'1px 5px', borderRadius:10, background:`${sc}15`, color:sc, border:`1px solid ${sc}20`, flexShrink:0 }}>{a.status}</span>
+          <span style={{ fontSize:11, fontWeight:600, color:'#FFFFFF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</span>
         </div>
-        <button onClick={e=>{e.stopPropagation();onToggle?.(a.id,isActiv?'inactiv':'activ')}} title={isActiv?'Dezactivează':'Activează'} style={{ flexShrink:0, width:32, height:18, borderRadius:9, background:isActiv?'rgba(74,222,128,0.2)':'rgba(159,215,255,0.07)', border:`1px solid ${isActiv?'rgba(74,222,128,0.4)':'rgba(159,215,255,0.15)'}`, cursor:'pointer', position:'relative', padding:0, transition:'all .2s' }}>
-          <div style={{ position:'absolute', top:2, left:isActiv?14:2, width:12, height:12, borderRadius:'50%', background:isActiv?'#4ADE80':'rgba(159,215,255,0.3)', transition:'all .2s', boxShadow:isActiv?'0 0 4px rgba(74,222,128,0.6)':'none' }}/>
+        <button onClick={e=>{e.stopPropagation();onToggle?.(a.id,isActiv?'inactiv':'activ')}} title={isActiv?'Dezactivează':'Activează'} style={{ flexShrink:0, width:28, height:16, borderRadius:8, background:isActiv?'rgba(74,222,128,0.2)':'rgba(159,215,255,0.07)', border:'1px solid '+(isActiv?'rgba(74,222,128,0.4)':'rgba(159,215,255,0.15)'), cursor:'pointer', position:'relative', padding:0 }}>
+          <div style={{ position:'absolute', top:2, left:isActiv?12:2, width:10, height:10, borderRadius:'50%', background:isActiv?'#4ADE80':'rgba(159,215,255,0.3)', transition:'all .2s' }}/>
         </button>
       </div>
-      <div onClick={onClick} style={{ cursor:'pointer' }}>
-        <div style={{ fontSize:12, fontWeight:500, color:'#FFFFFF', lineHeight:1.3, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</div>
-        <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.zona || a.adresa}</div>
+      {/* Adresa + copy */}
+      {a.adresa && (
+        <div style={{ display:'flex', alignItems:'center', gap:3, marginBottom:5 }}>
+          <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{a.adresa}</span>
+          <button onClick={e=>cp(e,a.adresa)} style={{ background:'none', border:'none', cursor:'pointer', padding:'1px 3px', color:'rgba(159,215,255,0.3)', flexShrink:0, display:'flex', alignItems:'center' }}>
+            <Copy size={9}/>
+          </button>
+        </div>
+      )}
+      {/* Links copy row */}
+      {hasLinks && (
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          {a.link_site && (
+            <button onClick={e=>cp(e,a.link_site)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(77,163,255,0.2)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', fontSize:9, cursor:'pointer', fontWeight:600 }}>
+              <Copy size={8}/> Site
+            </button>
+          )}
+          {a.link_booking && (
+            <button onClick={e=>cp(e,a.link_booking)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(252,211,77,0.2)', background:'rgba(252,211,77,0.08)', color:'#FCD34D', fontSize:9, cursor:'pointer', fontWeight:600 }}>
+              <Copy size={8}/> Maps
+            </button>
+          )}
+          {a.link_airbnb && (
+            <button onClick={e=>cp(e,a.link_airbnb)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(239,68,68,0.2)', background:'rgba(239,68,68,0.08)', color:'#F87171', fontSize:9, cursor:'pointer', fontWeight:600 }}>
+              <Copy size={8}/> Airbnb
+            </button>
+          )}
+        </div>
+      )}
+      {/* Click to expand */}
+      <div onClick={onClick} style={{ cursor:'pointer', marginTop:5, textAlign:'center', fontSize:9, color:'rgba(159,215,255,0.25)' }}>
+        {selected ? '▲ inchide' : '▼ detalii'}
       </div>
     </div>
   )
