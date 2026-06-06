@@ -69,12 +69,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div style={{ display: 'flex', height: '100dvh', overflow: 'auto', position: 'relative' }}>
 
       {/* ── DESKTOP SIDEBAR ── */}
-      <aside style={{
-        width: 188, flexShrink: 0, display: 'flex', flexDirection: 'column',
-        height: '100dvh', background: 'rgba(11,18,32,0.85)',
-        backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)',
-        borderRight: '1px solid rgba(159,215,255,0.08)',
-      }} className="desktop-sidebar" style={isStaff?{display:'none'}:{}}>
+      <aside className="desktop-sidebar" style={{width:188,flexShrink:0,display:isStaff?'none':'flex',flexDirection:'column',height:'100dvh',background:'rgba(11,18,32,0.85)',backdropFilter:'blur(40px)',WebkitBackdropFilter:'blur(40px)',borderRight:'1px solid rgba(159,215,255,0.08)'}}>
         {/* Logo */}
         <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid rgba(159,215,255,0.07)', display: 'flex', alignItems: 'center', gap: 9 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(77,163,255,0.16)', border: '1px solid rgba(159,215,255,0.15)', overflow: 'hidden', padding: 0 }}>
