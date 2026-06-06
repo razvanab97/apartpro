@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = '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'
+const CLAUDE_KEY = 'process.env.ANTHROPIC_API_KEY!'
 
 const BIZ_CODES: Record<string, string> = {
   '01': 'Property Management', '02': 'Marketplace',

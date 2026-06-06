@@ -9,7 +9,6 @@ export async function POST(req: NextRequest) {
 
     const isCSV = mimeType === 'text/csv' || filename?.endsWith('.csv')
     const isPDF = mimeType === 'application/pdf'
-    const isImage = mimeType?.startsWith('image/')
 
     const prompt = `Ești un extractor de date din rapoarte ${platforma === 'booking' ? 'Booking.com' : 'Airbnb'} pentru proprietatea "${aptNume}".
 
@@ -20,49 +19,43 @@ Extrage TOATE valorile numerice vizibile și returnează DOAR JSON valid fără 
   "rata_conversie_cautari": procent ca număr (ex: 1.63) sau null,
   "rata_conversie_pagina": procent ca număr (ex: 2.24) sau null,
   "rezervari_confirmate": număr sau null,
-  "scor_pozitie_text": "ex: 555 din 689" sau null,
+  "scor_pozitie_text": text sau null,
   "rata_anulari": procent ca număr sau null,
   "adr": număr RON sau null,
   "innoptari": număr sau null,
   "venituri_ron": număr sau null,
-  "scor_comentarii": număr (ex: 9.1) sau null,
+  "scor_comentarii": număr sau null,
   "completare_pagina": număr procent sau null,
-  "rata_ocupare": procent ca număr (ex: 70.4) sau null,
+  "rata_ocupare": procent ca număr sau null,
   "nopti_rezervate": număr sau null,
   "nopti_blocate": număr sau null,
   "tarif_mediu_noapte": număr RON sau null,
   "wishlist_total": număr sau null,
-  "scor_5stele": procent ca număr (ex: 62.5) sau null,
+  "scor_5stele": procent ca număr sau null,
   "scor_acuratete": procent sau null,
   "scor_checkin": procent sau null,
   "scor_curatenie": procent sau null,
   "scor_comunicare": procent sau null,
   "scor_pozitie": procent sau null,
   "scor_valoare": procent sau null,
-  "rata_conversie_globala": procent ca număr (ex: 0.37) sau null,
-  "rata_afisari_p1": procent ca număr (ex: 60.2) sau null
+  "rata_conversie_globala": procent ca număr sau null,
+  "rata_afisari_p1": procent ca număr sau null
 }`
 
     let content: any[]
-
     if (isCSV) {
-      // CSV - trimite ca text
       const csvText = Buffer.from(base64Data, 'base64').toString('utf-8')
-      content = [
-        { type: 'text', text: `CSV din ${platforma}:\n\n${csvText}\n\n${prompt}` }
-      ]
+      content = [{ type: 'text', text: `CSV:\n\n${csvText}\n\n${prompt}` }]
     } else if (isPDF) {
       content = [
         { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
         { type: 'text', text: prompt }
       ]
-    } else if (isImage) {
+    } else {
       content = [
         { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
         { type: 'text', text: prompt }
       ]
-    } else {
-      return NextResponse.json({ error: 'Format nesuportat' }, { status: 400 })
     }
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -72,11 +65,7 @@ Extrage TOATE valorile numerice vizibile și returnează DOAR JSON valid fără 
         'x-api-key': CLAUDE_KEY,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content }]
-      })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content }] })
     })
 
     const data = await res.json()
@@ -84,13 +73,7 @@ Extrage TOATE valorile numerice vizibile și returnează DOAR JSON valid fără 
 
     const text = data.content?.find((c: any) => c.type === 'text')?.text || '{}'
     const clean = text.replace(/```json|```/g, '').trim()
-
-    try {
-      const parsed = JSON.parse(clean)
-      return NextResponse.json(parsed)
-    } catch {
-      return NextResponse.json({ error: 'Nu am putut parsa răspunsul AI' }, { status: 500 })
-    }
+    return NextResponse.json(JSON.parse(clean))
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
