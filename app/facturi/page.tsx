@@ -435,8 +435,11 @@ export default function FacturiPage() {
       }
     }
 
-    // Pastreaza data scadentei exacta din factura - nu o modifica niciodata
-    const dataScadenta = f.data_scadenta || `${now.getFullYear()}-${pad(now.getMonth()+1)}-25`
+    // Data = prima zi a lunii de emitere (nu scadenta)
+    const dataEmitereAuto = f.data_emitere
+      ? f.data_emitere.slice(0,7)+'-01'
+      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`
+    const dataScadenta = f.data_scadenta || null
     const categorieToColKey: Record<string,string> = {
       'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','E.ON DUO':'eon_curent','eon_energie':'eon_curent',
       'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
@@ -448,7 +451,7 @@ export default function FacturiPage() {
       categorie: colKey || f.categorie || 'alta',
       descriere: `${f.categorieLabel} — ${f.furnizor}`,
       valoare: f.suma_totala,
-      data: dataScadenta,
+      data: dataEmitereAuto,
       status: 'nevalidat',
       suportat_de: 'administrator',
       tva: 0,
