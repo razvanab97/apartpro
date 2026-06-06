@@ -562,10 +562,10 @@ export default function RapoartePage() {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr auto', gap:10, alignItems:'end' }}>
             <div style={{ gridColumn:'1 / -1' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>Locații ({selectedApts.length === 0 ? 'toate' : selectedApts.length + ' selectate'})</label>
+                <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>Locații <span style={{color: selectedApts.length===0?'#FCD34D':'#4ADE80', fontWeight:600}}>({selectedApts.length === 0 ? '⚠ niciuna selectată = TOATE' : selectedApts.length + ' selectate'})</span></label>
                 <div style={{ display:'flex', gap:6 }}>
-                  <button onClick={() => setSelectedApts([])} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>Toate</button>
-                  <button onClick={() => setSelectedApts(apartamente.map(a=>a.id))} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'transparent', border:'1px solid rgba(159,215,255,0.12)', color:'rgba(159,215,255,0.4)', cursor:'pointer' }}>Selectează toate</button>
+                  <button onClick={() => setSelectedApts(apartamente.map(a=>a.id))} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>Selectează toate</button>
+                  <button onClick={() => setSelectedApts([])} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(252,211,77,0.08)', border:'1px solid rgba(252,211,77,0.2)', color:'rgba(252,211,77,0.6)', cursor:'pointer' }}>Deselectează tot</button>
                 </div>
               </div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
