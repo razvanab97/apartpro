@@ -138,7 +138,7 @@ export default function StatisticiPage() {
       }
     }
     setProcessing(false)
-    show('ok', `Procesate ${pending.length} fișiere`)
+    show('success', `Procesate ${pending.length} fișiere`)
   }
 
   async function extractWithAI(item: UploadItem): Promise<Partial<StatRow>> {
@@ -225,7 +225,7 @@ Răspunde DOAR cu JSON valid, fără text suplimentar, cu această structură ex
       const { error } = await supabase.from('statistici_platforme').insert(row)
       if (!error) saved++
     }
-    show('ok', `Salvate ${saved}/${done.length} înregistrări`)
+    show('success', `Salvate ${saved}/${done.length} înregistrări`)
     setUploads([])
     if (tab === 'azi') loadStats()
   }
