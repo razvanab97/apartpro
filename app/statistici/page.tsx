@@ -249,7 +249,7 @@ Răspunde DOAR cu JSON valid, fără text suplimentar, cu această structură ex
     return Object.values(map)
   })()
 
-  const delta = (current: number | null, prev: number | null) => {
+  const delta = (current: number | null | undefined, prev: number | null | undefined) => {
     if (current == null || prev == null) return null
     return current - prev
   }
