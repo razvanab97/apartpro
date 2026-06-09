@@ -27,6 +27,56 @@ interface MarketComparison {
   replacements: { exited: any; entered: any }[]
 }
 
+interface MarketTransition {
+  platform: 'booking'|'airbnb'
+  checkin: string
+  hour: number
+  hoursElapsed: number
+  unavailablePerHour: number
+  priceDeltaPerHour: number
+}
+
+const avg = (values:number[]) => values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : 0
+const median = (values:number[]) => {
+  if(!values.length) return 0
+  const sorted=[...values].sort((a,b)=>a-b)
+  const middle=Math.floor(sorted.length/2)
+  return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2
+}
+const scanTime = (scan:any) => new Date(scan.scanned_at).getTime()
+const scanPlatform = (scan:any):'booking'|'airbnb' => scan.platform==='airbnb'?'airbnb':'booking'
+const scanDay = (scan:any) => {
+  const date=new Date(scan.scanned_at)
+  const pad=(value:number)=>String(value).padStart(2,'0')
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`
+}
+
+function buildMarketTransitions(scans:any[]):MarketTransition[] {
+  const groups=new Map<string,any[]>()
+  scans.forEach(scan=>{
+    const key=`${scanPlatform(scan)}|${scan.checkin}|${scan.checkout}`
+    groups.set(key,[...(groups.get(key)||[]),scan])
+  })
+  return Array.from(groups.values()).flatMap(group=>{
+    const sorted=group.sort((a,b)=>scanTime(a)-scanTime(b))
+    return sorted.slice(1).flatMap((current,index)=>{
+      const previous=sorted[index]
+      if(current.total_properties==null||previous.total_properties==null) return []
+      const hoursElapsed=(scanTime(current)-scanTime(previous))/3600000
+      if(hoursElapsed<0.15||hoursElapsed>12) return []
+      return [{
+        platform:scanPlatform(current),
+        checkin:current.checkin,
+        hour:new Date(current.scanned_at).getHours(),
+        hoursElapsed,
+        unavailablePerHour:(previous.total_properties-current.total_properties)/hoursElapsed,
+        priceDeltaPerHour:current.lowest_price!=null&&previous.lowest_price!=null
+          ? (current.lowest_price-previous.lowest_price)/hoursElapsed : 0,
+      }]
+    })
+  })
+}
+
 const exactListingName = (name:string) => (name||'').toLocaleLowerCase('ro-RO').replace(/\s+/g,' ').trim()
 const baseListingName = (name:string) => exactListingName(name)
   .replace(/,?\s*\d[\d.]*\s*(?:l\s*)?ron\b/g,'')
@@ -81,12 +131,13 @@ export default function PreturiPage() {
 
   const [checkinMonitor, setCheckinMonitor] = useState('')
   const [checkoutMonitor, setCheckoutMonitor] = useState('')
+  const [scanDayMonitor, setScanDayMonitor] = useState('')
   const [scan, setScan] = useState<ScanState>({ status: 'idle', results: [] })
   const [showHistory, setShowHistory] = useState(false)
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
-  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'evolutie'>('preturi')
+  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'>('preturi')
   const [evolutieData, setEvolutieData] = useState<any[]>([])
   const [loadingEvolutie, setLoadingEvolutie] = useState(false)
   const [compareDate1, setCompareDate1] = useState('')
@@ -114,7 +165,7 @@ export default function PreturiPage() {
   async function loadEvolutie() {
     setLoadingEvolutie(true)
     const { data } = await supabase.from('booking_monitor_history')
-      .select('*').order('checkin', { ascending: true }).limit(2000)
+      .select('*').order('scanned_at', { ascending: false }).limit(2000)
     setEvolutieData(data || [])
     setLoadingEvolutie(false)
   }
@@ -128,6 +179,7 @@ export default function PreturiPage() {
     if(selectLatestPeriod&&rows[0]?.checkin&&rows[0]?.checkout){
       setCheckinMonitor(rows[0].checkin)
       setCheckoutMonitor(rows[0].checkout)
+      setScanDayMonitor(scanDay(rows[0]))
     }
     setLoadingHistory(false)
   }
@@ -136,6 +188,7 @@ export default function PreturiPage() {
     const ci = add(1)
     const d = new Date(ci+'T12:00:00'); d.setDate(d.getDate()+1)
     setCheckinMonitor(ci); setCheckoutMonitor(fmt(d))
+    setScanDayMonitor(today)
     supabase.from('apartamente')
       .select('id,nota,link_booking,link_airbnb,booking_links,airbnb_links')
       .eq('status','activ').order('nota')
@@ -349,8 +402,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     <>
       <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb"/>
       <div style={{display:'flex',gap:0,borderBottom:'1px solid rgba(159,215,255,0.1)',background:'rgba(10,20,40,0.5)'}}>
-        {(['preturi','monitor','evolutie'] as const).map((tab)=>{
-          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',evolutie:'📈 Evoluție'}
+        {(['preturi','monitor','decizii','evolutie'] as const).map((tab)=>{
+          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',decizii:'🧠 Decizii',evolutie:'📈 Evoluție'}
           return(
             <button key={tab} onClick={()=>setMainTab(tab)} style={{
               padding:'10px 18px',fontSize:12,fontWeight:600,cursor:'pointer',
@@ -470,6 +523,11 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               <input type="date" value={checkoutMonitor} onChange={e=>setCheckoutMonitor(e.target.value)}
                 style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}/>
             </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Ziua scanării</span>
+              <input type="date" value={scanDayMonitor} onChange={e=>setScanDayMonitor(e.target.value)}
+                style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(196,181,253,0.25)',background:'rgba(35,28,65,0.75)',color:'#C4B5FD',outline:'none'}}/>
+            </div>
             <div style={{marginLeft:'auto',fontSize:11,color:'rgba(147,197,253,0.4)',display:'flex',alignItems:'center',gap:4}}>
               <span>💻</span>
               <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10}}>
@@ -485,6 +543,29 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             </div>
           </div>
 
+          {/* Zile salvate pentru perioada selectata */}
+          {(()=>{
+            const days=Array.from(new Set(history
+              .filter((h:any)=>h.checkin===checkinMonitor&&h.checkout===checkoutMonitor)
+              .map((h:any)=>scanDay(h))))
+            if(!days.length) return null
+            return(
+              <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(99,179,237,0.08)',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
+                <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginRight:3}}>Zile salvate:</span>
+                {days.map(day=>(
+                  <button key={day} onClick={()=>setScanDayMonitor(day)} style={{
+                    padding:'3px 9px',borderRadius:6,fontSize:10,cursor:'pointer',
+                    border:`1px solid ${scanDayMonitor===day?'rgba(196,181,253,0.45)':'rgba(99,179,237,0.15)'}`,
+                    background:scanDayMonitor===day?'rgba(196,181,253,0.12)':'rgba(99,179,237,0.04)',
+                    color:scanDayMonitor===day?'#C4B5FD':'rgba(147,197,253,0.5)',
+                  }}>
+                    {new Date(day+'T12:00:00').toLocaleDateString('ro-RO',{weekday:'short',day:'2-digit',month:'2-digit'})}
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+
           {/* View paralel Booking + Airbnb */}
           {loadingHistory?(
             <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Se încarcă...</div>
@@ -493,18 +574,17 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               Nicio scanare — rulează scriptul din Terminal
             </div>
           ):(()=>{
-            // Filtreaza dupa datele selectate (sau ia ultimele daca nu exista pt datele selectate)
-            const bkAll = history.filter((h:any)=>!h.platform||h.platform==='booking')
-            const abAll = history.filter((h:any)=>h.platform==='airbnb')
-            const bkMatch = bkAll.find((h:any)=>h.checkin===checkinMonitor&&h.checkout===checkoutMonitor)
-            const abMatch = abAll.find((h:any)=>h.checkin===checkinMonitor&&h.checkout===checkoutMonitor)
-            const lastBk = bkMatch || bkAll[0]
-            const lastAb = abMatch || abAll[0]
-            const previousFor = (last:any, scans:any[]) => last
-              ? scans.find((h:any)=>h.id!==last.id&&h.checkin===last.checkin&&h.checkout===last.checkout)
+            // Pentru fiecare zi afiseaza ultima scanare, comparata cu ultima zi scanata anterior.
+            const periodScans = history.filter((h:any)=>h.checkin===checkinMonitor&&h.checkout===checkoutMonitor)
+            const bkAll = periodScans.filter((h:any)=>!h.platform||h.platform==='booking')
+            const abAll = periodScans.filter((h:any)=>h.platform==='airbnb')
+            const lastBk = bkAll.find((h:any)=>scanDay(h)===scanDayMonitor)
+            const lastAb = abAll.find((h:any)=>scanDay(h)===scanDayMonitor)
+            const previousDayFor = (last:any, scans:any[]) => last
+              ? scans.find((h:any)=>scanDay(h)<scanDay(last))
               : null
-            const bkComparison = compareMarketScans(lastBk,previousFor(lastBk,bkAll))
-            const abComparison = compareMarketScans(lastAb,previousFor(lastAb,abAll))
+            const bkComparison = compareMarketScans(lastBk,previousDayFor(lastBk,bkAll))
+            const abComparison = compareMarketScans(lastAb,previousDayFor(lastAb,abAll))
 
             const renderSummary = (last:any, platform:string, comparison:MarketComparison) => {
               if(!last) return null
@@ -513,7 +593,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               const previous=comparison.previous
               if(!previous) return(
                 <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)',fontSize:11,color:'rgba(214,228,244,0.65)'}}>
-                  {icon} La {now} au fost scanate <strong style={{color:'#E8F4FF'}}>{last.total_properties??'?'}</strong> locații. Aceasta este prima scanare comparabilă pentru perioada {last.checkin} → {last.checkout}.
+                  {icon} La {now} au fost scanate <strong style={{color:'#E8F4FF'}}>{last.total_properties??'?'}</strong> locații. Aceasta este prima zi scanată pentru perioada {last.checkin} → {last.checkout}.
                 </div>
               )
               const previousTime=fmtDT(previous.scanned_at)
@@ -550,7 +630,6 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               const top = (last.top5||[]) as any[]
               const enteredResults = new Set(comparison.entered)
               const icon = platform==='booking'?'🏨':'🏠'
-              const dateMatch = last.checkin===checkinMonitor&&last.checkout===checkoutMonitor
               return(
                 <div>
                   {/* Platform header */}
@@ -559,11 +638,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                     display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                     <span style={{fontSize:12,fontWeight:700,color:'#93C5FD'}}>{icon} {platform.charAt(0).toUpperCase()+platform.slice(1)}</span>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      {!dateMatch&&(
-                        <span style={{fontSize:10,color:'rgba(252,211,77,0.5)',fontStyle:'italic'}}>
-                          ultima: {last.checkin}
-                        </span>
-                      )}
+                      <span style={{fontSize:9,color:'rgba(196,181,253,0.55)',textTransform:'uppercase' as const}}>ultima scanare din zi</span>
                       <span style={{fontSize:10,fontFamily:'monospace',color:'rgba(147,197,253,0.35)'}}>
                         {new Date(last.scanned_at).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
                       </span>
@@ -649,10 +724,16 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               )
             }
 
+            if(!lastBk&&!lastAb) return(
+              <div style={{padding:'28px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.35)',fontSize:11}}>
+                Nu există scanări în ziua {scanDayMonitor||'selectată'} pentru perioada {checkinMonitor} → {checkoutMonitor}.
+              </div>
+            )
+
             return(
               <div>
                 <div style={{borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(99,179,237,0.025)'}}>
-                  <div style={{padding:'8px 14px',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.5)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Confirmare scrisă față de scanarea precedentă</div>
+                  <div style={{padding:'8px 14px',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.5)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Ultima scanare din {scanDayMonitor} · comparație cu ultima zi scanată anterior</div>
                   {renderSummary(lastBk,'booking',bkComparison)}
                   {renderSummary(lastAb,'airbnb',abComparison)}
                 </div>
@@ -717,6 +798,174 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           )}
 
         </div>}{/* end monitor */}
+
+        {mainTab==='decizii'&&(()=>{
+          const transitions=buildMarketTransitions(evolutieData)
+          const validScans=evolutieData.filter((scan:any)=>scan.total_properties!=null&&scan.lowest_price!=null)
+          const platformStats=(['booking','airbnb'] as const).map(platform=>{
+            const platformTransitions=transitions.filter(t=>t.platform===platform)
+            const disappearing=platformTransitions.map(t=>t.unavailablePerHour).filter(v=>v>0)
+            const risingPrices=platformTransitions.map(t=>t.priceDeltaPerHour).filter(v=>v>0)
+            return {
+              platform,
+              transitions:platformTransitions.length,
+              avgPace:avg(disappearing),
+              medianPace:median(disappearing),
+              avgPriceRise:avg(risingPrices),
+            }
+          })
+          const hourly=Array.from({length:24},(_,hour)=>{
+            const rows=transitions.filter(t=>t.hour===hour)
+            return {hour,scans:rows.length,pace:avg(rows.map(r=>r.unavailablePerHour)),price:avg(rows.map(r=>r.priceDeltaPerHour))}
+          }).filter(row=>row.scans>0).sort((a,b)=>b.pace-a.pace)
+          const busiestHour=hourly[0]
+
+          const groups=new Map<string,any[]>()
+          validScans.forEach((scan:any)=>{
+            const key=`${scanPlatform(scan)}|${scan.checkin}|${scan.checkout}`
+            groups.set(key,[...(groups.get(key)||[]),scan])
+          })
+          const recommendations=Array.from(groups.values()).flatMap(group=>{
+            const sorted=group.sort((a,b)=>scanTime(b)-scanTime(a))
+            const current=sorted[0]
+            const previous=sorted.slice(1).find(candidate=>{
+              const elapsed=(scanTime(current)-scanTime(candidate))/3600000
+              return elapsed>=0.15&&elapsed<=12
+            })
+            if(!previous) return []
+            const comparison=compareMarketScans(current,previous)
+            const hours=(scanTime(current)-scanTime(previous))/3600000
+            const pace=comparison.totalDelta==null?0:-comparison.totalDelta/hours
+            const leadDays=Math.ceil((new Date(current.checkin+'T12:00:00').getTime()-Date.now())/86400000)
+            const topPrices=(current.top5||[]).map((r:any)=>r.price).filter((v:any)=>typeof v==='number')
+            const marketMedian=Math.round(median(topPrices))
+            const ourAvailable=current.ab_disponibile
+            let action='Menține prețul'
+            let color='#93C5FD'
+            let adjustment='0%'
+            let reason='Piața nu oferă încă un semnal suficient de puternic.'
+            if(ourAvailable!=null&&ourAvailable<=3&&pace>=1.5){
+              action='Crește ferm'
+              adjustment='+10% până la +15%'
+              color='#4ADE80'
+              reason=`Mai avem doar ${ourAvailable}/13 locații disponibile, iar piața pierde ${pace.toFixed(1)} locații/oră.`
+            }else if(pace>=5){
+              action='Crește prețul'
+              adjustment='+8% până la +12%'
+              color='#4ADE80'
+              reason=`Piața pierde ${pace.toFixed(1)} locații/oră; cererea este accelerată.`
+            }else if(pace>=1.5){
+              action='Crește prudent'
+              adjustment='+3% până la +6%'
+              color='#A7F3D0'
+              reason=`Piața pierde ${pace.toFixed(1)} locații/oră; există presiune de cumpărare.`
+            }else if(pace<=0&&leadDays<=3&&(ourAvailable==null||ourAvailable>=5)){
+              action='Testează reducere'
+              adjustment='-4% până la -7%'
+              color='#FCD34D'
+              reason='Check-in-ul este apropiat, iar disponibilitatea pieței nu scade.'
+            }
+            const confidence=sorted.length>=4?'ridicată':sorted.length>=2?'medie':'scăzută'
+            return [{current,comparison,pace,leadDays,marketMedian,ourAvailable,action,adjustment,color,reason,confidence,samples:sorted.length}]
+          }).filter(item=>item.leadDays>=0).sort((a,b)=>a.leadDays-b.leadDays||b.pace-a.pace).slice(0,16)
+
+          const confidenceText=validScans.length>=60
+            ? 'Volum bun de date pentru concluzii operative.'
+            : 'Datele sunt încă puține; recomandările trebuie validate prin scanări regulate.'
+          const fastestPlatform=[...platformStats].sort((a,b)=>b.avgPace-a.avgPace)[0]
+          const raiseCount=recommendations.filter(item=>item.action.includes('Crește')).length
+          const reduceCount=recommendations.filter(item=>item.action.includes('reducere')).length
+
+          return(
+            <div>
+              <div style={{...panel,padding:'14px 16px'}}>
+                <div style={{fontSize:14,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>Centru de decizie pentru prețuri</div>
+                <div style={{fontSize:11,color:'rgba(147,197,253,0.5)',lineHeight:1.5}}>
+                  Folosește dispariția locațiilor din piață ca semnal de cerere. O locație dispărută poate fi rezervată, retrasă sau închisă, deci recomandările sunt semnale comerciale, nu certitudini.
+                </div>
+              </div>
+
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,marginBottom:14}}>
+                <DecisionMetric label="Snapshot-uri analizate" value={String(validScans.length)} detail={`${new Set(validScans.map((s:any)=>s.checkin)).size} zile de check-in`} color="#93C5FD"/>
+                <DecisionMetric label="Intervale comparabile" value={String(transitions.length)} detail={confidenceText} color="#C4B5FD"/>
+                <DecisionMetric label="Ora cu cerere maximă" value={busiestHour?`${String(busiestHour.hour).padStart(2,'0')}:00`:'—'} detail={busiestHour?`${busiestHour.pace.toFixed(1)} locații indisponibile/oră`:'Mai sunt necesare scanări'} color="#FCD34D"/>
+                <DecisionMetric label="Frecvență recomandată" value="La 1-2 ore" detail="Aceleași date de check-in, pentru comparații corecte" color="#4ADE80"/>
+              </div>
+
+              <div style={{...panel,padding:'12px 16px',marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,color:'rgba(214,228,244,0.75)',marginBottom:7}}>Concluzii curente</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:8}}>
+                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}>Piața se mișcă cel mai repede în jurul orei <strong style={{color:'#FCD34D'}}>{busiestHour?`${String(busiestHour.hour).padStart(2,'0')}:00`:'—'}</strong>. Programează scanări înainte și după această oră.</div>
+                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}><strong style={{color:fastestPlatform?.platform==='airbnb'?'#F87171':'#7BC8FF'}}>{fastestPlatform?.platform==='airbnb'?'Airbnb':'Booking'}</strong> are acum ritmul mediu mai rapid: {fastestPlatform?.avgPace.toFixed(1)||'0.0'} locații/oră.</div>
+                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}>Acțiuni sugerate acum: <strong style={{color:'#4ADE80'}}>{raiseCount} creșteri</strong> și <strong style={{color:'#FCD34D'}}>{reduceCount} teste de reducere</strong>.</div>
+                </div>
+              </div>
+
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+                {platformStats.map(stat=>(
+                  <div key={stat.platform} style={{...panel,padding:'14px 16px'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                      <span style={{fontSize:13,fontWeight:700,color:stat.platform==='booking'?'#7BC8FF':'#F87171'}}>{stat.platform==='booking'?'🏨 Booking':'🏠 Airbnb'}</span>
+                      <span style={{fontSize:9,color:'rgba(147,197,253,0.35)',fontFamily:'monospace'}}>{stat.transitions} intervale</span>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                      <DecisionMetric label="Ritm mediu" value={`${stat.avgPace.toFixed(1)}/h`} detail="când piața scade" color="#FCD34D" compact/>
+                      <DecisionMetric label="Ritm median" value={`${stat.medianPace.toFixed(1)}/h`} detail="semnal robust" color="#93C5FD" compact/>
+                      <DecisionMetric label="Creștere minim" value={`${stat.avgPriceRise.toFixed(1)} lei/h`} detail="când prețul urcă" color="#4ADE80" compact/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{...panel,marginBottom:14}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontSize:12,fontWeight:700,color:'rgba(214,228,244,0.8)'}}>Recomandări pentru următoarele check-in-uri</span>
+                  <button onClick={()=>loadEvolutie()} style={{padding:'3px 10px',borderRadius:5,fontSize:10,cursor:'pointer',border:'1px solid rgba(99,179,237,0.2)',background:'transparent',color:'rgba(147,197,253,0.5)'}}>↺ Recalculează</button>
+                </div>
+                {recommendations.length===0?(
+                  <div style={{padding:24,textAlign:'center' as const,fontSize:11,color:'rgba(147,197,253,0.4)'}}>Sunt necesare minimum două scanări pentru aceeași perioadă.</div>
+                ):recommendations.map((item:any,i:number)=>(
+                  <div key={`${item.current.platform}-${item.current.checkin}`} style={{display:'grid',gridTemplateColumns:'90px 85px 105px 110px 1fr',gap:10,alignItems:'center',padding:'10px 14px',borderBottom:i<recommendations.length-1?'1px solid rgba(99,179,237,0.05)':'none'}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{item.current.checkin.slice(5)}</div>
+                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>{item.leadDays<0?'trecut':item.leadDays===0?'astăzi':`în ${item.leadDays} zile`}</div>
+                    </div>
+                    <span style={{fontSize:10,fontWeight:600,color:item.current.platform==='airbnb'?'#F87171':'#7BC8FF'}}>{item.current.platform==='airbnb'?'🏠 Airbnb':'🏨 Booking'}</span>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:item.pace>0?'#FCD34D':'rgba(214,228,244,0.65)',fontFamily:'monospace'}}>{item.pace.toFixed(1)} locații/h</div>
+                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>ritm piață</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{item.marketMedian||'—'} lei</div>
+                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>mediana top 10{item.ourAvailable!=null?` · AB ${item.ourAvailable}/13`:''}</div>
+                    </div>
+                    <div>
+                      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
+                        <span style={{fontSize:11,fontWeight:700,color:item.color}}>{item.action}</span>
+                        <span style={{fontSize:9,fontWeight:700,color:item.color,background:`${item.color}18`,padding:'1px 5px',borderRadius:4}}>{item.adjustment}</span>
+                        <span style={{fontSize:8,color:'rgba(147,197,253,0.3)'}}>încredere {item.confidence} · {item.samples} scanări</span>
+                      </div>
+                      <div style={{fontSize:10,color:'rgba(214,228,244,0.48)'}}>{item.reason}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{...panel}}>
+                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(214,228,244,0.8)'}}>Orele cu cea mai mare activitate</div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:8,padding:'12px 14px'}}>
+                  {hourly.slice(0,8).map(row=>(
+                    <div key={row.hour} style={{padding:'9px 10px',borderRadius:8,background:'rgba(99,179,237,0.05)',border:'1px solid rgba(99,179,237,0.09)'}}>
+                      <div style={{fontSize:13,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{String(row.hour).padStart(2,'0')}:00</div>
+                      <div style={{fontSize:11,fontWeight:600,color:row.pace>0?'#FCD34D':'rgba(214,228,244,0.5)',marginTop:3}}>{row.pace.toFixed(1)} locații/h</div>
+                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginTop:2}}>{row.scans} intervale · preț {row.price>=0?'+':''}{row.price.toFixed(1)} lei/h</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {mainTab==='evolutie'&&(()=>{
           const bkData = evolutieData.filter((h:any)=>!h.platform||h.platform==='booking')
@@ -895,5 +1144,15 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
       </div>
       <Toast toast={toast}/>
     </>
+  )
+}
+
+function DecisionMetric({label,value,detail,color,compact=false}:{label:string;value:string;detail:string;color:string;compact?:boolean}) {
+  return(
+    <div style={{padding:compact?'7px 8px':'11px 12px',borderRadius:9,background:`${color}0D`,border:`1px solid ${color}20`,minWidth:0}}>
+      <div style={{fontSize:compact?8:9,color:'rgba(147,197,253,0.42)',textTransform:'uppercase' as const,letterSpacing:'.04em',marginBottom:4}}>{label}</div>
+      <div style={{fontSize:compact?14:18,fontWeight:700,color,fontFamily:'monospace'}}>{value}</div>
+      <div style={{fontSize:compact?8:9,color:'rgba(214,228,244,0.4)',marginTop:3,lineHeight:1.35}}>{detail}</div>
+    </div>
   )
 }
