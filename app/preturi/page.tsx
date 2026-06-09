@@ -24,30 +24,46 @@ interface MarketComparison {
   entered: any[]
   exited: any[]
   moved: { result: any; from: number; to: number }[]
+  replacements: { exited: any; entered: any }[]
 }
 
-const normalizedListingName = (name:string) => (name||'').toLocaleLowerCase('ro-RO')
+const exactListingName = (name:string) => (name||'').toLocaleLowerCase('ro-RO').replace(/\s+/g,' ').trim()
+const baseListingName = (name:string) => exactListingName(name)
   .replace(/,?\s*\d[\d.]*\s*(?:l\s*)?ron\b/g,'')
   .replace(/\s+/g,' ').trim()
+const isGenericListingName = (name:string) => /^(apartament|locuință|cazare)( în|$)/.test(baseListingName(name))
 
 function compareMarketScans(current:any, previous:any|null):MarketComparison {
-  if(!previous) return {previous:null,totalDelta:null,lowestDelta:null,entered:[],exited:[],moved:[]}
+  if(!previous) return {previous:null,totalDelta:null,lowestDelta:null,entered:[],exited:[],moved:[],replacements:[]}
   const currentTop = (current?.top5||[]) as any[]
   const previousTop = (previous?.top5||[]) as any[]
-  const currentMap = new Map(currentTop.map(r=>[normalizedListingName(r.name),r]))
-  const previousMap = new Map(previousTop.map(r=>[normalizedListingName(r.name),r]))
+  const unmatchedPrevious = [...previousTop]
+  const matched = currentTop.flatMap(result=>{
+    let index=unmatchedPrevious.findIndex(old=>exactListingName(old.name)===exactListingName(result.name))
+    if(index===-1&&!isGenericListingName(result.name)){
+      index=unmatchedPrevious.findIndex(old=>!isGenericListingName(old.name)&&baseListingName(old.name)===baseListingName(result.name))
+    }
+    if(index===-1) return []
+    const old=unmatchedPrevious.splice(index,1)[0]
+    return [{result,old}]
+  })
+  const matchedCurrent = new Set(matched.map(({result})=>result))
+  const entered = currentTop.filter(result=>!matchedCurrent.has(result))
+  const exited = unmatchedPrevious
   return {
     previous,
     totalDelta: current.total_properties!=null&&previous.total_properties!=null
       ? current.total_properties-previous.total_properties : null,
     lowestDelta: current.lowest_price!=null&&previous.lowest_price!=null
       ? current.lowest_price-previous.lowest_price : null,
-    entered: currentTop.filter(r=>!previousMap.has(normalizedListingName(r.name))),
-    exited: previousTop.filter(r=>!currentMap.has(normalizedListingName(r.name))),
-    moved: currentTop.flatMap(r=>{
-      const old=previousMap.get(normalizedListingName(r.name))
-      return old&&old.rank!==r.rank?[{result:r,from:old.rank,to:r.rank}]:[]
-    }),
+    entered,
+    exited,
+    moved: matched.filter(({result,old})=>old.rank!==result.rank)
+      .map(({result,old})=>({result,from:old.rank,to:result.rank})),
+    replacements: Array.from({length:Math.max(entered.length,exited.length)},(_,i)=>({
+      exited:exited[i],
+      entered:entered[i],
+    })).filter(pair=>pair.exited||pair.entered),
   }
 }
 
@@ -532,7 +548,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 </div>
               )
               const top = (last.top5||[]) as any[]
-              const enteredNames = new Set(comparison.entered.map(r=>normalizedListingName(r.name)))
+              const enteredResults = new Set(comparison.entered)
               const icon = platform==='booking'?'🏨':'🏠'
               const dateMatch = last.checkin===checkinMonitor&&last.checkout===checkoutMonitor
               return(
@@ -592,7 +608,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                           color:r.isOurs?'#4ADE80':'rgba(214,228,244,0.8)',
                           overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
                           {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
-                          {enteredNames.has(normalizedListingName(r.name))&&<span style={{fontSize:8,marginLeft:5,color:'#4ADE80'}}>NOU ÎN TOP</span>}
+                          {enteredResults.has(r)&&<span style={{fontSize:8,marginLeft:5,color:'#4ADE80'}}>A ÎNLOCUIT O LOCAȚIE</span>}
                         </div>
                       </div>
                       <div style={{fontFamily:'monospace',fontSize:12,fontWeight:700,flexShrink:0,
@@ -602,13 +618,24 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       </div>
                     </div>
                   ))}
-                  {comparison.exited.length>0&&(
+                  {comparison.replacements.length>0&&(
                     <div style={{padding:'8px 14px',borderTop:'1px solid rgba(248,113,113,0.12)',background:'rgba(248,113,113,0.025)'}}>
-                      <div style={{fontSize:9,color:'rgba(248,113,113,0.55)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:4}}>Au ieșit din top 10 de la scanarea precedentă</div>
-                      {comparison.exited.map((r:any)=>(
-                        <div key={`${r.rank}-${r.name}`} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:9,color:'rgba(214,228,244,0.38)',padding:'1px 0'}}>
-                          <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>fost #{r.rank} · {r.name}</span>
-                          <span style={{fontFamily:'monospace',flexShrink:0}}>{r.price} lei</span>
+                      <div style={{fontSize:9,color:'rgba(248,113,113,0.65)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:6}}>Schimbări față de scanarea precedentă</div>
+                      {comparison.replacements.map((pair:any,i:number)=>(
+                        <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 18px 1fr',gap:5,alignItems:'center',padding:'4px 0',borderTop:i?'1px solid rgba(99,179,237,0.05)':'none'}}>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontSize:8,color:'rgba(248,113,113,0.6)',marginBottom:1}}>IEȘIT / POSIBIL REZERVAT</div>
+                            <div style={{fontSize:9,color:'rgba(214,228,244,0.4)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                              {pair.exited?`fost #${pair.exited.rank} · ${pair.exited.name}`:'—'}
+                            </div>
+                          </div>
+                          <span style={{fontSize:11,color:'rgba(147,197,253,0.35)',textAlign:'center' as const}}>→</span>
+                          <div style={{minWidth:0}}>
+                            <div style={{fontSize:8,color:'rgba(74,222,128,0.65)',marginBottom:1}}>ÎNLOCUIT DE</div>
+                            <div style={{fontSize:9,color:'rgba(214,228,244,0.65)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                              {pair.entered?`nou #${pair.entered.rank} · ${pair.entered.name}`:'—'}
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
