@@ -17,6 +17,40 @@ interface ScanState {
   checkin?: string; checkout?: string; errorMsg?: string
 }
 
+interface MarketComparison {
+  previous: any | null
+  totalDelta: number | null
+  lowestDelta: number | null
+  entered: any[]
+  exited: any[]
+  moved: { result: any; from: number; to: number }[]
+}
+
+const normalizedListingName = (name:string) => (name||'').toLocaleLowerCase('ro-RO')
+  .replace(/,?\s*\d[\d.]*\s*(?:l\s*)?ron\b/g,'')
+  .replace(/\s+/g,' ').trim()
+
+function compareMarketScans(current:any, previous:any|null):MarketComparison {
+  if(!previous) return {previous:null,totalDelta:null,lowestDelta:null,entered:[],exited:[],moved:[]}
+  const currentTop = (current?.top5||[]) as any[]
+  const previousTop = (previous?.top5||[]) as any[]
+  const currentMap = new Map(currentTop.map(r=>[normalizedListingName(r.name),r]))
+  const previousMap = new Map(previousTop.map(r=>[normalizedListingName(r.name),r]))
+  return {
+    previous,
+    totalDelta: current.total_properties!=null&&previous.total_properties!=null
+      ? current.total_properties-previous.total_properties : null,
+    lowestDelta: current.lowest_price!=null&&previous.lowest_price!=null
+      ? current.lowest_price-previous.lowest_price : null,
+    entered: currentTop.filter(r=>!previousMap.has(normalizedListingName(r.name))),
+    exited: previousTop.filter(r=>!currentMap.has(normalizedListingName(r.name))),
+    moved: currentTop.flatMap(r=>{
+      const old=previousMap.get(normalizedListingName(r.name))
+      return old&&old.rank!==r.rank?[{result:r,from:old.rank,to:r.rank}]:[]
+    }),
+  }
+}
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
@@ -63,16 +97,21 @@ export default function PreturiPage() {
   async function loadEvolutie() {
     setLoadingEvolutie(true)
     const { data } = await supabase.from('booking_monitor_history')
-      .select('*').order('checkin', { ascending: true }).limit(200)
+      .select('*').order('checkin', { ascending: true }).limit(2000)
     setEvolutieData(data || [])
     setLoadingEvolutie(false)
   }
 
-  async function loadHistory() {
+  async function loadHistory(selectLatestPeriod = false) {
     setLoadingHistory(true)
     const {data} = await supabase.from('booking_monitor_history')
-      .select('*').order('scanned_at',{ascending:false}).limit(100)
-    setHistory(data||[])
+      .select('*').order('scanned_at',{ascending:false}).limit(1000)
+    const rows = data||[]
+    setHistory(rows)
+    if(selectLatestPeriod&&rows[0]?.checkin&&rows[0]?.checkout){
+      setCheckinMonitor(rows[0].checkin)
+      setCheckoutMonitor(rows[0].checkout)
+    }
     setLoadingHistory(false)
   }
 
@@ -102,7 +141,7 @@ export default function PreturiPage() {
         list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||''}})
         setPreturi(pm)
       })
-    loadHistory()
+    loadHistory(true)
     loadEvolutie()
     return () => { if(pollRef.current) clearInterval(pollRef.current) }
   }, [])
@@ -366,11 +405,11 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               <span style={{fontSize:13,fontWeight:700,color:'#93C5FD'}}>Monitorizare piață</span>
               <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>BOOKING + AIRBNB · IAȘI</span>
             </div>
-            <button onClick={()=>loadHistory()} disabled={loadingHistory} style={{
+            <button onClick={()=>loadHistory(true)} disabled={loadingHistory} style={{
               padding:'5px 14px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
               border:'1px solid rgba(99,179,237,0.3)',background:'rgba(99,179,237,0.1)',color:'#93C5FD',
               opacity:loadingHistory?0.5:1,
-            }}>{loadingHistory?'...':'↺ Reîncarcă'}</button>
+            }}>{loadingHistory?'...':'↺ Ultima rulare'}</button>
           </div>
 
           {/* Selector date + comanda terminal */}
@@ -411,14 +450,55 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             const abMatch = abAll.find((h:any)=>h.checkin===checkinMonitor&&h.checkout===checkoutMonitor)
             const lastBk = bkMatch || bkAll[0]
             const lastAb = abMatch || abAll[0]
+            const previousFor = (last:any, scans:any[]) => last
+              ? scans.find((h:any)=>h.id!==last.id&&h.checkin===last.checkin&&h.checkout===last.checkout)
+              : null
+            const bkComparison = compareMarketScans(lastBk,previousFor(lastBk,bkAll))
+            const abComparison = compareMarketScans(lastAb,previousFor(lastAb,abAll))
 
-            const renderPlatform = (last:any, platform:string) => {
+            const renderSummary = (last:any, platform:string, comparison:MarketComparison) => {
+              if(!last) return null
+              const icon=platform==='booking'?'🏨':'🏠'
+              const now=fmtDT(last.scanned_at)
+              const previous=comparison.previous
+              if(!previous) return(
+                <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)',fontSize:11,color:'rgba(214,228,244,0.65)'}}>
+                  {icon} La {now} au fost scanate <strong style={{color:'#E8F4FF'}}>{last.total_properties??'?'}</strong> locații. Aceasta este prima scanare comparabilă pentru perioada {last.checkin} → {last.checkout}.
+                </div>
+              )
+              const previousTime=fmtDT(previous.scanned_at)
+              const delta=comparison.totalDelta
+              const marketText=delta==null
+                ? 'Numărul total nu poate fi comparat.'
+                : delta<0
+                  ? `${Math.abs(delta)} locații au devenit indisponibile între timp (posibil rezervate sau retrase).`
+                  : delta>0
+                    ? `${delta} locații au devenit disponibile între timp.`
+                    : 'Numărul locațiilor disponibile a rămas neschimbat.'
+              const priceText=comparison.lowestDelta==null
+                ? ''
+                : comparison.lowestDelta===0
+                  ? ' Prețul minim a rămas neschimbat.'
+                  : ` Prețul minim a ${comparison.lowestDelta>0?'crescut':'scăzut'} cu ${Math.abs(comparison.lowestDelta)} lei.`
+              return(
+                <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)',fontSize:11,color:'rgba(214,228,244,0.68)',lineHeight:1.55}}>
+                  <strong style={{color:platform==='booking'?'#7BC8FF':'#F87171'}}>{icon} {platform==='booking'?'Booking':'Airbnb'}:</strong>{' '}
+                  la {previousTime} erau <strong>{previous.total_properties??'?'}</strong> locații, iar la {now} sunt <strong>{last.total_properties??'?'}</strong>. {marketText}{priceText}
+                  {(comparison.entered.length>0||comparison.exited.length>0)&&(
+                    <span style={{color:'rgba(147,197,253,0.5)'}}> Top 10: {comparison.entered.length} intrate, {comparison.exited.length} ieșite.</span>
+                  )}
+                </div>
+              )
+            }
+
+            const renderPlatform = (last:any, platform:string, comparison:MarketComparison) => {
               if(!last) return(
                 <div style={{padding:'16px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:11}}>
                   Nicio scanare {platform}
                 </div>
               )
               const top = (last.top5||[]) as any[]
+              const enteredNames = new Set(comparison.entered.map(r=>normalizedListingName(r.name)))
               const icon = platform==='booking'?'🏨':'🏠'
               const dateMatch = last.checkin===checkinMonitor&&last.checkout===checkoutMonitor
               return(
@@ -478,6 +558,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                           color:r.isOurs?'#4ADE80':'rgba(214,228,244,0.8)',
                           overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
                           {r.isOurs&&<span style={{marginRight:4}}>⭐</span>}{r.name}
+                          {enteredNames.has(normalizedListingName(r.name))&&<span style={{fontSize:8,marginLeft:5,color:'#4ADE80'}}>NOU ÎN TOP</span>}
                         </div>
                       </div>
                       <div style={{fontFamily:'monospace',fontSize:12,fontWeight:700,flexShrink:0,
@@ -487,17 +568,40 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       </div>
                     </div>
                   ))}
+                  {comparison.exited.length>0&&(
+                    <div style={{padding:'8px 14px',borderTop:'1px solid rgba(248,113,113,0.12)',background:'rgba(248,113,113,0.025)'}}>
+                      <div style={{fontSize:9,color:'rgba(248,113,113,0.55)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:4}}>Au ieșit din top 10 de la scanarea precedentă</div>
+                      {comparison.exited.map((r:any)=>(
+                        <div key={`${r.rank}-${r.name}`} style={{display:'flex',justifyContent:'space-between',gap:8,fontSize:9,color:'rgba(214,228,244,0.38)',padding:'1px 0'}}>
+                          <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>fost #{r.rank} · {r.name}</span>
+                          <span style={{fontFamily:'monospace',flexShrink:0}}>{r.price} lei</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {comparison.moved.length>0&&(
+                    <div style={{padding:'6px 14px',borderTop:'1px solid rgba(99,179,237,0.06)',fontSize:9,color:'rgba(147,197,253,0.38)'}}>
+                      Mișcări în top: {comparison.moved.slice(0,5).map(m=>`${m.result.name}: #${m.from}→#${m.to}`).join(' · ')}
+                    </div>
+                  )}
                 </div>
               )
             }
 
             return(
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0}}>
-                <div style={{borderRight:'1px solid rgba(99,179,237,0.1)'}}>
-                  {renderPlatform(lastBk,'booking')}
+              <div>
+                <div style={{borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(99,179,237,0.025)'}}>
+                  <div style={{padding:'8px 14px',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.5)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Confirmare scrisă față de scanarea precedentă</div>
+                  {renderSummary(lastBk,'booking',bkComparison)}
+                  {renderSummary(lastAb,'airbnb',abComparison)}
                 </div>
-                <div>
-                  {renderPlatform(lastAb,'airbnb')}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:0}}>
+                  <div style={{borderRight:'1px solid rgba(99,179,237,0.1)'}}>
+                    {renderPlatform(lastBk,'booking',bkComparison)}
+                  </div>
+                  <div>
+                    {renderPlatform(lastAb,'airbnb',abComparison)}
+                  </div>
                 </div>
               </div>
             )
