@@ -76,6 +76,7 @@ export default function PreturiPage() {
   const [compareDate1, setCompareDate1] = useState('')
   const [compareDate2, setCompareDate2] = useState('')
   const [expandedScan, setExpandedScan] = useState<string|null>(null)
+  const [commandCopied, setCommandCopied] = useState(false)
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
 
@@ -288,6 +289,32 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     return `${pad(d.getDate())}.${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
+  async function copyScanCommand() {
+    const command = `python3 ~/Desktop/booking_scan.py ${checkinMonitor} ${checkoutMonitor}`
+    try {
+      if(navigator.clipboard?.writeText){
+        await navigator.clipboard.writeText(command)
+      }else{
+        throw new Error('Clipboard API indisponibil')
+      }
+    } catch {
+      const textarea=document.createElement('textarea')
+      textarea.value=command
+      textarea.style.position='fixed'
+      textarea.style.opacity='0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const copied=document.execCommand('copy')
+      textarea.remove()
+      if(!copied){show('error','Nu s-a putut copia comanda');return}
+    }
+    try {
+      setCommandCopied(true)
+      show('success','Comanda Python a fost copiată')
+      setTimeout(()=>setCommandCopied(false),1600)
+    } catch {}
+  }
+
   const panel:React.CSSProperties = {
     background:'rgba(214,228,244,0.05)',border:'1px solid rgba(159,215,255,0.1)',
     borderRadius:14,overflow:'hidden',marginBottom:14,
@@ -432,6 +459,13 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10}}>
                 python3 ~/Desktop/booking_scan.py {checkinMonitor} {checkoutMonitor}
               </code>
+              <button onClick={copyScanCommand} disabled={!checkinMonitor||!checkoutMonitor} style={{
+                padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:600,
+                border:`1px solid ${commandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.25)'}`,
+                background:commandCopied?'rgba(74,222,128,0.1)':'rgba(99,179,237,0.08)',
+                color:commandCopied?'#4ADE80':'#93C5FD',
+                opacity:!checkinMonitor||!checkoutMonitor?0.45:1,
+              }}>{commandCopied?'✓ Copiat!':'📋 Copiază'}</button>
             </div>
           </div>
 
