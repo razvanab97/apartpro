@@ -198,7 +198,7 @@ export default function DashboardPage() {
     const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
     function proRataLuna(r: any): number {
       const brut = Number(r.suma_incasata || 0)
-      const totalNopti = Math.max(1, Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
+      const totalNopti = Number(r.nr_nopti || 0) || Math.max(1, Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
       // nopti care se suprapun cu luna curenta
       const ciDate = r.data_checkin < primaZiLuna ? primaZiLuna : r.data_checkin
       const coDate = r.data_checkout > primaZiLunaPlusUna ? primaZiLunaPlusUna : r.data_checkout
@@ -238,22 +238,7 @@ export default function DashboardPage() {
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
-    // Incasari filtrate (fara CG40, VM07, Cherry, Comfy & Chic)
-    const EXCL_NOTA_F = new Set(['CG40','VM07'])
-    const EXCL_NUME_F = ['cherry','comfy']
-    const aptMapEarly = Object.fromEntries((aptData||[]).map((a:any)=>[a.id,a]))
-    let incNetFiltrat = 0, incBrutFiltrat = 0
-    for(const r of (rezLuna||[])){
-      const apt = aptMapEarly[r.apartament_id]; if(!apt) continue
-      if(EXCL_NOTA_F.has(apt.nota)) continue
-      if(EXCL_NUME_F.some((k:string)=>(apt.nume||'').toLowerCase().includes(k))) continue
-      const brutF = proRataLuna(r)
-      const canalF = (r.canal||'').toLowerCase()
-      const netF = canalF==='airbnb'?brutF*0.85*(1-0.21*0.15):canalF==='booking'?brutF*0.83*(1-0.21*0.17):brutF
-      incNetFiltrat += netF
-      incBrutFiltrat += brutF
-    }
-    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:Math.round(incNetFiltrat),incasariBrutFiltrat:Math.round(incBrutFiltrat),comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
+    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:0,incasariBrutFiltrat:0,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -320,6 +305,11 @@ export default function DashboardPage() {
     }
     const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
     setPerAptIncome(perApt)
+    // Filtrat: suma exacta a locatiilor verzi (acelasi calcul ca lista per-locatie)
+    const verdeApts=Object.values(byApt).filter(({apt})=>isAptVerde(apt))
+    const filtBrut=Math.round(verdeApts.reduce((s,{brut})=>s+brut,0))
+    const filtNet=Math.round(verdeApts.reduce((s,{net})=>s+net,0))
+    setStats(prev=>({...prev,incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut}))
     setLoading(false)
   }
 
