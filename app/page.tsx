@@ -223,12 +223,14 @@ export default function DashboardPage() {
     const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
-    // Filtrat: total fara CG40 si VM07
-    const brutExclus=rezComision.reduce((s:number,r:any)=>s+proRataLuna(r),0)
-    const netExclus=rezComision.reduce((s:number,r:any)=>{const brut=proRataLuna(r);const canal=(r.canal||'').toLowerCase();return s+(canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut)},0)
-    const filtBrut=Math.round(inc-brutExclus)
-    const filtNet=Math.round(incNet-netExclus)
-    console.log('[DEBUG] inc(total):', Math.round(inc), 'brutExclus(CG40+VM07):', Math.round(brutExclus), 'filtBrut:', filtBrut)
+    // Filtrat: identic cu 5starDesk (suma_incasata directa, fara pro-rata), minus CG40+VM07
+    const sumBrutAll=(rezLuna||[]).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
+    const sumBrutExclus=rezComision.reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
+    const filtBrut=Math.round(sumBrutAll-sumBrutExclus)
+    const calcNet=(brut:number,canal:string)=>canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut
+    const sumNetAll=(rezLuna||[]).reduce((s:number,r:any)=>s+calcNet(Number(r.suma_incasata||0),(r.canal||'').toLowerCase()),0)
+    const sumNetExclus=rezComision.reduce((s:number,r:any)=>s+calcNet(Number(r.suma_incasata||0),(r.canal||'').toLowerCase()),0)
+    const filtNet=Math.round(sumNetAll-sumNetExclus)
     // Grad ocupare lunar: nopti ocupate / (apartamente_cu_rezervari_in_luna * zile_luna)
     // Identic cu 5starDesk: doar apartamentele care au cel putin o rezervare in luna
     const zileLuna = new Date(an, luna, 0).getDate()
