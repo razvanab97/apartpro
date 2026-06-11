@@ -223,6 +223,11 @@ export default function DashboardPage() {
     const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
+    // Filtrat: total fara CG40 si VM07
+    const brutExclus=rezComision.reduce((s:number,r:any)=>s+proRataLuna(r),0)
+    const netExclus=rezComision.reduce((s:number,r:any)=>{const brut=proRataLuna(r);const canal=(r.canal||'').toLowerCase();return s+(canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut)},0)
+    const filtBrut=Math.round(inc-brutExclus)
+    const filtNet=Math.round(incNet-netExclus)
     // Grad ocupare lunar: nopti ocupate / (apartamente_cu_rezervari_in_luna * zile_luna)
     // Identic cu 5starDesk: doar apartamentele care au cel putin o rezervare in luna
     const zileLuna = new Date(an, luna, 0).getDate()
@@ -238,7 +243,7 @@ export default function DashboardPage() {
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
-    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:0,incasariBrutFiltrat:0,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
+    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -305,19 +310,6 @@ export default function DashboardPage() {
     }
     const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
     setPerAptIncome(perApt)
-    // Filtrat: overlap-based (rezLuna deja incarcat) + toate apt (incl. inactive)
-    const {data:allApts}=await supabase.from('apartamente').select('id,nume,nota')
-    const allAptMap=Object.fromEntries((allApts||[]).map((a:any)=>[a.id,a]))
-    let filtBrut=0,filtNet=0
-    for(const r of (rezLuna||[])){
-      const apt=allAptMap[r.apartament_id]
-      if(!isAptVerde(apt)) continue
-      const brut=proRataLuna(r)
-      const canal=(r.canal||'').toLowerCase()
-      filtBrut+=brut
-      filtNet+=canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut
-    }
-    setStats(prev=>({...prev,incasariNetFiltrat:Math.round(filtNet),incasariBrutFiltrat:Math.round(filtBrut)}))
     setLoading(false)
   }
 
