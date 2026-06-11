@@ -47,6 +47,7 @@ export default function CalendarPage() {
   const [year, setYear]         = useState(new Date().getFullYear())
   const [month, setMonth]       = useState(new Date().getMonth())
   const [selApt, setSelApt]     = useState('')
+  const [viewMode, setViewMode] = useState<'rez'|'sume'>('rez')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
   const [selectedDay, setSelectedDay] = useState<number|null>(null)
 
@@ -84,7 +85,7 @@ export default function CalendarPage() {
     const [{ data: a }, { data: r }] = await Promise.all([
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
       supabase.from('rezervari')
-        .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,apartament:apartamente!inner(id,nume,nota)')
+        .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
         .or('status_rezervare.neq.anulata,status_rezervare.is.null')
         .lte('data_checkin', end).gte('data_checkout', start)
         .order('data_checkin'),
@@ -210,6 +211,15 @@ export default function CalendarPage() {
         <button onClick={nextMonth} style={{ width:34,height:34,borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',cursor:'pointer',color:'#7BC8FF',display:'flex',alignItems:'center',justifyContent:'center' }}><ChevronRight size={16}/></button>
         <button onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel()}} style={{ fontSize:12,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.15)',border:'1px solid rgba(77,163,255,0.3)',color:'#7BC8FF',cursor:'pointer' }}>Azi</button>
 
+        {/* toggle view */}
+        <div style={{ display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(77,163,255,0.25)',flexShrink:0 }}>
+          {(['rez','sume'] as const).map(m=>(
+            <button key={m} onClick={()=>setViewMode(m)} style={{ padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',background:viewMode===m?'rgba(77,163,255,0.35)':'transparent',color:viewMode===m?'#7BC8FF':'rgba(159,215,255,0.4)',transition:'all .15s' }}>
+              {m==='rez'?'Rezervări':'Sume'}
+            </button>
+          ))}
+        </div>
+
         {/* hint drag */}
         {!selRange && <span style={{ fontSize:11,color:'rgba(159,215,255,0.3)',marginLeft:4 }}>Trage pe un apartament pentru a adăuga rezervare</span>}
 
@@ -258,6 +268,9 @@ export default function CalendarPage() {
             {/* Day headers */}
             <div style={{ display:'flex', position:'sticky', top:0, zIndex:15, background:'rgba(6,14,26,0.98)', borderBottom:'2px solid rgba(159,215,255,0.1)' }}>
               <div style={{ width:LABEL_W, flexShrink:0, height:HDR_H, borderRight:'1px solid rgba(159,215,255,0.1)' }}/>
+
+              {viewMode==='sume'&&<div style={{ width:90,flexShrink:0,height:HDR_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}><span style={{ fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.6)',letterSpacing:'.08em' }}>TOTAL</span></div>}
+
               {Array.from({length:days},(_,i)=>{
                 const d   = i+1
                 const ds  = isoDate(year,month,d)
@@ -357,7 +370,10 @@ export default function CalendarPage() {
                               style={{ position:'absolute', top:8, bottom:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', alignItems:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4 }}
                               onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.12)')}
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
-                              <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
+                              {viewMode==='sume'
+                                ? <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace' }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')} RON</span>
+                                : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
+                              }
                             </div>
                           )
                         })()}
@@ -368,9 +384,36 @@ export default function CalendarPage() {
                       </div>
                     )
                   })}
+
+                  {/* Coloana TOTAL per apartament (doar modul Sume) */}
+                  {viewMode==='sume'&&(()=>{
+                    const aptRez=rez.filter(r=>r.apartament?.id===apt.id)
+                    const total=Math.round(aptRez.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+                    return(
+                      <div style={{ width:90,flexShrink:0,height:ROW_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}>
+                        <span style={{ fontFamily:'monospace',fontSize:13,fontWeight:700,color:'#4ADE80' }}>{total.toLocaleString('ro-RO')}</span>
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}
+
+            {/* Rând total general (modul Sume) */}
+            {viewMode==='sume'&&!loading&&(()=>{
+              const grandTotal=Math.round(rez.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+              return(
+                <div style={{ display:'flex',borderTop:'2px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.05)',position:'sticky',bottom:0,zIndex:6 }}>
+                  <div style={{ width:LABEL_W,flexShrink:0,height:44,display:'flex',alignItems:'center',padding:'0 14px',position:'sticky',left:0,background:'rgba(8,18,36,0.98)',borderRight:'1px solid rgba(74,222,128,0.2)' }}>
+                    <span style={{ fontSize:11,fontWeight:700,color:'rgba(74,222,128,0.8)',textTransform:'uppercase',letterSpacing:'.08em' }}>TOTAL LUNĂ</span>
+                  </div>
+                  <div style={{ flex:1 }}/>
+                  <div style={{ width:90,flexShrink:0,height:44,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.3)' }}>
+                    <span style={{ fontFamily:'monospace',fontSize:15,fontWeight:700,color:'#4ADE80' }}>{grandTotal.toLocaleString('ro-RO')}</span>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         </div>
 
