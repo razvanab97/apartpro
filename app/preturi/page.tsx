@@ -752,33 +752,112 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             const renderSummary = (last:any, platform:string, comparison:MarketComparison) => {
               if(!last) return null
               const icon=platform==='booking'?'🏨':'🏠'
-              const now=fmtDT(last.scanned_at)
+              const color=platform==='booking'?'#7BC8FF':'#F87171'
               const previous=comparison.previous
-              if(!previous) return(
-                <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)',fontSize:11,color:'rgba(214,228,244,0.65)'}}>
-                  {icon} La {now} au fost scanate <strong style={{color:'#E8F4FF'}}>{last.total_properties??'?'}</strong> locații. Aceasta este prima zi scanată pentru perioada {last.checkin} → {last.checkout}.
-                </div>
-              )
-              const previousTime=fmtDT(previous.scanned_at)
               const delta=comparison.totalDelta
-              const marketText=delta==null
-                ? 'Numărul total nu poate fi comparat.'
-                : delta<0
-                  ? `${Math.abs(delta)} locații au devenit indisponibile între timp (posibil rezervate sau retrase).`
-                  : delta>0
-                    ? `${delta} locații au devenit disponibile între timp.`
-                    : 'Numărul locațiilor disponibile a rămas neschimbat.'
-              const priceText=comparison.lowestDelta==null
-                ? ''
-                : comparison.lowestDelta===0
-                  ? ' Prețul minim a rămas neschimbat.'
-                  : ` Prețul minim a ${comparison.lowestDelta>0?'crescut':'scăzut'} cu ${Math.abs(comparison.lowestDelta)} lei.`
+
+              // All scans for this platform on this day (for hourly sparkline)
+              const allPlatScans=(platform==='booking'?bkAll:abAll)
+                .filter((h:any)=>scanDay(h)===scanDayMonitor)
+                .sort((a:any,b:any)=>scanTime(a)-scanTime(b))
+              const maxTP=allPlatScans.length?Math.max(...allPlatScans.map((s:any)=>s.total_properties||0)):0
+              const minTP=allPlatScans.length?Math.min(...allPlatScans.map((s:any)=>s.total_properties||0)):0
+              const tpRange=maxTP-minTP||1
+
               return(
-                <div style={{padding:'10px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)',fontSize:11,color:'rgba(214,228,244,0.68)',lineHeight:1.55}}>
-                  <strong style={{color:platform==='booking'?'#7BC8FF':'#F87171'}}>{icon} {platform==='booking'?'Booking':'Airbnb'}:</strong>{' '}
-                  la {previousTime} erau <strong>{previous.total_properties??'?'}</strong> locații, iar la {now} sunt <strong>{last.total_properties??'?'}</strong>. {marketText}{priceText}
-                  {(comparison.entered.length>0||comparison.exited.length>0)&&(
-                    <span style={{color:'rgba(147,197,253,0.5)'}}> Top 10: {comparison.entered.length} intrate, {comparison.exited.length} ieșite.</span>
+                <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(99,179,237,0.06)'}}>
+                  {/* Header */}
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                    <span style={{fontSize:12,fontWeight:700,color}}>{icon} {platform==='booking'?'Booking':'Airbnb'}</span>
+                    {previous&&(
+                      <span style={{fontSize:10,color:'rgba(147,197,253,0.32)',fontFamily:'monospace'}}>
+                        {fmtDT(previous.scanned_at)} → {fmtDT(last.scanned_at)}
+                      </span>
+                    )}
+                    {!previous&&(
+                      <span style={{fontSize:10,color:'rgba(147,197,253,0.32)',fontFamily:'monospace'}}>{fmtDT(last.scanned_at)} · prima zi scanată</span>
+                    )}
+                  </div>
+                  {/* Metrics */}
+                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+                    {/* Properties comparison */}
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      {previous&&(
+                        <>
+                          <div>
+                            <div style={{fontSize:9,color:'rgba(147,197,253,0.3)',marginBottom:1}}>anterior</div>
+                            <div style={{fontSize:22,fontWeight:700,color:'rgba(214,228,244,0.35)',fontFamily:'monospace',lineHeight:1}}>{previous.total_properties??'?'}</div>
+                          </div>
+                          <span style={{fontSize:16,color:'rgba(147,197,253,0.2)'}}>→</span>
+                        </>
+                      )}
+                      <div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.3)',marginBottom:1}}>acum</div>
+                        <div style={{fontSize:22,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace',lineHeight:1}}>{last.total_properties??'?'}</div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.3)',marginTop:1}}>locații</div>
+                      </div>
+                      {delta!=null&&delta!==0&&(
+                        <div style={{padding:'4px 8px',borderRadius:6,fontSize:11,fontWeight:700,
+                          background:delta<0?'rgba(74,222,128,0.12)':'rgba(248,113,113,0.1)',
+                          color:delta<0?'#4ADE80':'#F87171',border:`1px solid ${delta<0?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`}}>
+                          {delta<0?`▼ ${Math.abs(delta)}`:`▲ +${delta}`}
+                        </div>
+                      )}
+                      {delta===0&&(
+                        <div style={{padding:'4px 8px',borderRadius:6,fontSize:10,color:'rgba(147,197,253,0.35)',background:'rgba(147,197,253,0.05)',border:'1px solid rgba(147,197,253,0.1)'}}>= stabil</div>
+                      )}
+                    </div>
+                    {/* Price + churn badges */}
+                    <div style={{display:'flex',gap:6,marginLeft:'auto',flexWrap:'wrap' as const}}>
+                      <div style={{padding:'5px 10px',borderRadius:7,background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.15)'}}>
+                        <div style={{fontSize:9,color:'rgba(252,211,77,0.5)',marginBottom:2}}>minim piață</div>
+                        <div style={{fontSize:14,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{last.lowest_price??'—'} <span style={{fontSize:9,fontWeight:400}}>lei</span></div>
+                        {comparison.lowestDelta!=null&&comparison.lowestDelta!==0&&(
+                          <div style={{fontSize:9,fontWeight:600,color:comparison.lowestDelta>0?'#F87171':'#4ADE80',marginTop:1}}>
+                            {comparison.lowestDelta>0?`▲ +${comparison.lowestDelta}`:`▼ ${comparison.lowestDelta}`} lei
+                          </div>
+                        )}
+                        {comparison.lowestDelta===0&&(
+                          <div style={{fontSize:9,color:'rgba(147,197,253,0.28)',marginTop:1}}>neschimbat</div>
+                        )}
+                      </div>
+                      {(comparison.entered.length>0||comparison.exited.length>0)&&(
+                        <div style={{padding:'5px 10px',borderRadius:7,background:'rgba(99,179,237,0.05)',border:'1px solid rgba(99,179,237,0.1)'}}>
+                          <div style={{fontSize:9,color:'rgba(147,197,253,0.38)',marginBottom:2}}>top rotație</div>
+                          <div style={{fontSize:13,fontWeight:700,fontFamily:'monospace',display:'flex',gap:5}}>
+                            {comparison.entered.length>0&&<span style={{color:'#4ADE80'}}>+{comparison.entered.length}</span>}
+                            {comparison.exited.length>0&&<span style={{color:'#F87171'}}>-{comparison.exited.length}</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Hourly sparkline */}
+                  {allPlatScans.length>1&&(
+                    <div style={{marginTop:10}}>
+                      <div style={{fontSize:8,color:'rgba(147,197,253,0.28)',textTransform:'uppercase' as const,letterSpacing:'.05em',marginBottom:4}}>evoluție în zi · {allPlatScans.length} scanări</div>
+                      <div style={{display:'flex',alignItems:'flex-end',gap:2,height:26}}>
+                        {allPlatScans.map((scan:any,i:number)=>{
+                          const pct=((scan.total_properties||0)-minTP)/tpRange
+                          const h=Math.round(5+pct*19)
+                          const isLast=i===allPlatScans.length-1
+                          return(
+                            <div key={i} title={`${new Date(scan.scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}: ${scan.total_properties} loc`}
+                              style={{flex:1,height:h,borderRadius:2,minWidth:0,
+                                background:isLast?color:'rgba(147,197,253,0.18)',
+                                transition:'height 0.2s'}}/>
+                          )
+                        })}
+                      </div>
+                      <div style={{display:'flex',justifyContent:'space-between',marginTop:2}}>
+                        <span style={{fontSize:8,color:'rgba(147,197,253,0.22)',fontFamily:'monospace'}}>
+                          {new Date(allPlatScans[0].scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}
+                        </span>
+                        <span style={{fontSize:8,color:color,fontFamily:'monospace',opacity:0.6}}>
+                          {new Date(allPlatScans[allPlatScans.length-1].scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
               )
@@ -1032,100 +1111,133 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             return [{current,comparison,pace,leadDays,marketMedian,ourAvailable,action,adjustment,color,reason,confidence,samples:sorted.length}]
           }).filter(item=>item.leadDays>=0).sort((a,b)=>a.leadDays-b.leadDays||b.pace-a.pace).slice(0,16)
 
-          const confidenceText=validScans.length>=60
-            ? 'Volum bun de date pentru concluzii operative.'
-            : 'Datele sunt încă puține; recomandările trebuie validate prin scanări regulate.'
-          const fastestPlatform=[...platformStats].sort((a,b)=>b.avgPace-a.avgPace)[0]
-          const raiseCount=recommendations.filter(item=>item.action.includes('Crește')).length
-          const reduceCount=recommendations.filter(item=>item.action.includes('reducere')).length
+          const activeRecs=recommendations.filter((item:any)=>item.action!=='Menține prețul')
+          const stableRecs=recommendations.filter((item:any)=>item.action==='Menține prețul')
+          const latestScan=[...validScans].sort((a:any,b:any)=>scanTime(b)-scanTime(a))[0]
 
           return(
             <div>
-              <div style={{...panel,padding:'14px 16px'}}>
-                <div style={{fontSize:14,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>Centru de decizie pentru prețuri</div>
-                <div style={{fontSize:11,color:'rgba(147,197,253,0.5)',lineHeight:1.5}}>
-                  Folosește dispariția locațiilor din piață ca semnal de cerere. O locație dispărută poate fi rezervată, retrasă sau închisă, deci recomandările sunt semnale comerciale, nu certitudini.
+              {/* Sumar stare */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
+                <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(99,179,237,0.06)',border:'1px solid rgba(99,179,237,0.12)'}}>
+                  <div style={{fontSize:9,color:'rgba(147,197,253,0.5)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:4}}>Perioade urmărite</div>
+                  <div style={{fontSize:20,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{groups.size}</div>
+                  <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginTop:2}}>{validScans.length} scanări totale</div>
+                </div>
+                <div style={{padding:'11px 14px',borderRadius:10,background:activeRecs.length?'rgba(74,222,128,0.06)':'rgba(99,179,237,0.04)',border:`1px solid ${activeRecs.length?'rgba(74,222,128,0.2)':'rgba(99,179,237,0.1)'}`}}>
+                  <div style={{fontSize:9,color:activeRecs.length?'rgba(74,222,128,0.6)':'rgba(147,197,253,0.45)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:4}}>Semnal activ</div>
+                  <div style={{fontSize:20,fontWeight:700,color:activeRecs.length?'#4ADE80':'rgba(214,228,244,0.35)',fontFamily:'monospace'}}>{activeRecs.length}</div>
+                  <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginTop:2}}>{stableRecs.length} stabile · {recommendations.length} total</div>
+                </div>
+                <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(252,211,77,0.05)',border:'1px solid rgba(252,211,77,0.15)'}}>
+                  <div style={{fontSize:9,color:'rgba(252,211,77,0.6)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:4}}>Minim piață (ultima scan.)</div>
+                  <div style={{fontSize:20,fontWeight:700,color:'#FCD34D',fontFamily:'monospace'}}>{latestScan?.lowest_price??'—'}{latestScan?.lowest_price?' lei':''}</div>
+                  <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginTop:2}}>{latestScan?`${latestScan.checkin?.slice(5)} · ${fmtDT(latestScan.scanned_at)}`:'nicio scanare'}</div>
                 </div>
               </div>
 
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:10,marginBottom:14}}>
-                <DecisionMetric label="Snapshot-uri analizate" value={String(validScans.length)} detail={`${new Set(validScans.map((s:any)=>s.checkin)).size} zile de check-in`} color="#93C5FD"/>
-                <DecisionMetric label="Intervale comparabile" value={String(transitions.length)} detail={confidenceText} color="#C4B5FD"/>
-                <DecisionMetric label="Ora cu cerere maximă" value={busiestHour?`${String(busiestHour.hour).padStart(2,'0')}:00`:'—'} detail={busiestHour?`${busiestHour.pace.toFixed(1)} locații indisponibile/oră`:'Mai sunt necesare scanări'} color="#FCD34D"/>
-                <DecisionMetric label="Frecvență recomandată" value="La 1-2 ore" detail="Aceleași date de check-in, pentru comparații corecte" color="#4ADE80"/>
-              </div>
-
-              <div style={{...panel,padding:'12px 16px',marginBottom:14}}>
-                <div style={{fontSize:11,fontWeight:700,color:'rgba(214,228,244,0.75)',marginBottom:7}}>Concluzii curente</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:8}}>
-                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}>Piața se mișcă cel mai repede în jurul orei <strong style={{color:'#FCD34D'}}>{busiestHour?`${String(busiestHour.hour).padStart(2,'0')}:00`:'—'}</strong>. Programează scanări înainte și după această oră.</div>
-                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}><strong style={{color:fastestPlatform?.platform==='airbnb'?'#F87171':'#7BC8FF'}}>{fastestPlatform?.platform==='airbnb'?'Airbnb':'Booking'}</strong> are acum ritmul mediu mai rapid: {fastestPlatform?.avgPace.toFixed(1)||'0.0'} locații/oră.</div>
-                  <div style={{fontSize:10,color:'rgba(214,228,244,0.5)',lineHeight:1.5}}>Acțiuni sugerate acum: <strong style={{color:'#4ADE80'}}>{raiseCount} creșteri</strong> și <strong style={{color:'#FCD34D'}}>{reduceCount} teste de reducere</strong>.</div>
+              {recommendations.length===0?(
+                <div style={{...panel,padding:'40px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.35)',fontSize:12,lineHeight:1.7}}>
+                  Necesare minim 2 scanări pentru aceeași perioadă.
+                  <div style={{fontSize:11,color:'rgba(147,197,253,0.22)',marginTop:6}}>Rulează scriptul de 2 ori la interval de 1–2 ore pentru aceleași date.</div>
                 </div>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
-                {platformStats.map(stat=>(
-                  <div key={stat.platform} style={{...panel,padding:'14px 16px'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-                      <span style={{fontSize:13,fontWeight:700,color:stat.platform==='booking'?'#7BC8FF':'#F87171'}}>{stat.platform==='booking'?'🏨 Booking':'🏠 Airbnb'}</span>
-                      <span style={{fontSize:9,color:'rgba(147,197,253,0.35)',fontFamily:'monospace'}}>{stat.transitions} intervale</span>
-                    </div>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-                      <DecisionMetric label="Ritm mediu" value={`${stat.avgPace.toFixed(1)}/h`} detail="când piața scade" color="#FCD34D" compact/>
-                      <DecisionMetric label="Ritm median" value={`${stat.medianPace.toFixed(1)}/h`} detail="semnal robust" color="#93C5FD" compact/>
-                      <DecisionMetric label="Creștere minim" value={`${stat.avgPriceRise.toFixed(1)} lei/h`} detail="când prețul urcă" color="#4ADE80" compact/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{...panel,marginBottom:14}}>
-                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:12,fontWeight:700,color:'rgba(214,228,244,0.8)'}}>Recomandări pentru următoarele check-in-uri</span>
-                  <button onClick={()=>loadEvolutie()} style={{padding:'3px 10px',borderRadius:5,fontSize:10,cursor:'pointer',border:'1px solid rgba(99,179,237,0.2)',background:'transparent',color:'rgba(147,197,253,0.5)'}}>↺ Recalculează</button>
-                </div>
-                {recommendations.length===0?(
-                  <div style={{padding:24,textAlign:'center' as const,fontSize:11,color:'rgba(147,197,253,0.4)'}}>Sunt necesare minimum două scanări pentru aceeași perioadă.</div>
-                ):recommendations.map((item:any,i:number)=>(
-                  <div key={`${item.current.platform}-${item.current.checkin}`} style={{display:'grid',gridTemplateColumns:'90px 85px 105px 110px 1fr',gap:10,alignItems:'center',padding:'10px 14px',borderBottom:i<recommendations.length-1?'1px solid rgba(99,179,237,0.05)':'none'}}>
-                    <div>
-                      <div style={{fontSize:11,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{item.current.checkin.slice(5)}</div>
-                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>{item.leadDays<0?'trecut':item.leadDays===0?'astăzi':`în ${item.leadDays} zile`}</div>
-                    </div>
-                    <span style={{fontSize:10,fontWeight:600,color:item.current.platform==='airbnb'?'#F87171':'#7BC8FF'}}>{item.current.platform==='airbnb'?'🏠 Airbnb':'🏨 Booking'}</span>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:700,color:item.pace>0?'#FCD34D':'rgba(214,228,244,0.65)',fontFamily:'monospace'}}>{item.pace.toFixed(1)} locații/h</div>
-                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>ritm piață</div>
-                    </div>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{item.marketMedian||'—'} lei</div>
-                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)'}}>mediana top 10{item.ourAvailable!=null?` · AB ${item.ourAvailable}/13`:''}</div>
-                    </div>
-                    <div>
-                      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:3}}>
-                        <span style={{fontSize:11,fontWeight:700,color:item.color}}>{item.action}</span>
-                        <span style={{fontSize:9,fontWeight:700,color:item.color,background:`${item.color}18`,padding:'1px 5px',borderRadius:4}}>{item.adjustment}</span>
-                        <span style={{fontSize:8,color:'rgba(147,197,253,0.3)'}}>încredere {item.confidence} · {item.samples} scanări</span>
+              ):(
+                <>
+                  {/* Acțiuni active */}
+                  {activeRecs.length>0&&(
+                    <div style={{marginBottom:16}}>
+                      <div style={{fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.65)',textTransform:'uppercase' as const,letterSpacing:'.07em',marginBottom:10}}>⚡ Acțiuni recomandate</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(255px,1fr))',gap:10}}>
+                        {activeRecs.map((item:any)=>{
+                          const topP=(item.current.top5||[]).map((r:any)=>r.price).filter((v:any)=>typeof v==='number') as number[]
+                          const maxP=topP.length?Math.max(...topP):null
+                          const dots=item.pace>=5?4:item.pace>=2?3:item.pace>=0.5?2:1
+                          const urgLabel=item.leadDays===0?'AZI':item.leadDays===1?'MÂINE':`în ${item.leadDays} zile`
+                          return(
+                            <div key={`${item.current.platform}-${item.current.checkin}`}
+                              style={{borderRadius:12,border:`1px solid ${item.color}35`,background:`${item.color}07`,padding:'14px'}}>
+                              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                                <div>
+                                  <span style={{fontSize:14,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{item.current.checkin.slice(5)}</span>
+                                  <span style={{fontSize:9,fontWeight:700,color:item.leadDays<=1?'#FCD34D':'rgba(147,197,253,0.5)',marginLeft:7,background:item.leadDays<=1?'rgba(252,211,77,0.12)':'rgba(147,197,253,0.07)',padding:'2px 6px',borderRadius:4}}>{urgLabel}</span>
+                                </div>
+                                <span style={{fontSize:11,color:item.current.platform==='airbnb'?'rgba(248,113,113,0.7)':'rgba(99,179,237,0.7)'}}>{item.current.platform==='airbnb'?'🏠':'🏨'}</span>
+                              </div>
+                              {/* Price range */}
+                              <div style={{display:'flex',gap:14,alignItems:'baseline',marginBottom:10}}>
+                                <div>
+                                  <div style={{fontSize:9,color:'rgba(147,197,253,0.4)',marginBottom:1}}>minim piață</div>
+                                  <div style={{fontSize:22,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace',lineHeight:1}}>{item.current.lowest_price??'—'} <span style={{fontSize:11,fontWeight:400}}>lei</span></div>
+                                </div>
+                                {item.marketMedian>0&&<div>
+                                  <div style={{fontSize:9,color:'rgba(147,197,253,0.4)',marginBottom:1}}>median</div>
+                                  <div style={{fontSize:15,fontWeight:600,color:'rgba(214,228,244,0.65)',fontFamily:'monospace'}}>{item.marketMedian} <span style={{fontSize:10,fontWeight:400}}>lei</span></div>
+                                </div>}
+                                {maxP&&<div>
+                                  <div style={{fontSize:9,color:'rgba(147,197,253,0.4)',marginBottom:1}}>al 20-lea</div>
+                                  <div style={{fontSize:15,fontWeight:600,color:'rgba(214,228,244,0.45)',fontFamily:'monospace'}}>{maxP} <span style={{fontSize:10,fontWeight:400}}>lei</span></div>
+                                </div>}
+                              </div>
+                              {/* Signal dots */}
+                              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                                <div style={{display:'flex',gap:3}}>
+                                  {[1,2,3,4].map(d=>(
+                                    <div key={d} style={{width:9,height:9,borderRadius:2,background:d<=dots?item.pace>0?'#FCD34D':'#F87171':'rgba(255,255,255,0.1)'}}/>
+                                  ))}
+                                </div>
+                                <span style={{fontSize:10,color:'rgba(214,228,244,0.4)'}}>{item.pace>0?`${item.pace.toFixed(1)} loc./h dispar`:'piața nu scade'}</span>
+                              </div>
+                              {/* Action */}
+                              <div style={{borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:10,display:'flex',flexDirection:'column' as const,gap:4}}>
+                                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                                  <span style={{fontSize:12,fontWeight:700,color:item.color}}>{item.action}</span>
+                                  <span style={{fontSize:10,fontWeight:700,color:item.color,background:`${item.color}20`,padding:'2px 8px',borderRadius:5}}>{item.adjustment}</span>
+                                </div>
+                                <div style={{fontSize:10,color:'rgba(214,228,244,0.38)',lineHeight:1.4}}>{item.reason}</div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div style={{fontSize:10,color:'rgba(214,228,244,0.48)'}}>{item.reason}</div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
 
-              <div style={{...panel}}>
-                <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(214,228,244,0.8)'}}>Orele cu cea mai mare activitate</div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:8,padding:'12px 14px'}}>
-                  {hourly.slice(0,8).map(row=>(
-                    <div key={row.hour} style={{padding:'9px 10px',borderRadius:8,background:'rgba(99,179,237,0.05)',border:'1px solid rgba(99,179,237,0.09)'}}>
-                      <div style={{fontSize:13,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{String(row.hour).padStart(2,'0')}:00</div>
-                      <div style={{fontSize:11,fontWeight:600,color:row.pace>0?'#FCD34D':'rgba(214,228,244,0.5)',marginTop:3}}>{row.pace.toFixed(1)} locații/h</div>
-                      <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginTop:2}}>{row.scans} intervale · preț {row.price>=0?'+':''}{row.price.toFixed(1)} lei/h</div>
+                  {/* Perioade stabile */}
+                  {stableRecs.length>0&&(
+                    <div style={{...panel,marginBottom:14}}>
+                      <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.06)',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>✓ Perioade stabile — {stableRecs.length}</div>
+                      {stableRecs.map((item:any,i:number)=>(
+                        <div key={`${item.current.platform}-${item.current.checkin}`}
+                          style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',borderBottom:i<stableRecs.length-1?'1px solid rgba(159,215,255,0.04)':'none'}}>
+                          <span style={{fontSize:12,fontFamily:'monospace',color:'rgba(214,228,244,0.7)',minWidth:44}}>{item.current.checkin.slice(5)}</span>
+                          <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',minWidth:38}}>{item.leadDays===0?'azi':item.leadDays===1?'mâine':`+${item.leadDays}z`}</span>
+                          <span style={{fontSize:10,color:item.current.platform==='airbnb'?'rgba(248,113,113,0.45)':'rgba(99,179,237,0.45)'}}>{item.current.platform==='airbnb'?'🏠':'🏨'}</span>
+                          <span style={{fontSize:11,fontFamily:'monospace',color:'rgba(214,228,244,0.55)'}}>{item.current.lowest_price??'—'} lei</span>
+                          {item.marketMedian>0&&<span style={{fontSize:10,color:'rgba(147,197,253,0.3)',fontFamily:'monospace'}}>med. {item.marketMedian}</span>}
+                          <span style={{fontSize:10,color:'rgba(147,197,253,0.25)',marginLeft:'auto'}}>{item.pace.toFixed(1)}/h</span>
+                          <span style={{fontSize:11,color:'rgba(74,222,128,0.45)'}}>✓</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+                </>
+              )}
+
+              {/* Ore active - compact */}
+              {hourly.length>0&&(
+                <div style={{...panel}}>
+                  <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.06)',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.45)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>🕐 Ore cu cerere maximă</div>
+                  <div style={{display:'flex',gap:8,padding:'10px 12px',flexWrap:'wrap' as const}}>
+                    {hourly.slice(0,6).map(row=>(
+                      <div key={row.hour} style={{padding:'8px 12px',borderRadius:8,background:'rgba(99,179,237,0.05)',border:'1px solid rgba(99,179,237,0.09)',minWidth:80}}>
+                        <div style={{fontSize:14,fontWeight:700,color:'#E8F4FF',fontFamily:'monospace'}}>{String(row.hour).padStart(2,'0')}:00</div>
+                        <div style={{fontSize:10,fontWeight:600,color:row.pace>0?'#FCD34D':'rgba(214,228,244,0.4)',marginTop:2}}>{row.pace.toFixed(1)}/h</div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.3)',marginTop:1}}>{row.scans} obs.</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )
         })()}
