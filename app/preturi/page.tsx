@@ -151,7 +151,7 @@ export default function PreturiPage() {
   const [stratRezervari, setStratRezervari] = useState<any[]>([])
   const [loadingStrat, setLoadingStrat] = useState(false)
   const [stratLoaded, setStratLoaded] = useState(false)
-  const [stratSection, setStratSection] = useState<'performanta'|'sezonalitate'|'reguli'>('performanta')
+  const [stratSection, setStratSection] = useState<'perfsez'|'evolpiata'|'patternorar'|'sezonpiata'|'reguli'>('perfsez')
   const [sortCol, setSortCol] = useState('luna')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
   const [stratAptFilter, setStratAptFilter] = useState('')
@@ -165,6 +165,10 @@ export default function PreturiPage() {
   })
   const [savingRegula, setSavingRegula] = useState(false)
   const [deletingRegula, setDeletingRegula] = useState<string|null>(null)
+  const [stratEvolCheckin, setStratEvolCheckin] = useState('')
+  const [stratEvolCheckout, setStratEvolCheckout] = useState('')
+  const [stratPatternZi, setStratPatternZi] = useState('')
+  const [stratPatternLuna, setStratPatternLuna] = useState('')
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
@@ -1301,6 +1305,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
         })()}
 
         {mainTab==='strategie'&&(()=>{
+          // ── Perf & Sezon (date proprii) ──
           const perfData=calcPerformanta()
           const {luniData,ziSaptData}=calcSezonalitate()
           const filteredPerf=stratAptFilter?perfData.filter(r=>r.aptId===stratAptFilter):perfData
@@ -1317,15 +1322,70 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           const trendData=perfData.filter(r=>r.aptId===trendAptId).map(r=>({luna:r.luna.slice(5),adr:r.adr}))
           const maxNopti=Math.max(...luniData.map(d=>d.nopti),1)
 
+          // ── Helper preturi scanare ──
+          const getTP=(scan:any)=>(scan.top5||[]).map((r:any)=>r.price).filter((v:any)=>typeof v==='number') as number[]
+
+          // ── Evoluție piață ──
+          const allPeriods=Array.from(new Set(evolutieData
+            .filter((h:any)=>h.checkin&&h.checkout)
+            .map((h:any)=>`${h.checkin}|${h.checkout}`)
+          )).sort() as string[]
+          const evolCI=stratEvolCheckin||(allPeriods[0]?.split('|')[0]||'')
+          const evolCO=stratEvolCheckout||(allPeriods[0]?.split('|')[1]||'')
+          const evolScans=evolutieData
+            .filter((h:any)=>h.checkin===evolCI&&h.checkout===evolCO)
+            .sort((a:any,b:any)=>scanTime(a)-scanTime(b))
+          const evolPretData=evolScans.map((h:any)=>{
+            const prices=getTP(h)
+            return{timp:fmtDT(h.scanned_at),min:h.lowest_price,median:prices.length?Math.round(median(prices)):null,max20:prices.length?Math.max(...prices):null}
+          })
+          const evolPropsData=evolScans.map((h:any)=>({timp:fmtDT(h.scanned_at),proprietati:h.total_properties}))
+
+          // ── Pattern orar ──
+          const byOra:Record<number,{props:number[];mins:number[];meds:number[]}>={}
+          for(const h of evolutieData){
+            if(!h.checkin) continue
+            const ci=new Date(h.checkin+'T12:00:00')
+            if(stratPatternZi!==''&&ci.getDay()!==parseInt(stratPatternZi)) continue
+            if(stratPatternLuna!==''&&ci.getMonth()+1!==parseInt(stratPatternLuna)) continue
+            const ora=new Date(h.scanned_at).getHours()
+            if(!byOra[ora]) byOra[ora]={props:[],mins:[],meds:[]}
+            if(h.total_properties!=null) byOra[ora].props.push(h.total_properties)
+            if(h.lowest_price!=null) byOra[ora].mins.push(h.lowest_price)
+            const prices=getTP(h)
+            if(prices.length) byOra[ora].meds.push(Math.round(median(prices)))
+          }
+          const orarData=Array.from({length:24},(_,i)=>{
+            const b=byOra[i]
+            return{ora:`${String(i).padStart(2,'0')}:00`,proprietati:b?.props.length?Math.round(avg(b.props)):null,minPret:b?.mins.length?Math.round(avg(b.mins)):null,medianPret:b?.meds.length?Math.round(avg(b.meds)):null,scanuri:b?.props.length||0}
+          }).filter(d=>d.scanuri>0)
+
+          // ── Sezonalitate piață ──
+          const LNPIAT=['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
+          const byLuna:Record<number,{props:number[];mins:number[];meds:number[];max20s:number[]}>={}
+          for(const h of evolutieData){
+            if(!h.checkin) continue
+            const luna=new Date(h.checkin+'T12:00:00').getMonth()+1
+            if(!byLuna[luna]) byLuna[luna]={props:[],mins:[],meds:[],max20s:[]}
+            if(h.total_properties!=null) byLuna[luna].props.push(h.total_properties)
+            if(h.lowest_price!=null) byLuna[luna].mins.push(h.lowest_price)
+            const prices=getTP(h)
+            if(prices.length){byLuna[luna].meds.push(Math.round(median(prices)));byLuna[luna].max20s.push(Math.max(...prices))}
+          }
+          const sezonPiataData=Array.from({length:12},(_,i)=>{
+            const l=i+1,b=byLuna[l]||{props:[],mins:[],meds:[],max20s:[]}
+            return{luna:l,numeScurt:LNPIAT[i],proprietati:b.props.length?Math.round(avg(b.props)):0,minPret:b.mins.length?Math.round(avg(b.mins)):0,medianPret:b.meds.length?Math.round(avg(b.meds)):0,max20Pret:b.max20s.length?Math.round(avg(b.max20s)):0,scanuri:b.props.length}
+          }).filter(d=>d.scanuri>0)
+
           return(
             <div>
               {/* Sub-section tabs */}
-              <div style={{display:'flex',gap:0,marginBottom:14,borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
-                {(['performanta','sezonalitate','reguli'] as const).map(s=>{
-                  const lbl={performanta:'📊 Performanță',sezonalitate:'🌦 Sezonalitate',reguli:'⚙️ Reguli Preț'}
+              <div style={{display:'flex',gap:0,marginBottom:14,borderBottom:'1px solid rgba(159,215,255,0.08)',overflowX:'auto' as const}}>
+                {(['perfsez','evolpiata','patternorar','sezonpiata','reguli'] as const).map(s=>{
+                  const lbl:{[k:string]:string}={perfsez:'📊 Perf & Sezon',evolpiata:'📉 Evoluție piață',patternorar:'📅 Pattern orar',sezonpiata:'📆 Sezon piață',reguli:'⚙️ Reguli'}
                   return(
                     <button key={s} onClick={()=>setStratSection(s)} style={{
-                      padding:'8px 16px',fontSize:12,fontWeight:600,cursor:'pointer',
+                      padding:'8px 14px',fontSize:11,fontWeight:600,cursor:'pointer',flexShrink:0,
                       border:'none',borderBottom:`2px solid ${stratSection===s?'#4ADE80':'transparent'}`,
                       background:'transparent',color:stratSection===s?'#4ADE80':'rgba(159,215,255,0.35)',
                     }}>{lbl[s]}</button>
@@ -1333,34 +1393,28 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 })}
               </div>
 
-              {loadingStrat&&<div style={{padding:'60px',textAlign:'center',color:'rgba(147,197,253,0.3)',fontSize:13}}>Se calculează statisticile...</div>}
+              {loadingStrat&&stratSection==='perfsez'&&<div style={{padding:'60px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:13}}>Se calculează...</div>}
 
-              {/* ── PERFORMANȚĂ ── */}
-              {!loadingStrat&&stratSection==='performanta'&&(
+              {/* ── PERF & SEZON ── */}
+              {!loadingStrat&&stratSection==='perfsez'&&(
                 <div>
                   {perfData.length>0&&(
                     <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
-                      {bestOcupare&&(
-                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.15)'}}>
-                          <div style={{fontSize:9,color:'rgba(74,222,128,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cea mai bună ocupare</div>
-                          <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{bestOcupare.ocupare}%</div>
-                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestOcupare.aptNota}] · {bestOcupare.luna}</div>
-                        </div>
-                      )}
-                      {lowestADR&&(
-                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.15)'}}>
-                          <div style={{fontSize:9,color:'rgba(248,113,113,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai mic ADR</div>
-                          <div style={{fontSize:16,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{lowestADR.adr} RON</div>
-                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{lowestADR.aptNota}] · {lowestADR.luna}</div>
-                        </div>
-                      )}
-                      {bestRevpar&&(
-                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)'}}>
-                          <div style={{fontSize:9,color:'rgba(77,163,255,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai bun RevPAR</div>
-                          <div style={{fontSize:16,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace'}}>{bestRevpar.revpar} RON</div>
-                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestRevpar.aptNota}] · {bestRevpar.luna}</div>
-                        </div>
-                      )}
+                      {bestOcupare&&<div style={{padding:'11px 14px',borderRadius:10,background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.15)'}}>
+                        <div style={{fontSize:9,color:'rgba(74,222,128,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cea mai bună ocupare</div>
+                        <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{bestOcupare.ocupare}%</div>
+                        <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestOcupare.aptNota}] · {bestOcupare.luna}</div>
+                      </div>}
+                      {lowestADR&&<div style={{padding:'11px 14px',borderRadius:10,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.15)'}}>
+                        <div style={{fontSize:9,color:'rgba(248,113,113,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai mic ADR</div>
+                        <div style={{fontSize:16,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{lowestADR.adr} RON</div>
+                        <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{lowestADR.aptNota}] · {lowestADR.luna}</div>
+                      </div>}
+                      {bestRevpar&&<div style={{padding:'11px 14px',borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)'}}>
+                        <div style={{fontSize:9,color:'rgba(77,163,255,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai bun RevPAR</div>
+                        <div style={{fontSize:16,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace'}}>{bestRevpar.revpar} RON</div>
+                        <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestRevpar.aptNota}] · {bestRevpar.luna}</div>
+                      </div>}
                     </div>
                   )}
                   <div style={{display:'flex',gap:8,marginBottom:10,alignItems:'center',flexWrap:'wrap' as const}}>
@@ -1415,29 +1469,20 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
                             <XAxis dataKey="luna" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
                             <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={36}/>
-                            <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
-                              formatter={(v:any)=>[`${v} RON/noapte`,'ADR'] as [string,string]}/>
+                            <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}} formatter={(v:any)=>[`${v} RON/noapte`,'ADR'] as [string,string]}/>
                             <Line type="monotone" dataKey="adr" stroke="#4ADE80" strokeWidth={2} dot={{fill:'#4ADE80',r:3}}/>
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* ── SEZONALITATE ── */}
-              {!loadingStrat&&stratSection==='sezonalitate'&&(
-                <div>
-                  {stratRezervari.length===0?(
-                    <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nu există date suficiente</div>
-                  ):(()=>{
+                  {stratRezervari.length>0&&(()=>{
                     const top3=[...luniData].sort((a,b)=>b.nopti-a.nopti).slice(0,3).filter(l=>l.nopti>0)
                     const wdAvg=avg(ziSaptData.filter(d=>!d.isWeekend&&d.nopti>0).map(d=>d.adr))
                     const weAvg=avg(ziSaptData.filter(d=>d.isWeekend&&d.nopti>0).map(d=>d.adr))
                     const diff=Math.round(weAvg-wdAvg)
                     return(
-                      <>
+                      <div style={{marginTop:14}}>
                         {top3.length>0&&(
                           <div style={{padding:'10px 14px',borderRadius:9,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)',marginBottom:14,fontSize:12,color:'rgba(214,228,244,0.7)',lineHeight:1.8}}>
                             <strong style={{color:'#7BC8FF'}}>Luni de vârf:</strong>{' '}{top3.map(l=>l.numeScurt).join(' › ')}
@@ -1447,8 +1492,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                         )}
                         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
                           <div style={{...panel}}>
-                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>Nopți ocupate per lună</div>
-                            <div style={{padding:'12px 4px',height:210}}>
+                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>Nopți ocupate per lună (propriu)</div>
+                            <div style={{padding:'12px 4px',height:200}}>
                               <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={luniData} margin={{top:4,right:8,left:0,bottom:4}}>
                                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
@@ -1463,8 +1508,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                             </div>
                           </div>
                           <div style={{...panel}}>
-                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>ADR mediu per zi</div>
-                            <div style={{padding:'12px 4px',height:210}}>
+                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>ADR mediu per zi (propriu)</div>
+                            <div style={{padding:'12px 4px',height:200}}>
                               <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={ziSaptData} margin={{top:4,right:8,left:0,bottom:4}}>
                                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
@@ -1479,10 +1524,200 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                             </div>
                           </div>
                         </div>
-                      </>
+                      </div>
                     )
                   })()}
                 </div>
+              )}
+
+              {/* ── EVOLUȚIE PIAȚĂ ── */}
+              {stratSection==='evolpiata'&&(
+                evolutieData.length===0?(
+                  <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nicio scanare disponibilă</div>
+                ):(
+                  <div>
+                    <div style={{...panel,padding:'12px 16px',marginBottom:14}}>
+                      <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' as const}}>
+                        <span style={{fontSize:11,color:'rgba(147,197,253,0.5)',flexShrink:0}}>Perioadă:</span>
+                        <select value={`${evolCI}|${evolCO}`} onChange={e=>{const[ci,co]=e.target.value.split('|');setStratEvolCheckin(ci);setStratEvolCheckout(co)}}
+                          style={{padding:'5px 10px',borderRadius:7,fontSize:12,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',color:'rgba(214,228,244,0.9)',outline:'none'}}>
+                          {allPeriods.map(p=>{const[ci,co]=p.split('|');return<option key={p} value={p}>{ci?.slice(5)} → {co?.slice(5)}</option>})}
+                        </select>
+                        <span style={{fontSize:10,color:'rgba(147,197,253,0.3)'}}>sau manual:</span>
+                        <input type="date" value={stratEvolCheckin} onChange={e=>setStratEvolCheckin(e.target.value)}
+                          style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}/>
+                        <span style={{fontSize:11,color:'rgba(147,197,253,0.3)'}}>→</span>
+                        <input type="date" value={stratEvolCheckout} onChange={e=>setStratEvolCheckout(e.target.value)}
+                          style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}/>
+                        <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',marginLeft:'auto',fontFamily:'monospace'}}>{evolScans.length} scanări</span>
+                      </div>
+                    </div>
+                    {evolScans.length<2?(
+                      <div style={{padding:'30px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+                        {evolScans.length===0?'Nicio scanare pentru această perioadă.':'O singură scanare — necesari minim 2 pentru grafic de evoluție.'}
+                      </div>
+                    ):(
+                      <>
+                        <div style={{...panel,marginBottom:14}}>
+                          <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                            💰 Evoluție prețuri · {evolCI?.slice(5)} → {evolCO?.slice(5)}
+                          </div>
+                          <div style={{padding:'12px 4px',height:220}}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={evolPretData} margin={{top:4,right:16,left:0,bottom:4}}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                                <XAxis dataKey="timp" tick={{fill:'rgba(147,197,253,0.5)',fontSize:9}} axisLine={false} tickLine={false}/>
+                                <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                                <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                                  labelStyle={{color:'#93C5FD',fontWeight:600}}
+                                  formatter={(v:any,n:any)=>[`${v} lei`,n==='min'?'Min piață':n==='median'?'Median top20':'Al 20-lea'] as [string,string]}/>
+                                <Legend formatter={(v:any)=>v==='min'?'Min piață':v==='median'?'Median top20':'Al 20-lea'} wrapperStyle={{fontSize:10}}/>
+                                <Line type="monotone" dataKey="min" stroke="#4ADE80" strokeWidth={2} dot={{fill:'#4ADE80',r:2}} connectNulls/>
+                                <Line type="monotone" dataKey="median" stroke="#FCD34D" strokeWidth={2} dot={{fill:'#FCD34D',r:2}} connectNulls/>
+                                <Line type="monotone" dataKey="max20" stroke="#F87171" strokeWidth={2} dot={{fill:'#F87171',r:2}} strokeDasharray="4 2" connectNulls/>
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                        <div style={{...panel}}>
+                          <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                            🏙️ Evoluție disponibilitate piață
+                          </div>
+                          <div style={{padding:'12px 4px',height:160}}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={evolPropsData} margin={{top:4,right:16,left:0,bottom:4}}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                                <XAxis dataKey="timp" tick={{fill:'rgba(147,197,253,0.5)',fontSize:9}} axisLine={false} tickLine={false}/>
+                                <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                                <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                                  formatter={(v:any)=>[`${v} proprietăți`,'Disponibile'] as [string,string]}/>
+                                <Line type="monotone" dataKey="proprietati" stroke="#93C5FD" strokeWidth={2} dot={{fill:'#93C5FD',r:2}} connectNulls/>
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              )}
+
+              {/* ── PATTERN ORAR ── */}
+              {stratSection==='patternorar'&&(
+                <div>
+                  <div style={{...panel,padding:'12px 16px',marginBottom:14}}>
+                    <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' as const}}>
+                      <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Zi check-in:</span>
+                      <select value={stratPatternZi} onChange={e=>setStratPatternZi(e.target.value)}
+                        style={{padding:'5px 10px',borderRadius:7,fontSize:12,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',color:'rgba(214,228,244,0.9)',outline:'none'}}>
+                        <option value="">Toate zilele</option>
+                        {([['Luni','1'],['Marți','2'],['Miercuri','3'],['Joi','4'],['Vineri','5'],['Sâmbătă','6'],['Duminică','0']] as [string,string][]).map(([z,v])=>(
+                          <option key={v} value={v}>{z}</option>
+                        ))}
+                      </select>
+                      <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Luna check-in:</span>
+                      <select value={stratPatternLuna} onChange={e=>setStratPatternLuna(e.target.value)}
+                        style={{padding:'5px 10px',borderRadius:7,fontSize:12,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',color:'rgba(214,228,244,0.9)',outline:'none'}}>
+                        <option value="">Toate lunile</option>
+                        {['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'].map((l,i)=>(
+                          <option key={i+1} value={String(i+1)}>{l}</option>
+                        ))}
+                      </select>
+                      <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',marginLeft:'auto',fontFamily:'monospace'}}>{orarData.length} ore cu date</span>
+                    </div>
+                  </div>
+                  {orarData.length===0?(
+                    <div style={{padding:'30px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nicio scanare pentru filtrele selectate</div>
+                  ):(
+                    <>
+                      <div style={{...panel,marginBottom:14}}>
+                        <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>💰 Prețuri medii per oră</div>
+                        <div style={{padding:'12px 4px',height:220}}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={orarData} margin={{top:4,right:16,left:0,bottom:4}}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                              <XAxis dataKey="ora" tick={{fill:'rgba(147,197,253,0.5)',fontSize:9}} axisLine={false} tickLine={false}/>
+                              <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                              <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                                labelStyle={{color:'#93C5FD',fontWeight:600}}
+                                formatter={(v:any,n:any)=>[`${v} lei`,n==='minPret'?'Min piață':'Median top20'] as [string,string]}/>
+                              <Legend formatter={(v:any)=>v==='minPret'?'Min piață':'Median top20'} wrapperStyle={{fontSize:10}}/>
+                              <Line type="monotone" dataKey="minPret" stroke="#4ADE80" strokeWidth={2} dot={{fill:'#4ADE80',r:3}} connectNulls/>
+                              <Line type="monotone" dataKey="medianPret" stroke="#FCD34D" strokeWidth={2} dot={{fill:'#FCD34D',r:3}} connectNulls/>
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                      <div style={{...panel}}>
+                        <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>🏙️ Proprietăți disponibile per oră</div>
+                        <div style={{padding:'12px 4px',height:180}}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={orarData} margin={{top:4,right:16,left:0,bottom:4}}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
+                              <XAxis dataKey="ora" tick={{fill:'rgba(147,197,253,0.5)',fontSize:9}} axisLine={false} tickLine={false}/>
+                              <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                              <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                                formatter={(v:any)=>[`${v} (medie)`,'Proprietăți'] as [string,string]}/>
+                              <Bar dataKey="proprietati" radius={[3,3,0,0]}>
+                                {orarData.map((_,i)=><Cell key={i} fill="rgba(99,179,237,0.55)"/>)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── SEZONALITATE PIAȚĂ ── */}
+              {stratSection==='sezonpiata'&&(
+                sezonPiataData.length===0?(
+                  <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nicio scanare disponibilă</div>
+                ):(
+                  <div>
+                    <div style={{...panel,marginBottom:14}}>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                        💰 Prețuri medii piață per lună de check-in
+                      </div>
+                      <div style={{padding:'12px 4px',height:240}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={sezonPiataData} margin={{top:4,right:8,left:0,bottom:4}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
+                            <XAxis dataKey="numeScurt" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                            <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                            <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                              labelStyle={{color:'#93C5FD',fontWeight:600}}
+                              formatter={(v:any,n:any)=>[`${v} lei/n`,n==='minPret'?'Min':n==='medianPret'?'Median top20':'Al 20-lea'] as [string,string]}/>
+                            <Legend formatter={(v:any)=>v==='minPret'?'Min':v==='medianPret'?'Median top20':'Al 20-lea'} wrapperStyle={{fontSize:10}}/>
+                            <Bar dataKey="minPret" fill="#4ADE80" radius={[3,3,0,0]}/>
+                            <Bar dataKey="medianPret" fill="#FCD34D" radius={[3,3,0,0]}/>
+                            <Bar dataKey="max20Pret" fill="#F87171" radius={[3,3,0,0]}/>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    <div style={{...panel}}>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>
+                        🏙️ Proprietăți disponibile per lună (medie scanări)
+                      </div>
+                      <div style={{padding:'12px 4px',height:180}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={sezonPiataData} margin={{top:4,right:8,left:0,bottom:4}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
+                            <XAxis dataKey="numeScurt" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                            <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={40}/>
+                            <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                              formatter={(v:any)=>[`${v} (medie)`,'Proprietăți'] as [string,string]}/>
+                            <Bar dataKey="proprietati" radius={[4,4,0,0]}>
+                              {sezonPiataData.map((_,i)=><Cell key={i} fill="rgba(147,197,253,0.45)"/>)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )
               )}
 
               {/* ── REGULI PREȚ ── */}

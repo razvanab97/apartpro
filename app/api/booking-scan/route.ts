@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'JSON invalid sau fără rezultate' }, { status: 400 })
     }
 
-    const results = parsed.results.slice(0, 5).map((r: any, i: number) => {
+    const results = parsed.results.slice(0, 20).map((r: any, i: number) => {
       const lower = (r.name || '').toLowerCase()
       const match = OUR.find(id => lower.includes(id))
       return {
