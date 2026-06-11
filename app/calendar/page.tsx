@@ -40,6 +40,19 @@ function waLink(phone:string, msg:string){
 
 function nightsBetween(a:string,b:string){ return Math.round((new Date(b).getTime()-new Date(a).getTime())/(1000*60*60*24)) }
 
+function proRataMonth(r: Rez, y: number, m: number): number {
+  const brut = Number(r.suma_incasata || 0)
+  const totalN = r.nr_nopti || Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000)
+  if (!totalN || totalN <= 0) return brut
+  const fd = isoDate(y, m, 1)
+  const fn = m === 11 ? isoDate(y+1, 0, 1) : isoDate(y, m+1, 1)
+  const ovS = r.data_checkin > fd ? r.data_checkin : fd
+  const ovE = r.data_checkout < fn ? r.data_checkout : fn
+  const ovD = Math.max(0, Math.round((new Date(ovE).getTime() - new Date(ovS).getTime()) / 86400000))
+  if (ovD >= totalN) return brut
+  return Math.round(brut / totalN * ovD * 100) / 100
+}
+
 export default function CalendarPage() {
   const [rezAll, setRezAll]     = useState<Rez[]>([])
   const [apts, setApts]         = useState<Apt[]>([])
@@ -377,7 +390,7 @@ export default function CalendarPage() {
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
                               {viewMode==='sume'
                                 ? <>
-                                    <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')} RON</span>
+                                    <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{proRataMonth(r,year,month).toLocaleString('ro-RO')} RON</span>
                                     <span style={{ fontSize:10, color:'rgba(255,255,255,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:2 }}>{r.nr_nopti||'?'}n · {r.canal}</span>
                                   </>
                                 : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
@@ -396,7 +409,7 @@ export default function CalendarPage() {
                   {/* Coloana TOTAL per apartament (doar modul Sume) */}
                   {viewMode==='sume'&&(()=>{
                     const aptRez=rez.filter(r=>r.apartament?.id===apt.id)
-                    const total=Math.round(aptRez.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+                    const total=Math.round(aptRez.reduce((s,r)=>s+proRataMonth(r,year,month),0))
                     return(
                       <div style={{ width:90,flexShrink:0,height:ROW_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}>
                         <span style={{ fontFamily:'monospace',fontSize:13,fontWeight:700,color:'#4ADE80' }}>{total.toLocaleString('ro-RO')}</span>
@@ -409,7 +422,7 @@ export default function CalendarPage() {
 
             {/* Rând total general (modul Sume) */}
             {viewMode==='sume'&&!loading&&(()=>{
-              const grandTotal=Math.round(rez.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+              const grandTotal=Math.round(rez.reduce((s,r)=>s+proRataMonth(r,year,month),0))
               return(
                 <div style={{ display:'flex',borderTop:'2px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.05)',position:'sticky',bottom:0,zIndex:6 }}>
                   <div style={{ width:LABEL_W,flexShrink:0,height:44,display:'flex',alignItems:'center',padding:'0 14px',position:'sticky',left:0,background:'rgba(8,18,36,0.98)',borderRight:'1px solid rgba(74,222,128,0.2)' }}>
@@ -684,7 +697,7 @@ Echipa AB Homes Iași`)}
       {/* ── Calculator panel ── */}
       {calcSel.size>0&&(()=>{
         const items=Array.from(calcSel.values())
-        const total=Math.round(items.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+        const total=Math.round(items.reduce((s,r)=>s+proRataMonth(r,year,month),0))
         return(
           <div style={{ position:'fixed',bottom:24,right:24,zIndex:500,background:'rgba(6,14,26,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(74,222,128,0.45)',borderRadius:14,padding:'14px 16px',minWidth:280,maxWidth:340,boxShadow:'0 12px 40px rgba(0,0,0,0.7)' }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
@@ -696,7 +709,7 @@ Echipa AB Homes Iași`)}
                 <div key={r.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'rgba(255,255,255,0.04)' }}>
                   <span style={{ fontSize:11,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace',flexShrink:0 }}>{r.apartament?.nota||'—'}</span>
                   <span style={{ fontSize:10,color:'rgba(159,215,255,0.45)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{r.data_checkin?.slice(5)} → {r.data_checkout?.slice(5)}</span>
-                  <span style={{ fontSize:12,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',flexShrink:0 }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')}</span>
+                  <span style={{ fontSize:12,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',flexShrink:0 }}>{proRataMonth(r,year,month).toLocaleString('ro-RO')}</span>
                   <button onClick={()=>setCalcSel(p=>{const n=new Map(p);n.delete(r.id);return n})} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.25)',fontSize:15,lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
                 </div>
               ))}
