@@ -49,6 +49,7 @@ export default function CalendarPage() {
   const [selApt, setSelApt]     = useState('')
   const [viewMode, setViewMode] = useState<'rez'|'sume'>('rez')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
+  const [calcSel, setCalcSel]   = useState<Map<string,Rez>>(new Map())
   const [selectedDay, setSelectedDay] = useState<number|null>(null)
 
   // selectie zile pentru rezervare noua
@@ -366,9 +367,13 @@ export default function CalendarPage() {
                           }
                           return(
                             <div data-rez="1"
-                              onClick={e=>{e.stopPropagation();setTooltip(t=>t?.rez.id===r.id?null:{rez:r,x:e.clientX,y:e.clientY})}}
-                              style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4 }}
-                              onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.12)')}
+                              onClick={e=>{
+                                e.stopPropagation()
+                                setCalcSel(prev=>{const n=new Map(prev);n.has(r.id)?n.delete(r.id):n.set(r.id,r);return n})
+                                if(viewMode==='rez') setTooltip(t=>t?.rez.id===r.id?null:{rez:r,x:e.clientX,y:e.clientY})
+                              }}
+                              style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4, outline:calcSel.has(r.id)?'3px solid #fff':'none', opacity:calcSel.size>0&&!calcSel.has(r.id)?0.55:1, transition:'opacity .15s,outline .1s' }}
+                              onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.15)')}
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
                               {viewMode==='sume'
                                 ? <>
@@ -675,6 +680,34 @@ Echipa AB Homes Iași`)}
           </div>
         </div>
       )}
+
+      {/* ── Calculator panel ── */}
+      {calcSel.size>0&&(()=>{
+        const items=Array.from(calcSel.values())
+        const total=Math.round(items.reduce((s,r)=>s+Number(r.suma_incasata||0),0))
+        return(
+          <div style={{ position:'fixed',bottom:24,right:24,zIndex:500,background:'rgba(6,14,26,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(74,222,128,0.45)',borderRadius:14,padding:'14px 16px',minWidth:280,maxWidth:340,boxShadow:'0 12px 40px rgba(0,0,0,0.7)' }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
+              <span style={{ fontSize:11,fontWeight:700,color:'rgba(74,222,128,0.7)',textTransform:'uppercase',letterSpacing:'.1em' }}>🧮 Calculator</span>
+              <button onClick={()=>setCalcSel(new Map())} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.35)',fontSize:18,lineHeight:1,padding:'0 2px' }}>✕</button>
+            </div>
+            <div style={{ display:'flex',flexDirection:'column',gap:5,maxHeight:260,overflowY:'auto',marginBottom:10 }}>
+              {items.map(r=>(
+                <div key={r.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'rgba(255,255,255,0.04)' }}>
+                  <span style={{ fontSize:11,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace',flexShrink:0 }}>{r.apartament?.nota||'—'}</span>
+                  <span style={{ fontSize:10,color:'rgba(159,215,255,0.45)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{r.data_checkin?.slice(5)} → {r.data_checkout?.slice(5)}</span>
+                  <span style={{ fontSize:12,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',flexShrink:0 }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')}</span>
+                  <button onClick={()=>setCalcSel(p=>{const n=new Map(p);n.delete(r.id);return n})} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.25)',fontSize:15,lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ borderTop:'1px solid rgba(74,222,128,0.25)',paddingTop:10,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+              <span style={{ fontSize:11,color:'rgba(159,215,255,0.4)' }}>{items.length} rezervări selectate</span>
+              <span style={{ fontSize:20,fontWeight:800,fontFamily:'monospace',color:'#4ADE80' }}>{total.toLocaleString('ro-RO')} <span style={{ fontSize:12,fontWeight:600,color:'rgba(74,222,128,0.6)' }}>RON</span></span>
+            </div>
+          </div>
+        )
+      })()}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
