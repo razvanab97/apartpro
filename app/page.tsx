@@ -116,7 +116,7 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [loading,setLoading]=useState(true)
-  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,incasariNet:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
+  const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,incasariNet:0,incasariNetFiltrat:0,incasariBrutFiltrat:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
   const [rezervariRecente,setRezervariRecente]=useState<any[]>([])
   const [checkinAzi,setCheckinAzi]=useState<any[]>([])
   const [checkoutAzi,setCheckoutAzi]=useState<any[]>([])
@@ -238,7 +238,22 @@ export default function DashboardPage() {
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
-    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
+    // Incasari filtrate (fara CG40, VM07, Cherry, Comfy & Chic)
+    const EXCL_NOTA_F = new Set(['CG40','VM07'])
+    const EXCL_NUME_F = ['cherry','comfy']
+    const aptMapEarly = Object.fromEntries((aptData||[]).map((a:any)=>[a.id,a]))
+    let incNetFiltrat = 0, incBrutFiltrat = 0
+    for(const r of (rezLuna||[])){
+      const apt = aptMapEarly[r.apartament_id]; if(!apt) continue
+      if(EXCL_NOTA_F.has(apt.nota)) continue
+      if(EXCL_NUME_F.some((k:string)=>(apt.nume||'').toLowerCase().includes(k))) continue
+      const brutF = proRataLuna(r)
+      const canalF = (r.canal||'').toLowerCase()
+      const netF = canalF==='airbnb'?brutF*0.85*(1-0.21*0.15):canalF==='booking'?brutF*0.83*(1-0.21*0.17):brutF
+      incNetFiltrat += netF
+      incBrutFiltrat += brutF
+    }
+    setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:Math.round(incNetFiltrat),incasariBrutFiltrat:Math.round(incBrutFiltrat),comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -470,7 +485,7 @@ export default function DashboardPage() {
           {[
             {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
             {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
-            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNet||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:`RON net · brut ${stats.incasariLuna.toLocaleString('ro-RO')}`},
+            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNetFiltrat||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:'RON net',sub2:`brut ${(stats.incasariBrutFiltrat||0).toLocaleString('ro-RO')}`,sub2Color:'#22C55E'},
             {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
             {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
             {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#EF4444':'#22C55E',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
@@ -482,6 +497,7 @@ export default function DashboardPage() {
                   <span style={{color:k.accent,opacity:0.7}}>{k.icon}</span>
                 </div>
                 <div style={{fontFamily:'monospace',fontSize:22,fontWeight:700,color:k.accent,letterSpacing:-1,lineHeight:1}}>{k.value}</div>
+                {(k as any).sub2&&<div style={{fontFamily:'monospace',fontSize:13,fontWeight:600,color:(k as any).sub2Color||k.accent,marginTop:3}}>{(k as any).sub2}</div>}
                 <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginTop:4}}>{k.sub}</div>
               </div>
             </div>
