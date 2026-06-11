@@ -199,7 +199,7 @@ export default function CalendarPage() {
 
   const LABEL_W = 160
   const COL_W   = 44
-  const ROW_H   = 56
+  const ROW_H   = viewMode==='sume' ? 76 : 56
   const HDR_H   = 52
 
   return (
@@ -367,11 +367,14 @@ export default function CalendarPage() {
                           return(
                             <div data-rez="1"
                               onClick={e=>{e.stopPropagation();setTooltip(t=>t?.rez.id===r.id?null:{rez:r,x:e.clientX,y:e.clientY})}}
-                              style={{ position:'absolute', top:8, bottom:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', alignItems:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4 }}
+                              style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4 }}
                               onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.12)')}
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
                               {viewMode==='sume'
-                                ? <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace' }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')} RON</span>
+                                ? <>
+                                    <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')} RON</span>
+                                    <span style={{ fontSize:10, color:'rgba(255,255,255,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:2 }}>{r.nr_nopti||'?'}n · {r.canal}</span>
+                                  </>
                                 : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
                               }
                             </div>
