@@ -3,7 +3,7 @@ import './globals.css'
 import Layout from '@/components/Layout'
 
 export const metadata: Metadata = {
-  title: 'XapartPro — AB Homes Iași',
+  title: 'ApartPro — AB Homes Iași',
   description: 'Platforma de administrare apartamente in regim hotelier',
   manifest: '/manifest.json',
   icons: {
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'XapartPro',
+    title: 'ApartPro',
   },
   themeColor: '#0A1628',
 }
@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="manifest" href="/manifest.json"/>
         <meta name="apple-mobile-web-app-capable" content="yes"/>
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-        <meta name="apple-mobile-web-app-title" content="ApartPro"/>
+        <meta name="apple-mobile-web-app-title" content="AB Homes"/>
         <meta name="theme-color" content="#0A1628"/>
       </head>
       <body style={{background:'#060E1A'}}>

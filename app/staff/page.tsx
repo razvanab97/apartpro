@@ -230,10 +230,13 @@ export default function StaffPage() {
               style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
               {'<'}
             </button>
-            <button onClick={()=>setData(todayStr())}
-              style={{padding:'0 12px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
-              {fmtFull(data)}
-            </button>
+            <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+              <button onClick={()=>setData(todayStr())}
+                style={{padding:'0 10px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                {fmtFull(data)}
+              </button>
+              <input type="date" value={data} onChange={e=>setData(e.target.value)} style={{position:'absolute',inset:0,opacity:0,width:'100%',height:'100%',cursor:'pointer'}}/>
+            </div>
             <button onClick={()=>setData(addDays(data,1))}
               style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
               {'>'}
