@@ -291,16 +291,12 @@ export default function DashboardPage() {
     const {data:bkSaved}=await supabase.from('setari').select('valoare').eq('cheie',bkKey).maybeSingle()
     const bkStatus=bkSaved?.valoare||(bkRez||[]).every((r:any)=>r.status_plata==='incasat')?'incasat':'urmeaza'
     setBookingWidget({net:Math.round(bkNet),count:(bkRez||[]).length,payDate:fmtD(payFriD),status:bkStatus,from:fmtD(friD),to:fmtD(thuD)})
-    // Incasari nete per apartament - luna curenta
-    const {data:rezPA}=await supabase.from('rezervari')
-      .select('suma_incasata,canal,data_checkin,data_checkout,nr_nopti,apartament:apartamente(id,nume,nota)')
-      .gte('data_checkin',`${an}-${pad(luna)}-01`)
-      .lte('data_checkin',`${an}-${pad(luna)}-30`)
-      .neq('status_rezervare','anulata')
+    // Incasari nete per apartament - calculat din rezLuna+aptData deja incarcate
+    const aptMap=Object.fromEntries((aptData||[]).map((a:any)=>[a.id,a]))
     const byApt:Record<string,{apt:any;net:number;brut:number}>={}
-    for(const r of (rezPA||[])){
-      const apt=r.apartament as any; if(!apt?.id) continue
-      const brut=Number(r.suma_incasata||0)
+    for(const r of (rezLuna||[])){
+      const apt=aptMap[r.apartament_id]; if(!apt) continue
+      const brut=proRataLuna(r)
       const canal=(r.canal||'').toLowerCase()
       const net=canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut
       if(!byApt[apt.id]) byApt[apt.id]={apt,net:0,brut:0}
