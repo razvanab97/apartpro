@@ -150,8 +150,8 @@ export default function DashboardPage() {
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
     const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0),
-      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0),
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0).neq('status_rezervare','anulata'),
+      supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0).neq('status_rezervare','anulata'),
     ])
     setCoAziCur(coCur0||[])
     setCiAziCur(ciCur0||[])
@@ -173,9 +173,9 @@ export default function DashboardPage() {
       // rezervari care se suprapun cu luna curenta (checkin < sfarsit luna SI checkout > inceput luna)
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lt('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).order('data_checkin'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite

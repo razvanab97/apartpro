@@ -96,7 +96,7 @@ function TabRezervari() {
 
   async function doImport() {
     setImporting(true); let ok=0,err=0
-    for (const r of rows.filter(x=>x.valid)) {
+    for (const r of rows.filter(x=>x.valid && x.status_rezervare!=='anulata')) {
       const {error} = await supabase.from('rezervari').insert({ apartament_id:r.apartament_id||null, canal:r.canal, nume_client:r.nume_client, data_checkin:r.data_checkin, data_checkout:r.data_checkout, nr_persoane:r.nr_persoane||1, valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata, moneda:'RON', status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare, status_decont:'nedecontat', observatii:[r.tip_camera,r.camera,r.observatii].filter(Boolean).join(' | ')||null })
       error?err++:ok++
     }
