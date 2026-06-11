@@ -224,11 +224,13 @@ export default function DashboardPage() {
     const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
     const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
     const com=Math.round(comAirbnb+comBooking+comDirect)
-    // Filtrat: checkin in luna curenta (ca 5starDesk), suma directa, minus CG40+VM07
-    const rezCI=(rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna)
-    const netR=(r:any)=>{const b=Number(r.suma_incasata||0);const c=(r.canal||'').toLowerCase();return c==='airbnb'?b*0.85*(1-0.21*0.15):c==='booking'?b*0.83*(1-0.21*0.17):b}
-    const filtBrut=Math.round(rezCI.filter((r:any)=>!idsComision.has(r.apartament_id)).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0))
-    const filtNet=Math.round(rezCI.filter((r:any)=>!idsComision.has(r.apartament_id)).reduce((s:number,r:any)=>s+netR(r),0))
+    // Filtrat: identic cu Calendar Sume (pro-rata overlap), minus CG40+VM07
+    const rezFiltrate=(rezLuna||[]).filter((r:any)=>!idsComision.has(r.apartament_id))
+    const filtBrut=Math.round(rezFiltrate.reduce((s:number,r:any)=>s+proRataLuna(r),0))
+    const filtNet=Math.round(rezFiltrate.reduce((s:number,r:any)=>{
+      const b=proRataLuna(r);const c=(r.canal||'').toLowerCase()
+      return c==='airbnb'?s+b*0.85*(1-0.21*0.15):c==='booking'?s+b*0.83*(1-0.21*0.17):s+b
+    },0))
     // Grad ocupare lunar: nopti ocupate / (apartamente_cu_rezervari_in_luna * zile_luna)
     // Identic cu 5starDesk: doar apartamentele care au cel putin o rezervare in luna
     const zileLuna = new Date(an, luna, 0).getDate()
