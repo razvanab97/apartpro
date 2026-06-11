@@ -132,6 +132,7 @@ export default function DashboardPage() {
   const [preturiLive,setPreturiLive]=useState<{id:string;nume:string;booking:number|null;airbnb:number|null;updatedAt:string}[]>([])
   const [loadingPreturi,setLoadingPreturi]=useState(false)
   const [perAptIncome,setPerAptIncome]=useState<{apt:any;net:number;brut:number}[]>([])
+  const [rezLunaDsp,setRezLunaDsp]=useState<any[]>([])
   const [preturiData,setPreturiData]=useState('')
   const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
@@ -310,6 +311,8 @@ export default function DashboardPage() {
     }
     const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
     setPerAptIncome(perApt)
+    // Rezervari luna pentru tabelul de verificare (checkin in luna curenta, sortate cronologic)
+    setRezLunaDsp((rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
     setLoading(false)
   }
 
@@ -999,6 +1002,66 @@ export default function DashboardPage() {
           </div>
         </div>
 
+
+        {/* TABEL VERIFICARE CALCUL INCASARI */}
+        {rezLunaDsp.length>0&&(()=>{
+          const aptM=Object.fromEntries(apts.map((a:any)=>[a.id,a]))
+          const isExcl=(id:string)=>{const a=aptM[id];return a?.nota==='CG40'||a?.nota==='VM07'}
+          const totVerde=Math.round(rezLunaDsp.filter(r=>!isExcl(r.apartament_id)).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0))
+          const totExcl=Math.round(rezLunaDsp.filter(r=>isExcl(r.apartament_id)).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0))
+          const thS:React.CSSProperties={padding:'6px 10px',textAlign:'left',fontSize:9,fontWeight:600,color:'rgba(159,215,255,0.35)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid rgba(159,215,255,0.08)',whiteSpace:'nowrap'}
+          const tdS:React.CSSProperties={padding:'7px 10px',fontSize:11,borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap'}
+          return(
+            <div style={{...panel,marginTop:8}}>
+              <div style={panelHdr}>
+                <span style={panelTitle}>Rezervări {lunaLabel} — verificare calcul</span>
+                <span style={{fontSize:10,color:'rgba(159,215,255,0.35)',fontFamily:'monospace'}}>{rezLunaDsp.length} rez. cu checkin în lună</span>
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <thead><tr>
+                    {['APT','CI','CO','NOPȚI','SUMĂ BRUTĂ','CANAL','FILTRAT'].map(h=><th key={h} style={thS}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {rezLunaDsp.map((r:any,i:number)=>{
+                      const apt=aptM[r.apartament_id]
+                      const excl=isExcl(r.apartament_id)
+                      const nopti=r.nr_nopti||Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
+                      return(
+                        <tr key={r.id||i} style={{opacity:excl?0.45:1}}>
+                          <td style={{...tdS,fontWeight:700,color:excl?'#F87171':'#4ADE80',fontFamily:'monospace'}}>{apt?.nota||'—'}</td>
+                          <td style={{...tdS,color:'rgba(214,228,244,0.6)',fontFamily:'monospace'}}>{r.data_checkin?.slice(5)}</td>
+                          <td style={{...tdS,color:'rgba(214,228,244,0.6)',fontFamily:'monospace'}}>{r.data_checkout?.slice(5)}</td>
+                          <td style={{...tdS,color:'rgba(214,228,244,0.5)',fontFamily:'monospace',textAlign:'center' as const}}>{nopti}</td>
+                          <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:excl?'#F87171':'#4ADE80'}}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')}</td>
+                          <td style={tdS}><CanalBadge canal={r.canal}/></td>
+                          <td style={{...tdS,fontSize:9,fontWeight:600,color:excl?'#F87171':'#4ADE80'}}>{excl?'EXCLUS':'VERDE'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{borderTop:'1px solid rgba(74,222,128,0.25)'}}>
+                      <td colSpan={4} style={{...tdS,fontWeight:700,color:'#4ADE80'}}>TOTAL VERDE (filtrat)</td>
+                      <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',fontSize:13}}>{totVerde.toLocaleString('ro-RO')}</td>
+                      <td colSpan={2} style={tdS}/>
+                    </tr>
+                    <tr>
+                      <td colSpan={4} style={{...tdS,fontWeight:600,color:'#F87171'}}>Total CG40+VM07 (exclus)</td>
+                      <td style={{...tdS,fontWeight:600,fontFamily:'monospace',color:'#F87171'}}>{totExcl.toLocaleString('ro-RO')}</td>
+                      <td colSpan={2} style={tdS}/>
+                    </tr>
+                    <tr style={{borderTop:'1px solid rgba(159,215,255,0.12)'}}>
+                      <td colSpan={4} style={{...tdS,fontWeight:700,color:'rgba(214,228,244,0.8)'}}>TOTAL ALL</td>
+                      <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:'rgba(214,228,244,0.8)',fontSize:13}}>{(totVerde+totExcl).toLocaleString('ro-RO')}</td>
+                      <td colSpan={2} style={tdS}/>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
 
       </div>
     </>
