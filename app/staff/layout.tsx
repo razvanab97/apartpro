@@ -4,6 +4,13 @@ export const metadata: Metadata = {
   title: 'AB Homes Staff',
   description: 'Curățenie & Pregătire',
   manifest: '/manifest-staff.json',
+  icons: {
+    icon: [
+      { url: '/favicon-staff.svg', type: 'image/svg+xml' },
+      { url: '/favicon-staff.png', sizes: '180x180', type: 'image/png' },
+    ],
+    shortcut: '/favicon-staff.svg',
+  },
 }
 
 export const viewport: Viewport = {
