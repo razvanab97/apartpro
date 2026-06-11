@@ -239,21 +239,6 @@ export default function DashboardPage() {
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
-    // Per-apartament net income pentru luna curenta
-    const EXCLUSE_NOTA=new Set(['CG40','VM07'])
-    const EXCLUSE_NUME=['cherry','comfy']
-    const perApt=(aptData||[]).map((apt:any)=>{
-      const rezApt=(rezLuna||[]).filter((r:any)=>r.apartament_id===apt.id)
-      const brut=rezApt.reduce((s:number,r:any)=>s+proRataLuna(r),0)
-      const net=rezApt.reduce((s:number,r:any)=>{
-        const b=proRataLuna(r); const canal=(r.canal||'').toLowerCase()
-        if(canal==='airbnb') return s+b*0.85*(1-0.21*0.15)
-        if(canal==='booking') return s+b*0.83*(1-0.21*0.17)
-        return s+b
-      },0)
-      return {apt,net:Math.round(net),brut:Math.round(brut)}
-    }).filter((x:any)=>x.net>0).sort((a:any,b:any)=>b.net-a.net)
-    setPerAptIncome(perApt)
     setCheckinAzi(ciAzi||[])
     setCheckoutAzi(coAzi||[])
     setRezervariRecente(recente||[])
@@ -306,6 +291,24 @@ export default function DashboardPage() {
     const {data:bkSaved}=await supabase.from('setari').select('valoare').eq('cheie',bkKey).maybeSingle()
     const bkStatus=bkSaved?.valoare||(bkRez||[]).every((r:any)=>r.status_plata==='incasat')?'incasat':'urmeaza'
     setBookingWidget({net:Math.round(bkNet),count:(bkRez||[]).length,payDate:fmtD(payFriD),status:bkStatus,from:fmtD(friD),to:fmtD(thuD)})
+    // Incasari nete per apartament - luna curenta
+    const {data:rezPA}=await supabase.from('rezervari')
+      .select('suma_incasata,canal,data_checkin,data_checkout,nr_nopti,apartament:apartamente(id,nume,nota)')
+      .gte('data_checkin',`${an}-${pad(luna)}-01`)
+      .lte('data_checkin',`${an}-${pad(luna)}-30`)
+      .neq('status_rezervare','anulata')
+    const byApt:Record<string,{apt:any;net:number;brut:number}>={}
+    for(const r of (rezPA||[])){
+      const apt=r.apartament as any; if(!apt?.id) continue
+      const brut=Number(r.suma_incasata||0)
+      const canal=(r.canal||'').toLowerCase()
+      const net=canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut
+      if(!byApt[apt.id]) byApt[apt.id]={apt,net:0,brut:0}
+      byApt[apt.id].net+=net
+      byApt[apt.id].brut+=brut
+    }
+    const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
+    setPerAptIncome(perApt)
     setLoading(false)
   }
 
@@ -551,8 +554,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ══ INCASARI NETE PER LOCATIE ══ */}
-        {perAptIncome.length>0&&(
-          <div style={panel}>
+        <div style={panel}>
             <div style={panelHdr}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <TrendingUp size={12} color="#4ADE80"/>
@@ -561,22 +563,24 @@ export default function DashboardPage() {
               <span style={{fontSize:10,fontWeight:600,color:'#4ADE80',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{perAptIncome.length} locații</span>
             </div>
             <div style={{padding:'8px 10px',display:'flex',flexWrap:'wrap',gap:6}}>
-              {perAptIncome.map(({apt,net})=>{
-                const verde=isAptVerde(apt)
-                const color=verde?'#4ADE80':'#FB923C'
-                const bg=verde?'rgba(74,222,128,0.07)':'rgba(251,146,60,0.07)'
-                const border=verde?'rgba(74,222,128,0.2)':'rgba(251,146,60,0.2)'
-                return(
-                  <div key={apt.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',background:bg,border:`1px solid ${border}`,borderRadius:8}}>
-                    {apt.nota&&<span style={{fontSize:10,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
-                    <span style={{fontSize:11,color:'rgba(214,228,244,0.75)',flexShrink:0}}>{apt.nume}</span>
-                    <span style={{fontSize:13,fontWeight:700,color,fontFamily:'monospace',flexShrink:0}}>{net.toLocaleString('ro-RO')} <span style={{fontSize:9,fontWeight:400,color:'rgba(159,215,255,0.4)'}}>RON</span></span>
-                  </div>
-                )
-              })}
+              {perAptIncome.length===0
+                ?<div style={{padding:'12px 4px',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Nicio încasare înregistrată pentru luna curentă</div>
+                :perAptIncome.map(({apt,net})=>{
+                  const verde=isAptVerde(apt)
+                  const color=verde?'#4ADE80':'#FB923C'
+                  const bg=verde?'rgba(74,222,128,0.07)':'rgba(251,146,60,0.07)'
+                  const border=verde?'rgba(74,222,128,0.2)':'rgba(251,146,60,0.2)'
+                  return(
+                    <div key={apt.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',background:bg,border:`1px solid ${border}`,borderRadius:8}}>
+                      {apt.nota&&<span style={{fontSize:10,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                      <span style={{fontSize:11,color:'rgba(214,228,244,0.75)',flexShrink:0}}>{apt.nume}</span>
+                      <span style={{fontSize:13,fontWeight:700,color,fontFamily:'monospace',flexShrink:0}}>{net.toLocaleString('ro-RO')} <span style={{fontSize:9,fontWeight:400,color:'rgba(159,215,255,0.4)'}}>RON</span></span>
+                    </div>
+                  )
+                })
+              }
             </div>
           </div>
-        )}
 
         {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
