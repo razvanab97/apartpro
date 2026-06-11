@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
@@ -137,7 +137,7 @@ export default function PreturiPage() {
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
-  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'>('preturi')
+  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'|'strategie'>('preturi')
   const [evolutieData, setEvolutieData] = useState<any[]>([])
   const [loadingEvolutie, setLoadingEvolutie] = useState(false)
   const [compareDate1, setCompareDate1] = useState('')
@@ -146,6 +146,25 @@ export default function PreturiPage() {
   const [commandCopied, setCommandCopied] = useState(false)
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
+
+  // --- TAB STRATEGIE ---
+  const [stratRezervari, setStratRezervari] = useState<any[]>([])
+  const [loadingStrat, setLoadingStrat] = useState(false)
+  const [stratLoaded, setStratLoaded] = useState(false)
+  const [stratSection, setStratSection] = useState<'performanta'|'sezonalitate'|'reguli'>('performanta')
+  const [sortCol, setSortCol] = useState('luna')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+  const [stratAptFilter, setStratAptFilter] = useState('')
+  const [reguli, setReguli] = useState<any[]>([])
+  const [showFormRegula, setShowFormRegula] = useState(false)
+  const [editingRegula, setEditingRegula] = useState<any|null>(null)
+  const [regulaForm, setRegulaForm] = useState({
+    apartament_id:'', denumire:'', tip:'weekend' as 'weekend'|'sezon'|'avans'|'ocupare',
+    luna_start:'6', luna_end:'8', zile_inainte_max:'3', ocupare_min:'80',
+    ajustare_tip:'procent' as 'procent'|'fix', ajustare_valoare:'', prioritate:'0', activ:true
+  })
+  const [savingRegula, setSavingRegula] = useState(false)
+  const [deletingRegula, setDeletingRegula] = useState<string|null>(null)
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
@@ -170,6 +189,24 @@ export default function PreturiPage() {
     setLoadingEvolutie(false)
   }
 
+  async function loadReguli() {
+    const { data } = await supabase.from('reguli_preturi').select('*').order('prioritate',{ascending:true})
+    setReguli(data || [])
+  }
+
+  async function loadStrategie() {
+    setLoadingStrat(true)
+    const ago12 = new Date(); ago12.setMonth(ago12.getMonth()-12)
+    const dateStart = fmt(ago12)
+    const { data: rez } = await supabase.from('rezervari')
+      .select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,status_rezervare')
+      .gte('data_checkin', dateStart).neq('status_rezervare','anulata')
+      .order('data_checkin',{ascending:true})
+    setStratRezervari(rez || [])
+    setStratLoaded(true)
+    setLoadingStrat(false)
+  }
+
   async function loadHistory(selectLatestPeriod = false) {
     setLoadingHistory(true)
     const {data} = await supabase.from('booking_monitor_history')
@@ -190,7 +227,7 @@ export default function PreturiPage() {
     setCheckinMonitor(ci); setCheckoutMonitor(fmt(d))
     setScanDayMonitor(today)
     supabase.from('apartamente')
-      .select('id,nota,link_booking,link_airbnb,booking_links,airbnb_links')
+      .select('id,nota,pret_standard,link_booking,link_airbnb,booking_links,airbnb_links')
       .eq('status','activ').order('nota')
       .then(async ({ data }) => {
         const list = (data||[]).map((apt:any) => {
@@ -213,8 +250,13 @@ export default function PreturiPage() {
       })
     loadHistory(true)
     loadEvolutie()
+    loadReguli()
     return () => { if(pollRef.current) clearInterval(pollRef.current) }
   }, [])
+
+  useEffect(() => {
+    if (mainTab === 'strategie' && !stratLoaded) loadStrategie()
+  }, [mainTab])
 
   async function loadOcupate(data:string, ids:string[]) {
     const {data:rez} = await supabase.from('rezervari').select('apartament_id')
@@ -384,6 +426,112 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     } catch {}
   }
 
+  // ── Calcule strategie ──
+  function calcPerformanta() {
+    const by: Record<string,{nopti:number;suma:number;zileLuna:number}> = {}
+    for (const r of stratRezervari) {
+      const brut = Number(r.suma_incasata||0)
+      const totalN = Number(r.nr_nopti)||Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
+      if (!totalN||!brut) continue
+      const bpz = brut/totalN
+      const dtIn = new Date(r.data_checkin+'T12:00:00'), dtOut = new Date(r.data_checkout+'T12:00:00')
+      const dt = new Date(dtIn)
+      while(dt<dtOut){
+        const y=dt.getFullYear(),m=dt.getMonth()
+        const k=`${r.apartament_id}_${y}-${String(m+1).padStart(2,'0')}`
+        const zl=new Date(y,m+1,0).getDate()
+        if(!by[k]) by[k]={nopti:0,suma:0,zileLuna:zl}
+        by[k].nopti++; by[k].suma+=bpz
+        dt.setDate(dt.getDate()+1)
+      }
+    }
+    return Object.entries(by).map(([k,v])=>{
+      const sep=k.indexOf('_'), aptId=k.slice(0,sep), luna=k.slice(sep+1)
+      const apt=apts.find((a:any)=>a.id===aptId)
+      const adr=v.nopti>0?Math.round(v.suma/v.nopti):0
+      const ocupare=Math.round(v.nopti/v.zileLuna*100)
+      const revpar=Math.round(v.suma/v.zileLuna)
+      return {aptId,aptNota:apt?.nota||aptId.slice(0,6),luna,nopti:v.nopti,suma:Math.round(v.suma),adr,ocupare,revpar}
+    }).sort((a,b)=>a.luna<b.luna?-1:a.luna>b.luna?1:a.aptNota<b.aptNota?-1:1)
+  }
+
+  function calcSezonalitate() {
+    const perL:Record<number,{n:number;s:number}> = {}, perZ:Record<number,{n:number;s:number}> = {}
+    for (const r of stratRezervari) {
+      const brut=Number(r.suma_incasata||0)
+      const totalN=Number(r.nr_nopti)||Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
+      if(!totalN||!brut) continue
+      const bpz=brut/totalN
+      const dtIn=new Date(r.data_checkin+'T12:00:00'),dtOut=new Date(r.data_checkout+'T12:00:00')
+      const dt=new Date(dtIn)
+      while(dt<dtOut){
+        const l=dt.getMonth()+1, z=dt.getDay()
+        if(!perL[l]) perL[l]={n:0,s:0}; perL[l].n++; perL[l].s+=bpz
+        if(!perZ[z]) perZ[z]={n:0,s:0}; perZ[z].n++; perZ[z].s+=bpz
+        dt.setDate(dt.getDate()+1)
+      }
+    }
+    const LN=['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
+    const luniData=Array.from({length:12},(_,i)=>{const l=perL[i+1]||{n:0,s:0};return{luna:i+1,numeScurt:LN[i],nopti:l.n,adr:l.n>0?Math.round(l.s/l.n):0}})
+    const ZN=['Lun','Mar','Mie','Joi','Vin','Sâm','Dum']
+    const ziSaptData=[1,2,3,4,5,6,0].map((z,i)=>{const d=perZ[z]||{n:0,s:0};return{zi:z,numeScurt:ZN[i],nopti:d.n,adr:d.n>0?Math.round(d.s/d.n):0,isWeekend:z===5||z===6}})
+    return {luniData,ziSaptData}
+  }
+
+  function calcSugestie(apt:any,date:string):{pret:number;reguleAplicate:string[]} {
+    const base=Number(apt.pret_standard||0)
+    if(!base||!reguli.length) return {pret:0,reguleAplicate:[]}
+    const d=new Date(date+'T12:00:00'), ziSapt=d.getDay(), luna=d.getMonth()+1
+    const zilePana=Math.ceil((d.getTime()-new Date().getTime())/86400000)
+    let pret=base; const ra:string[]=[]
+    const active=reguli.filter(r=>r.activ&&(!r.apartament_id||r.apartament_id===apt.id)).sort((a,b)=>a.prioritate-b.prioritate)
+    for(const r of active){
+      let ok=false
+      if(r.tip==='weekend') ok=ziSapt===5||ziSapt===6
+      else if(r.tip==='sezon') ok=luna>=(r.conditii?.luna_start??1)&&luna<=(r.conditii?.luna_end??12)
+      else if(r.tip==='avans') ok=zilePana>=0&&zilePana<=(r.conditii?.zile_inainte_max??3)
+      else if(r.tip==='ocupare'){
+        const lc=new Date().getMonth()+1,ac=new Date().getFullYear()
+        const zl=new Date(ac,lc,0).getDate()
+        const primaLuna=new Date(ac,lc-1,1),nextLuna=new Date(ac,lc,1)
+        const nocc=stratRezervari.filter(rv=>rv.apartament_id===apt.id).reduce((acc,rv)=>{
+          const si=new Date(rv.data_checkin+'T12:00:00'),so=new Date(rv.data_checkout+'T12:00:00')
+          const s=si>primaLuna?si:primaLuna,e=so<nextLuna?so:nextLuna
+          return acc+Math.max(0,Math.round((e.getTime()-s.getTime())/86400000))
+        },0)
+        ok=Math.round(nocc/zl*100)>=(r.conditii?.ocupare_min??80)
+      }
+      if(ok){pret=r.ajustare_tip==='procent'?pret*(1+r.ajustare_valoare/100):pret+r.ajustare_valoare;ra.push(r.denumire)}
+    }
+    return {pret:Math.round(pret),reguleAplicate:ra}
+  }
+
+  async function saveRegula(){
+    if(!regulaForm.denumire.trim()||!regulaForm.ajustare_valoare) return
+    setSavingRegula(true)
+    const cond:Record<string,any>={}
+    if(regulaForm.tip==='sezon'){cond.luna_start=parseInt(regulaForm.luna_start);cond.luna_end=parseInt(regulaForm.luna_end)}
+    else if(regulaForm.tip==='avans') cond.zile_inainte_max=parseInt(regulaForm.zile_inainte_max)
+    else if(regulaForm.tip==='ocupare') cond.ocupare_min=parseInt(regulaForm.ocupare_min)
+    const payload={apartament_id:regulaForm.apartament_id||null,denumire:regulaForm.denumire.trim(),tip:regulaForm.tip,conditii:cond,ajustare_tip:regulaForm.ajustare_tip,ajustare_valoare:parseFloat(regulaForm.ajustare_valoare),prioritate:parseInt(regulaForm.prioritate),activ:regulaForm.activ}
+    if(editingRegula) await supabase.from('reguli_preturi').update(payload).eq('id',editingRegula.id)
+    else await supabase.from('reguli_preturi').insert(payload)
+    setSavingRegula(false);setShowFormRegula(false);setEditingRegula(null)
+    await loadReguli()
+    show('success',editingRegula?'Regulă actualizată!':'Regulă salvată!')
+  }
+
+  async function deleteRegula(id:string){
+    setDeletingRegula(id)
+    await supabase.from('reguli_preturi').delete().eq('id',id)
+    setDeletingRegula(null);setReguli(prev=>prev.filter(r=>r.id!==id))
+  }
+
+  async function toggleRegula(id:string,activ:boolean){
+    await supabase.from('reguli_preturi').update({activ}).eq('id',id)
+    setReguli(prev=>prev.map(r=>r.id===id?{...r,activ}:r))
+  }
+
   const panel:React.CSSProperties = {
     background:'rgba(214,228,244,0.05)',border:'1px solid rgba(159,215,255,0.1)',
     borderRadius:14,overflow:'hidden',marginBottom:14,
@@ -402,8 +550,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     <>
       <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb"/>
       <div style={{display:'flex',gap:0,borderBottom:'1px solid rgba(159,215,255,0.1)',background:'rgba(10,20,40,0.5)'}}>
-        {(['preturi','monitor','decizii','evolutie'] as const).map((tab)=>{
-          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',decizii:'🧠 Decizii',evolutie:'📈 Evoluție'}
+        {(['preturi','monitor','decizii','evolutie','strategie'] as const).map((tab)=>{
+          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',decizii:'🧠 Decizii',evolutie:'📈 Evoluție',strategie:'📊 Strategie'}
           return(
             <button key={tab} onClick={()=>setMainTab(tab)} style={{
               padding:'10px 18px',fontSize:12,fontWeight:600,cursor:'pointer',
@@ -481,6 +629,17 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                     :`Ab +${parseInt(preturi[apt.id].airbnb)-parseInt(preturi[apt.id].booking)}`}
                 </div>
               )}
+              {(()=>{
+                if(!dataSelectata||!reguli.length) return null
+                const sug=calcSugestie(apt,dataSelectata)
+                if(!sug.pret) return null
+                return(
+                  <span title={sug.reguleAplicate.length?`Reguli: ${sug.reguleAplicate.join(', ')}`:'Bazat pe prețul standard'}
+                    style={{fontSize:10,color:'#FCD34D',cursor:'help',flexShrink:0,fontFamily:'monospace'}}>
+                    💡 {sug.pret} RON
+                  </span>
+                )
+              })()}
               <button onClick={()=>savePret(apt.id,dataSelectata)} disabled={saving===apt.id} style={{
                 marginLeft:'auto',padding:'4px 14px',borderRadius:6,fontSize:11,cursor:'pointer',
                 border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',
@@ -1137,6 +1296,359 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                   )
                 })}
               </div>
+            </div>
+          )
+        })()}
+
+        {mainTab==='strategie'&&(()=>{
+          const perfData=calcPerformanta()
+          const {luniData,ziSaptData}=calcSezonalitate()
+          const filteredPerf=stratAptFilter?perfData.filter(r=>r.aptId===stratAptFilter):perfData
+          const sortedPerf=[...filteredPerf].sort((a,b)=>{
+            const va=(a as any)[sortCol],vb=(b as any)[sortCol]
+            if(va<vb) return sortDir==='asc'?-1:1
+            if(va>vb) return sortDir==='asc'?1:-1
+            return 0
+          })
+          const bestOcupare=[...perfData].sort((a,b)=>b.ocupare-a.ocupare)[0]
+          const lowestADR=[...perfData].filter(r=>r.adr>0).sort((a,b)=>a.adr-b.adr)[0]
+          const bestRevpar=[...perfData].sort((a,b)=>b.revpar-a.revpar)[0]
+          const trendAptId=stratAptFilter||(apts[0]?.id||'')
+          const trendData=perfData.filter(r=>r.aptId===trendAptId).map(r=>({luna:r.luna.slice(5),adr:r.adr}))
+          const maxNopti=Math.max(...luniData.map(d=>d.nopti),1)
+
+          return(
+            <div>
+              {/* Sub-section tabs */}
+              <div style={{display:'flex',gap:0,marginBottom:14,borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
+                {(['performanta','sezonalitate','reguli'] as const).map(s=>{
+                  const lbl={performanta:'📊 Performanță',sezonalitate:'🌦 Sezonalitate',reguli:'⚙️ Reguli Preț'}
+                  return(
+                    <button key={s} onClick={()=>setStratSection(s)} style={{
+                      padding:'8px 16px',fontSize:12,fontWeight:600,cursor:'pointer',
+                      border:'none',borderBottom:`2px solid ${stratSection===s?'#4ADE80':'transparent'}`,
+                      background:'transparent',color:stratSection===s?'#4ADE80':'rgba(159,215,255,0.35)',
+                    }}>{lbl[s]}</button>
+                  )
+                })}
+              </div>
+
+              {loadingStrat&&<div style={{padding:'60px',textAlign:'center',color:'rgba(147,197,253,0.3)',fontSize:13}}>Se calculează statisticile...</div>}
+
+              {/* ── PERFORMANȚĂ ── */}
+              {!loadingStrat&&stratSection==='performanta'&&(
+                <div>
+                  {perfData.length>0&&(
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+                      {bestOcupare&&(
+                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(74,222,128,0.06)',border:'1px solid rgba(74,222,128,0.15)'}}>
+                          <div style={{fontSize:9,color:'rgba(74,222,128,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cea mai bună ocupare</div>
+                          <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{bestOcupare.ocupare}%</div>
+                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestOcupare.aptNota}] · {bestOcupare.luna}</div>
+                        </div>
+                      )}
+                      {lowestADR&&(
+                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.15)'}}>
+                          <div style={{fontSize:9,color:'rgba(248,113,113,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai mic ADR</div>
+                          <div style={{fontSize:16,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{lowestADR.adr} RON</div>
+                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{lowestADR.aptNota}] · {lowestADR.luna}</div>
+                        </div>
+                      )}
+                      {bestRevpar&&(
+                        <div style={{padding:'11px 14px',borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)'}}>
+                          <div style={{fontSize:9,color:'rgba(77,163,255,0.5)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:4}}>Cel mai bun RevPAR</div>
+                          <div style={{fontSize:16,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace'}}>{bestRevpar.revpar} RON</div>
+                          <div style={{fontSize:10,color:'rgba(214,228,244,0.45)',marginTop:3}}>[{bestRevpar.aptNota}] · {bestRevpar.luna}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{display:'flex',gap:8,marginBottom:10,alignItems:'center',flexWrap:'wrap' as const}}>
+                    <select value={stratAptFilter} onChange={e=>setStratAptFilter(e.target.value)} style={{padding:'5px 8px',borderRadius:7,fontSize:12,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',color:'rgba(214,228,244,0.9)',outline:'none'}}>
+                      <option value="">Toate apartamentele</option>
+                      {apts.map((a:any)=><option key={a.id} value={a.id}>{a.nota}</option>)}
+                    </select>
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.3)'}}>{filteredPerf.length} înregistrări · ultimele 12 luni</span>
+                  </div>
+                  {perfData.length===0?(
+                    <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nu există rezervări în ultimele 12 luni</div>
+                  ):(
+                    <div style={{...panel,overflow:'auto'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
+                        <thead>
+                          <tr style={{borderBottom:'1px solid rgba(159,215,255,0.1)'}}>
+                            {([['aptNota','Apt'],['luna','Lună'],['nopti','Nopți'],['adr','ADR (RON/n)'],['ocupare','Ocupare %'],['revpar','RevPAR'],['suma','Revenue']] as [string,string][]).map(([col,label])=>(
+                              <th key={col} onClick={()=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('desc')}}}
+                                style={{padding:'8px 12px',textAlign:'left' as const,color:'rgba(147,197,253,0.55)',fontWeight:600,letterSpacing:'.05em',textTransform:'uppercase' as const,fontSize:9,cursor:'pointer',userSelect:'none' as const,whiteSpace:'nowrap' as const}}>
+                                {label}{sortCol===col?sortDir==='asc'?' ↑':' ↓':''}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedPerf.map((r,i)=>(
+                            <tr key={r.aptId+r.luna} style={{borderBottom:i<sortedPerf.length-1?'1px solid rgba(159,215,255,0.04)':'none',background:i%2===0?'rgba(255,255,255,0.01)':'transparent'}}>
+                              <td style={{padding:'7px 12px',color:'#7BC8FF',fontWeight:700,fontFamily:'monospace'}}>{r.aptNota}</td>
+                              <td style={{padding:'7px 12px',color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{r.luna}</td>
+                              <td style={{padding:'7px 12px',color:'rgba(214,228,244,0.7)',textAlign:'right' as const,fontFamily:'monospace'}}>{r.nopti}</td>
+                              <td style={{padding:'7px 12px',color:'rgba(214,228,244,0.9)',textAlign:'right' as const,fontFamily:'monospace',fontWeight:600}}>{r.adr}</td>
+                              <td style={{padding:'7px 12px',textAlign:'right' as const}}><span style={{fontFamily:'monospace',fontWeight:600,color:r.ocupare>=70?'#4ADE80':r.ocupare>=40?'#FCD34D':'#F87171'}}>{r.ocupare}%</span></td>
+                              <td style={{padding:'7px 12px',color:'rgba(147,197,253,0.7)',textAlign:'right' as const,fontFamily:'monospace'}}>{r.revpar}</td>
+                              <td style={{padding:'7px 12px',color:'rgba(214,228,244,0.5)',textAlign:'right' as const,fontFamily:'monospace'}}>{r.suma.toLocaleString('ro-RO')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {trendData.length>1&&(
+                    <div style={{...panel,marginTop:14}}>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>📈 Trend ADR</span>
+                        <select value={trendAptId} onChange={e=>setStratAptFilter(e.target.value)} style={{padding:'3px 7px',borderRadius:6,fontSize:11,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',color:'rgba(214,228,244,0.8)',outline:'none'}}>
+                          {apts.map((a:any)=><option key={a.id} value={a.id}>{a.nota}</option>)}
+                        </select>
+                      </div>
+                      <div style={{padding:'12px 4px',height:180}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={trendData} margin={{top:4,right:16,left:0,bottom:4}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.1)"/>
+                            <XAxis dataKey="luna" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                            <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={36}/>
+                            <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}}
+                              formatter={(v:any)=>[`${v} RON/noapte`,'ADR'] as [string,string]}/>
+                            <Line type="monotone" dataKey="adr" stroke="#4ADE80" strokeWidth={2} dot={{fill:'#4ADE80',r:3}}/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── SEZONALITATE ── */}
+              {!loadingStrat&&stratSection==='sezonalitate'&&(
+                <div>
+                  {stratRezervari.length===0?(
+                    <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>Nu există date suficiente</div>
+                  ):(()=>{
+                    const top3=[...luniData].sort((a,b)=>b.nopti-a.nopti).slice(0,3).filter(l=>l.nopti>0)
+                    const wdAvg=avg(ziSaptData.filter(d=>!d.isWeekend&&d.nopti>0).map(d=>d.adr))
+                    const weAvg=avg(ziSaptData.filter(d=>d.isWeekend&&d.nopti>0).map(d=>d.adr))
+                    const diff=Math.round(weAvg-wdAvg)
+                    return(
+                      <>
+                        {top3.length>0&&(
+                          <div style={{padding:'10px 14px',borderRadius:9,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)',marginBottom:14,fontSize:12,color:'rgba(214,228,244,0.7)',lineHeight:1.8}}>
+                            <strong style={{color:'#7BC8FF'}}>Luni de vârf:</strong>{' '}{top3.map(l=>l.numeScurt).join(' › ')}
+                            {diff>0&&<>{' · '}<strong style={{color:'#FCD34D'}}>Weekend premium:</strong>{' '}+{diff} RON/noapte față de zile de lucru</>}
+                            {diff<0&&<>{' · '}<strong style={{color:'#F87171'}}>Weekdays mai buni:</strong>{' '}{Math.abs(diff)} RON/noapte peste weekend</>}
+                          </div>
+                        )}
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+                          <div style={{...panel}}>
+                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>Nopți ocupate per lună</div>
+                            <div style={{padding:'12px 4px',height:210}}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={luniData} margin={{top:4,right:8,left:0,bottom:4}}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
+                                  <XAxis dataKey="numeScurt" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                                  <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={30}/>
+                                  <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}} formatter={(v:any)=>[`${v} nopți`,'Nopți'] as [string,string]}/>
+                                  <Bar dataKey="nopti" radius={[4,4,0,0]}>
+                                    {luniData.map((e,i)=><Cell key={i} fill={e.nopti>=maxNopti*0.75?'#4ADE80':e.nopti>=maxNopti*0.4?'#FCD34D':'rgba(99,179,237,0.45)'}/>)}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                          <div style={{...panel}}>
+                            <div style={{padding:'8px 14px',borderBottom:'1px solid rgba(159,215,255,0.08)',fontSize:11,fontWeight:600,color:'rgba(147,197,253,0.6)'}}>ADR mediu per zi</div>
+                            <div style={{padding:'12px 4px',height:210}}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={ziSaptData} margin={{top:4,right:8,left:0,bottom:4}}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.08)" vertical={false}/>
+                                  <XAxis dataKey="numeScurt" tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false}/>
+                                  <YAxis tick={{fill:'rgba(147,197,253,0.5)',fontSize:10}} axisLine={false} tickLine={false} width={36}/>
+                                  <Tooltip contentStyle={{background:'rgba(10,20,40,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:8,fontSize:11}} formatter={(v:any)=>[`${v} RON/n`,'ADR'] as [string,string]}/>
+                                  <Bar dataKey="adr" radius={[4,4,0,0]}>
+                                    {ziSaptData.map((e,i)=><Cell key={i} fill={e.isWeekend?'#FCD34D':'rgba(99,179,237,0.55)'}/>)}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+
+              {/* ── REGULI PREȚ ── */}
+              {stratSection==='reguli'&&(
+                <div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                    <div>
+                      <span style={{fontSize:13,fontWeight:600,color:'rgba(214,228,244,0.8)'}}>Reguli de preț</span>
+                      <span style={{fontSize:10,color:'rgba(159,215,255,0.3)',marginLeft:8}}>{reguli.length} reguli definite</span>
+                    </div>
+                    <button onClick={()=>{
+                      setEditingRegula(null)
+                      setRegulaForm({apartament_id:'',denumire:'',tip:'weekend',luna_start:'6',luna_end:'8',zile_inainte_max:'3',ocupare_min:'80',ajustare_tip:'procent',ajustare_valoare:'',prioritate:'0',activ:true})
+                      setShowFormRegula(v=>!v)
+                    }} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 14px',borderRadius:7,border:'1px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>+ Adaugă Regulă</button>
+                  </div>
+
+                  {showFormRegula&&(
+                    <div style={{...panel,padding:'14px 16px',marginBottom:14,border:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.02)'}}>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Denumire *</div>
+                          <input value={regulaForm.denumire} onChange={e=>setRegulaForm(f=>({...f,denumire:e.target.value}))} placeholder="ex. Weekend +15%"
+                            style={{width:'100%',padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Apartament</div>
+                          <select value={regulaForm.apartament_id} onChange={e=>setRegulaForm(f=>({...f,apartament_id:e.target.value}))}
+                            style={{width:'100%',padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}>
+                            <option value="">Toate apartamentele</option>
+                            {apts.map((a:any)=><option key={a.id} value={a.id}>{a.nota}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Tip regulă</div>
+                          <select value={regulaForm.tip} onChange={e=>setRegulaForm(f=>({...f,tip:e.target.value as any}))}
+                            style={{width:'100%',padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}>
+                            <option value="weekend">Weekend (Vin + Sâm)</option>
+                            <option value="sezon">Sezon (interval luni)</option>
+                            <option value="avans">Avans mic (last-minute)</option>
+                            <option value="ocupare">Ocupare ridicată</option>
+                          </select>
+                        </div>
+                        <div>
+                          {regulaForm.tip==='sezon'&&(
+                            <div style={{display:'flex',gap:6,alignItems:'flex-end'}}>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună start</div>
+                                <input type="number" min={1} max={12} value={regulaForm.luna_start} onChange={e=>setRegulaForm(f=>({...f,luna_start:e.target.value}))}
+                                  style={{width:'100%',padding:'6px 8px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+                              </div>
+                              <span style={{fontSize:11,color:'rgba(159,215,255,0.3)',paddingBottom:8}}>→</span>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună end</div>
+                                <input type="number" min={1} max={12} value={regulaForm.luna_end} onChange={e=>setRegulaForm(f=>({...f,luna_end:e.target.value}))}
+                                  style={{width:'100%',padding:'6px 8px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+                              </div>
+                            </div>
+                          )}
+                          {regulaForm.tip==='avans'&&(
+                            <div>
+                              <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Max zile înainte check-in</div>
+                              <input type="number" min={0} max={30} value={regulaForm.zile_inainte_max} onChange={e=>setRegulaForm(f=>({...f,zile_inainte_max:e.target.value}))}
+                                style={{width:'100%',padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+                            </div>
+                          )}
+                          {regulaForm.tip==='ocupare'&&(
+                            <div>
+                              <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Ocupare min (%)</div>
+                              <input type="number" min={0} max={100} value={regulaForm.ocupare_min} onChange={e=>setRegulaForm(f=>({...f,ocupare_min:e.target.value}))}
+                                style={{width:'100%',padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'}}/>
+                            </div>
+                          )}
+                          {regulaForm.tip==='weekend'&&(
+                            <div style={{padding:'6px 10px',borderRadius:7,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.12)',fontSize:11,color:'rgba(147,197,253,0.5)',marginTop:16}}>Se aplică automat vineri și sâmbătă</div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{display:'flex',gap:10,alignItems:'flex-end',flexWrap:'wrap' as const,marginBottom:10}}>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Tip ajustare</div>
+                          <div style={{display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(77,163,255,0.25)'}}>
+                            {(['procent','fix'] as const).map(t=>(
+                              <button key={t} onClick={()=>setRegulaForm(f=>({...f,ajustare_tip:t}))} style={{padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',background:regulaForm.ajustare_tip===t?'rgba(77,163,255,0.35)':'transparent',color:regulaForm.ajustare_tip===t?'#7BC8FF':'rgba(159,215,255,0.4)'}}>{t==='procent'?'%':'RON'}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Valoare ({regulaForm.ajustare_tip==='procent'?'%':'RON'})</div>
+                          <input type="number" value={regulaForm.ajustare_valoare} onChange={e=>setRegulaForm(f=>({...f,ajustare_valoare:e.target.value}))} placeholder="+15 sau -10"
+                            style={{width:100,padding:'6px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none',fontFamily:'monospace'}}/>
+                        </div>
+                        <div>
+                          <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Prioritate</div>
+                          <input type="number" min={0} value={regulaForm.prioritate} onChange={e=>setRegulaForm(f=>({...f,prioritate:e.target.value}))}
+                            style={{width:60,padding:'6px 8px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none',fontFamily:'monospace'}}/>
+                        </div>
+                        <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
+                          <button onClick={saveRegula} disabled={savingRegula||!regulaForm.denumire.trim()||!regulaForm.ajustare_valoare}
+                            style={{padding:'6px 18px',borderRadius:7,border:'none',background:'rgba(74,222,128,0.8)',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',opacity:savingRegula||!regulaForm.denumire.trim()||!regulaForm.ajustare_valoare?0.5:1}}>
+                            {savingRegula?'...':'Salvează'}
+                          </button>
+                          <button onClick={()=>{setShowFormRegula(false);setEditingRegula(null)}}
+                            style={{padding:'6px 12px',borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:12,cursor:'pointer'}}>Anulează</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {reguli.length===0&&!showFormRegula&&(
+                    <div style={{padding:'40px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+                      Nicio regulă definită. Adaugă o regulă pentru a genera sugestii de preț automate.
+                    </div>
+                  )}
+
+                  {reguli.length>0&&(
+                    <div style={{...panel}}>
+                      <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
+                        <thead>
+                          <tr style={{borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
+                            {['','Denumire','Tip','Condiție','Ajustare','Apt',''].map((h,i)=>(
+                              <th key={i} style={{padding:'7px 10px',textAlign:'left' as const,fontSize:9,color:'rgba(147,197,253,0.4)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reguli.map((r,i)=>{
+                            const condText=r.tip==='weekend'?'Vin + Sâm':r.tip==='sezon'?`L${r.conditii?.luna_start||1}–L${r.conditii?.luna_end||12}`:r.tip==='avans'?`≤${r.conditii?.zile_inainte_max||3} zile`:`ocupare ≥${r.conditii?.ocupare_min||80}%`
+                            const adjText=`${r.ajustare_valoare>0?'+':''}${r.ajustare_valoare}${r.ajustare_tip==='procent'?'%':' RON'}`
+                            const aptLbl=r.apartament_id?apts.find((a:any)=>a.id===r.apartament_id)?.nota||'—':'Toate'
+                            return(
+                              <tr key={r.id} style={{borderBottom:i<reguli.length-1?'1px solid rgba(159,215,255,0.04)':'none',background:i%2===0?'rgba(255,255,255,0.01)':'transparent',opacity:r.activ?1:0.45}}>
+                                <td style={{padding:'7px 10px'}}>
+                                  <button onClick={()=>toggleRegula(r.id,!r.activ)} title={r.activ?'Dezactivează':'Activează'} style={{width:28,height:16,borderRadius:8,border:'none',cursor:'pointer',background:r.activ?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.15)',position:'relative' as const,transition:'background .15s'}}>
+                                    <span style={{position:'absolute' as const,top:2,left:r.activ?14:2,width:12,height:12,borderRadius:6,background:'#fff',transition:'left .15s'}}/>
+                                  </button>
+                                </td>
+                                <td style={{padding:'7px 10px',color:'rgba(214,228,244,0.8)',fontWeight:600}}>{r.denumire}</td>
+                                <td style={{padding:'7px 10px'}}><span style={{fontSize:10,padding:'2px 7px',borderRadius:5,background:'rgba(77,163,255,0.12)',color:'#7BC8FF'}}>{r.tip}</span></td>
+                                <td style={{padding:'7px 10px',color:'rgba(214,228,244,0.55)',fontFamily:'monospace',fontSize:11}}>{condText}</td>
+                                <td style={{padding:'7px 10px'}}><span style={{fontFamily:'monospace',fontWeight:700,color:r.ajustare_valoare>0?'#4ADE80':'#F87171'}}>{adjText}</span></td>
+                                <td style={{padding:'7px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',fontFamily:'monospace'}}>{aptLbl}</td>
+                                <td style={{padding:'7px 10px'}}>
+                                  <div style={{display:'flex',gap:5}}>
+                                    <button onClick={()=>{
+                                      setEditingRegula(r)
+                                      setRegulaForm({apartament_id:r.apartament_id||'',denumire:r.denumire,tip:r.tip,luna_start:String(r.conditii?.luna_start||6),luna_end:String(r.conditii?.luna_end||8),zile_inainte_max:String(r.conditii?.zile_inainte_max||3),ocupare_min:String(r.conditii?.ocupare_min||80),ajustare_tip:r.ajustare_tip,ajustare_valoare:String(r.ajustare_valoare),prioritate:String(r.prioritate),activ:r.activ})
+                                      setShowFormRegula(true)
+                                    }} style={{padding:'3px 8px',borderRadius:5,border:'1px solid rgba(77,163,255,0.2)',background:'transparent',color:'rgba(147,197,253,0.5)',fontSize:11,cursor:'pointer'}}>✏</button>
+                                    <button onClick={()=>deleteRegula(r.id)} disabled={deletingRegula===r.id}
+                                      style={{padding:'3px 8px',borderRadius:5,border:'1px solid rgba(248,113,113,0.2)',background:'transparent',color:'rgba(248,113,113,0.5)',fontSize:11,cursor:'pointer',opacity:deletingRegula===r.id?0.5:1}}>
+                                      {deletingRegula===r.id?'...':'✕'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )
         })()}
