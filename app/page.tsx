@@ -198,7 +198,7 @@ export default function DashboardPage() {
     const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
     function proRataLuna(r: any): number {
       const brut = Number(r.suma_incasata || 0)
-      const totalNopti = Number(r.nr_nopti || 0) || Math.max(1, Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
+      const totalNopti = Math.max(1, Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
       // nopti care se suprapun cu luna curenta
       const ciDate = r.data_checkin < primaZiLuna ? primaZiLuna : r.data_checkin
       const coDate = r.data_checkout > primaZiLunaPlusUna ? primaZiLunaPlusUna : r.data_checkout
