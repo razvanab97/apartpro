@@ -64,6 +64,7 @@ function TabRezervari() {
   const [step, setStep] = useState<'upload'|'preview'|'done'>('upload')
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState(0)
+  const [updated, setUpdated] = useState(0)
   const [errors, setErrors] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const { toast, show } = useToast()
@@ -95,12 +96,27 @@ function TabRezervari() {
   }
 
   async function doImport() {
-    setImporting(true); let ok=0,err=0
-    for (const r of rows.filter(x=>x.valid && x.status_rezervare!=='anulata')) {
-      const {error} = await supabase.from('rezervari').insert({ apartament_id:r.apartament_id||null, canal:r.canal, nume_client:r.nume_client, data_checkin:r.data_checkin, data_checkout:r.data_checkout, nr_persoane:r.nr_persoane||1, valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata, moneda:'RON', status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare, status_decont:'nedecontat', observatii:[r.tip_camera,r.camera,r.observatii].filter(Boolean).join(' | ')||null })
-      error?err++:ok++
+    setImporting(true); let ok=0,upd=0,err=0
+    const toImport = rows.filter(x=>x.valid && x.status_rezervare!=='anulata')
+    const names = [...new Set(toImport.map(r=>r.nume_client))]
+    const {data:existing} = await supabase.from('rezervari').select('id,nume_client,data_checkin,canal').in('nume_client',names)
+    const existMap = new Map((existing||[]).map((e:any)=>[`${e.nume_client}|${e.data_checkin}|${e.canal}`,e.id]))
+    for (const r of toImport) {
+      const existingId = existMap.get(`${r.nume_client}|${r.data_checkin}|${r.canal}`)
+      if (existingId) {
+        const {error} = await supabase.from('rezervari').update({
+          data_checkout:r.data_checkout, nr_nopti:r.nr_nopti, nr_persoane:r.nr_persoane||1,
+          valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata,
+          status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare,
+          ...(r.apartament_id?{apartament_id:r.apartament_id}:{}),
+        }).eq('id',existingId)
+        error?err++:upd++
+      } else {
+        const {error} = await supabase.from('rezervari').insert({ apartament_id:r.apartament_id||null, canal:r.canal, nume_client:r.nume_client, data_checkin:r.data_checkin, data_checkout:r.data_checkout, nr_persoane:r.nr_persoane||1, valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata, moneda:'RON', status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare, status_decont:'nedecontat', observatii:[r.tip_camera,r.camera,r.observatii].filter(Boolean).join(' | ')||null })
+        error?err++:ok++
+      }
     }
-    setImported(ok); setErrors(err); setImporting(false); setStep('done')
+    setImported(ok); setUpdated(upd); setErrors(err); setImporting(false); setStep('done')
   }
 
   const valid = rows.filter(r=>r.valid).length
@@ -112,7 +128,12 @@ function TabRezervari() {
     <div style={{...panel,padding:48,textAlign:'center'}}>
       <CheckCircle2 size={40} color="#4ADE80" style={{margin:'0 auto 16px'}}/>
       <h2 style={{fontSize:18,fontWeight:700,color:'#FFFFFF',marginBottom:8}}>Import finalizat!</h2>
-      <p style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:24}}>{imported} rezervări importate{errors>0?`, ${errors} erori`:''}</p>
+      <p style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:24}}>
+        {imported>0?`${imported} rezervări noi`:''}
+        {imported>0&&updated>0?' · ':''}
+        {updated>0?`${updated} actualizate`:''}
+        {errors>0?` · ${errors} erori`:''}
+      </p>
       <div style={{display:'flex',gap:10,justifyContent:'center'}}>
         <Button variant="primary" onClick={()=>window.location.href='/rezervari'}>Vezi rezervările</Button>
         <Button variant="secondary" onClick={()=>{setStep('upload');setRows([]);setFile(null)}}>Import nou</Button>
