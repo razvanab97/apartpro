@@ -171,8 +171,8 @@ export default function DashboardPage() {
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
       // rezervari active ACUM (checkin<=azi, checkout>azi)
       supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
-      // rezervari care se suprapun cu luna curenta (checkin < sfarsit luna SI checkout > inceput luna)
-      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lt('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
+      // rezervari care se suprapun cu luna curenta (checkin <= sfarsit luna SI checkout > inceput luna)
+      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lte('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
@@ -305,11 +305,27 @@ export default function DashboardPage() {
     }
     const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
     setPerAptIncome(perApt)
-    // Filtrat: suma exacta a locatiilor verzi (acelasi calcul ca lista per-locatie)
-    const verdeApts=Object.values(byApt).filter(({apt})=>isAptVerde(apt))
-    const filtBrut=Math.round(verdeApts.reduce((s,{brut})=>s+brut,0))
-    const filtNet=Math.round(verdeApts.reduce((s,{net})=>s+net,0))
-    setStats(prev=>({...prev,incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut}))
+    // Filtrat: logica identica cu rapoarte (checkout in luna curenta)
+    const {data:rezChk}=await supabase.from('rezervari')
+      .select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti')
+      .gte('data_checkout',primaZiLuna).lte('data_checkout',ultimaZiLuna)
+      .neq('status_rezervare','anulata')
+    let filtBrut=0,filtNet=0
+    for(const r of (rezChk||[])){
+      const apt=aptMap[r.apartament_id]
+      if(apt&&!isAptVerde(apt)) continue
+      const brut=Number(r.suma_incasata||0)
+      const nopti=Number(r.nr_nopti||1)||1
+      const ovS=r.data_checkin>primaZiLuna?r.data_checkin:primaZiLuna
+      const ovE=r.data_checkout<ultimaZiLuna?r.data_checkout:ultimaZiLuna
+      const ovD=Math.ceil((new Date(ovE).getTime()-new Date(ovS).getTime())/86400000)
+      if(ovD<=0) continue
+      const brutPR=ovD>=nopti?brut:Math.round(brut/nopti*ovD*100)/100
+      const canal=(r.canal||'').toLowerCase()
+      filtBrut+=brutPR
+      filtNet+=canal==='airbnb'?brutPR*0.85*(1-0.21*0.15):canal==='booking'?brutPR*0.83*(1-0.21*0.17):brutPR
+    }
+    setStats(prev=>({...prev,incasariNetFiltrat:Math.round(filtNet),incasariBrutFiltrat:Math.round(filtBrut)}))
     setLoading(false)
   }
 
