@@ -121,11 +121,22 @@ NU confunda cu numerele din Pagina 2 (care sunt mult mai mici — date din 30 zi
 │ "Scorul paginii proprietății: X%"  → completare_pagina_pct│
 └──────────────────────────────────────────────────────────┘
 
+┌─ PAGINA 2 — Date din ultimele 30 de zile ───────────────┐
+│ Secțiunea "Cum vi s-a schimbat performanța"              │
+│ Afișează 3 numere pentru ultimele 30 de zile:            │
+│   "Vizualizări în rezultatele căutărilor: NR"            │
+│   "Vizualizări proprietate: NR"                          │
+│   "Rezervări: NR"                                        │
+└──────────────────────────────────────────────────────────┘
+→ vizualizari_cautari_30z = numărul din "Vizualizări în rezultatele căutărilor" de pe pagina 2
+→ vizualizari_pagina_30z = numărul din "Vizualizări proprietate" de pe pagina 2
+→ rezervari_confirmate_30z = numărul din "Rezervări" de pe pagina 2
+
 REGULI CRITICE BOOKING:
 - scor_pozitie_rank vine DOAR din textul "RANK din TOTAL" (ex: "352 din 691" → rank=352)
-- NU pune în scor_pozitie_rank valori din "Vizualizări proprietate" (pagina 2) sau alte câmpuri
-- vizualizari_cautari vine din Cutia 1, nu din pagina 2
-- Dacă un număr apare pe Pagina 2, IGNORĂ-L
+- NU confunda scor_pozitie_rank cu vizualizari_pagina_30z sau orice alt număr
+- vizualizari_cautari (90 zile) vine din Cutia 1 de pe pagina 1 — cel mai mare număr (zeci/sute de mii)
+- vizualizari_cautari_30z vine din pagina 2 — număr mai mic (câteva mii/zeci de mii)
 
 ═══════════════════════════════════════════
 INSTRUCȚIUNI GENERALE
@@ -164,6 +175,9 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
   "vizualizari_cautari": null,
   "vizualizari_pagina": null,
   "rezervari_confirmate": null,
+  "vizualizari_cautari_30z": null,
+  "vizualizari_pagina_30z": null,
+  "rezervari_confirmate_30z": null,
   "scor_pozitie_rank": null,
   "scor_pozitie_total": null,
   "scor_pozitie_pct": null,

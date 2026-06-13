@@ -38,10 +38,14 @@ create table statistici_platforme (
   rata_ocupare_vs_similar   numeric(6,2),
   durata_sedere_vs_similar  numeric(6,2),
 
-  -- BOOKING: Vizibilitate & Clasament
+  -- BOOKING: Vizibilitate & Clasament (90 zile — pagina 1 dashboard)
   vizualizari_cautari    integer,
   vizualizari_pagina     integer,
   rezervari_confirmate   integer,
+  -- BOOKING: date 30 zile (pagina 2 dashboard — "Cum vi s-a schimbat performanța")
+  vizualizari_cautari_30z  integer,
+  vizualizari_pagina_30z   integer,
+  rezervari_confirmate_30z integer,
   scor_pozitie_rank      integer,         -- ex. 559 (rangul în clasament)
   scor_pozitie_total     integer,         -- ex. 686 (total proprietăți)
   scor_pozitie_pct       numeric(6,2),    -- ex. 18.0 (mai bine decât X%)
