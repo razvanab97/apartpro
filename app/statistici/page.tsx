@@ -279,6 +279,33 @@ export default function StatisticiPage() {
   }
 
   async function fileToBase64(file: File): Promise<string> {
+    if (file.type.startsWith('image/')) {
+      return new Promise((res, rej) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          const MAX = 1600
+          let w = img.width, h = img.height
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+            else { w = Math.round(w * MAX / h); h = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = w; canvas.height = h
+          canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+          canvas.toBlob(blob => {
+            if (!blob) { rej(new Error('compress failed')); return }
+            const r = new FileReader()
+            r.onload = () => res((r.result as string).split(',')[1])
+            r.onerror = rej
+            r.readAsDataURL(blob)
+          }, 'image/jpeg', 0.82)
+        }
+        img.onerror = rej
+        img.src = url
+      })
+    }
     return new Promise((res, rej) => {
       const r = new FileReader()
       r.onload = () => res((r.result as string).split(',')[1])
