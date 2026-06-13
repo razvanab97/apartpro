@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = 'process.env.ANTHROPIC_API_KEY!'
+const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY
 
 async function callClaude(prompt: string, imageBase64?: string, imageType?: string): Promise<string> {
   const content: any[] = []

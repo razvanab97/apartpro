@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = 'process.env.ANTHROPIC_API_KEY!'
+const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY
 
 const FURNIZORI: Record<string, string[]> = {
   'E.ON Curent':    ['e.on energie','eon energie','eon curent','energie electrica','electricitate','standard electricity','curent electric','kwh'],
