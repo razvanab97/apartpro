@@ -467,8 +467,59 @@ export default function StatisticiPage() {
                   {f==='toate' ? 'Toate' : f==='scaderi' ? '📉 Scăderi' : '📈 Creșteri'}
                 </button>
               ))}
-              <button style={{ ...S.btn('rgba(77,163,255,0.15)'), marginLeft: 'auto' }} onClick={loadStats}>🔄</button>
+              <div style={{ display:'flex', gap:8, marginLeft:'auto' }}>
+                <button style={S.btn('rgba(77,163,255,0.15)')} onClick={loadStats}>🔄</button>
+                <button style={S.btn(editMode ? '#4DA3FF' : 'rgba(255,255,255,0.08)')} onClick={() => setEditMode(e => !e)}>
+                  ✏️ Editează
+                </button>
+              </div>
             </div>
+
+            {/* Edit panel */}
+            {editMode && allCards.length > 0 && (
+              <div style={{ background:'rgba(15,20,35,0.95)', border:'1px solid rgba(77,163,255,0.25)', borderRadius:12, padding:16, marginBottom:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:'#4DA3FF' }}>✏️ Configurare carduri</span>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button style={{ ...S.btn('rgba(255,255,255,0.06)'), fontSize:11 }}
+                      onClick={() => { setCardOrder([]); setHiddenCards([]) }}>Resetează</button>
+                    <button style={{ ...S.btn('#4DA3FF'), fontSize:11 }} onClick={() => setEditMode(false)}>✓ Gata</button>
+                  </div>
+                </div>
+                <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)', marginBottom:10 }}>
+                  Reordonează cu ↑ ↓ · Ascunde/arată cu butonul 👁
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  {[...allCards].sort((a,b) => {
+                    const ia = cardOrder.indexOf(cardKey(a.latest)), ib = cardOrder.indexOf(cardKey(b.latest))
+                    if(ia===-1&&ib===-1) return 0; if(ia===-1) return 1; if(ib===-1) return -1; return ia-ib
+                  }).map(({ latest }, idx, arr) => {
+                    const k = cardKey(latest)
+                    const hidden = hiddenCards.includes(k)
+                    const isAirbnb = latest.platforma === 'airbnb'
+                    return (
+                      <div key={k} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 10px', background: hidden ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.04)', borderRadius:8, opacity: hidden ? 0.45 : 1 }}>
+                        <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                          <button onClick={() => moveCard(k,-1)} disabled={idx===0}
+                            style={{ background:'none', border:'none', color: idx===0 ? 'rgba(255,255,255,0.15)' : 'rgba(159,215,255,0.7)', cursor: idx===0 ? 'default':'pointer', fontSize:12, lineHeight:1, padding:'1px 4px' }}>▲</button>
+                          <button onClick={() => moveCard(k,1)} disabled={idx===arr.length-1}
+                            style={{ background:'none', border:'none', color: idx===arr.length-1 ? 'rgba(255,255,255,0.15)' : 'rgba(159,215,255,0.7)', cursor: idx===arr.length-1 ? 'default':'pointer', fontSize:12, lineHeight:1, padding:'1px 4px' }}>▼</button>
+                        </div>
+                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 7px', borderRadius:12, background: isAirbnb ? 'rgba(255,90,95,0.2)':'rgba(59,130,246,0.2)', color: isAirbnb ? '#fca5a5':'#93c5fd' }}>
+                          {isAirbnb ? 'Airbnb':'Booking'}
+                        </span>
+                        <span style={{ flex:1, fontSize:12, color:'rgba(255,255,255,0.85)', fontWeight:600 }}>{aptName(latest.apartament_id)}</span>
+                        <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>{latest.data_inregistrare}</span>
+                        <button onClick={() => toggleHidden(k)}
+                          style={{ background: hidden ? 'rgba(248,113,113,0.15)':'rgba(74,222,128,0.1)', border: `1px solid ${hidden ? 'rgba(248,113,113,0.3)':'rgba(74,222,128,0.2)'}`, borderRadius:6, padding:'3px 8px', cursor:'pointer', fontSize:12, color: hidden ? '#f87171':'#4ade80' }}>
+                          {hidden ? '🚫 Ascuns':'👁 Vizibil'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {loading ? (
               <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>Se încarcă...</div>
@@ -480,7 +531,7 @@ export default function StatisticiPage() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
                 {filteredCards.map(({ latest, prev }) => (
                   <AptCard key={latest.id} stat={latest} prev={prev} name={aptName(latest.apartament_id)} />
                 ))}
