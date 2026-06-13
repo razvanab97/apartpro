@@ -615,7 +615,7 @@ function AptCard({ stat, prev, name, badge }: { stat: StatRow; prev?: StatRow; n
             <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{m.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 3 }}>{m.value}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as const }}>
-              <DeltaBadge d={m.d} inverted={m.inv} />
+              <DeltaBadge d={m.d} inverted={'inv' in m ? m.inv : false} />
               {m.vsv != null && <VsBadge val={m.vsv} unit={m.vsu} />}
             </div>
           </div>
