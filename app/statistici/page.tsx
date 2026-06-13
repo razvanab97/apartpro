@@ -265,7 +265,8 @@ export default function StatisticiPage() {
   async function extractWithAI(item: UploadItem) {
     const isPDF = item.file.name.endsWith('.pdf')
     const isCSV = item.file.name.endsWith('.csv')
-    const mimeType = isPDF ? 'application/pdf' : isCSV ? 'text/csv' : (item.file.type || 'image/png')
+    // Images are always compressed to JPEG — use image/jpeg regardless of original format
+    const mimeType = isPDF ? 'application/pdf' : isCSV ? 'text/csv' : 'image/jpeg'
 
     // Vercel hard limit ~4.5MB on request body; base64 adds 33% overhead → cap at 3MB binary
     const MAX_BYTES = 3 * 1024 * 1024
