@@ -65,16 +65,67 @@ MAPARE EXACTĂ label Airbnb → câmp JSON:
 ═══════════════════════════════════════════
 STRUCTURA DASHBOARD BOOKING.COM (interfață română)
 ═══════════════════════════════════════════
-  "Vizualizări în căutări" sau "vizualizări cautari" → vizualizari_cautari (număr întreg)
-  "Vizualizări pagină" sau "vizualizări pagina" → vizualizari_pagina (număr întreg)
-  "Rezervări confirmate" → rezervari_confirmate (număr întreg)
-  "Locul în clasament" sau "rangul" (ex: "559 din 686") → scor_pozitie_rank=559, scor_pozitie_total=686
-  Procentaj clasament (ex: "mai bine de X%") → scor_pozitie_pct (număr)
-  "Rata de conversie" din căutări → rata_conversie_cautari (număr)
-  "Rata de conversie" din vizualizări pagină → rata_conversie_pagina (număr)
-  "ADR" sau "Tarif mediu zilnic" → adr (număr)
-  "Scor comentarii" sau "nota medie" → scor_comentarii (număr)
-  "Completare pagină" → completare_pagina_pct (număr)
+Dashboard-ul Booking are DOUĂ pagini. FOLOSEȘTE DOAR PAGINA 1 (date din ultimele 90 zile).
+IGNORĂ COMPLET PAGINA 2 — aceasta conține date din ultimele 30 zile și generează confuzii.
+
+PAGINA 1 — structura exactă vizuală:
+
+┌─ TITLU ──────────────────────────────────────────────────┐
+│ "Dashboard Clasament pentru [NUME PROPRIETATE]"          │
+└──────────────────────────────────────────────────────────┘
+
+┌─ FLUX PRINCIPAL (3 cutii conectate prin săgeți) ─────────┐
+│                                                           │
+│  [Cutia 1]           [Săgeată]        [Cutia 2]          │
+│  "Vizualizări în     X,XX%            "Vizualizări ale   │
+│  rezultatele         ↓ (procent        paginii           │
+│  căutărilor"          conversie        proprietății"     │
+│  NUMĂR_MARE          cautari→pagina)   NUMĂR_MIC         │
+│                                                          │
+│                      [Săgeată]        [Cutia 3]          │
+│                      Y,YY%            "Rezervări"        │
+│                      (procent          NUMĂR_REZERVĂRI   │
+│                       conversie                          │
+│                       pagina→rezervari)                  │
+└──────────────────────────────────────────────────────────┘
+→ vizualizari_cautari = numărul din Cutia 1 (cel mai mare, ex: 121.574)
+→ rata_conversie_cautari = procentul din PRIMA săgeată (ex: 1,25%) — scris ca "X% din vizualizările în rezultatele căutărilor s-au transformat în vizualizări ale paginii"
+→ vizualizari_pagina = numărul din Cutia 2 (ex: 1.525)
+→ rata_conversie_pagina = procentul din A DOUA săgeată (ex: 2,56%) — scris ca "Y% din vizualizările paginii proprietății au fost convertite în rezervări"
+→ rezervari_confirmate = numărul din Cutia 3 (cel mai mic, ex: 39)
+
+ATENȚIE CRITICĂ: vizualizari_cautari este cel mai mare număr (zeci de mii).
+NU confunda cu numerele din Pagina 2 (care sunt mult mai mici — date din 30 zile)!
+
+┌─ SCOR POZIȚIE ───────────────────────────────────────────┐
+│ "Scorul dumneavoastră de poziție în rezultatele          │
+│  căutărilor: RANK din TOTAL"                             │
+│  ex: "352 din 691"                                       │
+│ "Mai bine decât PCT% din proprietățile din oraș"         │
+└──────────────────────────────────────────────────────────┘
+→ scor_pozitie_rank = primul număr (ex: 352) — RANGUL, NU numărul de vizualizări!
+→ scor_pozitie_total = al doilea număr după "din" (ex: 691)
+→ scor_pozitie_pct = procentul "mai bine decât X%" (ex: 49)
+
+┌─ FACTORI CARE VĂ INFLUENȚEAZĂ SCORUL ───────────────────┐
+│ "Conversia: X,XX%  Proprietatea dumneavoastră"           │
+│   → rata_conversie_pagina (același cu a 2-a săgeată)    │
+│ "Tarif mediu zilnic: XXX,XX lei  Proprietatea dvs."      │
+│   → adr (ignoră "lei")                                  │
+│ "Anulările: X,X%  Proprietatea dumneavoastră"            │
+│   → rata_anulari                                         │
+└──────────────────────────────────────────────────────────┘
+
+┌─ SCORURI CALITATE ───────────────────────────────────────┐
+│ "Scorul din comentarii: X.X"  → scor_comentarii          │
+│ "Scorul paginii proprietății: X%"  → completare_pagina_pct│
+└──────────────────────────────────────────────────────────┘
+
+REGULI CRITICE BOOKING:
+- scor_pozitie_rank vine DOAR din textul "RANK din TOTAL" (ex: "352 din 691" → rank=352)
+- NU pune în scor_pozitie_rank valori din "Vizualizări proprietate" (pagina 2) sau alte câmpuri
+- vizualizari_cautari vine din Cutia 1, nu din pagina 2
+- Dacă un număr apare pe Pagina 2, IGNORĂ-L
 
 ═══════════════════════════════════════════
 INSTRUCȚIUNI GENERALE
