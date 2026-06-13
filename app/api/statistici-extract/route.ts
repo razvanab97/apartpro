@@ -15,51 +15,106 @@ export async function POST(req: NextRequest) {
     const isPDF = mimeType === 'application/pdf'
     const isCSV = mimeType === 'text/csv' || filename?.endsWith('.csv')
 
-    const prompt = `Ești un extractor de statistici din rapoarte de platforme de cazare (Airbnb sau Booking.com).
+    const prompt = `Ești un extractor expert de statistici din dashboard-urile Airbnb și Booking.com în limba română.
 
-Lista proprietăților din sistem:
+Lista proprietăților din sistem (pentru auto-detecție):
 ${aptListText}
 
-SARCINI:
-1. Detectează platforma din imagine: "airbnb" sau "booking"
-2. Identifică proprietatea: alege ID-ul din lista de mai sus care se potrivește cu numele proprietății vizibil în imagine. Dacă nu găsești o potrivire clară, pune null.
-3. Extrage TOATE valorile numerice vizibile.
+═══════════════════════════════════════════
+STRUCTURA DASHBOARD AIRBNB (interfață română)
+═══════════════════════════════════════════
+Airbnb afișează fiecare metrică pe o secțiune/pagină separată. Documentul poate conține mai multe pagini, fiecare cu o metrică diferită. Parcurge TOATE paginile și extrage tot ce găsești.
 
-Returnează DOAR JSON valid, fără text suplimentar:
+MAPARE EXACTĂ label Airbnb → câmp JSON:
+
+[SECȚIUNEA "Rată de ocupare"]
+  "Rată de ocupare" (valoarea principală, ex: "100.0%") → rata_ocupare (număr, ex: 100.0)
+  "Total nopți rezervate" → nopti_rezervate (număr întreg)
+  "Total nopți blocate" → nopti_blocate (număr întreg)
+  "Total nopți fără rezervare" → nopti_fara_rezervare (număr întreg)
+  "Total check-in-uri" → checkin_uri (număr întreg)
+
+[SECȚIUNEA "Rata de anulare"]
+  "Rata de anulare" (valoarea principală, ex: "0.0%") → rata_anulari (număr, ex: 0.0)
+
+[SECȚIUNEA "Durata șederii"]
+  "Durata medie a șederii" (ex: "1.0 zi") → durata_medie_sedere (număr, ex: 1.0) — ignoră "zi/zile"
+
+[SECȚIUNEA "Tarif pe noapte"]
+  "Tarif mediu pe noapte" (ex: "201 RON") → tarif_mediu_noapte (număr, ex: 201.0) — ignoră "RON"
+
+[SECȚIUNEA "Afișările paginii"]
+  "Numărul total de afișări ale paginii" → afisari_pagina_total (număr întreg)
+  "Total afișări de căutare pe prima pagină" → afisari_p1_total (număr întreg)
+
+[SECȚIUNEA "Conversia în rezervări" sau "Rata globală de conversie"]
+  "Rata globală de conversie" (ex: "0.71%") → rata_conversie_globala (număr, ex: 0.71)
+  "Rata afișărilor de căutare pe prima pagină" (ex: "46.5%") → rata_afisari_p1 (număr, ex: 46.5)
+  "Rata de conversie a căutărilor în vizite ale anunțului" (ex: "30.00%") → rata_conversie_cautari_p1 (număr, ex: 30.0)
+  "Rata de conversie a vizitelor anunțului în rezervări" (ex: "2.38%") → rata_conversie_vizite_rez (număr, ex: 2.38)
+
+[SECȚIUNEA "Numărul de adăugări la lista de dorințe"]
+  valoarea principală (ex: "3") → wishlist_total (număr întreg)
+
+═══════════════════════════════════════════
+STRUCTURA DASHBOARD BOOKING.COM (interfață română)
+═══════════════════════════════════════════
+  "Vizualizări în căutări" sau "vizualizări cautari" → vizualizari_cautari (număr întreg)
+  "Vizualizări pagină" sau "vizualizări pagina" → vizualizari_pagina (număr întreg)
+  "Rezervări confirmate" → rezervari_confirmate (număr întreg)
+  "Locul în clasament" sau "rangul" (ex: "559 din 686") → scor_pozitie_rank=559, scor_pozitie_total=686
+  Procentaj clasament (ex: "mai bine de X%") → scor_pozitie_pct (număr)
+  "Rata de conversie" din căutări → rata_conversie_cautari (număr)
+  "Rata de conversie" din vizualizări pagină → rata_conversie_pagina (număr)
+  "ADR" sau "Tarif mediu zilnic" → adr (număr)
+  "Scor comentarii" sau "nota medie" → scor_comentarii (număr)
+  "Completare pagină" → completare_pagina_pct (număr)
+
+═══════════════════════════════════════════
+INSTRUCȚIUNI GENERALE
+═══════════════════════════════════════════
+1. Detectează platforma: "airbnb" sau "booking"
+2. Identifică proprietatea: caută numele din lista de mai sus care apare în interfață (ex: în titlul tab-ului browser, header pagină, etc.). Dacă nu găsești potrivire clară, pune null.
+3. Extrage TOATE valorile din TOATE paginile/secțiunile documentului.
+4. Pentru procente: returnează NUMĂRUL simplu (ex: "46.5%" → 46.5, nu 0.465)
+5. Pentru valori cu unități: elimină unitatea (RON, zi, zile, %)
+6. Dacă o valoare nu e vizibilă în document, pune null — NU inventa valori.
+7. Ignoră graficele și valorile comparative cu "similare" — extrage doar valorile proprii ale proprietății.
+
+Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
 {
   "detected_platforma": "airbnb" sau "booking",
-  "detected_apt_id": "uuid din lista de mai sus" sau null,
-
-  "rata_ocupare": procent ca număr (ex: 36.4) sau null,
-  "nopti_rezervate": număr sau null,
-  "nopti_blocate": număr sau null,
-  "nopti_fara_rezervare": număr sau null,
-  "checkin_uri": număr sau null,
-  "rata_anulari": procent ca număr sau null,
-  "durata_medie_sedere": număr zile (ex: 2.7) sau null,
-  "tarif_mediu_noapte": număr RON sau null,
-  "tarif_vs_similar": delta RON față de similare (ex: 150 sau -50) sau null,
-  "afisari_pagina_total": număr total afișări pagină sau null,
-  "afisari_p1_total": număr total afișări prima pagină căutare sau null,
-  "rata_afisari_p1": procent afișări prima pagină (ex: 70.4) sau null,
-  "rata_conversie_globala": procent (ex: 1.01) sau null,
-  "rata_conversie_cautari_p1": procent căutări pe prima pagină (ex: 70.4) sau null,
-  "rata_conversie_vizite_rez": procent vizite spre rezervări (ex: 5.11) sau null,
-  "wishlist_total": număr sau null,
-  "wishlist_vs_similar": delta față de similare (ex: -4) sau null,
-  "rata_ocupare_vs_similar": delta procent față de similare (ex: 26.3) sau null,
-  "durata_sedere_vs_similar": delta zile față de similare (ex: -0.3) sau null,
-  "vizualizari_cautari": număr sau null,
-  "vizualizari_pagina": număr sau null,
-  "rezervari_confirmate": număr sau null,
-  "scor_pozitie_rank": rangul numeric (ex: 559) sau null,
-  "scor_pozitie_total": totalul din care face parte rangul (ex: 686) sau null,
-  "scor_pozitie_pct": procentul mai-bine-decât-X% (ex: 18.0) sau null,
-  "rata_conversie_cautari": procent conversie căutări (ex: 1.80) sau null,
-  "rata_conversie_pagina": procent conversie pagină (ex: 2.05) sau null,
-  "adr": tarif mediu zilnic RON sau null,
-  "scor_comentarii": număr (ex: 9.0) sau null,
-  "completare_pagina_pct": procent completare pagina proprietății (ex: 78) sau null
+  "detected_apt_id": "uuid din lista de mai sus sau null",
+  "rata_ocupare": null,
+  "nopti_rezervate": null,
+  "nopti_blocate": null,
+  "nopti_fara_rezervare": null,
+  "checkin_uri": null,
+  "rata_anulari": null,
+  "durata_medie_sedere": null,
+  "tarif_mediu_noapte": null,
+  "tarif_vs_similar": null,
+  "afisari_pagina_total": null,
+  "afisari_p1_total": null,
+  "rata_afisari_p1": null,
+  "rata_conversie_globala": null,
+  "rata_conversie_cautari_p1": null,
+  "rata_conversie_vizite_rez": null,
+  "wishlist_total": null,
+  "wishlist_vs_similar": null,
+  "rata_ocupare_vs_similar": null,
+  "durata_sedere_vs_similar": null,
+  "vizualizari_cautari": null,
+  "vizualizari_pagina": null,
+  "rezervari_confirmate": null,
+  "scor_pozitie_rank": null,
+  "scor_pozitie_total": null,
+  "scor_pozitie_pct": null,
+  "rata_conversie_cautari": null,
+  "rata_conversie_pagina": null,
+  "adr": null,
+  "scor_comentarii": null,
+  "completare_pagina_pct": null
 }`
 
     let content: any[]
