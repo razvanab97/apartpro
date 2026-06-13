@@ -564,10 +564,12 @@ export default function StatisticiPage() {
   )
 }
 
+interface PrimaryMetric { label: string; value: string | null; d: number | null; inv?: boolean; vsv?: number; vsu?: string }
+
 function AptCard({ stat, prev, name, badge }: { stat: StatRow; prev?: StatRow; name: string; badge: (p: string) => any }) {
   const isAirbnb = stat.platforma === 'airbnb'
 
-  const primary = isAirbnb ? [
+  const primary: PrimaryMetric[] = isAirbnb ? [
     { label: 'Afișări prima pagină', value: stat.rata_afisari_p1 != null ? `${stat.rata_afisari_p1}%` : stat.afisari_p1_total != null ? stat.afisari_p1_total.toLocaleString() : null, d: pctDelta(stat.rata_afisari_p1 ?? stat.afisari_p1_total, prev?.rata_afisari_p1 ?? prev?.afisari_p1_total) },
     { label: 'Rată ocupare', value: stat.rata_ocupare != null ? `${stat.rata_ocupare}%` : null, d: pctDelta(stat.rata_ocupare, prev?.rata_ocupare), vsv: stat.rata_ocupare_vs_similar, vsu: '%' },
     { label: 'Tarif/noapte', value: stat.tarif_mediu_noapte != null ? `${stat.tarif_mediu_noapte} RON` : null, d: pctDelta(stat.tarif_mediu_noapte, prev?.tarif_mediu_noapte), vsv: stat.tarif_vs_similar, vsu: ' RON' },
@@ -615,7 +617,7 @@ function AptCard({ stat, prev, name, badge }: { stat: StatRow; prev?: StatRow; n
             <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{m.label}</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 3 }}>{m.value}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as const }}>
-              <DeltaBadge d={m.d} inverted={'inv' in m ? m.inv : false} />
+              <DeltaBadge d={m.d} inverted={m.inv} />
               {m.vsv != null && <VsBadge val={m.vsv} unit={m.vsu} />}
             </div>
           </div>
