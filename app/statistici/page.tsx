@@ -39,6 +39,9 @@ interface StatRow {
   vizualizari_cautari?: number
   vizualizari_pagina?: number
   rezervari_confirmate?: number
+  vizualizari_cautari_30z?: number
+  vizualizari_pagina_30z?: number
+  rezervari_confirmate_30z?: number
   scor_pozitie_rank?: number
   scor_pozitie_total?: number
   scor_pozitie_pct?: number
@@ -432,9 +435,9 @@ export default function StatisticiPage() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
                 {filteredCards.map(({ latest, prev }) => (
-                  <AptCard key={latest.id} stat={latest} prev={prev} name={aptName(latest.apartament_id)} badge={S.badge} />
+                  <AptCard key={latest.id} stat={latest} prev={prev} name={aptName(latest.apartament_id)} />
                 ))}
               </div>
             )}
@@ -608,76 +611,163 @@ export default function StatisticiPage() {
   )
 }
 
-interface PrimaryMetric { label: string; value: string | null; d: number | null; inv?: boolean; vsv?: number; vsu?: string }
+interface PrimaryMetric { label: string; value: string | null; d: number | null; inv?: boolean; icon?: string }
 
-function AptCard({ stat, prev, name, badge }: { stat: StatRow; prev?: StatRow; name: string; badge: (p: string) => any }) {
+function Delta({ d, inv = false, size = 11 }: { d: number | null; inv?: boolean; size?: number }) {
+  if (d == null) return null
+  if (Math.abs(d) < 0.05) return <span style={{ fontSize: size, color: 'rgba(159,215,255,0.3)' }}>—</span>
+  const good = inv ? d < 0 : d > 0
+  return (
+    <span style={{ fontSize: size, fontWeight: 700, color: good ? '#4ade80' : '#f87171',
+      background: good ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+      padding: '1px 5px', borderRadius: 4 }}>
+      {d > 0 ? '▲' : '▼'} {Math.abs(d).toFixed(1)}%
+    </span>
+  )
+}
+
+function Stat({ label, value, d, inv, sub, accent }: { label: string; value: string | null; d?: number | null; inv?: boolean; sub?: string; accent?: string }) {
+  if (value == null) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: accent || '#fff', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 16 }}>
+        {d != null && <Delta d={d} inv={inv} />}
+        {sub && <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)' }}>{sub}</span>}
+      </div>
+    </div>
+  )
+}
+
+function MiniStat({ label, value, d, inv }: { label: string; value: string | null; d?: number | null; inv?: boolean }) {
+  if (value == null) return null
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)' }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        {d != null && <Delta d={d} inv={inv} size={10} />}
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{value}</span>
+      </div>
+    </div>
+  )
+}
+
+function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: string }) {
   const isAirbnb = stat.platforma === 'airbnb'
+  const accent = isAirbnb ? '#FF5A5F' : '#3B82F6'
+  const accentBg = isAirbnb ? 'rgba(255,90,95,0.08)' : 'rgba(59,130,246,0.08)'
+  const accentBorder = isAirbnb ? 'rgba(255,90,95,0.2)' : 'rgba(59,130,246,0.2)'
 
-  const primary: PrimaryMetric[] = isAirbnb ? [
-    { label: 'Afișări prima pagină', value: stat.rata_afisari_p1 != null ? `${stat.rata_afisari_p1}%` : stat.afisari_p1_total != null ? stat.afisari_p1_total.toLocaleString() : null, d: pctDelta(stat.rata_afisari_p1 ?? stat.afisari_p1_total, prev?.rata_afisari_p1 ?? prev?.afisari_p1_total) },
-    { label: 'Rată ocupare', value: stat.rata_ocupare != null ? `${stat.rata_ocupare}%` : null, d: pctDelta(stat.rata_ocupare, prev?.rata_ocupare), vsv: stat.rata_ocupare_vs_similar, vsu: '%' },
-    { label: 'Tarif/noapte', value: stat.tarif_mediu_noapte != null ? `${stat.tarif_mediu_noapte} RON` : null, d: pctDelta(stat.tarif_mediu_noapte, prev?.tarif_mediu_noapte), vsv: stat.tarif_vs_similar, vsu: ' RON' },
-    { label: 'Conversie globală', value: stat.rata_conversie_globala != null ? `${stat.rata_conversie_globala}%` : null, d: pctDelta(stat.rata_conversie_globala, prev?.rata_conversie_globala) },
-  ] : [
-    { label: 'Vizualizări căutări', value: stat.vizualizari_cautari != null ? stat.vizualizari_cautari.toLocaleString() : null, d: pctDelta(stat.vizualizari_cautari, prev?.vizualizari_cautari) },
-    { label: 'Poziție clasament', value: stat.scor_pozitie_rank != null ? `${stat.scor_pozitie_rank}/${stat.scor_pozitie_total} · ${stat.scor_pozitie_pct}%` : null, d: stat.scor_pozitie_rank != null && prev?.scor_pozitie_rank != null ? -(pctDelta(stat.scor_pozitie_rank, prev.scor_pozitie_rank) ?? 0) : null, inv: true },
-    { label: 'Conversie pagină', value: stat.rata_conversie_pagina != null ? `${stat.rata_conversie_pagina}%` : null, d: pctDelta(stat.rata_conversie_pagina, prev?.rata_conversie_pagina) },
-    { label: 'ADR', value: stat.adr != null ? `${stat.adr} RON` : null, d: pctDelta(stat.adr, prev?.adr) },
-  ]
+  const fmt = (n?: number, dec = 0) => n != null ? n.toLocaleString('ro-RO', { maximumFractionDigits: dec }) : null
+  const pct = (n?: number) => n != null ? `${n}%` : null
 
-  const secondary: [string, any][] = isAirbnb ? [
-    ['Nopți rez.', stat.nopti_rezervate],
-    ['Nopți blocate', stat.nopti_blocate],
-    ['Fără rezervare', stat.nopti_fara_rezervare],
-    ['Check-in-uri', stat.checkin_uri],
-    ['Rata anulări', stat.rata_anulari != null ? `${stat.rata_anulari}%` : null],
-    ['Durata ședere', stat.durata_medie_sedere != null ? `${stat.durata_medie_sedere} zile` : null],
-    ['Afișări pagină', stat.afisari_pagina_total?.toLocaleString()],
-    ['Conv. viz→rez', stat.rata_conversie_vizite_rez != null ? `${stat.rata_conversie_vizite_rez}%` : null],
-    ['Wishlist', stat.wishlist_total != null ? `${stat.wishlist_total}${stat.wishlist_vs_similar != null ? ` (${stat.wishlist_vs_similar > 0 ? '+' : ''}${stat.wishlist_vs_similar} vs. sim.)` : ''}` : null],
-  ] : [
-    ['Viz. pagină', stat.vizualizari_pagina?.toLocaleString()],
-    ['Rezervări', stat.rezervari_confirmate],
-    ['Conv. căutări', stat.rata_conversie_cautari != null ? `${stat.rata_conversie_cautari}%` : null],
-    ['Rata anulări', stat.rata_anulari != null ? `${stat.rata_anulari}%` : null],
-    ['Scor comentarii', stat.scor_comentarii],
-    ['Completare pagină', stat.completare_pagina_pct != null ? `${stat.completare_pagina_pct}%` : null],
-  ]
+  // Rank bar pentru Booking
+  const rankPct = stat.scor_pozitie_rank != null && stat.scor_pozitie_total
+    ? Math.round((1 - stat.scor_pozitie_rank / stat.scor_pozitie_total) * 100) : null
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 2 }}>{name}</div>
-          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>{stat.data_inregistrare}</div>
+    <div style={{ background: 'rgba(15,20,35,0.8)', border: `1px solid ${accentBorder}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Header */}
+      <div style={{ background: accentBg, borderBottom: `1px solid ${accentBorder}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+          <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)', marginTop: 1 }}>{stat.data_inregistrare}{prev ? ` · prev ${prev.data_inregistrare}` : ''}</div>
         </div>
-        <span style={badge(stat.platforma)}>{stat.platforma}</span>
+        <span style={{ marginLeft: 8, padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: accent, color: '#fff', whiteSpace: 'nowrap' }}>
+          {isAirbnb ? '✈ Airbnb' : '🔵 Booking'}
+        </span>
       </div>
 
-      {/* Primary metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-        {primary.filter(m => m.value != null).map((m, i) => (
-          <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '8px 10px' }}>
-            <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>{m.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 3 }}>{m.value}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as const }}>
-              <DeltaBadge d={m.d} inverted={m.inv} />
-              {m.vsv != null && <VsBadge val={m.vsv} unit={m.vsu} />}
+      <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+        {/* KPI principale — 3 coloane */}
+        {isAirbnb ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '10px 12px' }}>
+            <Stat label="Ocupare" value={pct(stat.rata_ocupare)} d={pctDelta(stat.rata_ocupare, prev?.rata_ocupare)} accent={stat.rata_ocupare != null && stat.rata_ocupare >= 80 ? '#4ade80' : undefined} />
+            <Stat label="Tarif/noapte" value={stat.tarif_mediu_noapte != null ? `${stat.tarif_mediu_noapte} RON` : null} d={pctDelta(stat.tarif_mediu_noapte, prev?.tarif_mediu_noapte)} />
+            <Stat label="Afișări P1" value={stat.afisari_p1_total != null ? fmt(stat.afisari_p1_total) : pct(stat.rata_afisari_p1)} d={pctDelta(stat.afisari_p1_total ?? stat.rata_afisari_p1, prev?.afisari_p1_total ?? prev?.rata_afisari_p1)} />
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '10px 12px' }}>
+            <Stat label="Viz. căutări" value={fmt(stat.vizualizari_cautari)} d={pctDelta(stat.vizualizari_cautari, prev?.vizualizari_cautari)} />
+            <Stat label="Rezervări" value={fmt(stat.rezervari_confirmate)} d={pctDelta(stat.rezervari_confirmate, prev?.rezervari_confirmate)} />
+            <Stat label="ADR" value={stat.adr != null ? `${stat.adr} RON` : null} d={pctDelta(stat.adr, prev?.adr)} />
+          </div>
+        )}
+
+        {/* Clasament Booking cu bară vizuală */}
+        {!isAirbnb && stat.scor_pozitie_rank != null && (
+          <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 600 }}>Poziție clasament</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {prev?.scor_pozitie_rank != null && <Delta d={-(pctDelta(stat.scor_pozitie_rank, prev.scor_pozitie_rank) ?? 0)} size={10} />}
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                  {stat.scor_pozitie_rank}<span style={{ color: 'rgba(159,215,255,0.35)', fontWeight: 400 }}>/{stat.scor_pozitie_total}</span>
+                </span>
+                {stat.scor_pozitie_pct != null && (
+                  <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700 }}>top {100 - stat.scor_pozitie_pct}%</span>
+                )}
+              </div>
+            </div>
+            <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${rankPct}%`, background: rankPct != null && rankPct > 60 ? '#4ade80' : rankPct != null && rankPct > 30 ? '#fbbf24' : '#f87171', borderRadius: 3, transition: 'width 0.5s' }} />
             </div>
           </div>
-        ))}
-      </div>
+        )}
 
-      {/* Secondary metrics */}
-      {secondary.some(([,v]) => v != null) && (
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, display: 'flex', flexWrap: 'wrap' as const, gap: '4px 14px' }}>
-          {secondary.filter(([,v]) => v != null).map(([label, val]) => (
-            <div key={String(label)} style={{ fontSize: 11, color: 'rgba(159,215,255,0.55)' }}>
-              {label}: <strong style={{ color: 'rgba(255,255,255,0.85)' }}>{String(val)}</strong>
-            </div>
-          ))}
+        {/* Metrici secundare */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {isAirbnb ? (<>
+            <MiniStat label="Conversie globală" value={pct(stat.rata_conversie_globala)} d={pctDelta(stat.rata_conversie_globala, prev?.rata_conversie_globala)} />
+            <MiniStat label="Conv. vizite → rez." value={pct(stat.rata_conversie_vizite_rez)} d={pctDelta(stat.rata_conversie_vizite_rez, prev?.rata_conversie_vizite_rez)} />
+            <MiniStat label="Afișări pagină" value={fmt(stat.afisari_pagina_total)} d={pctDelta(stat.afisari_pagina_total, prev?.afisari_pagina_total)} />
+            <MiniStat label="Wishlist" value={stat.wishlist_total != null ? `${stat.wishlist_total}${stat.wishlist_vs_similar != null ? ` (${stat.wishlist_vs_similar > 0 ? '+' : ''}${stat.wishlist_vs_similar})` : ''}` : null} d={pctDelta(stat.wishlist_total, prev?.wishlist_total)} />
+            <MiniStat label="Durata ședere" value={stat.durata_medie_sedere != null ? `${stat.durata_medie_sedere} zile` : null} />
+            <MiniStat label="Rată anulări" value={pct(stat.rata_anulari)} inv />
+          </>) : (<>
+            <MiniStat label="Viz. pagină (90z)" value={fmt(stat.vizualizari_pagina)} d={pctDelta(stat.vizualizari_pagina, prev?.vizualizari_pagina)} />
+            <MiniStat label="Conv. căutări → viz." value={stat.rata_conversie_cautari != null ? `${stat.rata_conversie_cautari}%` : null} d={pctDelta(stat.rata_conversie_cautari, prev?.rata_conversie_cautari)} />
+            <MiniStat label="Conv. viz. → rez." value={stat.rata_conversie_pagina != null ? `${stat.rata_conversie_pagina}%` : null} d={pctDelta(stat.rata_conversie_pagina, prev?.rata_conversie_pagina)} />
+            <MiniStat label="Scor comentarii" value={stat.scor_comentarii != null ? `${stat.scor_comentarii}/10` : null} d={pctDelta(stat.scor_comentarii, prev?.scor_comentarii)} />
+            <MiniStat label="Completare pagină" value={pct(stat.completare_pagina_pct)} />
+            <MiniStat label="Rată anulări" value={pct(stat.rata_anulari)} inv />
+          </>)}
         </div>
-      )}
+
+        {/* 30-day strip pentru Booking */}
+        {!isAirbnb && (stat.vizualizari_cautari_30z != null || stat.rezervari_confirmate_30z != null) && (
+          <div style={{ marginTop: 2, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)', borderRadius: 8, padding: '7px 10px' }}>
+            <div style={{ fontSize: 9, color: 'rgba(59,130,246,0.6)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, marginBottom: 5 }}>Ultimele 30 zile</div>
+            <div style={{ display: 'flex', gap: 14 }}>
+              {stat.vizualizari_cautari_30z != null && (
+                <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Căutări</div><div style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{fmt(stat.vizualizari_cautari_30z)}</div></div>
+              )}
+              {stat.vizualizari_pagina_30z != null && (
+                <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Viz. pagină</div><div style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{fmt(stat.vizualizari_pagina_30z)}</div></div>
+              )}
+              {stat.rezervari_confirmate_30z != null && (
+                <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Rezervări</div><div style={{ fontSize: 13, fontWeight: 700, color: '#93c5fd' }}>{stat.rezervari_confirmate_30z}</div></div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Nopți strip pentru Airbnb */}
+        {isAirbnb && (stat.nopti_rezervate != null || stat.nopti_blocate != null) && (
+          <div style={{ background: 'rgba(255,90,95,0.05)', border: '1px solid rgba(255,90,95,0.12)', borderRadius: 8, padding: '7px 10px' }}>
+            <div style={{ fontSize: 9, color: 'rgba(255,90,95,0.6)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, marginBottom: 5 }}>Nopți perioadă</div>
+            <div style={{ display: 'flex', gap: 14 }}>
+              {stat.nopti_rezervate != null && <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Rezervate</div><div style={{ fontSize: 13, fontWeight: 700, color: '#fca5a5' }}>{stat.nopti_rezervate}</div></div>}
+              {stat.nopti_blocate != null && <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Blocate</div><div style={{ fontSize: 13, fontWeight: 700, color: '#fca5a5' }}>{stat.nopti_blocate}</div></div>}
+              {stat.nopti_fara_rezervare != null && <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Libere</div><div style={{ fontSize: 13, fontWeight: 700, color: '#fca5a5' }}>{stat.nopti_fara_rezervare}</div></div>}
+              {stat.checkin_uri != null && <div><div style={{ fontSize: 9, color: 'rgba(159,215,255,0.4)' }}>Check-in</div><div style={{ fontSize: 13, fontWeight: 700, color: '#fca5a5' }}>{stat.checkin_uri}</div></div>}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
