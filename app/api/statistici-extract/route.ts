@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY
+const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY ?? ''
 
 export async function POST(req: NextRequest) {
   if (!CLAUDE_KEY) return NextResponse.json({ error: 'ANTHROPIC_API_KEY nu este configurat pe server' }, { status: 500 })
