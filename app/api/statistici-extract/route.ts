@@ -15,6 +15,12 @@ export async function POST(req: NextRequest) {
     const isPDF = mimeType === 'application/pdf'
     const isCSV = mimeType === 'text/csv' || filename?.endsWith('.csv')
 
+    // CSV: parse direct, fără AI
+    if (isCSV) {
+      const csvText = Buffer.from(base64Data, 'base64').toString('utf-8')
+      return NextResponse.json(parseAirbnbCSV(csvText))
+    }
+
     const prompt = `Ești un extractor expert de statistici din dashboard-urile Airbnb și Booking.com în limba română.
 
 Lista proprietăților din sistem (pentru auto-detecție):
@@ -118,10 +124,7 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
 }`
 
     let content: any[]
-    if (isCSV) {
-      const csvText = Buffer.from(base64Data, 'base64').toString('utf-8')
-      content = [{ type: 'text', text: `CSV:\n\n${csvText}\n\n${prompt}` }]
-    } else if (isPDF) {
+    if (isPDF) {
       content = [
         { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
         { type: 'text', text: prompt }
@@ -156,4 +159,67 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+// Mapare exactă label CSV Airbnb → câmp DB
+const CSV_MAP: Record<string, string> = {
+  'rata de ocupare':                                    'rata_ocupare',
+  'total nopti rezervate':                              'nopti_rezervate',
+  'total nopți rezervate':                              'nopti_rezervate',
+  'total nopti blocate':                                'nopti_blocate',
+  'total nopți blocate':                                'nopti_blocate',
+  'total nopti fara rezervare':                         'nopti_fara_rezervare',
+  'total nopți fără rezervare':                         'nopti_fara_rezervare',
+  'total check-in-uri':                                 'checkin_uri',
+  'rata de anulare':                                    'rata_anulari',
+  'durata medie a sederii':                             'durata_medie_sedere',
+  'durata medie a șederii':                             'durata_medie_sedere',
+  'tarif mediu pe noapte':                              'tarif_mediu_noapte',
+  'rata globala de conversie':                          'rata_conversie_globala',
+  'rata globală de conversie':                          'rata_conversie_globala',
+  'rata de conversie cautari -> afisari pagina':        'rata_afisari_p1',
+  'rata de conversie căutări -> afișări pagină':        'rata_afisari_p1',
+  'rata de conversie afisari pagina -> rezervari':      'rata_conversie_vizite_rez',
+  'rata de conversie afișări pagină -> rezervări':      'rata_conversie_vizite_rez',
+  'rata de conversie cautari -> vizite anunt':          'rata_conversie_cautari_p1',
+  'rata de conversie căutări -> vizite anunț':          'rata_conversie_cautari_p1',
+  'numar total afisari pagina (cautare)':               'afisari_pagina_total',
+  'număr total afișări pagină (căutare)':               'afisari_pagina_total',
+  'total afisari de cautare pe prima pagina':           'afisari_p1_total',
+  'total afișări de căutare pe prima pagină':           'afisari_p1_total',
+  'numar total adaugari lista de dorinte':              'wishlist_total',
+  'număr total adăugări lista de dorințe':              'wishlist_total',
+  // Booking
+  'vizualizari cautari':                                'vizualizari_cautari',
+  'vizualizări căutări':                                'vizualizari_cautari',
+  'vizualizari pagina':                                 'vizualizari_pagina',
+  'vizualizări pagină':                                 'vizualizari_pagina',
+  'rezervari confirmate':                               'rezervari_confirmate',
+  'rezervări confirmate':                               'rezervari_confirmate',
+  'rang':                                               'scor_pozitie_rank',
+  'total proprietati in clasament':                     'scor_pozitie_total',
+  'procent clasament':                                  'scor_pozitie_pct',
+  'rata conversie cautari':                             'rata_conversie_cautari',
+  'rata conversie pagina':                              'rata_conversie_pagina',
+  'adr':                                                'adr',
+  'scor comentarii':                                    'scor_comentarii',
+  'completare pagina':                                  'completare_pagina_pct',
+}
+
+function parseAirbnbCSV(csv: string): Record<string, any> {
+  const result: Record<string, any> = { detected_platforma: 'airbnb', detected_apt_id: null }
+  const lines = csv.split('\n').filter(l => l.trim())
+  // skip header
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',')
+    if (cols.length < 2) continue
+    const label = cols[0].trim().toLowerCase()
+    const raw = cols[1]?.trim()
+    if (!raw) continue
+    const val = parseFloat(raw.replace(',', '.'))
+    if (isNaN(val)) continue
+    const field = CSV_MAP[label]
+    if (field) result[field] = val
+  }
+  return result
 }
