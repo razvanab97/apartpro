@@ -131,6 +131,11 @@ export default function StatisticiPage() {
   const [showFilter, setShowFilter] = useState<ShowFilter>('toate')
   const [thresholds] = useState<AlertThresholds>(DEFAULT_THRESH)
 
+  // Edit mode
+  const [editMode, setEditMode] = useState(false)
+  const [cardOrder, setCardOrder] = useState<string[]>([])
+  const [hiddenCards, setHiddenCards] = useState<string[]>([])
+
   // Evoluție
   const [evoApt, setEvoApt] = useState('')
   const [evoPlatforma, setEvoPlatforma] = useState<Platforma>('airbnb')
@@ -147,7 +152,14 @@ export default function StatisticiPage() {
   useEffect(() => {
     supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota')
       .then(({ data }) => setApts(data || []))
+    try {
+      const o = localStorage.getItem('stat_card_order'); if (o) setCardOrder(JSON.parse(o))
+      const h = localStorage.getItem('stat_card_hidden'); if (h) setHiddenCards(JSON.parse(h))
+    } catch {}
   }, [])
+
+  useEffect(() => { try { localStorage.setItem('stat_card_order', JSON.stringify(cardOrder)) } catch {} }, [cardOrder])
+  useEffect(() => { try { localStorage.setItem('stat_card_hidden', JSON.stringify(hiddenCards)) } catch {} }, [hiddenCards])
 
   useEffect(() => {
     if (tab === 'dashboard' || tab === 'evolutie') loadStats()
@@ -179,7 +191,30 @@ export default function StatisticiPage() {
     return map
   }, [stats])
 
-  const cards = useMemo(() => Object.values(pairMap).map(entries => ({ latest: entries[0], prev: entries[1] })), [pairMap])
+  const allCards = useMemo(() => Object.values(pairMap).map(entries => ({ latest: entries[0], prev: entries[1] })), [pairMap])
+  const cards = allCards
+
+  // Edit helpers
+  const cardKey = (s: StatRow) => `${s.apartament_id}_${s.platforma}`
+  function moveCard(key: string, dir: -1 | 1) {
+    setCardOrder(prev => {
+      const base = allCards.map(c => cardKey(c.latest))
+      const ordered = base.slice().sort((a, b) => {
+        const ia = prev.indexOf(a), ib = prev.indexOf(b)
+        if (ia === -1 && ib === -1) return 0; if (ia === -1) return 1; if (ib === -1) return -1
+        return ia - ib
+      })
+      const i = ordered.indexOf(key)
+      if (i < 0) return prev
+      const j = i + dir
+      if (j < 0 || j >= ordered.length) return prev
+      const arr = [...ordered];[arr[i], arr[j]] = [arr[j], arr[i]]
+      return arr
+    })
+  }
+  function toggleHidden(key: string) {
+    setHiddenCards(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
 
   const alerts = useMemo(() => cards.filter(({ latest, prev }) => {
     if (!prev) return false
@@ -200,7 +235,7 @@ export default function StatisticiPage() {
   }), [cards, thresholds])
 
   const filteredCards = useMemo(() => {
-    let c = cards
+    let c = cards.filter(({ latest }) => !hiddenCards.includes(cardKey(latest)))
     if (filterPlatforma) c = c.filter(x => x.latest.platforma === filterPlatforma)
     if (showFilter !== 'toate') c = c.filter(({ latest, prev }) => {
       if (!prev) return false
@@ -209,6 +244,13 @@ export default function StatisticiPage() {
         : pctDelta(latest.rata_afisari_p1 ?? latest.afisari_p1_total, prev.rata_afisari_p1 ?? prev.afisari_p1_total)
       return showFilter === 'scaderi' ? (d != null && d < 0) : (d != null && d > 0)
     })
+    if (cardOrder.length > 0) {
+      return [...c].sort((a, b) => {
+        const ia = cardOrder.indexOf(cardKey(a.latest)), ib = cardOrder.indexOf(cardKey(b.latest))
+        if (ia === -1 && ib === -1) return 0; if (ia === -1) return 1; if (ib === -1) return -1
+        return ia - ib
+      })
+    }
     return [...c].sort((a, b) => {
       if (sortBy === 'ocupare') return (b.latest.rata_ocupare || 0) - (a.latest.rata_ocupare || 0)
       if (sortBy === 'tarif') return Math.max(b.latest.tarif_mediu_noapte || 0, b.latest.adr || 0) - Math.max(a.latest.tarif_mediu_noapte || 0, a.latest.adr || 0)
@@ -218,10 +260,9 @@ export default function StatisticiPage() {
         const db = Math.abs(pctDelta(b.latest.vizualizari_cautari ?? b.latest.afisari_p1_total, b.prev?.vizualizari_cautari ?? b.prev?.afisari_p1_total) || 0)
         return db - da
       }
-      // vizualizari (default)
       return Math.max(b.latest.vizualizari_cautari || 0, b.latest.afisari_p1_total || 0) - Math.max(a.latest.vizualizari_cautari || 0, a.latest.afisari_p1_total || 0)
     })
-  }, [cards, filterPlatforma, showFilter, sortBy])
+  }, [cards, filterPlatforma, showFilter, sortBy, cardOrder, hiddenCards])
 
   const evoData = useMemo(() => {
     if (!evoApt) return []
@@ -341,13 +382,15 @@ export default function StatisticiPage() {
     let saved = 0, errors = 0
     for (const item of done) {
       const { detected_apt_id, detected_platforma, ...metrics } = item.extracted
-      const row = { apartament_id: item.aptId, platforma: item.platforma, data_inregistrare: uploadDate, ...metrics }
-      // UPSERT — dacă există deja pentru aceeași dată+apt+platformă, suprascrie
-      const { error } = await supabase.from('statistici_platforme')
-        .upsert(row, { onConflict: 'apartament_id,platforma,data_inregistrare' })
-      if (error) { console.error('save error:', error); errors++ } else saved++
+      // Șterge rândul existent pentru aceeași zi (dacă există) apoi inserează fresh
+      await supabase.from('statistici_platforme').delete()
+        .eq('apartament_id', item.aptId).eq('platforma', item.platforma).eq('data_inregistrare', uploadDate)
+      const { error } = await supabase.from('statistici_platforme').insert({
+        apartament_id: item.aptId, platforma: item.platforma, data_inregistrare: uploadDate, ...metrics
+      })
+      if (error) { console.error('save error', error.message); errors++ } else saved++
     }
-    if (errors) show('error', `${errors} erori la salvare — verifică consola`)
+    if (errors) show('error', `${errors} erori la salvare`)
     else show('success', `✓ Salvate ${saved} înregistrări pentru ${uploadDate}`)
     setUploads([])
     await loadStats()
