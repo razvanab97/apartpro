@@ -263,29 +263,41 @@ export default function StatisticiPage() {
   }
 
   async function extractWithAI(item: UploadItem) {
-    const base64 = await fileToBase64(item.file)
     const isPDF = item.file.name.endsWith('.pdf')
     const isCSV = item.file.name.endsWith('.csv')
     const mimeType = isPDF ? 'application/pdf' : isCSV ? 'text/csv' : (item.file.type || 'image/png')
+
+    // Vercel hard limit ~4.5MB on request body; base64 adds 33% overhead → cap at 3MB binary
+    const MAX_BYTES = 3 * 1024 * 1024
+    if (isPDF && item.file.size > MAX_BYTES) {
+      throw new Error(`PDF prea mare (${(item.file.size/1024/1024).toFixed(1)} MB). Exportă o singură pagină sau un interval mai scurt.`)
+    }
+
+    const base64 = await fileToBase64(item.file, MAX_BYTES)
     const res = await fetch('/api/statistici-extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ base64Data: base64, mimeType, filename: item.file.name, aptList: apts.map(a => ({ id: a.id, name: `${a.nota} ${a.nume}` })) })
     })
-    if (!res.ok) { const e = await res.json().catch(() => ({ error: res.statusText })); throw new Error(e.error || 'Eroare server') }
+    if (!res.ok) {
+      if (res.status === 413) throw new Error('Fișier prea mare. Folosește o captură mai mică sau un PDF de o singură pagină.')
+      const e = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(e.error || 'Eroare server')
+    }
     const data = await res.json()
     if (data.error) throw new Error(data.error)
     return data
   }
 
-  async function fileToBase64(file: File): Promise<string> {
+  async function fileToBase64(file: File, maxBytes?: number): Promise<string> {
     if (file.type.startsWith('image/')) {
       return new Promise((res, rej) => {
         const img = new Image()
         const url = URL.createObjectURL(file)
         img.onload = () => {
           URL.revokeObjectURL(url)
-          const MAX = 1600
+          // Compress aggressively: max 1280px, JPEG 0.75
+          const MAX = 1280
           let w = img.width, h = img.height
           if (w > MAX || h > MAX) {
             if (w > h) { h = Math.round(h * MAX / w); w = MAX }
@@ -296,11 +308,15 @@ export default function StatisticiPage() {
           canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
           canvas.toBlob(blob => {
             if (!blob) { rej(new Error('compress failed')); return }
+            if (maxBytes && blob.size > maxBytes) {
+              rej(new Error(`Imaginea e prea mare după compresie (${(blob.size/1024/1024).toFixed(1)} MB). Încearcă o captură mai mică.`))
+              return
+            }
             const r = new FileReader()
             r.onload = () => res((r.result as string).split(',')[1])
             r.onerror = rej
             r.readAsDataURL(blob)
-          }, 'image/jpeg', 0.82)
+          }, 'image/jpeg', 0.75)
         }
         img.onerror = rej
         img.src = url
