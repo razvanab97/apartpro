@@ -226,63 +226,99 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
   }
 }
 
-// Mapare exactă label CSV Airbnb → câmp DB
+// Mapare label CSV (lowercase, fără diacritice sau cu) → câmp DB
 const CSV_MAP: Record<string, string> = {
-  'rata de ocupare':                                    'rata_ocupare',
-  'total nopti rezervate':                              'nopti_rezervate',
-  'total nopți rezervate':                              'nopti_rezervate',
-  'total nopti blocate':                                'nopti_blocate',
-  'total nopți blocate':                                'nopti_blocate',
-  'total nopti fara rezervare':                         'nopti_fara_rezervare',
-  'total nopți fără rezervare':                         'nopti_fara_rezervare',
-  'total check-in-uri':                                 'checkin_uri',
-  'rata de anulare':                                    'rata_anulari',
-  'durata medie a sederii':                             'durata_medie_sedere',
-  'durata medie a șederii':                             'durata_medie_sedere',
-  'tarif mediu pe noapte':                              'tarif_mediu_noapte',
-  'rata globala de conversie':                          'rata_conversie_globala',
-  'rata globală de conversie':                          'rata_conversie_globala',
-  'rata de conversie cautari -> afisari pagina':        'rata_afisari_p1',
-  'rata de conversie căutări -> afișări pagină':        'rata_afisari_p1',
-  'rata de conversie afisari pagina -> rezervari':      'rata_conversie_vizite_rez',
-  'rata de conversie afișări pagină -> rezervări':      'rata_conversie_vizite_rez',
-  'rata de conversie cautari -> vizite anunt':          'rata_conversie_cautari_p1',
-  'rata de conversie căutări -> vizite anunț':          'rata_conversie_cautari_p1',
-  'numar total afisari pagina (cautare)':               'afisari_pagina_total',
-  'număr total afișări pagină (căutare)':               'afisari_pagina_total',
-  'total afisari de cautare pe prima pagina':           'afisari_p1_total',
-  'total afișări de căutare pe prima pagină':           'afisari_p1_total',
-  'numar total adaugari lista de dorinte':              'wishlist_total',
-  'număr total adăugări lista de dorințe':              'wishlist_total',
+  // Ocupare
+  'rata de ocupare':                                              'rata_ocupare',
+  'total nopti rezervate':                                        'nopti_rezervate',
+  'total nopți rezervate':                                        'nopti_rezervate',
+  'total nopti blocate':                                          'nopti_blocate',
+  'total nopți blocate':                                          'nopti_blocate',
+  'total nopti fara rezervare':                                   'nopti_fara_rezervare',
+  'total nopți fără rezervare':                                   'nopti_fara_rezervare',
+  'total check-in-uri':                                           'checkin_uri',
+  'rata de anulare':                                              'rata_anulari',
+  'durata medie a sederii':                                       'durata_medie_sedere',
+  'durata medie a șederii':                                       'durata_medie_sedere',
+  // Tarif
+  'tarif mediu pe noapte':                                        'tarif_mediu_noapte',
+  // Conversie — format vechi (->)
+  'rata globala de conversie':                                    'rata_conversie_globala',
+  'rata globală de conversie':                                    'rata_conversie_globala',
+  'rata de conversie cautari -> afisari pagina':                  'rata_afisari_p1',
+  'rata de conversie căutări -> afișări pagină':                  'rata_afisari_p1',
+  'rata de conversie afisari pagina -> rezervari':                'rata_conversie_vizite_rez',
+  'rata de conversie afișări pagină -> rezervări':                'rata_conversie_vizite_rez',
+  'rata de conversie cautari -> vizite anunt':                    'rata_conversie_cautari_p1',
+  'rata de conversie căutări -> vizite anunț':                    'rata_conversie_cautari_p1',
+  // Conversie — format nou (fraze lungi fără ->)
+  'rata afisarilor de cautare pe prima pagina':                   'rata_afisari_p1',
+  'rata afișărilor de căutare pe prima pagină':                   'rata_afisari_p1',
+  'rata de conversie a cautarilor in vizite ale anuntului':       'rata_conversie_cautari_p1',
+  'rata de conversie a căutărilor în vizite ale anunțului':       'rata_conversie_cautari_p1',
+  'rata de conversie a vizitelor anuntului in rezervari':         'rata_conversie_vizite_rez',
+  'rata de conversie a vizitelor anunțului în rezervări':         'rata_conversie_vizite_rez',
+  // Afișări
+  'numar total afisari pagina (cautare)':                         'afisari_pagina_total',
+  'număr total afișări pagină (căutare)':                         'afisari_pagina_total',
+  'numar total de afisari ale paginii':                           'afisari_pagina_total',
+  'număr total de afișări ale paginii':                           'afisari_pagina_total',
+  'total afisari de cautare pe prima pagina':                     'afisari_p1_total',
+  'total afișări de căutare pe prima pagină':                     'afisari_p1_total',
+  // Wishlist
+  'numar total adaugari lista de dorinte':                        'wishlist_total',
+  'număr total adăugări lista de dorințe':                        'wishlist_total',
+  'numar total de adaugari la lista de dorinte':                  'wishlist_total',
+  'număr total de adăugări la lista de dorințe':                  'wishlist_total',
   // Booking
-  'vizualizari cautari':                                'vizualizari_cautari',
-  'vizualizări căutări':                                'vizualizari_cautari',
-  'vizualizari pagina':                                 'vizualizari_pagina',
-  'vizualizări pagină':                                 'vizualizari_pagina',
-  'rezervari confirmate':                               'rezervari_confirmate',
-  'rezervări confirmate':                               'rezervari_confirmate',
-  'rang':                                               'scor_pozitie_rank',
-  'total proprietati in clasament':                     'scor_pozitie_total',
-  'procent clasament':                                  'scor_pozitie_pct',
-  'rata conversie cautari':                             'rata_conversie_cautari',
-  'rata conversie pagina':                              'rata_conversie_pagina',
-  'adr':                                                'adr',
-  'scor comentarii':                                    'scor_comentarii',
-  'completare pagina':                                  'completare_pagina_pct',
+  'vizualizari cautari':                                          'vizualizari_cautari',
+  'vizualizări căutări':                                          'vizualizari_cautari',
+  'vizualizari pagina':                                           'vizualizari_pagina',
+  'vizualizări pagină':                                           'vizualizari_pagina',
+  'rezervari confirmate':                                         'rezervari_confirmate',
+  'rezervări confirmate':                                         'rezervari_confirmate',
+  'rang':                                                         'scor_pozitie_rank',
+  'total proprietati in clasament':                               'scor_pozitie_total',
+  'procent clasament':                                            'scor_pozitie_pct',
+  'rata conversie cautari':                                       'rata_conversie_cautari',
+  'rata conversie pagina':                                        'rata_conversie_pagina',
+  'adr':                                                          'adr',
+  'scor comentarii':                                              'scor_comentarii',
+  'completare pagina':                                            'completare_pagina_pct',
+}
+
+function stripUnits(raw: string): number | null {
+  // Elimină unități: %, RON, lei, zile, zi, nopți, nopti, numar, număr
+  const cleaned = raw
+    .replace(/[%]/g, '')
+    .replace(/\bRON\b|\blei\b|\bzile\b|\bzi\b|\bnopți\b|\bnopti\b|\bnumăr\b|\bnumar\b/gi, '')
+    .replace(',', '.')
+    .trim()
+  const val = parseFloat(cleaned)
+  return isNaN(val) ? null : val
 }
 
 function parseAirbnbCSV(csv: string): Record<string, any> {
   const result: Record<string, any> = { detected_platforma: 'airbnb', detected_apt_id: null }
-  const lines = csv.split('\n').filter(l => l.trim())
-  // skip header
+  const lines = csv.split('\n').map(l => l.trim()).filter(Boolean)
+  if (lines.length < 2) return result
+
+  // Auto-detectare format după header
+  // Format A: "Metric,Value,Period,Unit,Notes"      → label=col[0], value=col[1]
+  // Format B: "Categorie,Metric,Valoare,Perioada,…" → label=col[1], value=col[2]
+  const header = lines[0].toLowerCase()
+  const isFormatB = header.startsWith('categorie') || (header.includes('metric') && header.includes('valoare'))
+  const labelCol = isFormatB ? 1 : 0
+  const valueCol = isFormatB ? 2 : 1
+
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(',')
-    if (cols.length < 2) continue
-    const label = cols[0].trim().toLowerCase()
-    const raw = cols[1]?.trim()
-    if (!raw) continue
-    const val = parseFloat(raw.replace(',', '.'))
-    if (isNaN(val)) continue
+    if (cols.length <= valueCol) continue
+    const label = cols[labelCol]?.trim().toLowerCase()
+    const raw = cols[valueCol]?.trim()
+    if (!label || !raw) continue
+    const val = stripUnits(raw)
+    if (val === null) continue
     const field = CSV_MAP[label]
     if (field) result[field] = val
   }
