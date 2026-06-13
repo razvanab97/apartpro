@@ -140,6 +140,7 @@ export default function StatisticiPage() {
   // Upload
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [processing, setProcessing] = useState(false)
+  const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().split('T')[0])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast, show } = useToast()
 
@@ -156,7 +157,7 @@ export default function StatisticiPage() {
     setLoading(true)
     const { data } = await supabase
       .from('statistici_platforme').select('*')
-      .order('data_inregistrare', { ascending: false }).limit(600)
+      .order('data_inregistrare', { ascending: false }).limit(3000)
     setStats(data || [])
     setLoading(false)
   }
@@ -337,19 +338,20 @@ export default function StatisticiPage() {
   async function saveAll() {
     const done = uploads.filter(u => u.status === 'done' && u.extracted && u.aptId)
     if (!done.length) { show('error', 'Nu există date de salvat sau apartamentul nu e selectat'); return }
-    let saved = 0
+    let saved = 0, errors = 0
     for (const item of done) {
       const { detected_apt_id, detected_platforma, ...metrics } = item.extracted
-      const { error } = await supabase.from('statistici_platforme').insert({
-        apartament_id: item.aptId, platforma: item.platforma,
-        data_inregistrare: new Date().toISOString().split('T')[0],
-        ...metrics
-      })
-      if (!error) saved++
+      const row = { apartament_id: item.aptId, platforma: item.platforma, data_inregistrare: uploadDate, ...metrics }
+      // UPSERT — dacă există deja pentru aceeași dată+apt+platformă, suprascrie
+      const { error } = await supabase.from('statistici_platforme')
+        .upsert(row, { onConflict: 'apartament_id,platforma,data_inregistrare' })
+      if (error) { console.error('save error:', error); errors++ } else saved++
     }
-    show('success', `Salvate ${saved}/${done.length} înregistrări`)
+    if (errors) show('error', `${errors} erori la salvare — verifică consola`)
+    else show('success', `✓ Salvate ${saved} înregistrări pentru ${uploadDate}`)
     setUploads([])
-    loadStats()
+    await loadStats()
+    setTab('dashboard')
   }
 
   // Styles
@@ -531,17 +533,22 @@ export default function StatisticiPage() {
         {tab === 'upload' && (
           <div>
             <div style={S.card}>
-              <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.7)', marginBottom: 12 }}>
-                Trage toate screenshot-urile sau PDF-urile zilei. AI detectează automat apartamentul și platforma din conținut.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const }}>
+                <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.7)' }}>Data statisticilor:</div>
+                <input type="date" value={uploadDate} onChange={e => setUploadDate(e.target.value)}
+                  style={{ ...S.sel, fontSize: 13, fontWeight: 600, color: '#fff' }} />
+                <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
+                  Poți uploada date pentru orice zi — istoricul se păstrează complet
+                </div>
               </div>
               <div style={S.dropzone} onClick={() => fileInputRef.current?.click()}
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
                 <div style={{ fontSize: 14, color: 'rgba(159,215,255,0.7)' }}>Click sau trage fișierele aici</div>
-                <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginTop: 4 }}>PNG, JPG, PDF — toate deodată</div>
+                <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginTop: 4 }}>PNG, JPG, PDF, CSV — toate deodată</div>
               </div>
-              <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf" style={{ display: 'none' }}
+              <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.csv" style={{ display: 'none' }}
                 onChange={e => handleFiles(e.target.files)} />
             </div>
 
