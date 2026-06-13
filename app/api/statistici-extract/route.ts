@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY!
+const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY
 
 export async function POST(req: NextRequest) {
+  if (!CLAUDE_KEY) return NextResponse.json({ error: 'ANTHROPIC_API_KEY nu este configurat pe server' }, { status: 500 })
   try {
     const body = await req.json()
     const { base64Data, mimeType, filename, platforma, aptNume } = body
@@ -68,12 +69,16 @@ Extrage TOATE valorile numerice vizibile și returnează DOAR JSON valid fără 
       body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1000, messages: [{ role: 'user', content }] })
     })
 
-    const data = await res.json()
-    if (!res.ok) return NextResponse.json({ error: data.error?.message || 'API error' }, { status: 500 })
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data) return NextResponse.json({ error: data?.error?.message || `API error ${res.status}` }, { status: 500 })
 
     const text = data.content?.find((c: any) => c.type === 'text')?.text || '{}'
     const clean = text.replace(/```json|```/g, '').trim()
-    return NextResponse.json(JSON.parse(clean))
+    try {
+      return NextResponse.json(JSON.parse(clean))
+    } catch {
+      return NextResponse.json({ error: 'AI a returnat date invalide, încearcă din nou' }, { status: 500 })
+    }
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
