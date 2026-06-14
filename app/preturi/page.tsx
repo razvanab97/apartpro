@@ -987,32 +987,32 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               )
             }
 
-            const allDays=Array.from(new Set(periodScans.map((h:any)=>scanDay(h)))).sort() as string[]
-            const chartData=allDays.map((day:string)=>{
-              const bkLast=bkAll.filter((h:any)=>scanDay(h)===day).sort((a:any,b:any)=>scanTime(b)-scanTime(a))[0]
-              const abLast=abAll.filter((h:any)=>scanDay(h)===day).sort((a:any,b:any)=>scanTime(b)-scanTime(a))[0]
-              return{
-                day:day.slice(5).replace('-','/'),
-                fullDay:day,
-                booking:bkLast?.total_properties??null,
-                airbnb:abLast?.total_properties??null,
-                bkPrice:bkLast?.lowest_price??null,
-                abPrice:abLast?.lowest_price??null,
-              }
+            const bkDayScans=bkAll.filter((h:any)=>scanDay(h)===scanDayMonitor).sort((a:any,b:any)=>scanTime(a)-scanTime(b))
+            const abDayScans=abAll.filter((h:any)=>scanDay(h)===scanDayMonitor).sort((a:any,b:any)=>scanTime(a)-scanTime(b))
+            const intradayMap=new Map<string,any>()
+            bkDayScans.forEach((h:any)=>{
+              const t=new Date(h.scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
+              intradayMap.set(t,{...(intradayMap.get(t)||{time:t}),booking:h.total_properties,bkPrice:h.lowest_price})
             })
+            abDayScans.forEach((h:any)=>{
+              const t=new Date(h.scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
+              intradayMap.set(t,{...(intradayMap.get(t)||{time:t}),airbnb:h.total_properties,abPrice:h.lowest_price})
+            })
+            const intradayData=Array.from(intradayMap.values()).sort((a:any,b:any)=>a.time.localeCompare(b.time))
+            const totalDayScans=bkDayScans.length+abDayScans.length
 
             if(!lastBk&&!lastAb) return(
               <div>
-                {chartData.length>=2&&(
+                {intradayData.length>=2&&(
                   <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(10,20,40,0.4)'}}>
-                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție piață · {allDays.length} zile scanate</div>
+                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție în zi · {totalDayScans} scanări · {scanDayMonitor}</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
                       <div>
                         <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Proprietăți disponibile</div>
                         <ResponsiveContainer width="100%" height={90}>
-                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                          <LineChart data={intradayData} margin={{top:2,right:6,bottom:0,left:0}}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
-                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <XAxis dataKey="time" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
                             <YAxis tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false} width={26}/>
                             <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
                             <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
@@ -1023,9 +1023,9 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       <div>
                         <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Preț minim piață (lei)</div>
                         <ResponsiveContainer width="100%" height={90}>
-                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                          <LineChart data={intradayData} margin={{top:2,right:6,bottom:0,left:0}}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
-                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <XAxis dataKey="time" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
                             <YAxis tick={{fontSize:8,fill:'rgba(252,211,77,0.35)'}} tickLine={false} axisLine={false} width={30}/>
                             <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
                             <Line type="monotone" dataKey="bkPrice" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
@@ -1044,16 +1044,16 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
 
             return(
               <div>
-                {chartData.length>=2&&(
+                {intradayData.length>=2&&(
                   <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(10,20,40,0.4)'}}>
-                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție piață · {allDays.length} zile scanate</div>
+                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție în zi · {totalDayScans} scanări · {scanDayMonitor}</div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
                       <div>
                         <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Proprietăți disponibile</div>
                         <ResponsiveContainer width="100%" height={90}>
-                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                          <LineChart data={intradayData} margin={{top:2,right:6,bottom:0,left:0}}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
-                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <XAxis dataKey="time" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
                             <YAxis tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false} width={26}/>
                             <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
                             <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
@@ -1064,9 +1064,9 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       <div>
                         <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Preț minim piață (lei)</div>
                         <ResponsiveContainer width="100%" height={90}>
-                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                          <LineChart data={intradayData} margin={{top:2,right:6,bottom:0,left:0}}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
-                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <XAxis dataKey="time" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
                             <YAxis tick={{fontSize:8,fill:'rgba(252,211,77,0.35)'}} tickLine={false} axisLine={false} width={30}/>
                             <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
                             <Line type="monotone" dataKey="bkPrice" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
