@@ -806,6 +806,23 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       {delta===0&&(
                         <div style={{padding:'4px 8px',borderRadius:6,fontSize:10,color:'rgba(147,197,253,0.35)',background:'rgba(147,197,253,0.05)',border:'1px solid rgba(147,197,253,0.1)'}}>= stabil</div>
                       )}
+                      {allPlatScans.length>=2&&(()=>{
+                        const n=allPlatScans.length
+                        const sinceLastScan=allPlatScans[n-2].total_properties-allPlatScans[n-1].total_properties
+                        if(sinceLastScan===0) return null
+                        const prevTime=new Date(allPlatScans[n-2].scanned_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})
+                        const isRes=sinceLastScan>0
+                        return(
+                          <div style={{padding:'4px 8px',borderRadius:6,fontSize:10,fontWeight:700,
+                            background:isRes?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.05)',
+                            color:isRes?'#4ADE80':'#F87171',
+                            border:`1px solid ${isRes?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.12)'}`,
+                            display:'flex',flexDirection:'column' as const,alignItems:'center',gap:1}}>
+                            <div style={{fontSize:8,opacity:0.55,fontWeight:400,whiteSpace:'nowrap' as const}}>de la {prevTime}</div>
+                            <div>{isRes?`▼ ${sinceLastScan}`:`▲ +${Math.abs(sinceLastScan)}`}</div>
+                          </div>
+                        )
+                      })()}
                     </div>
                     {/* Price + churn badges */}
                     <div style={{display:'flex',gap:6,marginLeft:'auto',flexWrap:'wrap' as const}}>
