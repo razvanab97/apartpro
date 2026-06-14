@@ -987,14 +987,96 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               )
             }
 
+            const allDays=Array.from(new Set(periodScans.map((h:any)=>scanDay(h)))).sort() as string[]
+            const chartData=allDays.map((day:string)=>{
+              const bkLast=bkAll.filter((h:any)=>scanDay(h)===day).sort((a:any,b:any)=>scanTime(b)-scanTime(a))[0]
+              const abLast=abAll.filter((h:any)=>scanDay(h)===day).sort((a:any,b:any)=>scanTime(b)-scanTime(a))[0]
+              return{
+                day:day.slice(5).replace('-','/'),
+                fullDay:day,
+                booking:bkLast?.total_properties??null,
+                airbnb:abLast?.total_properties??null,
+                bkPrice:bkLast?.lowest_price??null,
+                abPrice:abLast?.lowest_price??null,
+              }
+            })
+
             if(!lastBk&&!lastAb) return(
-              <div style={{padding:'28px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.35)',fontSize:11}}>
-                Nu există scanări în ziua {scanDayMonitor||'selectată'} pentru perioada {checkinMonitor} → {checkoutMonitor}.
+              <div>
+                {chartData.length>=2&&(
+                  <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(10,20,40,0.4)'}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție piață · {allDays.length} zile scanate</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                      <div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Proprietăți disponibile</div>
+                        <ResponsiveContainer width="100%" height={90}>
+                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
+                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <YAxis tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false} width={26}/>
+                            <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
+                            <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
+                            <Line type="monotone" dataKey="airbnb" stroke="#F87171" strokeWidth={1.5} dot={{r:2,fill:'#F87171'}} activeDot={{r:3}} connectNulls name="Airbnb"/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Preț minim piață (lei)</div>
+                        <ResponsiveContainer width="100%" height={90}>
+                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
+                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <YAxis tick={{fontSize:8,fill:'rgba(252,211,77,0.35)'}} tickLine={false} axisLine={false} width={30}/>
+                            <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
+                            <Line type="monotone" dataKey="bkPrice" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
+                            <Line type="monotone" dataKey="abPrice" stroke="#F87171" strokeWidth={1.5} dot={{r:2,fill:'#F87171'}} activeDot={{r:3}} connectNulls name="Airbnb"/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div style={{padding:'28px 16px',textAlign:'center' as const,color:'rgba(147,197,253,0.35)',fontSize:11}}>
+                  Nu există scanări în ziua {scanDayMonitor||'selectată'} pentru perioada {checkinMonitor} → {checkoutMonitor}.
+                </div>
               </div>
             )
 
             return(
               <div>
+                {chartData.length>=2&&(
+                  <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(10,20,40,0.4)'}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.4)',textTransform:'uppercase' as const,letterSpacing:'.06em',marginBottom:10}}>Evoluție piață · {allDays.length} zile scanate</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                      <div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Proprietăți disponibile</div>
+                        <ResponsiveContainer width="100%" height={90}>
+                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
+                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <YAxis tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false} width={26}/>
+                            <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
+                            <Line type="monotone" dataKey="booking" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
+                            <Line type="monotone" dataKey="airbnb" stroke="#F87171" strokeWidth={1.5} dot={{r:2,fill:'#F87171'}} activeDot={{r:3}} connectNulls name="Airbnb"/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div>
+                        <div style={{fontSize:9,color:'rgba(147,197,253,0.35)',marginBottom:4}}>Preț minim piață (lei)</div>
+                        <ResponsiveContainer width="100%" height={90}>
+                          <LineChart data={chartData} margin={{top:2,right:6,bottom:0,left:0}}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(99,179,237,0.07)"/>
+                            <XAxis dataKey="day" tick={{fontSize:8,fill:'rgba(147,197,253,0.35)'}} tickLine={false} axisLine={false}/>
+                            <YAxis tick={{fontSize:8,fill:'rgba(252,211,77,0.35)'}} tickLine={false} axisLine={false} width={30}/>
+                            <Tooltip contentStyle={{background:'rgba(15,30,55,0.95)',border:'1px solid rgba(99,179,237,0.2)',borderRadius:6,fontSize:10}} labelStyle={{color:'rgba(147,197,253,0.7)'}}/>
+                            <Line type="monotone" dataKey="bkPrice" stroke="#7BC8FF" strokeWidth={1.5} dot={{r:2,fill:'#7BC8FF'}} activeDot={{r:3}} connectNulls name="Booking"/>
+                            <Line type="monotone" dataKey="abPrice" stroke="#F87171" strokeWidth={1.5} dot={{r:2,fill:'#F87171'}} activeDot={{r:3}} connectNulls name="Airbnb"/>
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div style={{borderBottom:'1px solid rgba(99,179,237,0.1)',background:'rgba(99,179,237,0.025)'}}>
                   <div style={{padding:'8px 14px',fontSize:10,fontWeight:700,color:'rgba(147,197,253,0.5)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Ultima scanare din {scanDayMonitor} · comparație cu ultima zi scanată anterior</div>
                   {renderSummary(lastBk,'booking',bkComparison)}
