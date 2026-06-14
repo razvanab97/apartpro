@@ -137,9 +137,9 @@ export default function StatisticiPage() {
   const [hiddenCards, setHiddenCards] = useState<string[]>([])
 
   // Evoluție
-  const [evoApt, setEvoApt] = useState('')
+  const [evoApts, setEvoApts] = useState<string[]>([])
   const [evoPlatforma, setEvoPlatforma] = useState<Platforma>('airbnb')
-  const [evoMode, setEvoMode] = useState<'combined' | 'grid'>('combined')
+  const [evoMode, setEvoMode] = useState<'grafice' | 'tabel'>('grafice')
   const [evoMetrics, setEvoMetrics] = useState<string[]>(['rata_afisari_p1', 'rata_ocupare'])
 
   // Upload
@@ -264,11 +264,26 @@ export default function StatisticiPage() {
     })
   }, [cards, filterPlatforma, showFilter, sortBy, cardOrder, hiddenCards])
 
-  const evoData = useMemo(() => {
-    if (!evoApt) return []
-    const k = `${evoApt}_${evoPlatforma}`
-    return (pairMap[k] || []).slice().reverse()
-  }, [pairMap, evoApt, evoPlatforma])
+  const evoDataMap = useMemo(() => {
+    const map: Record<string, StatRow[]> = {}
+    for (const aptId of evoApts) {
+      const k = `${aptId}_${evoPlatforma}`
+      map[aptId] = (pairMap[k] || []).slice().reverse()
+    }
+    return map
+  }, [pairMap, evoApts, evoPlatforma])
+
+  const compChartData = useMemo(() => {
+    const dates = new Set<string>()
+    Object.values(evoDataMap).forEach(rows => rows.forEach(r => dates.add(r.data_inregistrare)))
+    return Array.from(dates).sort().map(d => {
+      const obj: Record<string, any> = { data: d }
+      for (const [aptId, rows] of Object.entries(evoDataMap)) {
+        obj[aptId] = rows.find(r => r.data_inregistrare === d)
+      }
+      return obj
+    })
+  }, [evoDataMap])
 
   // Upload helpers
   function handleFiles(files: FileList | null) {
@@ -543,81 +558,148 @@ export default function StatisticiPage() {
         {/* ── EVOLUȚIE ── */}
         {tab === 'evolutie' && (
           <div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' as const, alignItems: 'center' }}>
-              <select style={S.sel} value={evoApt} onChange={e => setEvoApt(e.target.value)}>
-                <option value="">— Selectează apartament —</option>
-                {apts.map(a => <option key={a.id} value={a.id}>[{a.nota}] {a.nume}</option>)}
-              </select>
-              <select style={S.sel} value={evoPlatforma} onChange={e => { setEvoPlatforma(e.target.value as Platforma); setEvoMetrics([]) }}>
-                <option value="airbnb">Airbnb</option>
-                <option value="booking">Booking</option>
-              </select>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                <button style={S.tog(evoMode==='combined')} onClick={() => setEvoMode('combined')}>📊 Combinat</button>
-                <button style={S.tog(evoMode==='grid')} onClick={() => setEvoMode('grid')}>⊞ Grid</button>
+            {/* Panel selecție */}
+            <div style={{ ...S.card, marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+                <button style={S.tog(evoPlatforma==='airbnb')} onClick={() => { setEvoPlatforma('airbnb'); setEvoMetrics([]) }}>🏠 Airbnb</button>
+                <button style={S.tog(evoPlatforma==='booking')} onClick={() => { setEvoPlatforma('booking'); setEvoMetrics([]) }}>🔵 Booking</button>
+                <div style={S.div} />
+                <button style={S.tog(evoMode==='grafice')} onClick={() => setEvoMode('grafice')}>📊 Grafice</button>
+                <button style={S.tog(evoMode==='tabel')} onClick={() => setEvoMode('tabel')}>📋 Tabel</button>
+                {evoApts.length > 0 && (
+                  <button style={{ ...S.btn('rgba(255,255,255,0.06)'), marginLeft: 'auto', fontSize: 11 }} onClick={() => setEvoApts([])}>✕ Resetează</button>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 8 }}>
+                Selectează locații pentru comparație ({evoApts.length} selectate):
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                {apts.map((a, i) => {
+                  const sel = evoApts.includes(a.id)
+                  const hasData = !!pairMap[`${a.id}_${evoPlatforma}`]
+                  const color = LINE_COLORS[evoApts.indexOf(a.id) % LINE_COLORS.length]
+                  return (
+                    <button key={a.id} style={{
+                      padding: '5px 12px', borderRadius: 6, border: `1px solid ${sel ? color : 'rgba(255,255,255,0.1)'}`,
+                      background: sel ? `${color}22` : 'transparent',
+                      color: sel ? color : 'rgba(159,215,255,0.5)',
+                      fontSize: 12, fontWeight: 600, cursor: hasData ? 'pointer' : 'default',
+                      opacity: hasData ? 1 : 0.35,
+                    }} onClick={() => hasData && setEvoApts(prev => prev.includes(a.id) ? prev.filter(x => x !== a.id) : [...prev, a.id])}>
+                      {sel && <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:color, marginRight:5 }} />}
+                      [{a.nota}] {a.nume}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
-            {!evoApt ? (
-              <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>Selectează un apartament</div>
-            ) : evoData.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>Nu există date pentru această combinație</div>
-            ) : evoMode === 'combined' ? (
-              <div style={S.card}>
-                <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)', marginBottom: 10 }}>Selectează metricile vizibile:</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 16 }}>
-                  {metricOpts.map(m => (
-                    <button key={m.key} style={S.tog(evoMetrics.includes(m.key))}
-                      onClick={() => setEvoMetrics(p => p.includes(m.key) ? p.filter(x => x!==m.key) : [...p, m.key])}>
-                      {m.label}
-                    </button>
-                  ))}
+            {evoApts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>Selectează cel puțin o locație</div>
+            ) : evoMode === 'grafice' ? (
+              <div>
+                {/* Selector metrici */}
+                <div style={{ ...S.card, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 8 }}>Metrici (câte un grafic per metrică):</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                    {metricOpts.map(m => (
+                      <button key={m.key} style={S.tog(evoMetrics.includes(m.key))}
+                        onClick={() => setEvoMetrics(p => p.includes(m.key) ? p.filter(x => x!==m.key) : [...p, m.key])}>
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {evoMetrics.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 40, color: 'rgba(159,215,255,0.4)' }}>Selectează cel puțin o metrică</div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={320}>
-                    <LineChart data={evoData.map(d => ({ data: d.data_inregistrare, ...d }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="data" tick={{ fontSize: 10, fill: 'rgba(159,215,255,0.5)' }} />
-                      <YAxis tick={{ fontSize: 10, fill: 'rgba(159,215,255,0.5)' }} />
-                      <Tooltip contentStyle={{ background: '#1a2035', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 8, fontSize: 11 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      {evoMetrics.map((mk, i) => (
-                        <Line key={mk} type="monotone" dataKey={mk} stroke={LINE_COLORS[i % LINE_COLORS.length]}
-                          strokeWidth={2} dot={{ r: 3 }} name={metricOpts.find(m => m.key===mk)?.label || mk} />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 14 }}>
+                    {evoMetrics.map(mk => {
+                      const mLabel = metricOpts.find(m => m.key===mk)?.label || mk
+                      const chartData = compChartData.map(d => ({
+                        data: d.data,
+                        ...Object.fromEntries(evoApts.map(id => [id, d[id]?.[mk] ?? null]))
+                      }))
+                      return (
+                        <div key={mk} style={S.card}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(159,215,255,0.7)', marginBottom: 12 }}>{mLabel}</div>
+                          <ResponsiveContainer width="100%" height={220}>
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                              <XAxis dataKey="data" tick={{ fontSize: 9, fill: 'rgba(159,215,255,0.5)' }} />
+                              <YAxis tick={{ fontSize: 9, fill: 'rgba(159,215,255,0.5)' }} width={40} />
+                              <Tooltip contentStyle={{ background: '#1a2035', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 8, fontSize: 11 }}
+                                formatter={(v: any, name: any) => [v != null ? Number(v).toFixed(1) : '—', aptName(String(name))]} />
+                              <Legend wrapperStyle={{ fontSize: 10 }} formatter={(id: string) => aptName(id)} />
+                              {evoApts.map((id, i) => (
+                                <Line key={id} type="monotone" dataKey={id} stroke={LINE_COLORS[i % LINE_COLORS.length]}
+                                  strokeWidth={2} dot={{ r: 3 }} connectNulls name={id} />
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {metricOpts.map(m => {
-                  const vals = evoData.map(d => ({ data: d.data_inregistrare, v: (d as any)[m.key] })).filter(x => x.v != null)
-                  if (!vals.length) return null
-                  const last = vals[vals.length-1]?.v
-                  const first = vals[0]?.v
-                  const trend = last != null && first != null ? last - first : null
-                  return (
-                    <div key={m.key} style={S.card}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', marginBottom: 4 }}>{m.label}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4 }}>{vals[vals.length-1]?.v?.toFixed(1)}</div>
-                      {trend != null && (
-                        <div style={{ fontSize: 11, color: trend >= 0 ? '#4ade80' : '#f87171', marginBottom: 8 }}>
-                          {trend >= 0 ? '+' : ''}{trend.toFixed(1)} total
-                        </div>
-                      )}
-                      <ResponsiveContainer width="100%" height={80}>
-                        <LineChart data={vals}>
-                          <Line type="monotone" dataKey="v" stroke="#4DA3FF" strokeWidth={2} dot={false} />
-                          <Tooltip contentStyle={{ background: '#1a2035', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 8, fontSize: 10 }}
-                            formatter={(v: any) => [Number(v).toFixed(2), m.label]} labelFormatter={(l: any) => l} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )
-                })}
+              /* ── TABEL COMPARATIV ── */
+              <div style={S.card}>
+                <div style={{ overflowX: 'auto' as const }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, color: 'rgba(159,215,255,0.5)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap' as const }}>Locație</th>
+                        <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, color: 'rgba(159,215,255,0.5)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap' as const }}>Data</th>
+                        {metricOpts.map(m => (
+                          <th key={m.key} style={{ textAlign: 'right', padding: '8px 12px', fontSize: 11, color: 'rgba(159,215,255,0.5)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)', whiteSpace: 'nowrap' as const }}>{m.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {evoApts.map((aptId, ri) => {
+                        const rows = evoDataMap[aptId] || []
+                        const latest = rows[rows.length - 1]
+                        const prev = rows[rows.length - 2]
+                        const dotColor = LINE_COLORS[ri % LINE_COLORS.length]
+                        if (!latest) return (
+                          <tr key={aptId}>
+                            <td style={{ padding: '8px 12px', color: '#fff', fontWeight: 700 }}>
+                              <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:dotColor, marginRight:6 }} />
+                              {aptName(aptId)}
+                            </td>
+                            <td colSpan={metricOpts.length + 1} style={{ padding: '8px 12px', color: 'rgba(159,215,255,0.3)', fontSize: 11 }}>— fără date pentru {evoPlatforma} —</td>
+                          </tr>
+                        )
+                        return (
+                          <tr key={aptId} style={{ background: ri % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '10px 12px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' as const }}>
+                              <span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:dotColor, marginRight:6 }} />
+                              {aptName(aptId)}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'rgba(159,215,255,0.4)', fontSize: 11, whiteSpace: 'nowrap' as const }}>{latest.data_inregistrare}</td>
+                            {metricOpts.map(m => {
+                              const val = (latest as any)[m.key]
+                              const prevVal = prev ? (prev as any)[m.key] : undefined
+                              const d = pctDelta(val, prevVal)
+                              return (
+                                <td key={m.key} style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' as const }}>
+                                  {val != null ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                      <span style={{ fontWeight: 700, color: '#fff' }}>{Number(val).toFixed(1)}</span>
+                                      <DeltaBadge d={d} />
+                                    </div>
+                                  ) : <span style={{ color: 'rgba(159,215,255,0.2)' }}>—</span>}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
