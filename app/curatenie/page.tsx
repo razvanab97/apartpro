@@ -755,16 +755,17 @@ export default function CuratenePage() {
               {/* TAB DETALIAT */}
               {raportTab==='detaliat'&&(
                 <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 60px 60px 65px 50px 70px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
-                    {['Data','Apt','Nume','Început','Terminat','Durată','🛏','Status'].map(h=>(
+                  <div style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 55px 55px 55px 60px 50px 70px',padding:'8px 14px',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(11,22,32,0.5)'}}>
+                    {['Data','Apt','Nume','Plecat','Început','Terminat','Durată','🛏','Status'].map(h=>(
                       <div key={h} style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase' as const,letterSpacing:'.05em'}}>{h}</div>
                     ))}
                   </div>
                   {filteredRapoarte.flatMap((zi:any)=>zi.detalii.map((d:any,i:number)=>(
-                    <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 60px 60px 65px 50px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
+                    <div key={`${zi.data}-${i}`} style={{display:'grid',gridTemplateColumns:'80px 50px 1fr 55px 55px 55px 60px 50px 70px',padding:'9px 14px',borderBottom:'1px solid rgba(100,160,255,0.05)',alignItems:'center',background:d.status==='gata'?'rgba(74,222,128,0.02)':'transparent'}}>
                       <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</div>
                       <div style={{fontSize:12,fontWeight:700,color:'#4DA3FF',fontFamily:'monospace'}}>{d.nota}</div>
                       <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{d.nume}</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',color:d.eliberatLa?'#7BC8FF':'rgba(159,215,255,0.2)'}}>{d.eliberatLa||'—'}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',color:d.oraInceput?'#FCD34D':'rgba(159,215,255,0.3)'}}>{d.oraInceput||'—'}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',color:d.oraGata?'#4ADE80':'rgba(159,215,255,0.3)'}}>{d.oraGata||'—'}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',fontWeight:700,color:d.durata?(d.durata<45?'#4ADE80':d.durata<90?'#FCD34D':'#F87171'):'rgba(159,215,255,0.3)'}}>
@@ -794,7 +795,7 @@ export default function CuratenePage() {
                 return(
                   <div style={{display:'flex',flexDirection:'column' as const,gap:14}}>
                     <div style={{background:'rgba(11,22,42,0.6)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:14,overflow:'hidden'}}>
-                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(100,160,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(147,197,253,0.7)'}}>🕐 Ora medie start curățenie per zi din săptămână</div>
+                      <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(100,160,255,0.08)',fontSize:12,fontWeight:700,color:'rgba(147,197,253,0.7)'}}>🚪 Ora medie eliberare apartament per zi din săptămână</div>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
                         {[1,2,3,4,5,6,0].map(zi=>{
                           const ore=byZiSapt[zi]||[]
@@ -867,7 +868,7 @@ export default function CuratenePage() {
               {zile.map(zi=>{
                 const dep=ziMap[zi]
                 const kmZi=dep.reduce((s:number,d:any)=>s+Number(d.km),0)
-                const costZi=dep.reduce((s:number,d:any)=>s+Number(d.cost_lei),0)
+                const costZi=dep.reduce((s:number,d:any)=>s+costKm(Number(d.km)),0)
                 const isOpen=expandedZiComb===zi
                 return(
                   <div key={zi}>
@@ -885,7 +886,7 @@ export default function CuratenePage() {
                         <span style={{fontSize:10,color:'rgba(159,215,255,0.2)'}}>→</span>
                         <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',fontFamily:'monospace'}}>{d.la}</span>
                         <span style={{marginLeft:'auto',fontSize:11,color:'rgba(251,146,60,0.5)',fontFamily:'monospace'}}>{Number(d.km).toFixed(1)} km</span>
-                        <span style={{fontSize:11,fontWeight:600,color:'#FB923C',fontFamily:'monospace',minWidth:52,textAlign:'right' as const}}>{Number(d.cost_lei).toFixed(2)} lei</span>
+                        <span style={{fontSize:11,fontWeight:600,color:'#FB923C',fontFamily:'monospace',minWidth:52,textAlign:'right' as const}}>{costKm(Number(d.km)).toFixed(2)} lei</span>
                       </div>
                     ))}
                   </div>
