@@ -222,7 +222,7 @@ export default function CuratenePage() {
         const timpuri = gata.map((s:any)=>calcTimp(s)).filter((t:any)=>t!==null) as number[]
         const timpMediu = timpuri.length ? Math.round(timpuri.reduce((a,b)=>a+b,0)/timpuri.length) : null
         const detalii = rez.map((r:any)=>{
-          const aptId = r.apartament?.id
+          const aptId = r.apartament_id
           const st = (stData||[]).find((s:any)=>s.apartament_id===aptId&&s.data===data)
           const durata = st ? calcTimp(st) : null
           const full = rezByAptDay[`${aptId}_${data}`]
