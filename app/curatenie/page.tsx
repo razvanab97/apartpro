@@ -61,9 +61,13 @@ export default function CuratenePage() {
   }, [selectedDate])
 
   useEffect(()=>{
-    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina']).then(({data:d})=>{
+    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina','cost_curatenie']).then(({data:d})=>{
       if(!d) return
-      d.forEach((r:any)=>{ if(r.cheie==='pret_combustibil') setPretComb(r.valoare); if(r.cheie==='consum_masina') setConsumMasina(r.valoare) })
+      d.forEach((r:any)=>{
+        if(r.cheie==='pret_combustibil') setPretComb(r.valoare)
+        if(r.cheie==='consum_masina') setConsumMasina(r.valoare)
+        if(r.cheie==='cost_curatenie') setCostPerCuratenie(Number(r.valoare))
+      })
     })
   }, [])
 
@@ -80,6 +84,15 @@ export default function CuratenePage() {
     await supabase.from('setari').update({valoare:pretComb}).eq('cheie','pret_combustibil')
     await supabase.from('setari').update({valoare:consumMasina}).eq('cheie','consum_masina')
     setSavingComb(false)
+  }
+
+  async function saveCostCuratenie() {
+    const existing = await supabase.from('setari').select('id').eq('cheie','cost_curatenie').maybeSingle()
+    if(existing.data?.id) {
+      await supabase.from('setari').update({valoare:String(costPerCuratenie)}).eq('cheie','cost_curatenie')
+    } else {
+      await supabase.from('setari').insert({cheie:'cost_curatenie',valoare:String(costPerCuratenie)})
+    }
   }
 
   async function loadStaffStatus() {
@@ -171,7 +184,7 @@ export default function CuratenePage() {
       .neq('status_rezervare','anulata')
     // Curatenie status confirmate de staff
     const { data: stData } = await supabase.from('curatenie_status')
-      .select('apartament_id,data,status,ora_inceput,ora_gata,nr_lenjerii')
+      .select('apartament_id,data,status,ora_inceput,ora_gata,nr_lenjerii,eliberat_la')
       .gte('data', primaZi)
       .lte('data', ultimaZi)
     // Rezervari cu nr persoane pentru calcul lenjerii
@@ -213,11 +226,11 @@ export default function CuratenePage() {
           const durata = st ? calcTimp(st) : null
           const full = rezByAptDay[`${aptId}_${data}`]
           const lenjerii = st?.nr_lenjerii || nrLenSmart(full||r)
-          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, durata, status:st?.status||'neînceput', lenjerii }
+          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, eliberatLa:st?.eliberat_la||null, durata, status:st?.status||'neînceput', lenjerii }
         })
         const totalLenjerii = detalii.reduce((sum:number,d:any)=>sum+(d.lenjerii||0),0)
-        const oreInceput = detalii.map((d:any)=>d.oraInceput).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
-        const oraMedieMin = oreInceput.length ? Math.round(oreInceput.reduce((a:number,b:number)=>a+b,0)/oreInceput.length) : null
+        const oreEliberat = detalii.map((d:any)=>d.eliberatLa).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
+        const oraMedieMin = oreEliberat.length ? Math.round(oreEliberat.reduce((a:number,b:number)=>a+b,0)/oreEliberat.length) : null
         const ziSapt = new Date(data+'T12:00:00').getDay()
         return { data, nrCuratenii:rez.length, nrGata:gata.length, apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '), timpMediu, timpuri, totalLenjerii, detalii, oraMedieMin, ziSapt }
       })
@@ -602,8 +615,14 @@ export default function CuratenePage() {
           </div>
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Cost / curățenie (RON)</div>
-            <input type="number" value={costPerCuratenie} onChange={e=>setCostPerCuratenie(Number(e.target.value))} min={0}
-              style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none',width:120}}/>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <input type="number" value={costPerCuratenie} onChange={e=>setCostPerCuratenie(Number(e.target.value))} min={0}
+                style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none',width:100}}/>
+              <button onClick={saveCostCuratenie}
+                style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                Salvează
+              </button>
+            </div>
           </div>
           <div style={{alignSelf:'flex-end'}}>
             <button onClick={()=>loadRapoarte()}
@@ -815,8 +834,11 @@ export default function CuratenePage() {
 
         {/* ── COMBUSTIBIL ── */}
         {(()=>{
+          const pretLive = Number(pretComb)||8.5
+          const consumLive = Number(consumMasina)||7.5
+          const costKm = (km:number) => Math.round(km/100*consumLive*pretLive*100)/100
           const totalKm = deplasari.reduce((s,d)=>s+Number(d.km),0)
-          const totalCost = deplasari.reduce((s,d)=>s+Number(d.cost_lei),0)
+          const totalCost = deplasari.reduce((s,d)=>s+costKm(Number(d.km)),0)
           const ziMap: Record<string,any[]> = {}
           deplasari.forEach(d=>{ if(!ziMap[d.data]) ziMap[d.data]=[]; ziMap[d.data].push(d) })
           const zile = Object.keys(ziMap).sort()
