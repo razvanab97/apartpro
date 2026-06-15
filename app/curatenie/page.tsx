@@ -44,6 +44,11 @@ export default function CuratenePage() {
   const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
   const [filtruAptRaport, setFiltruAptRaport] = useState<Set<string>>(new Set())
   const [aptListRaport, setAptListRaport] = useState<string[]>([])
+  const [deplasari, setDeplasari] = useState<any[]>([])
+  const [pretComb, setPretComb] = useState('8.50')
+  const [consumMasina, setConsumMasina] = useState('7.5')
+  const [savingComb, setSavingComb] = useState(false)
+  const [expandedZiComb, setExpandedZiComb] = useState<string|null>(null)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -54,6 +59,28 @@ export default function CuratenePage() {
     const i = setInterval(loadStaffStatus, 30000)
     return ()=>clearInterval(i)
   }, [selectedDate])
+
+  useEffect(()=>{
+    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina']).then(({data:d})=>{
+      if(!d) return
+      d.forEach((r:any)=>{ if(r.cheie==='pret_combustibil') setPretComb(r.valoare); if(r.cheie==='consum_masina') setConsumMasina(r.valoare) })
+    })
+  }, [])
+
+  useEffect(()=>{
+    if(activeTab!=='rapoarte') return
+    const [an,luna] = rapoarteLuna.split('-')
+    const primaZi = `${an}-${luna}-01`
+    const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
+    supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
+  }, [activeTab, rapoarteLuna])
+
+  async function saveCombustibil() {
+    setSavingComb(true)
+    await supabase.from('setari').update({valoare:pretComb}).eq('cheie','pret_combustibil')
+    await supabase.from('setari').update({valoare:consumMasina}).eq('cheie','consum_masina')
+    setSavingComb(false)
+  }
 
   async function loadStaffStatus() {
     const { data } = await supabase.from('curatenie_status').select('*').eq('data', selectedDate)
@@ -785,6 +812,66 @@ export default function CuratenePage() {
         })()}
 
         {rapoarteData.length===0&&filteredRapoarte.length===0&&<div style={{textAlign:'center',padding:40,color:'rgba(159,215,255,0.3)',fontSize:13}}>Selectează luna și apasă Generează</div>}
+
+        {/* ── COMBUSTIBIL ── */}
+        {(()=>{
+          const totalKm = deplasari.reduce((s,d)=>s+Number(d.km),0)
+          const totalCost = deplasari.reduce((s,d)=>s+Number(d.cost_lei),0)
+          const ziMap: Record<string,any[]> = {}
+          deplasari.forEach(d=>{ if(!ziMap[d.data]) ziMap[d.data]=[]; ziMap[d.data].push(d) })
+          const zile = Object.keys(ziMap).sort()
+          return (
+            <div style={{marginTop:24,background:'rgba(11,22,42,0.6)',border:'1px solid rgba(251,146,60,0.2)',borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(251,146,60,0.12)',display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:16}}>⛽</span>
+                <span style={{fontSize:13,fontWeight:700,color:'rgba(251,146,60,0.9)'}}>Combustibil</span>
+                <span style={{marginLeft:'auto',fontSize:12,color:'rgba(251,146,60,0.6)',fontFamily:'monospace'}}>{totalKm.toFixed(1)} km</span>
+                <span style={{fontSize:14,fontWeight:700,color:'#FB923C',fontFamily:'monospace'}}>{totalCost.toFixed(2)} lei</span>
+              </div>
+              {/* Setări */}
+              <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(251,146,60,0.08)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+                <span style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>Preț:</span>
+                <input value={pretComb} onChange={e=>setPretComb(e.target.value)} style={{width:60,background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,color:'rgba(214,228,244,0.8)',fontSize:12,padding:'4px 8px',outline:'none',textAlign:'right' as const}} />
+                <span style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>lei/L</span>
+                <span style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginLeft:8}}>Consum:</span>
+                <input value={consumMasina} onChange={e=>setConsumMasina(e.target.value)} style={{width:50,background:'rgba(20,38,65,0.9)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:6,color:'rgba(214,228,244,0.8)',fontSize:12,padding:'4px 8px',outline:'none',textAlign:'right' as const}} />
+                <span style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>L/100km</span>
+                <button onClick={saveCombustibil} disabled={savingComb} style={{marginLeft:8,padding:'4px 12px',borderRadius:6,border:'1px solid rgba(251,146,60,0.4)',background:'rgba(251,146,60,0.12)',color:'#FB923C',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                  {savingComb?'...':'Salvează'}
+                </button>
+              </div>
+              {/* Lista zile */}
+              {zile.length===0&&<div style={{padding:'16px',textAlign:'center' as const,fontSize:12,color:'rgba(159,215,255,0.25)'}}>Nicio deplasare înregistrată</div>}
+              {zile.map(zi=>{
+                const dep=ziMap[zi]
+                const kmZi=dep.reduce((s:number,d:any)=>s+Number(d.km),0)
+                const costZi=dep.reduce((s:number,d:any)=>s+Number(d.cost_lei),0)
+                const isOpen=expandedZiComb===zi
+                return(
+                  <div key={zi}>
+                    <div onClick={()=>setExpandedZiComb(isOpen?null:zi)}
+                      style={{padding:'9px 16px',display:'flex',alignItems:'center',gap:8,cursor:'pointer',borderBottom:'1px solid rgba(251,146,60,0.06)'}}>
+                      <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',fontFamily:'monospace',minWidth:50}}>{zi.slice(5).replace('-','/')}</span>
+                      <span style={{fontSize:11,color:'rgba(159,215,255,0.35)',flex:1}}>{dep.length} deplasări</span>
+                      <span style={{fontSize:11,color:'rgba(251,146,60,0.6)',fontFamily:'monospace'}}>{kmZi.toFixed(1)} km</span>
+                      <span style={{fontSize:12,fontWeight:700,color:'#FB923C',fontFamily:'monospace',minWidth:60,textAlign:'right' as const}}>{costZi.toFixed(2)} lei</span>
+                      <span style={{fontSize:10,color:'rgba(159,215,255,0.2)',transform:isOpen?'rotate(90deg)':'none',display:'inline-block'}}>▶</span>
+                    </div>
+                    {isOpen&&dep.map((d:any,i:number)=>(
+                      <div key={i} style={{padding:'6px 16px 6px 32px',borderBottom:'1px solid rgba(251,146,60,0.04)',display:'flex',alignItems:'center',gap:8,background:'rgba(251,146,60,0.02)'}}>
+                        <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',fontFamily:'monospace'}}>{d.de_la}</span>
+                        <span style={{fontSize:10,color:'rgba(159,215,255,0.2)'}}>→</span>
+                        <span style={{fontSize:11,color:'rgba(159,215,255,0.5)',fontFamily:'monospace'}}>{d.la}</span>
+                        <span style={{marginLeft:'auto',fontSize:11,color:'rgba(251,146,60,0.5)',fontFamily:'monospace'}}>{Number(d.km).toFixed(1)} km</span>
+                        <span style={{fontSize:11,fontWeight:600,color:'#FB923C',fontFamily:'monospace',minWidth:52,textAlign:'right' as const}}>{Number(d.cost_lei).toFixed(2)} lei</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })()}
       </div>}
 
       <Toast toast={toast}/>

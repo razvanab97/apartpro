@@ -30,6 +30,8 @@ export default function StaffPage() {
   const [problemeStaff, setProblemeStaff] = useState<any[]>([])
   const [newProbStaff, setNewProbStaff] = useState({titlu:'',descriere:'',prioritate:'normal',apartament_id:''})
   const [savingProb, setSavingProb] = useState(false)
+  const [distante, setDistante] = useState<Record<string,number>>({})
+  const [setariComb, setSetariComb] = useState({pret: 8.5, consum: 7.5})
 
   useEffect(() => {
     if (document.cookie.includes('staff_auth=1111')) setAuth(true)
@@ -41,6 +43,22 @@ export default function StaffPage() {
     if(tab==='calendar') loadCalendar()
     if(tab==='probleme') loadProblemeStaff()
   }, [auth, data, tab])
+
+  useEffect(() => {
+    if (!auth) return
+    supabase.from('distante_apartamente').select('de_la,la,km').then(({data:d})=>{
+      if(!d) return
+      const m:Record<string,number>={}
+      d.forEach((r:any)=>{ m[`${r.de_la}__${r.la}`]=Number(r.km) })
+      setDistante(m)
+    })
+    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina']).then(({data:d})=>{
+      if(!d) return
+      const s:any={}
+      d.forEach((r:any)=>{ s[r.cheie]=Number(r.valoare) })
+      setSetariComb({ pret: s.pret_combustibil||8.5, consum: s.consum_masina||7.5 })
+    })
+  }, [auth])
 
   async function load() {
     setLoading(true)
@@ -100,6 +118,13 @@ export default function StaffPage() {
     setSavingProb(false)
   }
 
+  async function inregistreazaDeplasare(deLa: string, la: string) {
+    const km = distante[`${deLa}__${la}`]
+    if (!km) return
+    const cost_lei = Math.round(km / 100 * setariComb.consum * setariComb.pret * 100) / 100
+    await supabase.from('deplasari_curatenie').insert({ data, de_la: deLa, la, km, cost_lei })
+  }
+
   async function setStatus(aptId:string, status:'inceput'|'gata') {
     const now = new Date()
     const ora = `${P(now.getHours())}:${P(now.getMinutes())}`
@@ -108,9 +133,26 @@ export default function StaffPage() {
     if (status==='inceput') update.ora_inceput = ora
     if (status==='gata') { update.ora_gata = ora; update.ora_inceput = prev.ora_inceput||ora }
     await supabase.from('curatenie_status').upsert(update, {onConflict:'apartament_id,data'})
-    setStatusuri(prev=>({...prev,[aptId]:{...prev[aptId],...update}}))
+    const newStatusuri = {...statusuri, [aptId]: {...statusuri[aptId], ...update}}
+    setStatusuri(newStatusuri)
+
     const apt = apts.find(a=>a.id===aptId)
-    const msg = status==='inceput' ? `🧹 Curățenie începută — ${apt?.nota}` : `✅ Gata — ${apt?.nota} (${ora})`
+    const aptNota = apt?.nota
+
+    if (status==='inceput' && aptNota) {
+      // Ultimul apt gata = sursa; daca nu exista niciun gata, vine de la CANTA
+      const ultimulGata = apts.find(a => a.id !== aptId && newStatusuri[a.id]?.status === 'gata')
+      const sursa = ultimulGata?.nota || 'CANTA'
+      await inregistreazaDeplasare(sursa, aptNota)
+    }
+
+    if (status==='gata' && aptNota) {
+      // Verifica daca toate apartamentele zilei sunt acum gata
+      const toateGata = deCuratat.every(a => a.id===aptId || newStatusuri[a.id]?.status==='gata')
+      if (toateGata) await inregistreazaDeplasare(aptNota, 'CANTA')
+    }
+
+    const msg = status==='inceput' ? `🧹 Curățenie începută — ${aptNota}` : `✅ Gata — ${aptNota} (${ora})`
     setFlash({msg, ok: status==='gata'})
     setTimeout(()=>setFlash(null), 2500)
     fetch('/api/push-send', {
