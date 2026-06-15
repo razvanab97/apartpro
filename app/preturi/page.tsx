@@ -919,14 +919,14 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                       ):last.our_lowest_rank?(
                         <div style={{fontSize:12,fontWeight:600,color:'#FCD34D'}}>Locul #{last.our_lowest_rank} — min: {last.lowest_price} lei</div>
                       ):(
-                        <div style={{fontSize:12,color:'rgba(147,197,253,0.6)'}}>Nu ești în top 10 — min: <span style={{fontFamily:'monospace',fontWeight:700}}>{last.lowest_price} lei</span></div>
+                        <div style={{fontSize:12,color:'rgba(147,197,253,0.6)'}}>Nu ești în top 20 — min: <span style={{fontFamily:'monospace',fontWeight:700}}>{last.lowest_price} lei</span></div>
                       )}
                       {last.total_properties&&(
                         <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',fontFamily:'monospace'}}>{last.total_properties} proprietăți disponibile</span>
                       )}
                     </div>
                   </div>
-                  {/* Top 10 */}
+                  {/* Top 20 */}
                   {top.map((r:any,i:number)=>(
                     <div key={i} style={{
                       padding:'7px 14px',display:'flex',alignItems:'center',gap:10,
@@ -1462,7 +1462,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               {/* Tabel detaliat */}
               <div style={{...panel}}>
                 <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)'}}>
-                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>📋 Detaliat — click pe zi pentru top 10</span>
+                  <span style={{fontSize:12,fontWeight:600,color:'rgba(147,197,253,0.7)'}}>📋 Detaliat — click pe zi pentru top 20</span>
                 </div>
                 {allDates.map((d:string)=>{
                   const bk=bkData.filter((h:any)=>h.checkin===d).sort((a:any,b:any)=>new Date(b.scanned_at).getTime()-new Date(a.scanned_at).getTime())[0]
