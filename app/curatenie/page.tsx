@@ -77,6 +77,7 @@ export default function CuratenePage() {
     const primaZi = `${an}-${luna}-01`
     const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
     supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
+    loadRapoarte(rapoarteLuna)
   }, [activeTab, rapoarteLuna])
 
   async function saveCombustibil() {
@@ -226,10 +227,12 @@ export default function CuratenePage() {
           const durata = st ? calcTimp(st) : null
           const full = rezByAptDay[`${aptId}_${data}`]
           const lenjerii = st?.nr_lenjerii || nrLenSmart(full||r)
-          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, eliberatLa:st?.eliberat_la||null, durata, status:st?.status||'neînceput', lenjerii }
+          const eliberatLa = st?.eliberat_la || null
+          return { nota:r.apartament?.nota||'', nume:r.apartament?.nume||'', oraInceput:st?.ora_inceput||null, oraGata:st?.ora_gata||null, eliberatLa, eliberatReal:!!st?.eliberat_la, durata, status:st?.status||'neînceput', lenjerii }
         })
         const totalLenjerii = detalii.reduce((sum:number,d:any)=>sum+(d.lenjerii||0),0)
-        const oreEliberat = detalii.map((d:any)=>d.eliberatLa).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
+        // Ora checkout: eliberat_la (real) sau ora_inceput ca fallback (guest plecat inainte sa inceapa curatenia)
+        const oreEliberat = detalii.map((d:any)=>d.eliberatLa||d.oraInceput).filter(Boolean).map((o:string)=>{ const [h,m]=o.split(':').map(Number); return h*60+m })
         const oraMedieMin = oreEliberat.length ? Math.round(oreEliberat.reduce((a:number,b:number)=>a+b,0)/oreEliberat.length) : null
         const ziSapt = new Date(data+'T12:00:00').getDay()
         return { data, nrCuratenii:rez.length, nrGata:gata.length, apartamente:rez.map((r:any)=>r.apartament?.nota||'').filter(Boolean).join(', '), timpMediu, timpuri, totalLenjerii, detalii, oraMedieMin, ziSapt }
@@ -765,7 +768,7 @@ export default function CuratenePage() {
                       <div style={{fontSize:11,color:'rgba(214,228,244,0.7)',fontFamily:'monospace'}}>{zi.data.slice(5).replace('-','/')}</div>
                       <div style={{fontSize:12,fontWeight:700,color:'#4DA3FF',fontFamily:'monospace'}}>{d.nota}</div>
                       <div style={{fontSize:11,color:'rgba(159,215,255,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{d.nume}</div>
-                      <div style={{fontSize:12,fontFamily:'monospace',color:d.eliberatLa?'#7BC8FF':'rgba(159,215,255,0.2)'}}>{d.eliberatLa||'—'}</div>
+                      <div style={{fontSize:12,fontFamily:'monospace',color:d.eliberatLa?(d.eliberatReal?'#7BC8FF':'rgba(252,211,77,0.6)'):'rgba(159,215,255,0.2)'}} title={d.eliberatLa&&!d.eliberatReal?'Estimat din ora inceput curatenie':undefined}>{d.eliberatLa||'—'}{d.eliberatLa&&!d.eliberatReal&&<span style={{fontSize:9,marginLeft:2,opacity:.7}}>~</span>}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',color:d.oraInceput?'#FCD34D':'rgba(159,215,255,0.3)'}}>{d.oraInceput||'—'}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',color:d.oraGata?'#4ADE80':'rgba(159,215,255,0.3)'}}>{d.oraGata||'—'}</div>
                       <div style={{fontSize:12,fontFamily:'monospace',fontWeight:700,color:d.durata?(d.durata<45?'#4ADE80':d.durata<90?'#FCD34D':'#F87171'):'rgba(159,215,255,0.3)'}}>
