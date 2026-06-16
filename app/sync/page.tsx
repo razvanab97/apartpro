@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
@@ -80,7 +80,28 @@ export default function SyncPage() {
     const d = new Date(); d.setMonth(d.getMonth()+3); return d.toISOString().split('T')[0]
   })
   const [rawData, setRawData] = useState<any>(null)
+  const [autoSync, setAutoSync] = useState<boolean>(() => {
+    try { return localStorage.getItem('sync_auto') === '1' } catch { return false }
+  })
+  const [nextSyncIn, setNextSyncIn] = useState('')
   const { toast, show } = useToast()
+
+  const syncRezervariRef = useRef<() => Promise<void>>(async () => {})
+
+  useEffect(() => {
+    try { localStorage.setItem('sync_auto', autoSync ? '1' : '0') } catch {}
+    if (!autoSync) { setNextSyncIn(''); return }
+    syncRezervariRef.current()
+    let secs = 3600
+    const id = setInterval(() => {
+      secs -= 1
+      if (secs <= 0) { secs = 3600; syncRezervariRef.current() }
+      const m = Math.floor(secs / 60), s = secs % 60
+      setNextSyncIn(`${m}m ${String(s).padStart(2,'0')}s`)
+    }, 1000)
+    setNextSyncIn('60m 00s')
+    return () => clearInterval(id)
+  }, [autoSync])
 
   async function testApi() {
     setLoading(true)
@@ -352,6 +373,7 @@ export default function SyncPage() {
     setLoading(false)
     if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
   }
+  syncRezervariRef.current = syncRezervari
 
   async function deleteAndResync() {
     if (!confirmDelete) {
@@ -428,6 +450,22 @@ export default function SyncPage() {
             <Button variant="secondary" onClick={testApi} loading={loading}>
               Test API
             </Button>
+          </div>
+          {/* Auto-sync toggle */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(77,163,255,0.12)', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+            <button onClick={() => setAutoSync(a => !a)}
+              style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderRadius:9,
+                border:`1px solid ${autoSync?'rgba(74,222,128,0.4)':'rgba(159,215,255,0.15)'}`,
+                background:autoSync?'rgba(74,222,128,0.1)':'transparent',
+                color:autoSync?'#4ADE80':'rgba(159,215,255,0.5)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              <span style={{ fontSize:14 }}>{autoSync ? '🔄' : '⏸'}</span>
+              {autoSync ? 'Auto-sync activ (1h)' : 'Activează auto-sync (1h)'}
+            </button>
+            {autoSync && nextSyncIn && (
+              <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)', fontFamily:'monospace' }}>
+                Următor sync: <span style={{ color:'#4ADE80', fontWeight:700 }}>{nextSyncIn}</span>
+              </span>
+            )}
           </div>
           {/* Buton stergere + resync */}
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(248,113,113,0.15)' }}>
