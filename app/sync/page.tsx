@@ -1,51 +1,10 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
 import { TabRezervari, TabClienti } from '../import/page'
-
-type SyncResult = {
-  total: number
-  inserted: number
-  updated: number
-  skipped: number
-  errors: number
-  logs: { type: 'ok'|'skip'|'err'|'info'; msg: string }[]
-}
-
-function fmt5star(iso: string): string {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  const d = new Date(iso)
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
-}
-
-function parse5star(s: string): string {
-  if (!s) return ''
-  const months: Record<string,string> = {
-    jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',
-    jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12',
-    ianuarie:'01',februarie:'02',martie:'03',aprilie:'04',mai:'05',iunie:'06',
-    iulie:'07',august:'08',septembrie:'09',octombrie:'10',noiembrie:'11',decembrie:'12'
-  }
-  const p = s.trim().split(' ')
-  if (p.length === 3) {
-    const mon = months[p[1].toLowerCase().slice(0,3)] || months[p[1].toLowerCase()] || '01'
-    return `${p[2]}-${mon}-${p[0].padStart(2,'0')}`
-  }
-  // Already ISO format
-  if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.slice(0,10)
-  return s
-}
-
-function parseCanal(s: string): string {
-  const l = (s||'').toLowerCase()
-  if (l.includes('airbnb')) return 'airbnb'
-  if (l.includes('booking')) return 'booking'
-  if (l.includes('direct')) return 'direct'
-  return 'direct'
-}
+import { syncFivestar, fmt5star, type SyncResult } from '@/lib/syncFivestar'
 
 function ImportContent() {
   const [tab, setTab] = useState<'rezervari'|'clienti'>('rezervari')
@@ -86,20 +45,26 @@ export default function SyncPage() {
   const [nextSyncIn, setNextSyncIn] = useState('')
   const { toast, show } = useToast()
 
-  const syncRezervariRef = useRef<() => Promise<void>>(async () => {})
-
   useEffect(() => {
     try { localStorage.setItem('sync_auto', autoSync ? '1' : '0') } catch {}
     if (!autoSync) { setNextSyncIn(''); return }
-    syncRezervariRef.current()
-    let secs = 3600
-    const id = setInterval(() => {
-      secs -= 1
-      if (secs <= 0) { secs = 3600; syncRezervariRef.current() }
+    // Trigger immediate sync when enabled
+    syncRezervari()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSync])
+
+  // Countdown display — reads sync_last written by Layout background runner
+  useEffect(() => {
+    if (!autoSync) { setNextSyncIn(''); return }
+    const tick = () => {
+      const last = parseInt(localStorage.getItem('sync_last') || '0')
+      if (!last) { setNextSyncIn('60m 00s'); return }
+      const secs = Math.max(0, Math.round((last + 3600000 - Date.now()) / 1000))
       const m = Math.floor(secs / 60), s = secs % 60
       setNextSyncIn(`${m}m ${String(s).padStart(2,'0')}s`)
-    }, 1000)
-    setNextSyncIn('60m 00s')
+    }
+    tick()
+    const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [autoSync])
 
@@ -136,244 +101,16 @@ export default function SyncPage() {
   async function syncRezervari() {
     setLoading(true)
     setResult(null)
-
-    const res: SyncResult = { total:0, inserted:0, updated:0, skipped:0, errors:0, logs:[] }
-
     try {
-      // 1. Get apartments
-      const { data: apts } = await supabase.from('apartamente').select('id,nume,nota')
-      // Map dupa nota (codul apartamentului)
-      // Lista confirmata: EX59, GS08, HD02, L83, L88, L94, L99, N32, NT9, VM07, C64, N33, CG40
-      const aptByNota: Record<string,string> = {}
-      for (const a of apts||[]) {
-        if (a.nota) aptByNota[a.nota.toUpperCase()] = a.id
-      }
-
-      // 2. Incearca mai multe actiuni pana gasim una care functioneaza
-      let data: any = null
-      let actiuneUsed = ''
-      for (const actiune of ['getrezervari', 'rezervari_lista', 'get_bookings']) {
-        const resp = await fetch('/api/fivestar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            actiune,
-            data_de_la: fmt5star(dateFrom),
-            data_pana_la: fmt5star(dateTo),
-            data_de: dateFrom,
-            data_pana: dateTo,
-            checkin: fmt5star(dateFrom),
-            checkout: fmt5star(dateTo),
-          })
-        })
-        data = await resp.json()
-        // Daca nu e eroare si are date, folosim aceasta actiune
-        const hasData = Array.isArray(data) || Array.isArray(data?.rezervari) || Array.isArray(data?.bookings) || Array.isArray(data?.data)
-        if (hasData || (data?.ok !== 'false' && data?.ok !== false && !data?.mesaj?.includes('Eroare'))) {
-          actiuneUsed = actiune
-          break
-        }
-      }
-      // 3. Parse response
-      const rezervariList: any[] = Array.isArray(data) ? data :
-        (Array.isArray(data?.rezervari) ? data.rezervari :
-        Array.isArray(data?.bookings) ? data.bookings :
-        Array.isArray(data?.data) ? data.data : [])
-
-      res.logs.push({ type:'info', msg: `Actiune: ${actiuneUsed} | ${rezervariList.length} rezervari` })
-      if (rezervariList.length > 0) {
-        res.logs.push({ type:'info', msg: `Campuri 5SD: ${Object.keys(rezervariList[0]).join(', ')}` })
-        res.logs.push({ type:'info', msg: `Prima rez: ${JSON.stringify(rezervariList[0]).slice(0,300)}` })
-      }
-
-      if (!rezervariList.length) {
-        res.logs.push({ type:'err', msg: `Format nerecunoscut sau fara date. Raspuns: ${JSON.stringify(data).slice(0,300)}` })
-        setResult(res)
-        setLoading(false)
-        return
-      }
-
-      res.total = rezervariList.length
-      res.logs.push({ type:'info', msg: `${rezervariList.length} rezervari primite de la 5starDesk` })
-
-      // 4. Process each booking - format real 5starDesk
-      for (const b of rezervariList) {
-        try {
-          // Date format: "29 Apr 2026"
-          const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
-          const checkoutRaw = b.ultima_zi || b.checkout || b.check_out || b.data_checkout || ''
-          const checkin = checkinRaw ? parse5star(checkinRaw) : null
-          const checkout = checkoutRaw ? parse5star(checkoutRaw) : null
-          const numeClient = b.nume || b.name || b.guest_name || '—'
-          const canal = parseCanal(b.sursa || b.canal || b.source || '')
-          const telefon = b.telefon || b.phone || null
-          const email = b.email || null
-          const pret = parseFloat(b.pret_camera || b.price || b.total || '0') || 0
-          const pretExtra = parseFloat(b.pret_extra || '0') || 0
-          const totalPret = pret + pretExtra
-          const idExtern = String(b.id || b.id_rezervare || '')
-          const numeCamera = (b.camera || b.room || b.room_name || b.nume_camera || b.id_camera || '').toLowerCase()
-
-          // Matching dupa nota - lista confirmata de utilizator:
-          // EX59=Cozy Studio, GS08=Green Station, HD02=Hideout, L83=Lazar Comfy,
-          // L88=Palas SkyNest, L94=Palas Retreat, L99=Airy Palas, N32=Mint Loft,
-          // NT9=Newton Urban, VM07=Vila Pacurari, C64=SkyPort, N33, CG40
-          // 5starDesk trimite "Apartament L88", "Apartament GS08" etc
-
-          // ALIAS MAP: variante gresite / alternative din 5starDesk -> cod corect
-          const ALIAS_MAP: Record<string, string> = {
-            // Vila Pacurari - variante eronate
-            'MV07': 'VM07', 'VMV07': 'VM07', 'VILA07': 'VM07', 'VILA 07': 'VM07',
-            'VILA PACURARI': 'VM07', 'VM 07': 'VM07',
-            // Cozy Studio / EX59
-            'COZY STUDIO': 'EX59', 'APARTAMENT 59': 'EX59', 'APT59': 'EX59',
-            // SkyPort / C64
-            'SKYPORT': 'C64', 'SKYPORT RETREAT': 'C64', 'APARTAMENT 64': 'C64', 'APT64': 'C64',
-            // Peaceful Copou Retreat / CG40
-            'PEACEFUL COPOU RETREAT': 'CG40', 'PEACEFUL COPOU': 'CG40', 'APARTAMENT 40': 'CG40',
-            'COPOU RETREAT': 'CG40',
-            // Green Station / GS08
-            'GREEN STATION': 'GS08', 'GS 08': 'GS08',
-            // Hideout Rozeolor / HD02
-            'HIDEOUT': 'HD02', 'HD 02': 'HD02',
-            // Lazar Comfy / L83
-            'LAZAR COMFY': 'L83', 'LAZAR': 'L83',
-            // Palas SkyNest / L88
-            'PALAS SKYNEST': 'L88', 'SKYNEST': 'L88',
-            // Palas Retreat / L94
-            'PALAS RETREAT': 'L94',
-            // Airy Palas / L99
-            'AIRY PALAS': 'L99',
-            // Mint Loft Copou / N32
-            'MINT LOFT': 'N32', 'MINT LOFT COPOU': 'N32',
-            // Newton Urban / NT9
-            'NEWTON URBAN': 'NT9', 'NEWTON': 'NT9', 'NT 9': 'NT9',
-          }
-
-          let aptId: string | null = null
-          const codCandidati = [
-            b.id_camera, b.camera, b.unitate, b.room,
-            b.numar_camera, b.tip_camera, b.cod_camera,
-            b.denumire_camera, b.name, b.room_name
-          ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
-
-          for (const cod of codCandidati) {
-            // 1. Match direct exact in aptByNota
-            if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
-
-            // 2. Alias map - variante cunoscute trimise gresit de 5starDesk
-            if (ALIAS_MAP[cod] && aptByNota[ALIAS_MAP[cod]]) {
-              aptId = aptByNota[ALIAS_MAP[cod]]; break
-            }
-
-            // 3. Extrage toate codurile posibile din string cu regex
-            // "APARTAMENT L88" -> ["L88"], "GS08 GREEN STATION" -> ["GS08"]
-            const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
-            if (matches) {
-              for (const m of matches) {
-                // 3a. Match direct
-                if (aptByNota[m]) { aptId = aptByNota[m]; break }
-                // 3b. Match prin alias (ex: MV07 -> VM07)
-                if (ALIAS_MAP[m] && aptByNota[ALIAS_MAP[m]]) {
-                  aptId = aptByNota[ALIAS_MAP[m]]; break
-                }
-              }
-              if (aptId) break
-            }
-
-            // 4. Cauta alias map partial (substring) - ex: "AB HOMES IASI,MV07,VILA07"
-            for (const [alias, codCorect] of Object.entries(ALIAS_MAP)) {
-              if (cod.includes(alias) && aptByNota[codCorect]) {
-                aptId = aptByNota[codCorect]; break
-              }
-            }
-            if (aptId) break
-
-            // 5. Fallback: cauta orice cod din aptByNota in string
-            for (const nota of Object.keys(aptByNota)) {
-              if (cod.includes(nota)) { aptId = aptByNota[nota]; break }
-            }
-            if (aptId) break
-          }
-          // IMPORTANT: daca nu gasim apartamentul, NU inserem rezervarea
-
-          if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); continue }
-          if (!aptId) { 
-            res.skipped++
-            res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${codCandidati.join(',')} | disponibile: ${Object.keys(aptByNota).join(',')}` })
-            continue
-          }
-
-          // Deduplicare: cauta dupa ID 5starDesk (in observatii), sau apt+checkin+checkout
-          // ID extern trebuie sa fie valid (nu gol, nu prea scurt)
-          const idExternValid = idExtern && idExtern.length > 2
-          
-          const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
-            : { data: [] }
-          
-          // Fallback: cauta dupa apartament + checkin + checkout (cel mai sigur)
-          const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout) 
-            ? await supabase.from('rezervari')
-              .select('id,telefon_client,apartament_id')
-              .eq('apartament_id', aptId)
-              .eq('data_checkin', checkin)
-              .eq('data_checkout', checkout)
-              .limit(1)
-            : { data: [] }
-
-          // Fallback final: cauta dupa nume+checkin
-          const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
-            ? await supabase.from('rezervari')
-              .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
-            : { data: [] }
-
-          const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
-
-          if (existing && existing.length > 0) {
-            // Update phone + apartment if missing
-            const updates: any = {}
-            if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
-            if (aptId && !existing[0].apartament_id) updates.apartament_id = aptId
-            if (Object.keys(updates).length > 0) {
-              await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
-            }
-            res.skipped++
-            res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat':''}` })
-          } else {
-            const { error } = await supabase.from('rezervari').insert({
-              apartament_id: aptId,
-              canal,
-              nume_client: numeClient,
-              data_checkin: checkin,
-              data_checkout: checkout,
-              suma_incasata: totalPret,
-              valoare_bruta: totalPret,
-              moneda: 'RON',
-              telefon_client: telefon,
-              status_rezervare: b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata',
-              status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
-              status_decont: 'nedecontat',
-              observatii: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
-            })
-            if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
-            else {
-            res.inserted++
-            const aptName = aptId ? ((apts||[]).find((a:any)=>a.id===aptId)?.nota || aptId.slice(0,8)) : '⚠️ NECUNOSCUT'
-            res.logs.push({ type: aptId?'ok':'skip', msg: `${aptId?'✓':'⚠'} ${numeClient} | ${checkin}→${checkout} | ${canal} | ${aptName}${telefon?' 📞':''}` })
-          }
-          }
-        } catch(e:any) { res.errors++; res.logs.push({ type:'err', msg: `Eroare procesare: ${e.message}` }) }
-      }
+      const res = await syncFivestar(dateFrom, dateTo)
+      setResult({...res})
+      try { localStorage.setItem('sync_last', Date.now().toString()) } catch {}
+      if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
     } catch(e:any) {
-      res.errors++; res.logs.push({ type:'err', msg: 'Eroare conexiune: ' + e.message })
+      show('error', 'Eroare: ' + e.message)
     }
-
-    setResult({...res})
     setLoading(false)
-    if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
   }
-  syncRezervariRef.current = syncRezervari
 
   async function deleteAndResync() {
     if (!confirmDelete) {

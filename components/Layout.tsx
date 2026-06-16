@@ -3,7 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
 import { usePathname } from 'next/navigation'
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import {
   LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
@@ -57,6 +57,25 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 export default function Layout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  useEffect(() => {
+    async function bgSync() {
+      try {
+        if (localStorage.getItem('sync_auto') !== '1') return
+        const last = parseInt(localStorage.getItem('sync_last') || '0')
+        if (last && Date.now() - last < 3590000) return
+        localStorage.setItem('sync_last', Date.now().toString())
+        const { syncFivestar } = await import('@/lib/syncFivestar')
+        const d = new Date()
+        const from = new Date(d.getFullYear(), d.getMonth()-1, 1).toISOString().split('T')[0]
+        const to = new Date(d.getFullYear(), d.getMonth()+4, 0).toISOString().split('T')[0]
+        await syncFivestar(from, to)
+      } catch {}
+    }
+    bgSync()
+    const id = setInterval(bgSync, 60000)
+    return () => clearInterval(id)
+  }, [])
 
   const bottomItems = navItems.filter(i => i.bottom)
   const isStaff = pathname === '/staff'
