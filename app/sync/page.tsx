@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
-import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone } from 'lucide-react'
+import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
+import { TabRezervari, TabClienti } from '../import/page'
 
 type SyncResult = {
   total: number
@@ -46,7 +47,28 @@ function parseCanal(s: string): string {
   return 'direct'
 }
 
+function ImportContent() {
+  const [tab, setTab] = useState<'rezervari'|'clienti'>('rezervari')
+  const tabStyle = (a: boolean): React.CSSProperties => ({
+    display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:7, border:'none',
+    cursor:'pointer', fontSize:12, fontWeight:500,
+    background: a ? 'rgba(77,163,255,0.2)' : 'transparent',
+    color: a ? '#FFFFFF' : 'rgba(159,215,255,0.5)',
+    outline: a ? '1px solid rgba(77,163,255,0.3)' : 'none',
+  })
+  return (
+    <div style={{padding:'16px 24px', display:'flex', flexDirection:'column', gap:14, overflowY:'auto'}}>
+      <div style={{display:'flex', gap:4, background:'rgba(14,27,43,0.4)', borderRadius:10, padding:4, width:'fit-content'}}>
+        <button style={tabStyle(tab==='rezervari')} onClick={()=>setTab('rezervari')}><CalendarCheck size={13}/>Rezervări</button>
+        <button style={tabStyle(tab==='clienti')} onClick={()=>setTab('clienti')}><Users size={13}/>Clienți + Telefoane</button>
+      </div>
+      {tab==='rezervari' ? <TabRezervari/> : <TabClienti/>}
+    </div>
+  )
+}
+
 export default function SyncPage() {
+  const [mainTab, setMainTab] = useState<'sync'|'import'>('sync')
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -359,10 +381,22 @@ export default function SyncPage() {
 
   const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14, padding:20 }
 
+  const mainTabStyle = (a: boolean): React.CSSProperties => ({
+    padding: '8px 18px', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontSize: 13, fontWeight: 600, border: 'none',
+    background: a ? 'rgba(77,163,255,0.15)' : 'transparent',
+    color: a ? '#4DA3FF' : 'rgba(159,215,255,0.5)',
+    borderBottom: a ? '2px solid #4DA3FF' : '2px solid transparent',
+  })
+
   return (
     <>
-      <PageHeader title="Sync 5starDesk" subtitle="Import automat rezervări din PMS"/>
-      <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14, maxWidth:720, overflowY:'auto' }}>
+      <PageHeader title="Sync 5starDesk" subtitle={mainTab==='sync' ? 'Import automat rezervări din PMS' : 'Import date din Excel'}/>
+      <div style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+        <button style={mainTabStyle(mainTab==='sync')} onClick={()=>setMainTab('sync')}>🔄 Sync 5starDesk</button>
+        <button style={mainTabStyle(mainTab==='import')} onClick={()=>setMainTab('import')}>📥 Import Excel</button>
+      </div>
+      {mainTab==='import' && <ImportContent/>}
+      {mainTab==='sync' && <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14, maxWidth:720, overflowY:'auto' }}>
 
         {/* Period selector */}
         <div style={panel}>
@@ -459,7 +493,7 @@ export default function SyncPage() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
       <Toast toast={toast}/>
     </>
   )

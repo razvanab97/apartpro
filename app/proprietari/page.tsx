@@ -1,12 +1,247 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase, Proprietar } from '@/lib/supabase'
+import { supabase, Proprietar, calculeazaDecont } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog } from '@/components/ui'
-import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, Clock } from 'lucide-react'
+import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog } from '@/components/ui'
+import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, Clock, TrendingUp, FileText, Download } from 'lucide-react'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
+type BadgeColor = 'green'|'amber'|'red'|'blue'|'gray'
+const STATUS_COLOR: Record<string, BadgeColor> = { draft:'gray', aprobat:'amber', platit:'green' }
+
+function DeconturiContent() {
+  const [loading, setLoading] = useState(true)
+  const [deconturi, setDeconturi] = useState<any[]>([])
+  const [apartamente, setApartamente] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [selectedApt, setSelectedApt] = useState('')
+  const [selectedLuna, setSelectedLuna] = useState(new Date().getMonth() + 1)
+  const [selectedAn, setSelectedAn] = useState(new Date().getFullYear())
+  const [preview, setPreview] = useState<any>(null)
+  const [viewDecont, setViewDecont] = useState<any>(null)
+  const { toast: dToast, show: dShow } = useToast()
+
+  useEffect(() => { loadDeconturi() }, [])
+
+  async function loadDeconturi() {
+    setLoading(true)
+    const [{ data: dec }, { data: apt }] = await Promise.all([
+      supabase.from('deconturi').select('*, apartament:apartamente(id,nume), proprietar:proprietari(id,nume,iban,banca)').order('an', { ascending: false }).order('luna', { ascending: false }),
+      supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nume'),
+    ])
+    setDeconturi(dec||[])
+    setApartamente(apt||[])
+    setLoading(false)
+  }
+
+  async function genereazaPreview() {
+    if (!selectedApt) { dShow('error','Selectează apartamentul'); return }
+    setGenerating(true)
+    const apt = apartamente.find((a:any) => a.id === selectedApt)
+    if (!apt) { setGenerating(false); return }
+    const primaZi = new Date(selectedAn, selectedLuna - 1, 1)
+    const ultimaZi = new Date(selectedAn, selectedLuna, 0)
+    const start = primaZi.toISOString().split('T')[0]
+    const end = ultimaZi.toISOString().split('T')[0]
+    const zileLuna = ultimaZi.getDate()
+    const [{ data: rez }, { data: ch }] = await Promise.all([
+      supabase.from('rezervari').select('*').eq('apartament_id', selectedApt)
+        .gte('data_checkin', start).lte('data_checkin', end).in('status_rezervare', ['confirmata', 'finalizata']),
+      supabase.from('cheltuieli').select('*').eq('apartament_id', selectedApt)
+        .gte('data', start).lte('data', end).eq('suportat_de', 'proprietar'),
+    ])
+    const rezervari = rez || []
+    const cheltuieli = ch || []
+    const totalIncasari = rezervari.reduce((s:number,r:any) => s + Number(r.suma_incasata||0), 0)
+    const totalComPlatf = rezervari.reduce((s:number,r:any) => s + Number(r.comision_platforma_valoare||0), 0)
+    const totalTvaPlatf = rezervari.reduce((s:number,r:any) => s + Number(r.tva_comision_platforma||0), 0)
+    const totalCosturi = cheltuieli.reduce((s:number,c:any) => s + Number(c.valoare||0), 0)
+    const noptiOcupate = rezervari.reduce((s:number,r:any) => s + Number(r.nr_nopti||0), 0)
+    let bazaComision = 0, comisionAdmin = 0, sumaProprietar = 0
+    for (const r of rezervari) {
+      const c = calculeazaDecont(r, apt)
+      bazaComision += c.baza; comisionAdmin += c.comision; sumaProprietar += c.suma_proprietar
+    }
+    sumaProprietar = Math.max(0, sumaProprietar - totalCosturi)
+    setPreview({
+      apt, rezervari, cheltuieli, luna: selectedLuna, an: selectedAn,
+      perioada_start: start, perioada_sfarsit: end,
+      totalIncasari, totalComPlatf, totalTvaPlatf, totalCosturi,
+      noptiOcupate, nr_rezervari: rezervari.length,
+      gradOcupare: Math.round(noptiOcupate / zileLuna * 100),
+      bazaComision: Math.round(bazaComision*100)/100,
+      comisionAdmin: Math.round(comisionAdmin*100)/100,
+      sumaProprietar: Math.round(sumaProprietar*100)/100,
+    })
+    setGenerating(false)
+  }
+
+  async function salveazaDecont() {
+    if (!preview) return
+    setGenerating(true)
+    const payload = {
+      apartament_id: selectedApt, proprietar_id: preview.apt.proprietar_id,
+      luna: preview.luna, an: preview.an,
+      perioada_start: preview.perioada_start, perioada_sfarsit: preview.perioada_sfarsit,
+      total_incasari: preview.totalIncasari, total_comisioane_platforme: preview.totalComPlatf,
+      total_tva_platforme: preview.totalTvaPlatf, total_costuri_operationale: preview.totalCosturi,
+      baza_comision_administrator: preview.bazaComision, comision_administrator_procent: preview.apt.comision_procent,
+      comision_administrator_valoare: preview.comisionAdmin, suma_neta_proprietar: preview.sumaProprietar,
+      nr_nopti_ocupate: preview.noptiOcupate, nr_rezervari: preview.nr_rezervari,
+      grad_ocupare: preview.gradOcupare, status: 'draft',
+    }
+    const { error } = await supabase.from('deconturi').upsert(payload, { onConflict: 'apartament_id,luna,an' })
+    if (error) { dShow('error', error.message) } else {
+      dShow('success', 'Decont salvat cu succes'); setOpen(false); setPreview(null); loadDeconturi()
+    }
+    setGenerating(false)
+  }
+
+  async function updateStatus(id: string, status: string) {
+    const payload: any = { status }
+    if (status === 'platit') payload.data_platii = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('deconturi').update(payload).eq('id', id)
+    if (error) { dShow('error', error.message) } else { dShow('success', `Status: ${status}`); loadDeconturi() }
+  }
+
+  if (loading) return <PageLoading/>
+
+  return (
+    <div className="p-6" style={{overflowY:'auto', flex:1}}>
+      <div style={{display:'flex', justifyContent:'flex-end', marginBottom:16}}>
+        <Button variant="primary" icon={<Plus size={15}/>} onClick={()=>{setPreview(null);setOpen(true)}}>Generează decont</Button>
+      </div>
+      {deconturi.length === 0 ? (
+        <EmptyState icon={<TrendingUp size={48}/>} title="Niciun decont generat"
+          desc="Generează primul decont lunar pentru un proprietar"
+          action={<Button variant="primary" icon={<Plus size={14}/>} onClick={()=>{setPreview(null);setOpen(true)}}>Generează decont</Button>}/>
+      ) : (
+        <div className="bg-[#161b27] border border-[#2a3350] rounded-[14px] overflow-hidden">
+          <table>
+            <thead><tr>
+              <th>Apartament</th><th>Proprietar</th><th>Perioadă</th>
+              <th>Rezervări</th><th>Nopți</th><th>Ocupare</th>
+              <th>Încasări</th><th>Comision admin</th><th>Net proprietar</th>
+              <th>Status</th><th>Acțiuni</th>
+            </tr></thead>
+            <tbody>
+              {deconturi.map((d:any) => (
+                <tr key={d.id} onClick={()=>setViewDecont(d)}>
+                  <td style={{ color:'var(--text)', fontWeight:500 }}>{d.apartament?.nume||'—'}</td>
+                  <td>{d.proprietar?.nume||'—'}</td>
+                  <td style={{ fontFamily:'monospace', fontSize:12 }}>{LUNI[d.luna]} {d.an}</td>
+                  <td style={{ textAlign:'center' }}>{d.nr_rezervari}</td>
+                  <td style={{ textAlign:'center' }}>{d.nr_nopti_ocupate}</td>
+                  <td><span style={{ color: d.grad_ocupare >= 70 ? 'var(--green)' : d.grad_ocupare >= 40 ? 'var(--amber)' : 'var(--red)', fontFamily:'monospace', fontWeight:600 }}>{d.grad_ocupare}%</span></td>
+                  <td style={{ fontFamily:'monospace' }}>{Number(d.total_incasari).toLocaleString('ro-RO')} RON</td>
+                  <td style={{ fontFamily:'monospace', color:'var(--red)' }}>-{Number(d.comision_administrator_valoare).toLocaleString('ro-RO')} RON</td>
+                  <td style={{ fontFamily:'monospace', color:'var(--green)', fontWeight:700 }}>{Number(d.suma_neta_proprietar).toLocaleString('ro-RO')} RON</td>
+                  <td><Badge color={STATUS_COLOR[d.status]||'gray'}>{d.status}</Badge></td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    <div className="flex gap-1 flex-wrap">
+                      {d.status === 'draft' && <Button variant="secondary" size="sm" onClick={()=>updateStatus(d.id,'aprobat')}>Aprobă</Button>}
+                      {d.status === 'aprobat' && <Button variant="success" size="sm" icon={<Check size={12}/>} onClick={()=>updateStatus(d.id,'platit')}>Plătit</Button>}
+                      <Button variant="ghost" size="sm" icon={<FileText size={12}/>} onClick={()=>setViewDecont(d)}>PDF</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Modal open={open} onClose={()=>{setOpen(false);setPreview(null)}} title="Generează decont lunar" width="max-w-2xl">
+        <FormRow cols={3}>
+          <FormGroup><label>Apartament</label>
+            <select value={selectedApt} onChange={e=>setSelectedApt(e.target.value)}>
+              <option value="">— Selectează —</option>
+              {apartamente.map((a:any)=><option key={a.id} value={a.id}>{a.nume}</option>)}
+            </select>
+          </FormGroup>
+          <FormGroup><label>Luna</label>
+            <select value={selectedLuna} onChange={e=>setSelectedLuna(parseInt(e.target.value))}>
+              {LUNI.slice(1).map((l,i)=><option key={i+1} value={i+1}>{l}</option>)}
+            </select>
+          </FormGroup>
+          <FormGroup><label>Anul</label>
+            <select value={selectedAn} onChange={e=>setSelectedAn(parseInt(e.target.value))}>
+              {[2023,2024,2025,2026].map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </FormGroup>
+        </FormRow>
+        <Button variant="secondary" onClick={genereazaPreview} loading={generating} className="w-full mb-4" icon={<TrendingUp size={14}/>}>
+          Calculează decontul
+        </Button>
+        {preview && (
+          <div className="border rounded-xl p-4 space-y-3" style={{ borderColor:'var(--border)', background:'var(--bg3)' }}>
+            <div className="text-sm font-semibold text-center pb-2 border-b" style={{ borderColor:'var(--border)', color:'var(--text)' }}>
+              Decont {LUNI[preview.luna]} {preview.an} · {preview.apt.nume}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[{v:preview.nr_rezervari,l:'rezervări'},{v:preview.noptiOcupate,l:'nopți ocupate'},{v:`${preview.gradOcupare}%`,l:'ocupare',c:preview.gradOcupare>=70?'var(--green)':preview.gradOcupare>=40?'var(--amber)':'var(--red)'}].map((x:any)=>(
+                <div key={x.l} className="text-center p-2 rounded-lg" style={{ background:'var(--bg4)' }}>
+                  <p className="text-lg font-bold font-mono" style={{ color:x.c||'var(--text)' }}>{x.v}</p>
+                  <p className="text-[10px]" style={{ color:'var(--text3)' }}>{x.l}</p>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>Total încasări brute</span><span className="font-mono font-medium" style={{ color:'var(--text)' }}>{preview.totalIncasari.toLocaleString('ro-RO')} RON</span></div>
+              {preview.totalComPlatf > 0 && <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>- Comisioane platforme</span><span className="font-mono" style={{ color:'var(--red)' }}>-{preview.totalComPlatf.toLocaleString('ro-RO')} RON</span></div>}
+              {preview.totalCosturi > 0 && <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>- Costuri operaționale</span><span className="font-mono" style={{ color:'var(--red)' }}>-{preview.totalCosturi.toLocaleString('ro-RO')} RON</span></div>}
+              <div className="flex justify-between pt-1.5 border-t" style={{ borderColor:'var(--border)' }}>
+                <span style={{ color:'var(--text2)' }}>Bază comision administrator</span>
+                <span className="font-mono font-semibold" style={{ color:'var(--text)' }}>{preview.bazaComision.toLocaleString('ro-RO')} RON</span>
+              </div>
+              <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>- Comision admin ({preview.apt.comision_procent}%)</span><span className="font-mono" style={{ color:'var(--red)' }}>-{preview.comisionAdmin.toLocaleString('ro-RO')} RON</span></div>
+              <div className="flex justify-between p-3 rounded-xl mt-2" style={{ background:'rgba(45,212,160,0.08)', border:'1px solid rgba(45,212,160,0.2)' }}>
+                <span className="font-bold" style={{ color:'var(--text)' }}>Sumă netă de virat proprietarului</span>
+                <span className="font-bold text-lg font-mono" style={{ color:'var(--green)' }}>{preview.sumaProprietar.toLocaleString('ro-RO')} RON</span>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-3">
+              <Button variant="primary" onClick={salveazaDecont} loading={generating} className="flex-1">Salvează decontul</Button>
+              <Button variant="secondary" onClick={()=>setPreview(null)} className="flex-1">Recalculează</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {viewDecont && (
+        <Modal open={!!viewDecont} onClose={()=>setViewDecont(null)} title={`Decont ${LUNI[viewDecont.luna]} ${viewDecont.an}`} subtitle={`${viewDecont.apartament?.nume} · ${viewDecont.proprietar?.nume}`} width="max-w-lg">
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Rezervări</span><span className="font-mono" style={{ color:'var(--text)' }}>{viewDecont.nr_rezervari}</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Nopți ocupate</span><span className="font-mono" style={{ color:'var(--text)' }}>{viewDecont.nr_nopti_ocupate}</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Grad ocupare</span><span className="font-mono font-bold" style={{ color: viewDecont.grad_ocupare>=70?'var(--green)':'var(--amber)' }}>{viewDecont.grad_ocupare}%</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Total încasări</span><span className="font-mono" style={{ color:'var(--text)' }}>{Number(viewDecont.total_incasari).toLocaleString('ro-RO')} RON</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Comisioane platforme</span><span className="font-mono" style={{ color:'var(--red)' }}>-{Number(viewDecont.total_comisioane_platforme).toLocaleString('ro-RO')} RON</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Costuri operaționale</span><span className="font-mono" style={{ color:'var(--red)' }}>-{Number(viewDecont.total_costuri_operationale).toLocaleString('ro-RO')} RON</span></div>
+            <div className="flex justify-between py-1.5 border-b" style={{ borderColor:'var(--border)' }}><span style={{ color:'var(--text3)' }}>Comision admin ({viewDecont.comision_administrator_procent}%)</span><span className="font-mono" style={{ color:'var(--red)' }}>-{Number(viewDecont.comision_administrator_valoare).toLocaleString('ro-RO')} RON</span></div>
+            <div className="flex justify-between p-3 rounded-xl mt-1" style={{ background:'rgba(45,212,160,0.08)', border:'1px solid rgba(45,212,160,0.2)' }}>
+              <span className="font-bold" style={{ color:'var(--text)' }}>Net de virat proprietarului</span>
+              <span className="font-bold text-xl font-mono" style={{ color:'var(--green)' }}>{Number(viewDecont.suma_neta_proprietar).toLocaleString('ro-RO')} RON</span>
+            </div>
+            {viewDecont.proprietar?.iban && (
+              <div className="p-3 rounded-lg text-xs" style={{ background:'var(--bg3)' }}>
+                <p style={{ color:'var(--text3)' }}>IBAN: <span className="font-mono" style={{ color:'var(--text)' }}>{viewDecont.proprietar.iban}</span></p>
+                {viewDecont.proprietar.banca && <p style={{ color:'var(--text3)' }}>Bancă: <span style={{ color:'var(--text)' }}>{viewDecont.proprietar.banca}</span></p>}
+              </div>
+            )}
+            <div className="flex gap-2 pt-2">
+              {viewDecont.status === 'draft' && <Button variant="secondary" size="sm" onClick={()=>{updateStatus(viewDecont.id,'aprobat');setViewDecont({...viewDecont,status:'aprobat'})}}>Aprobă</Button>}
+              {viewDecont.status === 'aprobat' && <Button variant="success" size="sm" icon={<Check size={12}/>} onClick={()=>{updateStatus(viewDecont.id,'platit');setViewDecont({...viewDecont,status:'platit'})}}>Marchează plătit</Button>}
+              <Button variant="secondary" size="sm" icon={<Download size={12}/>} onClick={()=>dShow('info','Export PDF disponibil în modulul Rapoarte')}>Export PDF</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      <Toast toast={dToast}/>
+    </div>
+  )
+}
 const pad = (n:number) => String(n).padStart(2,'0')
 
 async function getCursEUR(): Promise<number> {
@@ -21,6 +256,7 @@ async function getCursEUR(): Promise<number> {
 
 export default function ProprietariPage() {
   const now = new Date()
+  const [mainTab, setMainTab] = useState<'proprietari'|'deconturi'>('proprietari')
   const [loading, setLoading] = useState(true)
   const [proprietari, setProprietari] = useState<any[]>([])
   const [apts, setApts] = useState<any[]>([])
@@ -160,7 +396,7 @@ export default function ProprietariPage() {
     show('success', 'Proprietar șters')
   }
 
-  if (loading) return (<><PageHeader title="Proprietari" /><PageLoading /></>)
+  if (loading && mainTab === 'proprietari') return (<><PageHeader title="Proprietari" /><PageLoading /></>)
 
   const s = {
     card: { background:'rgba(11,22,42,0.8)', border:'1px solid rgba(159,215,255,0.1)', borderRadius:14, marginBottom:12, overflow:'hidden' as const },
@@ -173,11 +409,24 @@ export default function ProprietariPage() {
     statusBtn: (active:boolean, color:string) => ({ padding:'6px 14px', borderRadius:8, border:`1px solid ${active?color:'rgba(255,255,255,0.1)'}`, background:active?`${color}20`:'transparent', color:active?color:'rgba(159,215,255,0.4)', fontSize:12, fontWeight:600, cursor:'pointer' as const }),
   }
 
+  const tabStyle = (a: boolean): React.CSSProperties => ({
+    padding: '8px 18px', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontSize: 13, fontWeight: 600, border: 'none',
+    background: a ? 'rgba(77,163,255,0.15)' : 'transparent',
+    color: a ? '#4DA3FF' : 'rgba(159,215,255,0.5)',
+    borderBottom: a ? '2px solid #4DA3FF' : '2px solid transparent',
+  })
+
   return (
     <>
-      <PageHeader title="Proprietari" subtitle={`${proprietari.length} proprietari`}
-        actions={<Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Proprietar nou</Button>} />
-      <div style={{ padding:'16px 20px', overflowY:'auto' }}>
+      <PageHeader title="Proprietari"
+        subtitle={mainTab === 'proprietari' ? `${proprietari.length} proprietari` : 'Deconturi lunare proprietari'}
+        actions={mainTab === 'proprietari' ? <Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Proprietar nou</Button> : undefined} />
+      <div style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+        <button style={tabStyle(mainTab==='proprietari')} onClick={()=>setMainTab('proprietari')}>👤 Proprietari</button>
+        <button style={tabStyle(mainTab==='deconturi')} onClick={()=>setMainTab('deconturi')}>📄 Deconturi</button>
+      </div>
+      {mainTab === 'deconturi' && <DeconturiContent/>}
+      {mainTab === 'proprietari' && <div style={{ padding:'16px 20px', overflowY:'auto' }}>
 
         {/* Selector lună + curs */}
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
@@ -318,7 +567,7 @@ export default function ProprietariPage() {
             </div>
           )
         })}
-      </div>
+      </div>}
 
       {/* Modal editare proprietar */}
       <Modal open={open} onClose={() => setOpen(false)} title={editing.id ? 'Editează proprietar' : 'Proprietar nou'} width="max-w-lg">

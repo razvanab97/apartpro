@@ -57,7 +57,7 @@ const MC = { exact:{bg:'rgba(34,197,94,0.12)',border:'rgba(34,197,94,0.25)',colo
 const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14 }
 
 /* ── TAB: REZERVARI ── */
-function TabRezervari() {
+export function TabRezervari() {
   const [file, setFile] = useState<File|null>(null)
   const [rows, setRows] = useState<RezRow[]>([])
   const [apts, setApts] = useState<Apartament[]>([])
@@ -216,7 +216,7 @@ function TabRezervari() {
 }
 
 /* ── TAB: CLIENTI ── */
-function TabClienti() {
+export function TabClienti() {
   const [file, setFile] = useState<File|null>(null)
   const [rows, setRows] = useState<ClientRow[]>([])
   const [step, setStep] = useState<'upload'|'preview'|'done'>('upload')
