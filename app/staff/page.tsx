@@ -140,9 +140,10 @@ export default function StaffPage() {
     const aptNota = apt?.nota
 
     if (status==='inceput' && aptNota) {
-      // Ultimul apt gata = sursa; daca nu exista niciun gata, vine de la CANTA
-      const ultimulGata = apts.find(a => a.id !== aptId && newStatusuri[a.id]?.status === 'gata')
-      const sursa = ultimulGata?.nota || 'CANTA'
+      // Sursa = ultima deplasare inregistrata in DB (la); daca nu exista nicio deplasare azi, vine de la CANTA
+      const { data: lastTrip } = await supabase.from('deplasari_curatenie')
+        .select('la').eq('data', data).order('created_at', {ascending: false}).limit(1).maybeSingle()
+      const sursa = lastTrip?.la || 'CANTA'
       await inregistreazaDeplasare(sursa, aptNota)
     }
 
