@@ -144,6 +144,7 @@ export default function PreturiPage() {
   const [compareDate2, setCompareDate2] = useState('')
   const [expandedScan, setExpandedScan] = useState<string|null>(null)
   const [commandCopied, setCommandCopied] = useState(false)
+  const [extraPairs, setExtraPairs] = useState<{ci: string, co: string}[]>([])
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
 
@@ -405,7 +406,9 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
   }
 
   async function copyScanCommand() {
-    const command = `python3 ~/Desktop/booking_scan.py ${checkinMonitor} ${checkoutMonitor}`
+    const allPairs = [[checkinMonitor, checkoutMonitor], ...extraPairs.map(p=>[p.ci,p.co])]
+    const datesStr = allPairs.map(([ci,co])=>`${ci} ${co}`).join(' ')
+    const command = `python3 ~/Desktop/booking_scan.py ${datesStr}`
     try {
       if(navigator.clipboard?.writeText){
         await navigator.clipboard.writeText(command)
@@ -693,8 +696,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             </div>
             <div style={{marginLeft:'auto',fontSize:11,color:'rgba(147,197,253,0.4)',display:'flex',alignItems:'center',gap:4}}>
               <span>💻</span>
-              <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10}}>
-                python3 ~/Desktop/booking_scan.py {checkinMonitor} {checkoutMonitor}
+              <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10,maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                python3 ~/Desktop/booking_scan.py {checkinMonitor} {checkoutMonitor}{extraPairs.map(p=>` ${p.ci} ${p.co}`).join('')}
               </code>
               <button onClick={copyScanCommand} disabled={!checkinMonitor||!checkoutMonitor} style={{
                 padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:600,
@@ -704,6 +707,53 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 opacity:!checkinMonitor||!checkoutMonitor?0.45:1,
               }}>{commandCopied?'✓ Copiat!':'📋 Copiază'}</button>
             </div>
+          </div>
+
+          {/* Date extra pentru multi-scan */}
+          {extraPairs.map((pair,idx)=>(
+            <div key={idx} style={{padding:'8px 16px',borderBottom:'1px solid rgba(99,179,237,0.06)',
+              display:'flex',alignItems:'center',gap:10,background:'rgba(99,179,237,0.03)',flexWrap:'wrap' as const}}>
+              <span style={{fontSize:10,color:'rgba(147,197,253,0.4)',minWidth:16}}>+{idx+1}</span>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:11,color:'rgba(147,197,253,0.4)'}}>Check-in</span>
+                <input type="date" value={pair.ci} onChange={e=>{
+                  const d=new Date(e.target.value+'T12:00:00');d.setDate(d.getDate()+1)
+                  setExtraPairs(prev=>prev.map((p,i)=>i===idx?{ci:e.target.value,co:fmt(d)}:p))
+                }} style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.15)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}/>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:11,color:'rgba(147,197,253,0.4)'}}>Check-out</span>
+                <input type="date" value={pair.co} onChange={e=>setExtraPairs(prev=>prev.map((p,i)=>i===idx?{...p,co:e.target.value}:p))}
+                  style={{padding:'4px 8px',borderRadius:6,fontSize:12,border:'1px solid rgba(100,160,255,0.15)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}}/>
+              </div>
+              <button onClick={()=>setExtraPairs(prev=>prev.filter((_,i)=>i!==idx))}
+                style={{marginLeft:'auto',padding:'3px 8px',borderRadius:5,fontSize:11,cursor:'pointer',
+                  border:'1px solid rgba(248,113,113,0.2)',background:'rgba(248,113,113,0.06)',color:'#F87171',fontWeight:600}}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(99,179,237,0.06)',display:'flex',alignItems:'center',gap:8}}>
+            <button onClick={()=>{
+              const ci=add(extraPairs.length+2)
+              const d=new Date(ci+'T12:00:00');d.setDate(d.getDate()+1)
+              setExtraPairs(prev=>[...prev,{ci,co:fmt(d)}])
+            }} style={{padding:'4px 14px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
+              border:'1px solid rgba(99,179,237,0.25)',background:'rgba(99,179,237,0.07)',color:'#93C5FD'}}>
+              + Adaugă dată
+            </button>
+            {extraPairs.length>0&&(
+              <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',fontFamily:'monospace'}}>
+                {1+extraPairs.length} perioade în comandă
+              </span>
+            )}
+            {extraPairs.length>0&&(
+              <button onClick={()=>setExtraPairs([])}
+                style={{padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',
+                  border:'1px solid rgba(159,215,255,0.1)',background:'transparent',color:'rgba(159,215,255,0.3)'}}>
+                Resetează
+              </button>
+            )}
           </div>
 
           {/* Zile salvate pentru perioada selectata */}
