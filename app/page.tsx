@@ -154,6 +154,7 @@ export default function DashboardPage() {
 
   async function loadData(){
     setLoading(true)
+    try{
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
     const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
@@ -320,6 +321,7 @@ export default function DashboardPage() {
     setPerAptIncome(perApt)
     // Rezervari luna pentru tabelul de verificare (checkin in luna curenta, sortate cronologic)
     setRezLunaDsp((rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
+    }catch(err){console.error('[loadData]',err)}
     setLoading(false)
   }
 
