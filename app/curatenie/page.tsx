@@ -49,6 +49,9 @@ export default function CuratenePage() {
   const [consumMasina, setConsumMasina] = useState('7.5')
   const [savingComb, setSavingComb] = useState(false)
   const [expandedZiComb, setExpandedZiComb] = useState<string|null>(null)
+  const [mesajGata, setMesajGata] = useState('Bună ziua, {nume}! 🏠 Am terminat pregătirile la *{apartament}*. Apartamentul vă așteaptă, puteți veni oricând! 🗝️\nEchipa AB Homes')
+  const [savingMesajGata, setSavingMesajGata] = useState(false)
+  const [mesajGataLoaded, setMesajGataLoaded] = useState(false)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -78,6 +81,12 @@ export default function CuratenePage() {
     const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
     supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
     loadRapoarte(rapoarteLuna)
+    if(!mesajGataLoaded){
+      supabase.from('sabloane_mesaje').select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle().then(({data:d})=>{
+        if(d?.text) setMesajGata(d.text)
+        setMesajGataLoaded(true)
+      })
+    }
   }, [activeTab, rapoarteLuna])
 
   async function saveCombustibil() {
@@ -94,6 +103,14 @@ export default function CuratenePage() {
     } else {
       await supabase.from('setari').insert({cheie:'cost_curatenie',valoare:String(costPerCuratenie)})
     }
+  }
+
+  async function saveMesajGata() {
+    setSavingMesajGata(true)
+    const { data: ex } = await supabase.from('sabloane_mesaje').select('id').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
+    if(ex?.id) await supabase.from('sabloane_mesaje').update({text:mesajGata}).eq('id',ex.id)
+    else await supabase.from('sabloane_mesaje').insert({tip:'gata_curatenie',apartament_id:null,text:mesajGata,nume:'Mesaj gata curățenie'})
+    setSavingMesajGata(false)
   }
 
   async function loadStaffStatus() {
@@ -633,6 +650,20 @@ export default function CuratenePage() {
               📊 Generează
             </button>
           </div>
+        </div>
+
+        {/* Mesaj WA gata curatenie */}
+        <div style={{background:'rgba(74,222,128,0.05)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:10,padding:'14px 16px',marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:600,color:'#4ADE80',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>📱 Mesaj WA — Curățenie gata</div>
+          <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:10}}>
+            Trimis automat staff-ului când marchează curățenia ca gata și există check-in azi. Variabile: <code style={{background:'rgba(77,163,255,0.1)',padding:'1px 5px',borderRadius:4}}>{'{nume}'}</code> <code style={{background:'rgba(77,163,255,0.1)',padding:'1px 5px',borderRadius:4}}>{'{apartament}'}</code>
+          </div>
+          <textarea value={mesajGata} onChange={e=>setMesajGata(e.target.value)} rows={5}
+            style={{width:'100%',background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.12)',borderRadius:8,color:'rgba(214,228,244,0.85)',fontSize:12,padding:'10px 12px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' as const}}/>
+          <button onClick={saveMesajGata} disabled={savingMesajGata}
+            style={{marginTop:8,padding:'7px 18px',borderRadius:8,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            {savingMesajGata?'Se salvează...':'✓ Salvează mesajul'}
+          </button>
         </div>
 
         {/* Selector locatii */}

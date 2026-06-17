@@ -9,6 +9,7 @@ const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
 const todayStr = () => new Date().toISOString().slice(0,10)
 function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||0; if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
+function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 
 type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar'
 
@@ -32,6 +33,7 @@ export default function StaffPage() {
   const [savingProb, setSavingProb] = useState(false)
   const [distante, setDistante] = useState<Record<string,number>>({})
   const [setariComb, setSetariComb] = useState({pret: 8.5, consum: 7.5})
+  const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
 
   useEffect(() => {
     if (document.cookie.includes('staff_auth=1111')) setAuth(true)
@@ -148,9 +150,24 @@ export default function StaffPage() {
     }
 
     if (status==='gata' && aptNota) {
-      // Verifica daca toate apartamentele zilei sunt acum gata
       const toateGata = deCuratat.every(a => a.id===aptId || newStatusuri[a.id]?.status==='gata')
       if (toateGata) await inregistreazaDeplasare(aptNota, 'CANTA')
+      // Mesaj WA pentru clientul care face check-in azi
+      const ciRez = checkins.find((c:any) => c.apartament_id === aptId)
+      if (ciRez?.telefon_client) {
+        const { data: sab } = await supabase.from('sabloane_mesaje')
+          .select('text').eq('tip','gata_curatenie').eq('apartament_id',aptId).maybeSingle()
+        const { data: sabGlobal } = !sab ? await supabase.from('sabloane_mesaje')
+          .select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
+          : { data: null }
+        const template = sab?.text || sabGlobal?.text ||
+          `Bună ziua, {nume}! 🏠 Am terminat pregătirile la *{apartament}*. Apartamentul vă așteaptă, puteți veni oricând! 🗝️\nEchipa AB Homes`
+        const aptObj = apts.find((a:any) => a.id === aptId)
+        const waMsg = template
+          .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
+          .replace(/\{apartament\}/gi, aptObj?.nume || aptObj?.nota || '')
+        setWaGataInfo({ apt: aptObj, rez: ciRez, msg: waMsg })
+      }
     }
 
     const msg = status==='inceput' ? `🧹 Curățenie începută — ${aptNota}` : `✅ Gata — ${aptNota} (${ora})`
@@ -514,6 +531,31 @@ export default function StaffPage() {
         )}
 
       </div>
+
+      {/* WA GATA CURATENIE */}
+      {waGataInfo&&(
+        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setWaGataInfo(null)}>
+          <div style={{background:'#0B1220',border:'1px solid rgba(74,222,128,0.3)',borderRadius:'20px 20px 0 0',padding:`20px 20px calc(20px + env(safe-area-inset-bottom, 0px))`,width:'100%',maxWidth:480}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:36,height:4,background:'rgba(159,215,255,0.2)',borderRadius:2,margin:'0 auto 16px'}}/>
+            <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',marginBottom:4}}>✅ Curățenie gata!</div>
+            <div style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:14}}>Check-in azi — trimite WA clientului?</div>
+            <div style={{background:'rgba(14,27,43,0.7)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',marginBottom:2}}>{waGataInfo.rez.nume_client}</div>
+              <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:8}}>{waGataInfo.apt?.nota}{waGataInfo.apt?.nota&&' · '}{waGataInfo.rez.telefon_client}</div>
+              <pre style={{fontSize:11,color:'rgba(214,228,244,0.65)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{waGataInfo.msg}</pre>
+            </div>
+            <a href={waLink(waGataInfo.rez.telefon_client,waGataInfo.msg)} target="_blank" rel="noreferrer"
+              onClick={()=>setWaGataInfo(null)}
+              style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px',borderRadius:14,background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,textDecoration:'none',marginBottom:10}}>
+              📱 Trimite pe WhatsApp
+            </a>
+            <button onClick={()=>setWaGataInfo(null)}
+              style={{width:'100%',padding:'12px',borderRadius:14,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:13,cursor:'pointer'}}>
+              Nu acum
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
