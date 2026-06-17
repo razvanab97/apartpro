@@ -140,6 +140,9 @@ export default function DashboardPage() {
   const [coBannerDismissed,setCoBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('co_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
+  const [coMesajeTrimise,setCoMesajeTrimise]=useState(()=>{
+    try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
 
   useEffect(()=>{loadData()},[])
 
@@ -481,7 +484,7 @@ export default function DashboardPage() {
         {(()=>{
           const isMorning=now.getHours()>=7&&now.getHours()<11
           const coWithPhone=checkoutAzi.filter(r=>r.telefon_client)
-          if(!isMorning||checkoutAzi.length===0||coBannerDismissed)return null
+          if(!isMorning||checkoutAzi.length===0||coBannerDismissed||coMesajeTrimise)return null
           return(
             <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
               <div style={{fontSize:20}}>🌅</div>
@@ -626,7 +629,7 @@ export default function DashboardPage() {
         {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="guest-grid">
+        <div style={{display:'grid',gridTemplateColumns:coMesajeTrimise?'repeat(2,1fr)':'repeat(3,1fr)',gap:8}} className="guest-grid">
 
           {/* CHECK-IN AZI */}
           <div style={panel}>
@@ -646,7 +649,7 @@ export default function DashboardPage() {
           </div>
 
           {/* CHECK-OUT AZI */}
-          <div style={panel}>
+          {!coMesajeTrimise&&<div style={panel}>
             <div style={panelHdr}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <LogOut size={12} color="#C084FC"/>
@@ -666,7 +669,7 @@ export default function DashboardPage() {
                 :checkoutAzi.map(r=><GuestCard key={r.id} r={r} type="checkout"/>)
               }
             </div>
-          </div>
+          </div>}
 
           {/* REZERVARI ACTIVE ACUM */}
           <div style={panel}>
@@ -1144,7 +1147,13 @@ export default function DashboardPage() {
                 style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
                 <MessageCircle size={16}/>Trimite pe WhatsApp
               </a>
-              <button onClick={()=>{isLast?setCoWizardOpen(false):setCoWizardIdx(i=>i+1)}}
+              <button onClick={()=>{
+                if(isLast){
+                  setCoWizardOpen(false)
+                  setCoMesajeTrimise(true)
+                  try{localStorage.setItem('co_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
+                }else{setCoWizardIdx(i=>i+1)}
+              }}
                 style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
               </button>
