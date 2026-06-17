@@ -95,21 +95,18 @@ function msgAcces(r:any){
   return `Bună ziua, ${firstName(r.nume_client)}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
 
+function applyVars(tmpl:string, nume:string, apt:string, co:string){
+  return tmpl.replace(/\{nume\}/gi,nume).replace(/\{apartament\}/gi,apt).replace(/\{data_checkout\}/gi,co).replace(/\{data\}/gi,co)
+}
 function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   const apt = r.apartament?.nume || 'apartament'
   const aptId = r.apartament?.id || ''
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const nume = firstName(r.nume_client)
-  // Daca exista sablon pentru acest apartament, foloseste-l
   const sablon = sabloane[aptId]
-  if(sablon){
-    return sablon
-      .replace(/\{nume\}/gi, nume)
-      .replace(/\{apartament\}/gi, apt)
-      .replace(/\{data_checkout\}/gi, co)
-      .replace(/\{data\}/gi, co)
-  }
-  // Fallback generic
+  if(sablon) return applyVars(sablon,nume,apt,co)
+  const aptMsg = r.apartament?.mesaj_checkout
+  if(aptMsg) return applyVars(aptMsg,nume,apt,co)
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 
@@ -138,6 +135,11 @@ export default function DashboardPage() {
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
   const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
+  const [coWizardOpen,setCoWizardOpen]=useState(false)
+  const [coWizardIdx,setCoWizardIdx]=useState(0)
+  const [coBannerDismissed,setCoBannerDismissed]=useState(()=>{
+    try{return localStorage.getItem('co_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
 
   useEffect(()=>{loadData()},[])
 
@@ -177,7 +179,7 @@ export default function DashboardPage() {
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa,mesaj_checkout)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite
@@ -475,6 +477,38 @@ export default function DashboardPage() {
 
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>
 
+        {/* BANNER CHECK-OUT DIMINEATA */}
+        {(()=>{
+          const isMorning=now.getHours()>=7&&now.getHours()<11
+          const coWithPhone=checkoutAzi.filter(r=>r.telefon_client)
+          if(!isMorning||checkoutAzi.length===0||coBannerDismissed)return null
+          return(
+            <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+              <div style={{fontSize:20}}>🌅</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#C084FC',marginBottom:2}}>
+                  {checkoutAzi.length === 1 ? '1 client pleacă azi' : `${checkoutAzi.length} clienți pleacă azi`} — trimite mesajele de checkout
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                  {checkoutAzi.map(r=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+                {coWithPhone.length>0&&(
+                  <button onClick={()=>{setCoWizardIdx(0);setCoWizardOpen(true)}}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    <MessageCircle size={13}/>Trimite mesaje ({coWithPhone.length})
+                  </button>
+                )}
+                <button onClick={()=>{setCoBannerDismissed(true);try{localStorage.setItem('co_banner_'+todayStr,'1')}catch{}}}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Ignoră
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="kpi-grid">
           {[
@@ -617,8 +651,14 @@ export default function DashboardPage() {
               <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <LogOut size={12} color="#C084FC"/>
                 <span style={{...panelTitle,color:'#C084FC'}}>Check-out astăzi</span>
+                <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{coAziCur.length}</span>
+              {checkoutAzi.filter(r=>r.telefon_client).length>0&&(
+                <button onClick={()=>{setCoWizardIdx(0);setCoWizardOpen(true)}}
+                  style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(192,132,252,0.3)',background:'rgba(192,132,252,0.08)',color:'#C084FC',fontSize:10,fontWeight:600,cursor:'pointer'}}>
+                  <MessageCircle size={10}/>Trimite tuturor
+                </button>
+              )}
             </div>
             <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
               {checkoutAzi.length===0
@@ -1066,6 +1106,52 @@ export default function DashboardPage() {
         })()}
 
       </div>
+
+      {/* WIZARD CHECKOUT */}
+      {coWizardOpen&&(()=>{
+        const coList=checkoutAzi.filter(r=>r.telefon_client)
+        const r=coList[coWizardIdx]
+        if(!r)return null
+        const isLast=coWizardIdx>=coList.length-1
+        const msg=msgCheckoutGen(r,sabloaneCO)
+        const link=waLink(r.telefon_client,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCoWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(192,132,252,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj checkout</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#C084FC'}}>{coWizardIdx+1} / {coList.length}</div>
+                </div>
+                <button onClick={()=>setCoWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(192,132,252,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((coWizardIdx+1)/coList.length)*100}%`,background:'#C084FC',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(192,132,252,0.06)',border:'1px solid rgba(192,132,252,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={()=>{isLast?setCoWizardOpen(false):setCoWizardIdx(i=>i+1)}}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }
