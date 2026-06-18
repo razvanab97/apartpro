@@ -143,12 +143,12 @@ export default function MesajeMasaPage() {
         </div>
 
         {/* Conținut principal */}
-        <div style={{display:'flex', gap:12, alignItems:'flex-start'}}>
+        <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
 
           {/* Lista clienți - flex grow */}
-          <div style={{...S.card, flex:1, overflow:'hidden'}}>
+          <div style={{...S.card, flex:'1 1 400px', minWidth:0, overflow:'hidden'}}>
             {/* Header tabel */}
-            <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)'}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)', flexWrap:'wrap'}}>
               <input type="checkbox"
                 checked={filtered.length>0 && filtered.every(r=>selectati.has(r.id))}
                 onChange={()=>{
@@ -156,7 +156,7 @@ export default function MesajeMasaPage() {
                   setSelectati(prev=>{ const n=new Set(prev); filtered.forEach(r=>allSel?n.delete(r.id):n.add(r.id)); return n })
                 }}/>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută..."
-                style={{...S.inp, width:180}}/>
+                style={{...S.inp, flex:1, minWidth:120, maxWidth:220}}/>
               <span style={{fontSize:11, color:'rgba(159,215,255,0.4)', marginLeft:'auto'}}>
                 {selList.length}/{filtered.length} selectați
               </span>
@@ -175,7 +175,7 @@ export default function MesajeMasaPage() {
                     onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
                   <div style={{flex:1, minWidth:0}}>
                     <div style={{fontSize:13, fontWeight:600, color:'#E8F4FF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nume_client}</div>
-                    <div style={{fontSize:10, color:'rgba(159,215,255,0.4)'}}>
+                    <div style={{fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                       {r.telefon_client} · {r.apartament?.nota||''} · {fmt(r.data_checkin)}→{fmt(r.data_checkout)}
                     </div>
                   </div>

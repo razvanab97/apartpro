@@ -129,13 +129,13 @@ function MesajeMasaContent() {
           </div>
         )}
       </div>
-      <div style={{display:'flex', gap:12, alignItems:'flex-start'}}>
-        <div style={{...S.card, flex:1, overflow:'hidden'}}>
-          <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)'}}>
+      <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
+        <div style={{...S.card, flex:'1 1 400px', minWidth:0, overflow:'hidden'}}>
+          <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)', flexWrap:'wrap'}}>
             <input type="checkbox"
               checked={filtered.length>0 && filtered.every(r=>selectati.has(r.id))}
               onChange={()=>{const allSel=filtered.every(r=>selectati.has(r.id)); setSelectati(prev=>{const n=new Set(prev); filtered.forEach(r=>allSel?n.delete(r.id):n.add(r.id)); return n})}}/>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută..." style={{...S.inp, width:180}}/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută..." style={{...S.inp, flex:1, minWidth:120, maxWidth:220}}/>
             <span style={{fontSize:11, color:'rgba(159,215,255,0.4)', marginLeft:'auto'}}>{selList.length}/{filtered.length} selectați</span>
           </div>
           {loading ? (
@@ -149,7 +149,7 @@ function MesajeMasaContent() {
                 <input type="checkbox" checked={sel} onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:13, fontWeight:600, color:'#E8F4FF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nume_client}</div>
-                  <div style={{fontSize:10, color:'rgba(159,215,255,0.4)'}}>{r.telefon_client} · {r.apartament?.nota||''} · {_mfmt(r.data_checkin)}→{_mfmt(r.data_checkout)}</div>
+                  <div style={{fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.telefon_client} · {r.apartament?.nota||''} · {_mfmt(r.data_checkin)}→{_mfmt(r.data_checkout)}</div>
                 </div>
                 {textFinal && r.telefon_client && (
                   <a href={_waLink(r.telefon_client, _apply(textFinal,r))} target="_blank" rel="noopener"
