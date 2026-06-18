@@ -144,10 +144,7 @@ export default function DashboardPage() {
     try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
 
-  useEffect(()=>{
-    const safetyTimer=setTimeout(()=>setLoading(false),12000)
-    loadData().finally(()=>clearTimeout(safetyTimer))
-  },[])
+  useEffect(()=>{loadData()},[])
 
   const now=new Date()
   const luna=now.getMonth()+1

@@ -72,9 +72,10 @@ export default function Layout({ children }: { children: ReactNode }) {
         await syncFivestar(from, to)
       } catch {}
     }
-    bgSync()
+    // delay 10s la pornire — lasă dashboard-ul să se încarce primul
+    const init = setTimeout(bgSync, 10000)
     const id = setInterval(bgSync, 60000)
-    return () => clearInterval(id)
+    return () => { clearTimeout(init); clearInterval(id) }
   }, [])
 
   const bottomItems = navItems.filter(i => i.bottom)
