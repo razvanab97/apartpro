@@ -144,7 +144,10 @@ export default function DashboardPage() {
     try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
 
-  useEffect(()=>{loadData()},[])
+  useEffect(()=>{
+    const safetyTimer=setTimeout(()=>setLoading(false),12000)
+    loadData().finally(()=>clearTimeout(safetyTimer))
+  },[])
 
   const now=new Date()
   const luna=now.getMonth()+1
@@ -172,7 +175,7 @@ export default function DashboardPage() {
     const [
       {count:apCount},{data:rezAziCount},{data:rezLuna},
       {data:ciAzi},{data:coAzi},{data:recente},{data:deconturi},{count:taskCount},
-      {data:aptData},{data:chData},{data:actRez},{count:rezLunaCount},{data:sablCOData},
+      {data:aptData},{data:chData},{data:actRez},{count:rezLunaCount},
     ]=await Promise.all([
       // apartamente active
       supabase.from('apartamente').select('*',{count:'exact',head:true}).eq('status','activ'),
@@ -198,8 +201,6 @@ export default function DashboardPage() {
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
-      // sabloane checkout per apartament
-      supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout'),
     ])
     // Pro-rata helper: nopti in luna curenta / total nopti * suma bruta (identic cu 5starDesk)
     const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
@@ -260,10 +261,12 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
-    // sabloane checkout per apartament
-    const coMap:Record<string,string>={}
-    ;(sablCOData||[]).forEach((s:any)=>{ if(s.apartament_id && s.text) coMap[s.apartament_id]=s.text })
-    setSabloaneCO(coMap)
+    // sabloane checkout — non-blocking, dupa datele principale
+    void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data:sD})=>{
+      const coMap:Record<string,string>={}
+      ;(sD||[]).forEach((s:any)=>{ if(s.apartament_id && s.text) coMap[s.apartament_id]=s.text })
+      setSabloaneCO(coMap)
+    })
 
     // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
     const lunaVitoare = luna===12 ? 1 : luna+1
