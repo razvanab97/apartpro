@@ -133,7 +133,7 @@ function MesajeMasaContent() {
       <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
         <div style={{...S.card, flex:'1 1 400px', minWidth:0, overflow:'hidden'}}>
           <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)', flexWrap:'wrap'}}>
-            <input type="checkbox"
+            <input type="checkbox" style={{width:'auto',flexShrink:0}}
               checked={filtered.length>0 && filtered.every(r=>selectati.has(r.id))}
               onChange={()=>{const allSel=filtered.every(r=>selectati.has(r.id)); setSelectati(prev=>{const n=new Set(prev); filtered.forEach(r=>allSel?n.delete(r.id):n.add(r.id)); return n})}}/>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Caută..." style={{...S.inp, flex:1, minWidth:120, maxWidth:220}}/>
@@ -147,7 +147,7 @@ function MesajeMasaContent() {
             const sel = selectati.has(r.id)
             return (
               <div key={r.id} style={{display:'flex', alignItems:'center', gap:10, padding:'9px 14px', borderBottom:'1px solid rgba(100,160,255,0.04)', background:sel?'rgba(77,163,255,0.03)':'transparent'}}>
-                <input type="checkbox" checked={sel} onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
+                <input type="checkbox" style={{width:'auto',flexShrink:0}} checked={sel} onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontSize:13, fontWeight:600, color:'#E8F4FF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nume_client}</div>
                   <div style={{fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.telefon_client} · {r.apartament?.nota||''} · {_mfmt(r.data_checkin)}→{_mfmt(r.data_checkout)}</div>

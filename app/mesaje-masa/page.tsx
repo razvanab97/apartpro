@@ -149,7 +149,7 @@ export default function MesajeMasaPage() {
           <div style={{...S.card, flex:'1 1 400px', minWidth:0, overflow:'hidden'}}>
             {/* Header tabel */}
             <div style={{display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderBottom:'1px solid rgba(100,160,255,0.08)', background:'rgba(11,18,32,0.4)', flexWrap:'wrap'}}>
-              <input type="checkbox"
+              <input type="checkbox" style={{width:'auto',flexShrink:0}}
                 checked={filtered.length>0 && filtered.every(r=>selectati.has(r.id))}
                 onChange={()=>{
                   const allSel = filtered.every(r=>selectati.has(r.id))
@@ -171,7 +171,7 @@ export default function MesajeMasaPage() {
               const sel = selectati.has(r.id)
               return (
                 <div key={r.id} style={{display:'flex', alignItems:'center', gap:10, padding:'9px 14px', borderBottom:'1px solid rgba(100,160,255,0.04)', background:sel?'rgba(77,163,255,0.03)':'transparent'}}>
-                  <input type="checkbox" checked={sel}
+                  <input type="checkbox" style={{width:'auto',flexShrink:0}} checked={sel}
                     onChange={()=>setSelectati(prev=>{const n=new Set(prev);sel?n.delete(r.id):n.add(r.id);return n})}/>
                   <div style={{flex:1, minWidth:0}}>
                     <div style={{fontSize:13, fontWeight:600, color:'#E8F4FF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nume_client}</div>
