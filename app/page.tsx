@@ -157,12 +157,20 @@ export default function DashboardPage() {
     console.log('[D] loadData START')
     setLoading(true)
     try{
+    // Test simplu fara JOIN ca sa isolam problema
+    const {data:pingData,error:pingErr}=await Promise.race([
+      supabase.from('rezervari').select('id').limit(1),
+      new Promise<any>(resolve=>setTimeout(()=>resolve({data:null,error:{message:'PING_TIMEOUT_5s'}}),5000))
+    ])
+    console.log('[D] ping:', pingData?.length??'null', pingErr?.message??'ok')
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
+    const _ticker=setInterval(()=>console.log('[D] still waiting Promise.all...', new Date().toISOString()),2000)
     const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0).neq('status_rezervare','anulata'),
     ])
+    clearInterval(_ticker)
     console.log('[D] step1 done — coCur0/ciCur0', e1?.message, e2?.message)
     setCoAziCur(coCur0||[])
     setCiAziCur(ciCur0||[])
