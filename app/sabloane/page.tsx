@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { Upload, Trash2, Plus, Send } from 'lucide-react'
-import { generateBatch } from '@/lib/locatii-romania'
+import { generateBatch, generateOne, TOTAL, type AdresaCard } from '@/lib/locatii-romania'
 
 const _mpad = (n:number) => String(n).padStart(2,'0')
 const _mfmt = (d:string) => { try { const dt=new Date(d); return `${_mpad(dt.getDate())}.${_mpad(dt.getMonth()+1)}.${dt.getFullYear()}` } catch { return d } }
@@ -208,67 +208,146 @@ const TIPURI = [
   { k: 'altele', l: '💬 Altele', color: '#A78BFA' },
 ]
 
+const REGION_BADGE: Record<string,{label:string;color:string;bg:string}> = {
+  bucuresti: { label:'București', color:'#FCD34D', bg:'rgba(252,211,77,0.1)' },
+  moldova:   { label:'Moldova',   color:'#7BC8FF', bg:'rgba(123,200,255,0.1)' },
+  alte:      { label:'România',   color:'rgba(159,215,255,0.4)', bg:'rgba(159,215,255,0.06)' },
+}
+
 function GeneratorLocatiiContent() {
-  type Adresa = { judet: string; localitate: string; strada: string; numar: string }
-  const [batch, setBatch] = useState<Adresa[]>(() => generateBatch(4))
+  const [usedSet, setUsedSet] = useState<Set<number>>(() => {
+    try { const s=localStorage.getItem('loc_used_v1'); return s ? new Set(JSON.parse(s) as number[]) : new Set() }
+    catch { return new Set() }
+  })
+  const [batch, setBatch] = useState<AdresaCard[]>([])
   const [copiedKey, setCopiedKey] = useState<string|null>(null)
+
+  useEffect(() => { setBatch(generateBatch(usedSet,4)) }, [])
+
+  function saveUsed(s: Set<number>) {
+    try { localStorage.setItem('loc_used_v1', JSON.stringify([...s])) } catch {}
+  }
 
   function copy(text: string, key: string) {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedKey(key)
-      setTimeout(() => setCopiedKey(k => k===key ? null : k), 1500)
+      setTimeout(()=>setCopiedKey(k=>k===key?null:k), 1400)
     })
   }
 
-  const S = {
-    card: { background:'rgba(11,18,36,0.75)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:12, padding:16 } as React.CSSProperties,
-    row:  { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 } as React.CSSProperties,
-    lbl:  { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.35)', textTransform:'uppercase' as const, letterSpacing:'.07em', marginBottom:2 },
-    val:  { fontSize:13, fontWeight:600, color:'#E8F4FF' },
-    btn:  (copied: boolean): React.CSSProperties => ({
-      padding:'3px 9px', borderRadius:6, border:`1px solid ${copied?'rgba(74,222,128,0.5)':'rgba(100,160,255,0.2)'}`,
-      background:copied?'rgba(74,222,128,0.1)':'rgba(100,160,255,0.06)',
-      color:copied?'#4ADE80':'rgba(159,215,255,0.5)', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' as const,
-    }),
+  function dismiss(card: AdresaCard) {
+    const newUsed = new Set(usedSet); newUsed.add(card.idx); saveUsed(newUsed); setUsedSet(newUsed)
+    setBatch(prev => {
+      const pos = prev.findIndex(b=>b.idx===card.idx)
+      const rest = prev.filter(b=>b.idx!==card.idx)
+      const taken = new Set([...newUsed, ...rest.map(b=>b.idx)])
+      const next = generateOne(taken)
+      if (!next) return rest
+      const r=[...rest]; r.splice(pos,0,next); return r
+    })
   }
+
+  function reset() {
+    const empty = new Set<number>(); saveUsed(empty); setUsedSet(empty)
+    setBatch(generateBatch(empty,4))
+  }
+
+  const remaining = TOTAL - usedSet.size
+  const allDone = batch.length===0
+
+  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.3)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }
+  const val: React.CSSProperties = { fontSize:13, fontWeight:600, color:'#E8F4FF', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }
+  const cpyBtn = (copied:boolean): React.CSSProperties => ({
+    padding:'3px 8px', borderRadius:5, flexShrink:0,
+    border:`1px solid ${copied?'rgba(74,222,128,0.45)':'rgba(100,160,255,0.18)'}`,
+    background:copied?'rgba(74,222,128,0.1)':'rgba(100,160,255,0.05)',
+    color:copied?'#4ADE80':'rgba(159,215,255,0.4)', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap'
+  })
 
   return (
     <div style={{flex:1, overflowY:'auto', padding:'0 20px 40px'}}>
-      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', margin:'16px 0 14px'}}>
-        <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>
-          Distribuție: 10% București · 60% Moldova · 30% restul României
+
+      {/* Bara de status */}
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', margin:'14px 0 16px', gap:12}}>
+        <div style={{display:'flex', alignItems:'center', gap:16}}>
+          <div style={{fontSize:12, color:'rgba(159,215,255,0.35)'}}>
+            10% București · 60% Moldova · 30% restul României
+          </div>
+          <div style={{fontSize:12, fontWeight:600, color: remaining<20?'rgba(251,146,60,0.8)':'rgba(159,215,255,0.5)'}}>
+            {usedSet.size}/{TOTAL} folosite · {remaining} rămase
+          </div>
         </div>
-        <button onClick={() => setBatch(generateBatch(4))}
-          style={{padding:'9px 20px', borderRadius:9, border:'1px solid rgba(77,163,255,0.35)',
-            background:'rgba(77,163,255,0.12)', color:'#7BC8FF', fontSize:13, fontWeight:700, cursor:'pointer'}}>
-          🔄 Generează alte 4
+        <button onClick={reset}
+          style={{padding:'7px 16px', borderRadius:8, border:'1px solid rgba(251,146,60,0.3)',
+            background:'rgba(251,146,60,0.06)', color:'rgba(251,146,60,0.7)', fontSize:11, fontWeight:700, cursor:'pointer'}}>
+          Resetează toate
         </button>
       </div>
 
-      <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14}}>
-        {batch.map((a, i) => {
-          const k = (field: string) => `${i}-${field}`
-          return (
-            <div key={i} style={S.card}>
-              {(['judet','localitate','strada','numar'] as const).map(field => {
-                const labels: Record<string,string> = { judet:'Județ / Sector', localitate:'Localitate', strada:'Stradă', numar:'Număr' }
-                const ck = k(field)
-                return (
-                  <div key={field} style={{marginBottom: field==='numar'?0:12}}>
-                    <div style={S.lbl}>{labels[field]}</div>
-                    <div style={{display:'flex', alignItems:'center', gap:8, justifyContent:'space-between'}}>
-                      <div style={S.val}>{a[field]}</div>
-                      <button style={S.btn(copiedKey===ck)} onClick={() => copy(a[field], ck)}>
-                        {copiedKey===ck ? '✓ Copiat' : '📋'}
-                      </button>
+      {/* Toate epuizate */}
+      {allDone ? (
+        <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+          padding:'60px 20px', gap:16, background:'rgba(11,18,36,0.6)', borderRadius:16,
+          border:'1px solid rgba(100,160,255,0.1)'}}>
+          <div style={{fontSize:36}}>🎉</div>
+          <div style={{fontSize:16, fontWeight:700, color:'#E8F4FF'}}>Toate adresele au fost folosite</div>
+          <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>Ai epuizat cele {TOTAL} adrese din baza de date.</div>
+          <button onClick={reset}
+            style={{padding:'10px 28px', borderRadius:10, border:'none',
+              background:'linear-gradient(135deg,#4DA3FF,#3B82F6)', color:'#fff',
+              fontSize:13, fontWeight:700, cursor:'pointer'}}>
+            🔄 Resetează și reia de la capăt
+          </button>
+        </div>
+      ) : (
+        /* Grid 4 pe orizontală */
+        <div style={{display:'flex', gap:12, alignItems:'stretch'}}>
+          {batch.map((a) => {
+            const badge = REGION_BADGE[a.region]
+            const ck = (f:string) => `${a.idx}-${f}`
+            return (
+              <div key={a.idx} style={{flex:1, minWidth:0, background:'rgba(11,18,36,0.8)',
+                border:'1px solid rgba(100,160,255,0.12)', borderRadius:14,
+                display:'flex', flexDirection:'column'}}>
+
+                {/* Header card */}
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between',
+                  padding:'10px 12px 8px', borderBottom:'1px solid rgba(100,160,255,0.07)'}}>
+                  <span style={{fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:5,
+                    background:badge.bg, color:badge.color, letterSpacing:'.06em'}}>
+                    📍 {badge.label}
+                  </span>
+                  <button onClick={()=>dismiss(a)} title="Marchează ca folosit"
+                    style={{padding:'3px 8px', borderRadius:5, border:'1px solid rgba(74,222,128,0.25)',
+                      background:'rgba(74,222,128,0.07)', color:'rgba(74,222,128,0.6)',
+                      fontSize:10, fontWeight:700, cursor:'pointer'}}>
+                    ✓ Folosit
+                  </button>
+                </div>
+
+                {/* Câmpuri */}
+                <div style={{padding:'12px 12px 14px', display:'flex', flexDirection:'column', gap:10, flex:1}}>
+                  {([
+                    {key:'judet',      label:'Județ / Sector', value:a.judet},
+                    {key:'localitate', label:'Localitate',      value:a.localitate},
+                    {key:'adresa',     label:'Adresă',          value:a.adresa},
+                  ] as const).map(f=>(
+                    <div key={f.key}>
+                      <div style={lbl}>{f.label}</div>
+                      <div style={{display:'flex', alignItems:'center', gap:6}}>
+                        <div style={val}>{f.value}</div>
+                        <button style={cpyBtn(copiedKey===ck(f.key))} onClick={()=>copy(f.value,ck(f.key))}>
+                          {copiedKey===ck(f.key)?'✓':'📋'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        })}
-      </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -276,20 +276,37 @@ const LOCS: Loc[] = [
   { judet:'Satu Mare', localitate:'Satu Mare', strada:'Calea Ostașilor', region:'alte' },
 ]
 
-const BUCURESTI = LOCS.filter(l => l.region === 'bucuresti')
-const MOLDOVA   = LOCS.filter(l => l.region === 'moldova')
-const ALTE      = LOCS.filter(l => l.region === 'alte')
+export const TOTAL = LOCS.length
 
-function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)] }
+const IDX_BUC = LOCS.map((l,i)=>l.region==='bucuresti'?i:-1).filter(i=>i>=0)
+const IDX_MOL = LOCS.map((l,i)=>l.region==='moldova'?i:-1).filter(i=>i>=0)
+const IDX_ALT = LOCS.map((l,i)=>l.region==='alte'?i:-1).filter(i=>i>=0)
 
-function genOne(): { judet: string; localitate: string; strada: string; numar: string } {
-  const r = Math.random() * 100
-  const pool = r < 10 ? BUCURESTI : r < 70 ? MOLDOVA : ALTE
-  const loc = pick(pool)
-  const numar = String(Math.floor(Math.random() * 149) + 1)
-  return { judet: loc.judet, localitate: loc.localitate, strada: loc.strada, numar }
+export type AdresaCard = { idx: number; judet: string; localitate: string; adresa: string; region: 'bucuresti'|'moldova'|'alte' }
+
+function pickUnused(pool: number[], used: Set<number>): number|null {
+  const av = pool.filter(i=>!used.has(i))
+  return av.length ? av[Math.floor(Math.random()*av.length)] : null
 }
 
-export function generateBatch(n = 4) {
-  return Array.from({ length: n }, genOne)
+export function generateOne(used: Set<number>): AdresaCard|null {
+  const r = Math.random()*100
+  const order = r<10 ? [IDX_BUC,IDX_MOL,IDX_ALT] : r<70 ? [IDX_MOL,IDX_ALT,IDX_BUC] : [IDX_ALT,IDX_MOL,IDX_BUC]
+  let idx: number|null = null
+  for (const pool of order) { idx=pickUnused(pool,used); if(idx!==null) break }
+  if (idx===null) return null
+  const loc = LOCS[idx]
+  const numar = String(Math.floor(Math.random()*149)+1)
+  return { idx, judet:loc.judet, localitate:loc.localitate, adresa:`${loc.strada} ${numar}`, region:loc.region }
+}
+
+export function generateBatch(used: Set<number>, n=4): AdresaCard[] {
+  const res: AdresaCard[] = []
+  const tmp = new Set(used)
+  for (let i=0;i<n;i++) {
+    const c=generateOne(tmp)
+    if(!c) break
+    res.push(c); tmp.add(c.idx)
+  }
+  return res
 }
