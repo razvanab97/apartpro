@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { Upload, Trash2, Plus, Send } from 'lucide-react'
+import { generateBatch } from '@/lib/locatii-romania'
 
 const _mpad = (n:number) => String(n).padStart(2,'0')
 const _mfmt = (d:string) => { try { const dt=new Date(d); return `${_mpad(dt.getDate())}.${_mpad(dt.getMonth()+1)}.${dt.getFullYear()}` } catch { return d } }
@@ -207,8 +208,73 @@ const TIPURI = [
   { k: 'altele', l: '💬 Altele', color: '#A78BFA' },
 ]
 
+function GeneratorLocatiiContent() {
+  type Adresa = { judet: string; localitate: string; strada: string; numar: string }
+  const [batch, setBatch] = useState<Adresa[]>(() => generateBatch(4))
+  const [copiedKey, setCopiedKey] = useState<string|null>(null)
+
+  function copy(text: string, key: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(k => k===key ? null : k), 1500)
+    })
+  }
+
+  const S = {
+    card: { background:'rgba(11,18,36,0.75)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:12, padding:16 } as React.CSSProperties,
+    row:  { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 } as React.CSSProperties,
+    lbl:  { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.35)', textTransform:'uppercase' as const, letterSpacing:'.07em', marginBottom:2 },
+    val:  { fontSize:13, fontWeight:600, color:'#E8F4FF' },
+    btn:  (copied: boolean): React.CSSProperties => ({
+      padding:'3px 9px', borderRadius:6, border:`1px solid ${copied?'rgba(74,222,128,0.5)':'rgba(100,160,255,0.2)'}`,
+      background:copied?'rgba(74,222,128,0.1)':'rgba(100,160,255,0.06)',
+      color:copied?'#4ADE80':'rgba(159,215,255,0.5)', fontSize:10, fontWeight:700, cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' as const,
+    }),
+  }
+
+  return (
+    <div style={{flex:1, overflowY:'auto', padding:'0 20px 40px'}}>
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', margin:'16px 0 14px'}}>
+        <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>
+          Distribuție: 10% București · 60% Moldova · 30% restul României
+        </div>
+        <button onClick={() => setBatch(generateBatch(4))}
+          style={{padding:'9px 20px', borderRadius:9, border:'1px solid rgba(77,163,255,0.35)',
+            background:'rgba(77,163,255,0.12)', color:'#7BC8FF', fontSize:13, fontWeight:700, cursor:'pointer'}}>
+          🔄 Generează alte 4
+        </button>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14}}>
+        {batch.map((a, i) => {
+          const k = (field: string) => `${i}-${field}`
+          return (
+            <div key={i} style={S.card}>
+              {(['judet','localitate','strada','numar'] as const).map(field => {
+                const labels: Record<string,string> = { judet:'Județ / Sector', localitate:'Localitate', strada:'Stradă', numar:'Număr' }
+                const ck = k(field)
+                return (
+                  <div key={field} style={{marginBottom: field==='numar'?0:12}}>
+                    <div style={S.lbl}>{labels[field]}</div>
+                    <div style={{display:'flex', alignItems:'center', gap:8, justifyContent:'space-between'}}>
+                      <div style={S.val}>{a[field]}</div>
+                      <button style={S.btn(copiedKey===ck)} onClick={() => copy(a[field], ck)}>
+                        {copiedKey===ck ? '✓ Copiat' : '📋'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function SabloanePage() {
-  const [mainTab, setMainTab] = useState<'sabloane'|'mesaje'>('sabloane')
+  const [mainTab, setMainTab] = useState<'sabloane'|'mesaje'|'locatii'>('sabloane')
   const [apts, setApts] = useState<any[]>([])
   const [selApt, setSelApt] = useState<any>(null)
   const [sabloane, setSabloane] = useState<any[]>([])
@@ -287,8 +353,10 @@ export default function SabloanePage() {
       <div style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
         <button style={tabStyle(mainTab==='sabloane')} onClick={()=>setMainTab('sabloane')}>📋 Șabloane</button>
         <button style={tabStyle(mainTab==='mesaje')} onClick={()=>setMainTab('mesaje')}>📨 Mesaje în masă</button>
+        <button style={tabStyle(mainTab==='locatii')} onClick={()=>setMainTab('locatii')}>📍 Generator Locații</button>
       </div>
       {mainTab==='mesaje' && <MesajeMasaContent/>}
+      {mainTab==='locatii' && <GeneratorLocatiiContent/>}
       {mainTab==='sabloane' && <div style={{flex:1, overflowY:'auto', padding:'0 20px 40px'}}>
 
         {/* Selector apartament */}
