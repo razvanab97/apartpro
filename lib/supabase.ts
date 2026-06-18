@@ -1,17 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = 'https://lsmraxevzkmupaidianv.supabase.co'
+const DIRECT_URL = 'https://lsmraxevzkmupaidianv.supabase.co'
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzbXJheGV2emttdXBhaWRpYW52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTkwMDA5NywiZXhwIjoyMDk1NDc2MDk3fQ.CagkIVPFE6r8D1oZPoxvs3jzJDR3HSwtx0GzM0etpss'
 
-function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(), 10000)
-  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(t))
-}
+// În browser: rutăm prin proxy Next.js (/api/supa) ca să ocolim blocările de extensii/ETP
+// Pe server: merge direct la Supabase
+const supabaseUrl = typeof window !== 'undefined'
+  ? `${window.location.origin}/api/supa`
+  : DIRECT_URL
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { fetch: fetchWithTimeout as typeof fetch }
-})
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export type Proprietar = {
   id: string; nume: string; email?: string; telefon?: string; iban?: string

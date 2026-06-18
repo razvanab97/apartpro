@@ -144,7 +144,6 @@ export default function DashboardPage() {
     try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
 
-  console.log('[D] component render, loading=', loading)
   useEffect(()=>{loadData()},[])
 
   const now=new Date()
@@ -154,31 +153,20 @@ export default function DashboardPage() {
   const todayStr=format(now,'yyyy-MM-dd')
 
   async function loadData(){
-    console.log('[D] loadData START')
     setLoading(true)
     try{
-    // Test simplu fara JOIN ca sa isolam problema
-    const {data:pingData,error:pingErr}=await Promise.race([
-      supabase.from('rezervari').select('id').limit(1),
-      new Promise<any>(resolve=>setTimeout(()=>resolve({data:null,error:{message:'PING_TIMEOUT_5s'}}),5000))
-    ])
-    console.log('[D] ping:', pingData?.length??'null', pingErr?.message??'ok')
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
-    const _ticker=setInterval(()=>console.log('[D] still waiting Promise.all...', new Date().toISOString()),2000)
     const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0).neq('status_rezervare','anulata'),
     ])
-    clearInterval(_ticker)
-    console.log('[D] step1 done — coCur0/ciCur0', e1?.message, e2?.message)
     setCoAziCur(coCur0||[])
     setCiAziCur(ciCur0||[])
     const primaZiLuna=format(new Date(an,luna-1,1),'yyyy-MM-dd')
     const ultimaZiLuna=format(new Date(an,luna,0),'yyyy-MM-dd')
     // VM07 si CG40 - singurele apartamente cu comision AB
     const {data:apComision}=await supabase.from('apartamente').select('id,nota').in('nota',['VM07','CG40'])
-    console.log('[D] step2 done — apComision')
     const idsComision=new Set((apComision||[]).map((a:any)=>a.id))
 
     const [
@@ -211,7 +199,6 @@ export default function DashboardPage() {
       // rezervari in luna curenta (count)
       supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaZiLuna).lte('data_checkin',ultimaZiLuna),
     ])
-    console.log('[D] step3 done — big Promise.all')
     // Pro-rata helper: nopti in luna curenta / total nopti * suma bruta (identic cu 5starDesk)
     const primaZiLunaPlusUna = format(new Date(an,luna,1),'yyyy-MM-dd') // prima zi luna viitoare
     function proRataLuna(r: any): number {
@@ -271,7 +258,6 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
-    console.log('[D] step4 done — state setters')
     // sabloane checkout — non-blocking, dupa datele principale
     void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data:sD})=>{
       const coMap:Record<string,string>={}
@@ -288,7 +274,6 @@ export default function DashboardPage() {
       .select('suma_incasata')
       .gte('data_checkin', primaLV).lte('data_checkin', ultimaLV)
       .neq('status_rezervare','anulata')
-    console.log('[D] step5 done — rezLV')
     const incLV = (rezLV||[]).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
     // Cheltuieli luna precedenta pentru acoperire
     const prevM = now.getMonth()===0?12:now.getMonth()
@@ -300,14 +285,12 @@ export default function DashboardPage() {
       .lte('data', new Date(prevY, Number(prevPad), 0).toISOString().slice(0,10))
     const totalLP = (chLP||[]).reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
     const platiteLP = (chLP||[]).filter((x:any)=>x.status==='validat').reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
-    console.log('[D] step6 done — chLP')
     setCheltuieliLP({total:Math.round(totalLP),platite:Math.round(platiteLP)})
 
     // Cheltuieli luna curenta (din tabelul cheltuieli)
     const { data: chLC } = await supabase.from('cheltuieli')
       .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data', new Date(an, Number(pad(luna)), 0).toISOString().slice(0,10))
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
-    console.log('[D] step7 done — chLC')
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
     // Booking widget - perioada curenta (Vineri-Joi)
     const nowD=new Date(); const dayD=nowD.getDay()
@@ -320,7 +303,6 @@ export default function DashboardPage() {
     const bkNet=(bkRez||[]).reduce((s:number,r:any)=>s+Number(r.valoare_bruta||r.suma_incasata||0)*0.83,0)
     const bkKey=`booking_period_${fmtD(friD)}`
     const {data:bkSaved}=await supabase.from('setari').select('valoare').eq('cheie',bkKey).maybeSingle()
-    console.log('[D] step8 done — bkRez + bkSaved')
     const bkStatus=bkSaved?.valoare||(bkRez||[]).every((r:any)=>r.status_plata==='incasat')?'incasat':'urmeaza'
     setBookingWidget({net:Math.round(bkNet),count:(bkRez||[]).length,payDate:fmtD(payFriD),status:bkStatus,from:fmtD(friD),to:fmtD(thuD)})
     // Incasari nete per apartament - calculat din rezLuna+aptData deja incarcate
@@ -339,9 +321,7 @@ export default function DashboardPage() {
     setPerAptIncome(perApt)
     // Rezervari luna pentru tabelul de verificare (checkin in luna curenta, sortate cronologic)
     setRezLunaDsp((rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
-    console.log('[D] loadData COMPLETE')
-    }catch(err){console.error('[D] loadData CAUGHT:', err)}
-    console.log('[D] setLoading(false) apelat')
+    }catch(err){console.error('[loadData]',err)}
     setLoading(false)
   }
 

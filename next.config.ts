@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_ACJ1clv28hJ1hXJAAxvbUA_kBlNHH0y',
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/supa/:path*',
+        destination: 'https://lsmraxevzkmupaidianv.supabase.co/:path*',
+      },
+    ]
+  },
 }
 
 export default nextConfig
