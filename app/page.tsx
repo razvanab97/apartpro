@@ -113,6 +113,7 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
   const [loading,setLoading]=useState(true)
+  const [loadError,setLoadError]=useState(false)
   const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,incasariNet:0,incasariNetFiltrat:0,incasariBrutFiltrat:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
   const [rezervariRecente,setRezervariRecente]=useState<any[]>([])
   const [checkinAzi,setCheckinAzi]=useState<any[]>([])
@@ -154,6 +155,9 @@ export default function DashboardPage() {
 
   async function loadData(){
     setLoading(true)
+    setLoadError(false)
+    // Bail safety: dacă toate query-urile atârnă (ex. rețea blocată), forțăm ieșirea după 13s
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },13000)
     try{
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
@@ -321,7 +325,8 @@ export default function DashboardPage() {
     setPerAptIncome(perApt)
     // Rezervari luna pentru tabelul de verificare (checkin in luna curenta, sortate cronologic)
     setRezLunaDsp((rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
-    }catch(err){console.error('[loadData]',err)}
+    clearTimeout(bail)
+    }catch(err){console.error('[loadData]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -456,6 +461,20 @@ export default function DashboardPage() {
   }
 
   if(loading)return<><PageHeader title="Dashboard"/><PageLoading/></>
+  if(loadError)return(
+    <>
+      <PageHeader title="Dashboard"/>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,gap:14,padding:60,textAlign:'center'}}>
+        <AlertCircle size={40} style={{color:'rgba(248,113,113,0.7)'}}/>
+        <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>Nu s-a putut conecta la baza de date</div>
+        <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',maxWidth:300}}>Conexiunea a expirat. Verifică rețeaua sau încearcă din nou.</div>
+        <button onClick={()=>loadData()}
+          style={{marginTop:8,padding:'10px 28px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#4DA3FF,#3B82F6)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+          <RefreshCw size={14}/> Reîncarcă
+        </button>
+      </div>
+    </>
+  )
 
   return(
     <>
