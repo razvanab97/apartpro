@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, Proprietar, calculeazaDecont } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog } from '@/components/ui'
+import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, Clock, TrendingUp, FileText, Download } from 'lucide-react'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
@@ -12,6 +12,7 @@ const STATUS_COLOR: Record<string, BadgeColor> = { draft:'gray', aprobat:'amber'
 
 function DeconturiContent() {
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [deconturi, setDeconturi] = useState<any[]>([])
   const [apartamente, setApartamente] = useState<any[]>([])
   const [open, setOpen] = useState(false)
@@ -27,12 +28,17 @@ function DeconturiContent() {
 
   async function loadDeconturi() {
     setLoading(true)
-    const [{ data: dec }, { data: apt }] = await Promise.all([
-      supabase.from('deconturi').select('*, apartament:apartamente(id,nume), proprietar:proprietari(id,nume,iban,banca)').order('an', { ascending: false }).order('luna', { ascending: false }),
-      supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nume'),
-    ])
-    setDeconturi(dec||[])
-    setApartamente(apt||[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{ data: dec }, { data: apt }] = await Promise.all([
+        supabase.from('deconturi').select('*, apartament:apartamente(id,nume), proprietar:proprietari(id,nume,iban,banca)').order('an', { ascending: false }).order('luna', { ascending: false }),
+        supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nume'),
+      ])
+      setDeconturi(dec||[])
+      setApartamente(apt||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[deconturi load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -107,6 +113,7 @@ function DeconturiContent() {
   }
 
   if (loading) return <PageLoading/>
+  if (loadError) return <ConnectionError onRetry={()=>loadDeconturi()}/>
 
   return (
     <div className="p-6" style={{overflowY:'auto', flex:1}}>
@@ -258,6 +265,7 @@ export default function ProprietariPage() {
   const now = new Date()
   const [mainTab, setMainTab] = useState<'proprietari'|'deconturi'>('proprietari')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [proprietari, setProprietari] = useState<any[]>([])
   const [apts, setApts] = useState<any[]>([])
   const [chirii, setChirii] = useState<any[]>([])
@@ -281,14 +289,19 @@ export default function ProprietariPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: propData }, { data: aptData }, { data: chiriiData }] = await Promise.all([
-      supabase.from('proprietari').select('*').order('nume'),
-      supabase.from('apartamente').select('id,nume,nota,status,proprietar_id').order('nota'),
-      supabase.from('chirii_fixe').select('*').eq('activ', true),
-    ])
-    setProprietari(propData||[])
-    setApts(aptData||[])
-    setChirii(chiriiData||[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{ data: propData }, { data: aptData }, { data: chiriiData }] = await Promise.all([
+        supabase.from('proprietari').select('*').order('nume'),
+        supabase.from('apartamente').select('id,nume,nota,status,proprietar_id').order('nota'),
+        supabase.from('chirii_fixe').select('*').eq('activ', true),
+      ])
+      setProprietari(propData||[])
+      setApts(aptData||[])
+      setChirii(chiriiData||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[proprietari load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
     // Curs BNR
     setCursLoading(true)
@@ -397,6 +410,7 @@ export default function ProprietariPage() {
   }
 
   if (loading && mainTab === 'proprietari') return (<><PageHeader title="Proprietari" /><PageLoading /></>)
+  if (loadError && mainTab === 'proprietari') return (<><PageHeader title="Proprietari" /><ConnectionError onRetry={()=>load()}/></>)
 
   const s = {
     card: { background:'rgba(11,22,42,0.8)', border:'1px solid rgba(159,215,255,0.1)', borderRadius:14, marginBottom:12, overflow:'hidden' as const },

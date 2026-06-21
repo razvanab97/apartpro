@@ -9,7 +9,31 @@ const supabaseUrl = typeof window !== 'undefined'
   ? `${window.location.origin}/api/supa`
   : DIRECT_URL
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Retry automat cu timeout per-cerere: o blocare tranzitorie de retea/proxy se repara
+// singura (2 reincercari) inainte ca pagina sa afiseze vreo eroare catre utilizator.
+async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const ATTEMPTS = 3
+  const TIMEOUT_MS = 5000
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    try {
+      const res = await fetch(input, { ...init, signal: controller.signal })
+      clearTimeout(timer)
+      return res
+    } catch (err) {
+      clearTimeout(timer)
+      lastErr = err
+      if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 400 * attempt))
+    }
+  }
+  throw lastErr
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithRetry as typeof fetch },
+})
 
 export type Proprietar = {
   id: string; nume: string; email?: string; telefon?: string; iban?: string

@@ -1,6 +1,6 @@
 'use client'
 import {ReactNode,useState} from 'react'
-import {X,Loader2,AlertCircle,CheckCircle2,Info} from 'lucide-react'
+import {X,Loader2,AlertCircle,CheckCircle2,Info,RefreshCw} from 'lucide-react'
 
 /* ── BUTTON ── */
 type BtnVariant = 'primary'|'secondary'|'ghost'|'danger'|'success'
@@ -172,6 +172,20 @@ export function LoadingSpinner({size=20}:{size?:number}){
 }
 export function PageLoading(){
   return <div style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'80px 0'}}><LoadingSpinner size={28}/></div>
+}
+// Ecran afisat cand toate cererile Supabase au expirat (retea blocata) - dupa retry automat la nivel de client.
+export function ConnectionError({onRetry}:{onRetry:()=>void}){
+  return(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,gap:14,padding:60,textAlign:'center'}}>
+      <AlertCircle size={40} style={{color:'rgba(248,113,113,0.7)'}}/>
+      <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>Nu s-a putut conecta la baza de date</div>
+      <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',maxWidth:300}}>Conexiunea a expirat. Verifică rețeaua sau încearcă din nou — datele nu au fost șterse.</div>
+      <button onClick={onRetry}
+        style={{marginTop:8,padding:'10px 28px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#4DA3FF,#3B82F6)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+        <RefreshCw size={14}/> Reîncarcă
+      </button>
+    </div>
+  )
 }
 
 /* ── ALERT / TOAST ── */

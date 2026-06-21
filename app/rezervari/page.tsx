@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card } from '@/components/ui'
+import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 
 type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'teal'
@@ -24,6 +24,7 @@ const emptyRez = {
 
 export default function RezervariPage() {
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [rezervari, setRezervari] = useState<any[]>([])
   const [apartamente, setApartamente] = useState<Apartament[]>([])
   const [open, setOpen] = useState(false)
@@ -64,13 +65,18 @@ export default function RezervariPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: rez }, { data: apt }] = await Promise.all([
-      supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix), proprietar:proprietari(id,nume)')
-        .order('data_checkin', { ascending: false }),
-      supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').eq('status','activ').order('nume'),
-    ])
-    setRezervari(rez||[])
-    setApartamente((apt as Apartament[])||[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{ data: rez }, { data: apt }] = await Promise.all([
+        supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix), proprietar:proprietari(id,nume)')
+          .order('data_checkin', { ascending: false }),
+        supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').eq('status','activ').order('nume'),
+      ])
+      setRezervari(rez||[])
+      setApartamente((apt as Apartament[])||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[rezervari load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -153,6 +159,7 @@ export default function RezervariPage() {
   const c = calcul()
 
   if (loading) return (<><PageHeader title="Rezervări" /><PageLoading /></>)
+  if (loadError) return (<><PageHeader title="Rezervări" /><ConnectionError onRetry={()=>load()}/></>)
 
   function toggleSelect(id: string) {
     setSelected(prev => {

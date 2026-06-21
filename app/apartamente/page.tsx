@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase, Apartament, Proprietar } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog } from '@/components/ui'
+import { Button, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calculator, ChevronDown, ChevronUp, X, ChevronRight } from 'lucide-react'
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
@@ -234,6 +234,7 @@ function Calc({ apt }: { apt: any }) {
 
 export default function ApartamentePage() {
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [apartamente, setApartamente] = useState<Apartament[]>([])
   const [proprietari, setProprietari] = useState<Proprietar[]>([])
   const [editOpen, setEditOpen] = useState(false)
@@ -249,12 +250,17 @@ export default function ApartamentePage() {
 
   async function load() {
     setLoading(true)
-    const [{ data:apt },{ data:prop }] = await Promise.all([
-      supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nota').order('nume'),
-      supabase.from('proprietari').select('id,nume').order('nume'),
-    ])
-    setApartamente((apt as Apartament[])||[])
-    setProprietari((prop as Proprietar[])||[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{ data:apt },{ data:prop }] = await Promise.all([
+        supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nota').order('nume'),
+        supabase.from('proprietari').select('id,nume').order('nume'),
+      ])
+      setApartamente((apt as Apartament[])||[])
+      setProprietari((prop as Proprietar[])||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[apartamente load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -291,6 +297,7 @@ export default function ApartamentePage() {
   const selected = apartamente.find(a=>a.id===selectedId) as any
 
   if(loading) return (<><PageHeader title="Apartamente"/><PageLoading/></>)
+  if(loadError) return (<><PageHeader title="Apartamente"/><ConnectionError onRetry={()=>load()}/></>)
 
   return (
     <>

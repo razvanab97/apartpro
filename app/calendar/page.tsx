@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader } from 'lucide-react'
+import { ConnectionError } from '@/components/ui'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
@@ -57,6 +58,7 @@ export default function CalendarPage() {
   const [rezAll, setRezAll]     = useState<Rez[]>([])
   const [apts, setApts]         = useState<Apt[]>([])
   const [loading, setLoading]   = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [year, setYear]         = useState(new Date().getFullYear())
   const [month, setMonth]       = useState(new Date().getMonth())
   const [selApt, setSelApt]     = useState('')
@@ -94,18 +96,23 @@ export default function CalendarPage() {
 
   async function load() {
     setLoading(true)
-    const start = isoDate(year, month, 1)
-    const end   = isoDate(year, month, daysInMonth(year, month))
-    const [{ data: a }, { data: r }] = await Promise.all([
-      supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
-      supabase.from('rezervari')
-        .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
-        .or('status_rezervare.neq.anulata,status_rezervare.is.null')
-        .lte('data_checkin', end).gte('data_checkout', start)
-        .order('data_checkin'),
-    ])
-    setApts(a || [])
-    setRezAll((r as any) || [])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const start = isoDate(year, month, 1)
+      const end   = isoDate(year, month, daysInMonth(year, month))
+      const [{ data: a }, { data: r }] = await Promise.all([
+        supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
+        supabase.from('rezervari')
+          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
+          .or('status_rezervare.neq.anulata,status_rezervare.is.null')
+          .lte('data_checkin', end).gte('data_checkout', start)
+          .order('data_checkin'),
+      ])
+      setApts(a || [])
+      setRezAll((r as any) || [])
+      clearTimeout(bail)
+    }catch(err){console.error('[calendar load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -215,6 +222,8 @@ export default function CalendarPage() {
   const COL_W   = 44
   const ROW_H   = viewMode==='sume' ? 76 : 56
   const HDR_H   = 52
+
+  if(loadError) return <ConnectionError onRetry={()=>load()}/>
 
   return (
     <>

@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog } from '@/components/ui'
+import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Trash2, Edit2, Loader2, Sparkles, X, ImagePlus, Camera } from 'lucide-react'
 
 type Task = {
@@ -663,6 +663,7 @@ const RUTINA_ITEMS_LIST: [string, string][] = [
 export default function TaskuriPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [brainOpen, setBrainOpen] = useState(false)
   const [editing, setEditing] = useState<any>(empty)
@@ -828,8 +829,14 @@ export default function TaskuriPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('taskuri').select('*').order('priority_score', { ascending: false }).order('created_at', { ascending: false })
-    setTasks((data || []) as Task[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const { data, error } = await supabase.from('taskuri').select('*').order('priority_score', { ascending: false }).order('created_at', { ascending: false })
+      if(error) throw error
+      setTasks((data || []) as Task[])
+      clearTimeout(bail)
+    }catch(err){console.error('[taskuri load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -951,7 +958,9 @@ export default function TaskuriPage() {
       <TaskProgress tasks={tasks}/>
 
       {/* KANBAN */}
-      {loading ? (
+      {loadError ? (
+        <ConnectionError onRetry={()=>load()}/>
+      ) : loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
           <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#4DA3FF' }}/>
         </div>

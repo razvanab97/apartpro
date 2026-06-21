@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Toast, useToast } from '@/components/ui'
+import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw } from 'lucide-react'
 
 const FURNIZORI_LIST = [
@@ -277,7 +277,7 @@ export default function FacturiPage() {
     setLoadingArchiva(true)
     setLoadError(false)
     // Bail safety: daca query-ul Supabase atarna (retea blocata/timeout), fortam iesirea dupa 13s
-    const bail = setTimeout(()=>{ setLoadingArchiva(false); setLoadError(true) }, 13000)
+    const bail = setTimeout(()=>{ setLoadingArchiva(false); setLoadError(true) }, 20000)
     try{
       const { data, error } = await supabase.from('cheltuieli')
         .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
@@ -586,20 +586,7 @@ export default function FacturiPage() {
     backdropFilter: 'blur(12px)',
   }
 
-  if(loadError)return(
-    <>
-      <PageHeader title="Facturi & Documente"/>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,gap:14,padding:60,textAlign:'center'}}>
-        <AlertCircle size={40} style={{color:'rgba(248,113,113,0.7)'}}/>
-        <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>Nu s-a putut conecta la baza de date</div>
-        <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',maxWidth:300}}>Conexiunea a expirat. Verifică rețeaua sau încearcă din nou — facturile nu au fost șterse.</div>
-        <button onClick={()=>loadSaved()}
-          style={{marginTop:8,padding:'10px 28px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#4DA3FF,#3B82F6)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-          <RefreshCw size={14}/> Reîncarcă
-        </button>
-      </div>
-    </>
-  )
+  if(loadError)return(<><PageHeader title="Facturi & Documente"/><ConnectionError onRetry={()=>loadSaved()}/></>)
 
   return (
     <>

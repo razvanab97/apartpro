@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { CanalBadge, PageLoading } from '@/components/ui'
+import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -157,7 +157,7 @@ export default function DashboardPage() {
     setLoading(true)
     setLoadError(false)
     // Bail safety: dacă toate query-urile atârnă (ex. rețea blocată), forțăm ieșirea după 13s
-    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },13000)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
     // Curatenie - PRIMUL query, independent
     const today0=new Date().toISOString().split('T')[0]
@@ -461,20 +461,7 @@ export default function DashboardPage() {
   }
 
   if(loading)return<><PageHeader title="Dashboard"/><PageLoading/></>
-  if(loadError)return(
-    <>
-      <PageHeader title="Dashboard"/>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,gap:14,padding:60,textAlign:'center'}}>
-        <AlertCircle size={40} style={{color:'rgba(248,113,113,0.7)'}}/>
-        <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>Nu s-a putut conecta la baza de date</div>
-        <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',maxWidth:300}}>Conexiunea a expirat. Verifică rețeaua sau încearcă din nou.</div>
-        <button onClick={()=>loadData()}
-          style={{marginTop:8,padding:'10px 28px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#4DA3FF,#3B82F6)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
-          <RefreshCw size={14}/> Reîncarcă
-        </button>
-      </div>
-    </>
-  )
+  if(loadError)return(<><PageHeader title="Dashboard"/><ConnectionError onRetry={()=>loadData()}/></>)
 
   return(
     <>
