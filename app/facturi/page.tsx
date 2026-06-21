@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
-import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle } from 'lucide-react'
+import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw } from 'lucide-react'
 
 const FURNIZORI_LIST = [
   'E.ON Curent','E.ON Gaz','E.ON DUO','Urbica','TermoService','Salubris',
@@ -53,6 +53,8 @@ export default function FacturiPage() {
   const [facturi, setFacturi] = useState<Factura[]>([])
   const [apts, setApts] = useState<any[]>([])
   const [savedFacturi, setSavedFacturi] = useState<any[]>([])
+  const [loadingArchiva, setLoadingArchiva] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [preview, setPreview] = useState<Factura | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
@@ -272,11 +274,20 @@ export default function FacturiPage() {
   }
 
   async function loadSaved() {
-    const { data } = await supabase.from('cheltuieli')
-      .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
-      .not('fisier_url', 'is', null)
-      .order('data', { ascending: false })
-    setSavedFacturi(data || [])
+    setLoadingArchiva(true)
+    setLoadError(false)
+    // Bail safety: daca query-ul Supabase atarna (retea blocata/timeout), fortam iesirea dupa 13s
+    const bail = setTimeout(()=>{ setLoadingArchiva(false); setLoadError(true) }, 13000)
+    try{
+      const { data, error } = await supabase.from('cheltuieli')
+        .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
+        .not('fisier_url', 'is', null)
+        .order('data', { ascending: false })
+      if(error) throw error
+      setSavedFacturi(data || [])
+      clearTimeout(bail)
+    }catch(err){ console.error('[facturi loadSaved]', err); clearTimeout(bail); setLoadError(true) }
+    setLoadingArchiva(false)
   }
 
   async function deleteFacturaSalvata(id: string) {
@@ -575,6 +586,21 @@ export default function FacturiPage() {
     backdropFilter: 'blur(12px)',
   }
 
+  if(loadError)return(
+    <>
+      <PageHeader title="Facturi & Documente"/>
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,gap:14,padding:60,textAlign:'center'}}>
+        <AlertCircle size={40} style={{color:'rgba(248,113,113,0.7)'}}/>
+        <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>Nu s-a putut conecta la baza de date</div>
+        <div style={{fontSize:12,color:'rgba(159,215,255,0.4)',maxWidth:300}}>Conexiunea a expirat. Verifică rețeaua sau încearcă din nou — facturile nu au fost șterse.</div>
+        <button onClick={()=>loadSaved()}
+          style={{marginTop:8,padding:'10px 28px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#4DA3FF,#3B82F6)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:8}}>
+          <RefreshCw size={14}/> Reîncarcă
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <>
       <PageHeader title="Facturi & Documente" subtitle="Încarcă și extrage automat datele din facturi"/>
@@ -771,6 +797,12 @@ export default function FacturiPage() {
         )}
 
         {/* ── Arhivă facturi — grupate pe apartament ── */}
+        {loadingArchiva && (
+          <div style={{...glassCard,padding:'24px',textAlign:'center',color:'rgba(159,215,255,0.4)',fontSize:13}}>Se încarcă arhiva de facturi...</div>
+        )}
+        {!loadingArchiva && savedFacturi.length===0 && (
+          <div style={{...glassCard,padding:'24px',textAlign:'center',color:'rgba(159,215,255,0.4)',fontSize:13}}>Nicio factură salvată încă</div>
+        )}
         {savedFacturi.length > 0 && (()=>{
           // Grupeaza pe apartament_id
           const filteredFacturi = searchArchiva
