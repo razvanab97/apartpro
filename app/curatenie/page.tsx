@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Toast, useToast } from '@/components/ui'
+import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
 function nrLen(p:number){ if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
@@ -31,6 +31,7 @@ export default function CuratenePage() {
   const [len, setLen] = useState<Record<string,number>>({})
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
   const [eliberat, setEliberat] = useState<Set<string>>(new Set())
   const [oraSpeciala, setOraSpeciala] = useState<Record<string,{co_tarziu:string,ci_devreme:string}>>({})
@@ -180,7 +181,7 @@ export default function CuratenePage() {
     // Try update first
     // Check if row exists first
     const { data: existing } = await supabase.from('curatenie_status')
-      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).single()
+      .select('id').eq('apartament_id', aptId).eq('data', selectedDate).maybeSingle()
     
     if (existing) {
       await supabase.from('curatenie_status').update({ status: newStatus }).eq('id', existing.id)
@@ -280,47 +281,52 @@ export default function CuratenePage() {
 
   async function load(date:string){
     setLoading(true)
+    setLoadError(false)
     setLen({})
-    const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
-      supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
-        .eq('data_checkout', date)
-        .eq('apartament.status', 'activ')
-        .neq('status_rezervare', 'anulata'),
-      supabase.from('rezervari')
-        .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
-        .eq('data_checkin', date)
-        .eq('apartament.status', 'activ')
-        .neq('status_rezervare', 'anulata'),
-      supabase.from('curatenie_status').select('apartament_id,nr_lenjerii').eq('data', date)
-    ])
-    setCo(coData||[])
-    setCi(ciData||[])
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
+        supabase.from('rezervari')
+          .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .eq('data_checkout', date)
+          .eq('apartament.status', 'activ')
+          .neq('status_rezervare', 'anulata'),
+        supabase.from('rezervari')
+          .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .eq('data_checkin', date)
+          .eq('apartament.status', 'activ')
+          .neq('status_rezervare', 'anulata'),
+        supabase.from('curatenie_status').select('apartament_id,nr_lenjerii').eq('data', date)
+      ])
+      setCo(coData||[])
+      setCi(ciData||[])
 
-    // 1. Valori manuale din DB (prioritate maximă)
-    const lenInit:Record<string,number>={}
-    ;(statusData||[]).forEach((s:any)=>{ if(s.nr_lenjerii) lenInit[s.apartament_id]=s.nr_lenjerii })
+      // 1. Valori manuale din DB (prioritate maximă)
+      const lenInit:Record<string,number>={}
+      ;(statusData||[]).forEach((s:any)=>{ if(s.nr_lenjerii) lenInit[s.apartament_id]=s.nr_lenjerii })
 
-    // 2. Pentru apartamentele fără valoare manuală, calculează din CI și salvează în DB
-    const toInsert: {apartament_id:string, data:string, nr_lenjerii:number}[] = []
-    ;(ciData||[]).forEach((r:any)=>{
-      const aptId = r.apartament?.id
-      if(!aptId) return
-      if(!lenInit[aptId]) {
-        const calc = nrLenSmart(r)
-        lenInit[aptId] = calc
-        toInsert.push({ apartament_id: aptId, data: date, nr_lenjerii: calc })
+      // 2. Pentru apartamentele fără valoare manuală, calculează din CI și salvează în DB
+      const toInsert: {apartament_id:string, data:string, nr_lenjerii:number}[] = []
+      ;(ciData||[]).forEach((r:any)=>{
+        const aptId = r.apartament?.id
+        if(!aptId) return
+        if(!lenInit[aptId]) {
+          const calc = nrLenSmart(r)
+          lenInit[aptId] = calc
+          toInsert.push({ apartament_id: aptId, data: date, nr_lenjerii: calc })
+        }
+      })
+
+      setLen(lenInit)
+      clearTimeout(bail)
+
+      // Salvează doar valorile calculate (cele manuale există deja în DB)
+      for (const u of toInsert) {
+        await supabase.from('curatenie_status')
+          .upsert(u, { onConflict: 'apartament_id,data', ignoreDuplicates: true })
       }
-    })
-
-    setLen(lenInit)
+    }catch(err){console.error('[curatenie load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
-
-    // Salvează doar valorile calculate (cele manuale există deja în DB)
-    for (const u of toInsert) {
-      await supabase.from('curatenie_status')
-        .upsert(u, { onConflict: 'apartament_id,data', ignoreDuplicates: true })
-    }
   }
 
   function changeDate(days:number){
@@ -388,6 +394,8 @@ export default function CuratenePage() {
     card:{display:'flex',alignItems:'center',gap:12,padding:'13px 14px',background:'rgba(20,35,58,0.6)',borderRadius:10,marginBottom:8,flexWrap:'wrap' as const} as React.CSSProperties,
     lenBtn:{width:34,height:34,borderRadius:8,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0} as React.CSSProperties,
   }
+
+  if (loadError) return (<><PageHeader title="🧹 Curățenie"/><ConnectionError onRetry={()=>load(selectedDate)}/></>)
 
   return (
     <>

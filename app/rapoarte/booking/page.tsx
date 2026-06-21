@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
+import { ConnectionError } from '@/components/ui'
 import { ChevronLeft, ChevronRight, Check, Clock, AlertTriangle, Download } from 'lucide-react'
 
 const BOOKING_COMISION = 0.17 // 17%
@@ -53,6 +54,7 @@ export default function BookingRapoartePage() {
   const [perioada, setPerioada] = useState<Perioada | null>(null)
   const [istoric, setIstoric] = useState<Perioada[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [filter, setFilter] = useState({ apt: '', status: '' })
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [apts, setApts] = useState<any[]>([])
@@ -61,65 +63,74 @@ export default function BookingRapoartePage() {
   useEffect(() => { loadIstoric(); loadApts() }, [])
 
   async function loadApts() {
-    const { data } = await supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ').order('nota')
-    setApts(data || [])
+    try{
+      const { data } = await supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ').order('nota')
+      setApts(data || [])
+    }catch(err){console.error('[rapoarte/booking loadApts]',err)}
   }
 
   async function loadPeriod() {
     setLoading(true)
-    const { from, to, payDate } = getWeekPeriod(weekOffset)
-    const { data: rez } = await supabase.from('rezervari')
-      .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
-      .eq('canal', 'booking')
-      .neq('status_rezervare', 'anulata')
-      .gte('data_checkout', from)
-      .lte('data_checkout', to)
-      .order('data_checkout')
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const { from, to, payDate } = getWeekPeriod(weekOffset)
+      const { data: rez } = await supabase.from('rezervari')
+        .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
+        .eq('canal', 'booking')
+        .neq('status_rezervare', 'anulata')
+        .gte('data_checkout', from)
+        .lte('data_checkout', to)
+        .order('data_checkout')
 
-    const mapped: Rez[] = (rez || []).map((r: any) => {
-      const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
-      const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
-      const net = Math.round((brut - comision) * 100) / 100
-      const status = !brut ? 'verifica' : r.status_plata === 'incasat' ? 'incasat' : 'urmeaza'
-      return { ...r, _comision: comision, _net: net, _status: status }
-    })
+      const mapped: Rez[] = (rez || []).map((r: any) => {
+        const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
+        const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
+        const net = Math.round((brut - comision) * 100) / 100
+        const status = !brut ? 'verifica' : r.status_plata === 'incasat' ? 'incasat' : 'urmeaza'
+        return { ...r, _comision: comision, _net: net, _status: status }
+      })
 
-    const total_brut = mapped.reduce((s, r) => s + Number(r.valoare_bruta || r.suma_incasata || 0), 0)
-    const total_comision = mapped.reduce((s, r) => s + r._comision, 0)
-    const total_net = mapped.reduce((s, r) => s + r._net, 0)
-    const allIncasat = mapped.length > 0 && mapped.every(r => r._status === 'incasat')
+      const total_brut = mapped.reduce((s, r) => s + Number(r.valoare_bruta || r.suma_incasata || 0), 0)
+      const total_comision = mapped.reduce((s, r) => s + r._comision, 0)
+      const total_net = mapped.reduce((s, r) => s + r._net, 0)
+      const allIncasat = mapped.length > 0 && mapped.every(r => r._status === 'incasat')
 
-    // Check if we have a saved status in setari
-    const key = `booking_period_${from}`
-    const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).single()
-    const status = saved?.valoare || (allIncasat ? 'incasat' : 'urmeaza')
+      // Check if we have a saved status in setari
+      const key = `booking_period_${from}`
+      const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).maybeSingle()
+      const status = saved?.valoare || (allIncasat ? 'incasat' : 'urmeaza')
 
-    setPerioada({ from, to, payDate, rezervari: mapped, total_brut, total_comision, total_net, status, id: key })
+      setPerioada({ from, to, payDate, rezervari: mapped, total_brut, total_comision, total_net, status, id: key })
+      clearTimeout(bail)
+    }catch(err){console.error('[rapoarte/booking loadPeriod]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
   async function loadIstoric() {
-    // Load past 8 periods
-    const periods: Perioada[] = []
-    for (let i = -1; i >= -8; i--) {
-      const { from, to, payDate } = getWeekPeriod(i)
-      const { data: rez } = await supabase.from('rezervari')
-        .select('id,valoare_bruta,suma_incasata,status_plata,canal')
-        .eq('canal', 'booking').neq('status_rezervare', 'anulata')
-        .gte('data_checkout', from).lte('data_checkout', to)
-      const mapped = (rez || []).map((r: any) => {
-        const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
-        const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
-        return { ...r, _comision: comision, _net: brut - comision, _status: r.status_plata === 'incasat' ? 'incasat' : 'urmeaza' }
-      })
-      const total_net = mapped.reduce((s: number, r: any) => s + r._net, 0)
-      const key = `booking_period_${from}`
-      const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).single()
-      if (mapped.length > 0) {
-        periods.push({ from, to, payDate, rezervari: mapped as any, total_brut: 0, total_comision: 0, total_net, status: saved?.valoare || 'urmeaza', id: key })
+    try{
+      // Load past 8 periods
+      const periods: Perioada[] = []
+      for (let i = -1; i >= -8; i--) {
+        const { from, to, payDate } = getWeekPeriod(i)
+        const { data: rez } = await supabase.from('rezervari')
+          .select('id,valoare_bruta,suma_incasata,status_plata,canal')
+          .eq('canal', 'booking').neq('status_rezervare', 'anulata')
+          .gte('data_checkout', from).lte('data_checkout', to)
+        const mapped = (rez || []).map((r: any) => {
+          const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
+          const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
+          return { ...r, _comision: comision, _net: brut - comision, _status: r.status_plata === 'incasat' ? 'incasat' : 'urmeaza' }
+        })
+        const total_net = mapped.reduce((s: number, r: any) => s + r._net, 0)
+        const key = `booking_period_${from}`
+        const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).maybeSingle()
+        if (mapped.length > 0) {
+          periods.push({ from, to, payDate, rezervari: mapped as any, total_brut: 0, total_comision: 0, total_net, status: saved?.valoare || 'urmeaza', id: key })
+        }
       }
-    }
-    setIstoric(periods)
+      setIstoric(periods)
+    }catch(err){console.error('[rapoarte/booking loadIstoric]',err)}
   }
 
   async function confirmIncasat() {
@@ -148,6 +159,8 @@ export default function BookingRapoartePage() {
 
   const panel: React.CSSProperties = { background: 'rgba(214,228,244,0.05)', border: '0.5px solid rgba(159,215,255,0.1)', borderRadius: 12, overflow: 'hidden', marginBottom: 12 }
   const hdr: React.CSSProperties = { padding: '10px 14px', background: 'rgba(14,27,43,0.5)', borderBottom: '0.5px solid rgba(159,215,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+
+  if (loadError) return (<><PageHeader title="Încasări Booking" subtitle="Raportare săptămânală"/><ConnectionError onRetry={()=>loadPeriod()}/></>)
 
   return (
     <>

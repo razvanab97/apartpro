@@ -253,10 +253,9 @@ const pad = (n:number) => String(n).padStart(2,'0')
 
 async function getCursEUR(): Promise<number> {
   try {
-    const res = await fetch('https://www.bnr.ro/nbrfxrates.xml')
-    const txt = await res.text()
-    const match = txt.match(/<Rate currency="EUR">([\d.]+)<\/Rate>/)
-    if (match) return parseFloat(match[1])
+    const res = await fetch('/api/curs-bnr')
+    const data = await res.json()
+    if (data?.curs) return data.curs
   } catch {}
   return 5.0 // fallback
 }

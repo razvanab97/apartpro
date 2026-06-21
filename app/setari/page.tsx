@@ -33,13 +33,15 @@ export default function SetariPage() {
   useEffect(() => { loadMsgs() }, [])
 
   async function loadMsgs() {
-    const { data } = await supabase.from('setari').select('cheie,valoare').in('cheie', Object.keys(MSG_DEFAULTS))
-    if (data?.length) {
-      const loaded: Record<string,string> = {}
-      data.forEach((r:any) => { loaded[r.cheie] = r.valoare })
-      setMsgs(m => ({ ...m, ...loaded }))
-      setSavedMsgs(loaded)
-    }
+    try{
+      const { data } = await supabase.from('setari').select('cheie,valoare').in('cheie', Object.keys(MSG_DEFAULTS))
+      if (data?.length) {
+        const loaded: Record<string,string> = {}
+        data.forEach((r:any) => { loaded[r.cheie] = r.valoare })
+        setMsgs(m => ({ ...m, ...loaded }))
+        setSavedMsgs(loaded)
+      }
+    }catch(err){console.error('[setari loadMsgs]',err)}
   }
 
   async function saveMsg(key: string) {

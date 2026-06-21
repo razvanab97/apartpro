@@ -154,12 +154,15 @@ export default function RapoartePage() {
   const [allApts, setAllApts] = useState<any[]>([])
 
   useEffect(() => {
-    supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(({ data }) => {
-      setApartamente(data || [])
-      setAllApts(data || [])
-      setGraficeApts((data||[]).map((a:any)=>a.id))  // all selected by default
-      setSelectedApts((data||[]).map((a:any)=>a.id))  // raport: toate selectate by default
-    })
+    supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(
+      ({ data }) => {
+        setApartamente(data || [])
+        setAllApts(data || [])
+        setGraficeApts((data||[]).map((a:any)=>a.id))  // all selected by default
+        setSelectedApts((data||[]).map((a:any)=>a.id))  // raport: toate selectate by default
+      },
+      (err) => console.error('[rapoarte apartamente]', err)
+    )
   }, [])
 
   async function loadGrafice() {

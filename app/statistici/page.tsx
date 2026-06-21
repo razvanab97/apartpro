@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { useToast, Toast } from '@/components/ui'
+import { useToast, Toast, ConnectionError } from '@/components/ui'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react'
 
@@ -158,6 +158,7 @@ function BookingRapoarteContent() {
   const [perioada, setPerioada] = useState<BkPerioada | null>(null)
   const [istoric, setIstoric] = useState<BkPerioada[]>([])
   const [loadingBk, setLoadingBk] = useState(true)
+  const [loadErrorBk, setLoadErrorBk] = useState(false)
   const [filter, setFilter] = useState({ apt: '', status: '' })
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [bkApts, setBkApts] = useState<any[]>([])
@@ -167,51 +168,60 @@ function BookingRapoarteContent() {
   useEffect(() => { loadIstoric(); loadBkApts() }, [])
 
   async function loadBkApts() {
-    const { data } = await supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ').order('nota')
-    setBkApts(data || [])
+    try{
+      const { data } = await supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ').order('nota')
+      setBkApts(data || [])
+    }catch(err){console.error('[statistici loadBkApts]',err)}
   }
 
   async function loadPeriod() {
     setLoadingBk(true)
-    const { from, to, payDate } = _getWeekPeriod(weekOffset)
-    const { data: rez } = await supabase.from('rezervari')
-      .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
-      .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to).order('data_checkout')
-    const mapped: BkRez[] = (rez || []).map((r: any) => {
-      const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
-      const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
-      const net = Math.round((brut - comision) * 100) / 100
-      const status = !brut ? 'verifica' : r.status_plata === 'incasat' ? 'incasat' : 'urmeaza'
-      return { ...r, _comision: comision, _net: net, _status: status }
-    })
-    const total_brut = mapped.reduce((s, r) => s + Number(r.valoare_bruta || r.suma_incasata || 0), 0)
-    const total_comision = mapped.reduce((s, r) => s + r._comision, 0)
-    const total_net = mapped.reduce((s, r) => s + r._net, 0)
-    const allIncasat = mapped.length > 0 && mapped.every(r => r._status === 'incasat')
-    const key = `booking_period_${from}`
-    const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).single()
-    const status = saved?.valoare || (allIncasat ? 'incasat' : 'urmeaza')
-    setPerioada({ from, to, payDate, rezervari: mapped, total_brut, total_comision, total_net, status, id: key })
+    setLoadErrorBk(false)
+    const bail=setTimeout(()=>{ setLoadingBk(false); setLoadErrorBk(true) },20000)
+    try{
+      const { from, to, payDate } = _getWeekPeriod(weekOffset)
+      const { data: rez } = await supabase.from('rezervari')
+        .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
+        .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to).order('data_checkout')
+      const mapped: BkRez[] = (rez || []).map((r: any) => {
+        const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
+        const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
+        const net = Math.round((brut - comision) * 100) / 100
+        const status = !brut ? 'verifica' : r.status_plata === 'incasat' ? 'incasat' : 'urmeaza'
+        return { ...r, _comision: comision, _net: net, _status: status }
+      })
+      const total_brut = mapped.reduce((s, r) => s + Number(r.valoare_bruta || r.suma_incasata || 0), 0)
+      const total_comision = mapped.reduce((s, r) => s + r._comision, 0)
+      const total_net = mapped.reduce((s, r) => s + r._net, 0)
+      const allIncasat = mapped.length > 0 && mapped.every(r => r._status === 'incasat')
+      const key = `booking_period_${from}`
+      const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).maybeSingle()
+      const status = saved?.valoare || (allIncasat ? 'incasat' : 'urmeaza')
+      setPerioada({ from, to, payDate, rezervari: mapped, total_brut, total_comision, total_net, status, id: key })
+      clearTimeout(bail)
+    }catch(err){console.error('[statistici loadPeriod]',err);clearTimeout(bail);setLoadErrorBk(true)}
     setLoadingBk(false)
   }
 
   async function loadIstoric() {
-    const periods: BkPerioada[] = []
-    for (let i = -1; i >= -8; i--) {
-      const { from, to, payDate } = _getWeekPeriod(i)
-      const { data: rez } = await supabase.from('rezervari').select('id,valoare_bruta,suma_incasata,status_plata,canal')
-        .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to)
-      const mapped = (rez || []).map((r: any) => {
-        const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
-        const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
-        return { ...r, _comision: comision, _net: brut - comision, _status: r.status_plata === 'incasat' ? 'incasat' : 'urmeaza' }
-      })
-      const total_net = mapped.reduce((s: number, r: any) => s + r._net, 0)
-      const key = `booking_period_${from}`
-      const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).single()
-      if (mapped.length > 0) periods.push({ from, to, payDate, rezervari: mapped as any, total_brut: 0, total_comision: 0, total_net, status: saved?.valoare || 'urmeaza', id: key })
-    }
-    setIstoric(periods)
+    try{
+      const periods: BkPerioada[] = []
+      for (let i = -1; i >= -8; i--) {
+        const { from, to, payDate } = _getWeekPeriod(i)
+        const { data: rez } = await supabase.from('rezervari').select('id,valoare_bruta,suma_incasata,status_plata,canal')
+          .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to)
+        const mapped = (rez || []).map((r: any) => {
+          const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
+          const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
+          return { ...r, _comision: comision, _net: brut - comision, _status: r.status_plata === 'incasat' ? 'incasat' : 'urmeaza' }
+        })
+        const total_net = mapped.reduce((s: number, r: any) => s + r._net, 0)
+        const key = `booking_period_${from}`
+        const { data: saved } = await supabase.from('setari').select('valoare').eq('cheie', key).maybeSingle()
+        if (mapped.length > 0) periods.push({ from, to, payDate, rezervari: mapped as any, total_brut: 0, total_comision: 0, total_net, status: saved?.valoare || 'urmeaza', id: key })
+      }
+      setIstoric(periods)
+    }catch(err){console.error('[statistici loadIstoric]',err)}
   }
 
   async function confirmIncasat() {
@@ -247,7 +257,12 @@ function BookingRapoarteContent() {
           <ChevronLeft size={16}/>
         </button>
         <div style={{ flex: 1, textAlign: 'center' as const }}>
-          {loadingBk ? <span style={{ color: 'rgba(159,215,255,0.4)' }}>Se încarcă...</span> : perioada && <>
+          {loadErrorBk ? (
+            <span style={{ color: '#F87171', display:'inline-flex', alignItems:'center', gap:8 }}>
+              Conexiune întreruptă
+              <button onClick={()=>loadPeriod()} style={{padding:'3px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:11,cursor:'pointer'}}>Reîncarcă</button>
+            </span>
+          ) : loadingBk ? <span style={{ color: 'rgba(159,215,255,0.4)' }}>Se încarcă...</span> : perioada && <>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF' }}>{_fmtDateShort(perioada.from)} — {_fmtDateShort(perioada.to)}</div>
             <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginTop: 2 }}>
               {weekOffset === 0 ? 'Săptămâna curentă' : weekOffset === 1 ? 'Săptămâna viitoare' : weekOffset === -1 ? 'Săptămâna trecută' : `${weekOffset > 0 ? '+' : ''}${weekOffset} săptămâni`}
@@ -395,6 +410,7 @@ export default function StatisticiPage() {
   const [apts, setApts] = useState<Apt[]>([])
   const [stats, setStats] = useState<StatRow[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
 
   // Dashboard filters
   const [filterPlatforma, setFilterPlatforma] = useState<Platforma | ''>('')
@@ -422,7 +438,10 @@ export default function StatisticiPage() {
 
   useEffect(() => {
     supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota')
-      .then(({ data }) => setApts(data || []))
+      .then(
+        ({ data }) => setApts(data || []),
+        (err) => console.error('[statistici apts]', err)
+      )
     try {
       const o = localStorage.getItem('stat_card_order'); if (o) setCardOrder(JSON.parse(o))
       const h = localStorage.getItem('stat_card_hidden'); if (h) setHiddenCards(JSON.parse(h))
@@ -438,10 +457,16 @@ export default function StatisticiPage() {
 
   async function loadStats() {
     setLoading(true)
-    const { data } = await supabase
-      .from('statistici_platforme').select('*')
-      .order('data_inregistrare', { ascending: false }).limit(3000)
-    setStats(data || [])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const { data, error } = await supabase
+        .from('statistici_platforme').select('*')
+        .order('data_inregistrare', { ascending: false }).limit(3000)
+      if(error) throw error
+      setStats(data || [])
+      clearTimeout(bail)
+    }catch(err){console.error('[statistici loadStats]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -807,7 +832,9 @@ export default function StatisticiPage() {
               </div>
             )}
 
-            {loading ? (
+            {loadError ? (
+              <ConnectionError onRetry={()=>loadStats()}/>
+            ) : loading ? (
               <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>Se încarcă...</div>
             ) : filteredCards.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 60, color: 'rgba(159,215,255,0.4)' }}>

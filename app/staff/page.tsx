@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { ConnectionError } from '@/components/ui'
 
 const CODE = '1111'
 const P = (n:number) => String(n).padStart(2,'0')
@@ -24,6 +25,7 @@ export default function StaffPage() {
   const [ocupate, setOcupate] = useState<any[]>([])
   const [statusuri, setStatusuri] = useState<Record<string,any>>({})
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [flash, setFlash] = useState<{msg:string,ok:boolean}|null>(null)
   const [tab, setTab] = useState<Tab>('curatenie')
   const [expandedApt, setExpandedApt] = useState<string|null>(null)
@@ -48,37 +50,48 @@ export default function StaffPage() {
 
   useEffect(() => {
     if (!auth) return
-    supabase.from('distante_apartamente').select('de_la,la,km').then(({data:d})=>{
-      if(!d) return
-      const m:Record<string,number>={}
-      d.forEach((r:any)=>{ m[`${r.de_la}__${r.la}`]=Number(r.km) })
-      setDistante(m)
-    })
-    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina']).then(({data:d})=>{
-      if(!d) return
-      const s:any={}
-      d.forEach((r:any)=>{ s[r.cheie]=Number(r.valoare) })
-      setSetariComb({ pret: s.pret_combustibil||8.5, consum: s.consum_masina||7.5 })
-    })
+    supabase.from('distante_apartamente').select('de_la,la,km').then(
+      ({data:d})=>{
+        if(!d) return
+        const m:Record<string,number>={}
+        d.forEach((r:any)=>{ m[`${r.de_la}__${r.la}`]=Number(r.km) })
+        setDistante(m)
+      },
+      (err)=>console.error('[staff distante]',err)
+    )
+    supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina']).then(
+      ({data:d})=>{
+        if(!d) return
+        const s:any={}
+        d.forEach((r:any)=>{ s[r.cheie]=Number(r.valoare) })
+        setSetariComb({ pret: s.pret_combustibil||8.5, consum: s.consum_masina||7.5 })
+      },
+      (err)=>console.error('[staff setari]',err)
+    )
   }, [auth])
 
   async function load() {
     setLoading(true)
-    const [a, co, ci, ocp, st] = await Promise.all([
-      supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
-      supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
-      supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
-      supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
-      supabase.from('curatenie_status').select('*').eq('data',data),
-    ])
-    setApts(a.data||[])
-    setCheckouts(co.data||[])
-    setCheckins(ci.data||[])
-    setOcupate(ocp.data||[])
-    const m:Record<string,any>={}
-    ;(st.data||[]).forEach((s:any)=>{ m[s.apartament_id]=s })
-    setStatusuri(m)
-    // setEliberatIds din curatenie_status
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [a, co, ci, ocp, st] = await Promise.all([
+        supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
+        supabase.from('curatenie_status').select('*').eq('data',data),
+      ])
+      setApts(a.data||[])
+      setCheckouts(co.data||[])
+      setCheckins(ci.data||[])
+      setOcupate(ocp.data||[])
+      const m:Record<string,any>={}
+      ;(st.data||[]).forEach((s:any)=>{ m[s.apartament_id]=s })
+      setStatusuri(m)
+      // setEliberatIds din curatenie_status
+      clearTimeout(bail)
+    }catch(err){console.error('[staff load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -264,6 +277,12 @@ export default function StaffPage() {
 
   // Calendar 7 zile
   const calDays = Array.from({length:7},(_,i)=>addDays(data,-1+i))
+
+  if (loadError) return (
+    <div style={{height:'100dvh',background:'#060D1A',display:'flex',flexDirection:'column',position:'fixed',inset:0}}>
+      <ConnectionError onRetry={()=>load()}/>
+    </div>
+  )
 
   return (
     <div style={{height:'100dvh',background:'#060D1A',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif',display:'flex',flexDirection:'column',overflow:'hidden',position:'fixed',inset:0,touchAction:'pan-y',overscrollBehavior:'none' as const}}>

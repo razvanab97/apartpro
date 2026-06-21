@@ -29,7 +29,10 @@ export default function SmartBookingPage() {
   const { toast, show } = useToast()
 
   useEffect(() => {
-    supabase.from('apartamente').select('id,nota,nume,capacitate_max,pret_standard,adresa').order('nota').then(({data}) => setApts(data||[]))
+    supabase.from('apartamente').select('id,nota,nume,capacitate_max,pret_standard,adresa').order('nota').then(
+      ({data}) => setApts(data||[]),
+      (err) => console.error('[smart-booking apts]', err)
+    )
   }, [])
 
   async function handleImageUpload(file: File) {

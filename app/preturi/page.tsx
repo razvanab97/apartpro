@@ -188,41 +188,49 @@ export default function PreturiPage() {
 
   async function loadEvolutie() {
     setLoadingEvolutie(true)
-    const { data } = await supabase.from('booking_monitor_history')
-      .select('*').order('scanned_at', { ascending: false }).limit(2000)
-    setEvolutieData(data || [])
+    try{
+      const { data } = await supabase.from('booking_monitor_history')
+        .select('*').order('scanned_at', { ascending: false }).limit(2000)
+      setEvolutieData(data || [])
+    }catch(err){console.error('[preturi loadEvolutie]',err)}
     setLoadingEvolutie(false)
   }
 
   async function loadReguli() {
-    const { data } = await supabase.from('reguli_preturi').select('*').order('prioritate',{ascending:true})
-    setReguli(data || [])
+    try{
+      const { data } = await supabase.from('reguli_preturi').select('*').order('prioritate',{ascending:true})
+      setReguli(data || [])
+    }catch(err){console.error('[preturi loadReguli]',err)}
   }
 
   async function loadStrategie() {
     setLoadingStrat(true)
-    const ago12 = new Date(); ago12.setMonth(ago12.getMonth()-12)
-    const dateStart = fmt(ago12)
-    const { data: rez } = await supabase.from('rezervari')
-      .select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,status_rezervare')
-      .gte('data_checkin', dateStart).neq('status_rezervare','anulata')
-      .order('data_checkin',{ascending:true})
-    setStratRezervari(rez || [])
-    setStratLoaded(true)
+    try{
+      const ago12 = new Date(); ago12.setMonth(ago12.getMonth()-12)
+      const dateStart = fmt(ago12)
+      const { data: rez } = await supabase.from('rezervari')
+        .select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,status_rezervare')
+        .gte('data_checkin', dateStart).neq('status_rezervare','anulata')
+        .order('data_checkin',{ascending:true})
+      setStratRezervari(rez || [])
+      setStratLoaded(true)
+    }catch(err){console.error('[preturi loadStrategie]',err)}
     setLoadingStrat(false)
   }
 
   async function loadHistory(selectLatestPeriod = false) {
     setLoadingHistory(true)
-    const {data} = await supabase.from('booking_monitor_history')
-      .select('*').order('scanned_at',{ascending:false}).limit(1000)
-    const rows = data||[]
-    setHistory(rows)
-    if(selectLatestPeriod&&rows[0]?.checkin&&rows[0]?.checkout){
-      setCheckinMonitor(rows[0].checkin)
-      setCheckoutMonitor(rows[0].checkout)
-      setScanDayMonitor(scanDay(rows[0]))
-    }
+    try{
+      const {data} = await supabase.from('booking_monitor_history')
+        .select('*').order('scanned_at',{ascending:false}).limit(1000)
+      const rows = data||[]
+      setHistory(rows)
+      if(selectLatestPeriod&&rows[0]?.checkin&&rows[0]?.checkout){
+        setCheckinMonitor(rows[0].checkin)
+        setCheckoutMonitor(rows[0].checkout)
+        setScanDayMonitor(scanDay(rows[0]))
+      }
+    }catch(err){console.error('[preturi loadHistory]',err)}
     setLoadingHistory(false)
   }
 
@@ -231,9 +239,9 @@ export default function PreturiPage() {
     const d = new Date(ci+'T12:00:00'); d.setDate(d.getDate()+1)
     setCheckinMonitor(ci); setCheckoutMonitor(fmt(d))
     setScanDayMonitor(today)
-    supabase.from('apartamente')
+    Promise.resolve(supabase.from('apartamente')
       .select('id,nota,pret_standard,link_booking,link_airbnb,booking_links,airbnb_links')
-      .eq('status','activ').order('nota')
+      .eq('status','activ').order('nota'))
       .then(async ({ data }) => {
         const list = (data||[]).map((apt:any) => {
           const bks = (apt.booking_links||[]).filter((l:string)=>l?.includes('booking.com'))
@@ -252,7 +260,7 @@ export default function PreturiPage() {
         const pm:Record<string,{booking:string,airbnb:string}> = {}
         list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||''}})
         setPreturi(pm)
-      })
+      }).catch((err) => console.error('[preturi apts]', err))
     loadHistory(true)
     loadEvolutie()
     loadReguli()
@@ -264,9 +272,11 @@ export default function PreturiPage() {
   }, [mainTab])
 
   async function loadOcupate(data:string, ids:string[]) {
-    const {data:rez} = await supabase.from('rezervari').select('apartament_id')
-      .lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata').in('apartament_id',ids)
-    setOcupate(new Set((rez||[]).map((r:any)=>r.apartament_id)))
+    try{
+      const {data:rez} = await supabase.from('rezervari').select('apartament_id')
+        .lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata').in('apartament_id',ids)
+      setOcupate(new Set((rez||[]).map((r:any)=>r.apartament_id)))
+    }catch(err){console.error('[preturi loadOcupate]',err)}
   }
 
   function buildUrl(baseUrl:string, platform:string, checkin:string, checkout?:string) {

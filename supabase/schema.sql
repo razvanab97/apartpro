@@ -187,9 +187,17 @@ create table if not exists taskuri (
   data_limita date,
   ora_limita time,
   responsabil text,
-  status text default 'de_facut', -- de_facut | in_lucru | finalizat
+  status text default 'de_facut', -- de_facut | in_lucru | finalizat | template
   prioritate text default 'normala', -- scazuta | normala | urgenta
   nota text,
+  business text,
+  persoana text,
+  impact_score int,
+  effort_score int,
+  priority_score int,
+  recurent boolean default false,
+  interval_zile int,
+  data_urmatoare date,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

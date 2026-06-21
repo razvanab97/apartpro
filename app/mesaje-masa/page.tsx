@@ -70,17 +70,19 @@ export default function MesajeMasaPage() {
     else if (filtru==='checkin_7')                 q = q.gte('data_checkin',today).lte('data_checkin',d7)
     else                                           q = q.gte('data_checkin','2025-08-01')
 
-    const {data} = await q
-    const {data:apts} = await supabase.from('apartamente').select('id,nota,nume')
-    const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
-    const seen = new Map<string,any>()
-    for (const r of (data||[])) {
-      const tel = (r.telefon_client||'').replace(/\D/g,'')
-      if (tel && !seen.has(tel)) seen.set(tel, {...r, apartament: aptMap.get(r.apartament_id)||null})
-    }
-    const list = Array.from(seen.values())
-    setClienti(list)
-    setSelectati(new Set(list.map((r:any)=>r.id)))
+    try{
+      const {data} = await q
+      const {data:apts} = await supabase.from('apartamente').select('id,nota,nume')
+      const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
+      const seen = new Map<string,any>()
+      for (const r of (data||[])) {
+        const tel = (r.telefon_client||'').replace(/\D/g,'')
+        if (tel && !seen.has(tel)) seen.set(tel, {...r, apartament: aptMap.get(r.apartament_id)||null})
+      }
+      const list = Array.from(seen.values())
+      setClienti(list)
+      setSelectati(new Set(list.map((r:any)=>r.id)))
+    }catch(err){ console.error('[mesaje-masa load]',err); show('error','Conexiune întreruptă - încearcă din nou') }
     setLoading(false)
   }
 

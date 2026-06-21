@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog } from '@/components/ui'
+import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, ImageIcon, Type, Plus, Trash2, Phone, Mail, Globe } from 'lucide-react'
 
 /* ── TYPES ── */
@@ -59,6 +59,7 @@ export default function InboxPage() {
   const [cereri, setCereri] = useState<Cerere[]>([])
   const [apts, setApts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<any>(emptyEdit)
   const [saving, setSaving] = useState(false)
@@ -70,13 +71,18 @@ export default function InboxPage() {
 
   async function loadData() {
     setLoading(true)
-    const [{ data: c }, { data: a }] = await Promise.all([
-      supabase.from('cereri_rezervare').select('*').order('created_at', { ascending: false }),
-      supabase.from('apartamente').select('id,nume,nota').order('nota'),
-    ])
-    const aptMap = Object.fromEntries((a||[]).map((x:any) => [x.id, x]))
-    setCereri(((c||[]) as any).map((r:any) => ({ ...r, apartament: r.apartament_id ? aptMap[r.apartament_id] : null })))
-    setApts(a||[])
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
+    try{
+      const [{ data: c }, { data: a }] = await Promise.all([
+        supabase.from('cereri_rezervare').select('*').order('created_at', { ascending: false }),
+        supabase.from('apartamente').select('id,nume,nota').order('nota'),
+      ])
+      const aptMap = Object.fromEntries((a||[]).map((x:any) => [x.id, x]))
+      setCereri(((c||[]) as any).map((r:any) => ({ ...r, apartament: r.apartament_id ? aptMap[r.apartament_id] : null })))
+      setApts(a||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[inbox loadData]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
 
@@ -352,7 +358,9 @@ export default function InboxPage() {
           </div>
 
           {/* Cereri list */}
-          {loading ? (
+          {loadError ? (
+            <ConnectionError onRetry={()=>loadData()}/>
+          ) : loading ? (
             <div style={{display:'flex',justifyContent:'center',padding:30}}><Loader2 size={22} style={{animation:'spin 1s linear infinite',color:'#4DA3FF'}}/></div>
           ) : filtered.length === 0 ? (
             <div style={{...panel,padding:'30px',textAlign:'center',color:'rgba(159,215,255,0.3)',fontSize:13}}>

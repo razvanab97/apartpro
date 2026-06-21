@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { useToast, Toast } from '@/components/ui'
+import { useToast, Toast, ConnectionError } from '@/components/ui'
 import { Upload, Search, Trash2, Download, FileText, X } from 'lucide-react'
 
 const CATEGORII = ['Contract', 'Autorizatie', 'Certificat', 'Asigurare', 'Fiscal', 'Juridic', 'Tehnic', 'Altele']
@@ -11,6 +11,8 @@ export default function DocumentePage() {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [documente, setDocumente] = useState<any[]>([])
+  const [loadingDoc, setLoadingDoc] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [editDoc, setEditDoc] = useState<any>(null)
@@ -23,16 +25,27 @@ export default function DocumentePage() {
 
   useEffect(() => {
     loadDocumente()
-    supabase.from('apartamente').select('id,nota,nume').order('nota').then(({data}) => setApts(data||[]))
+    supabase.from('apartamente').select('id,nota,nume').order('nota').then(
+      ({data}) => setApts(data||[]),
+      (err) => console.error('[documente apts]', err)
+    )
   }, [])
 
   async function loadDocumente() {
-    const { data } = await supabase.from('cheltuieli')
-      .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status,created_at')
-      .ilike('nota', '%[DOC]%')
-      .not('fisier_url', 'is', null)
-      .order('created_at', { ascending: false })
-    setDocumente(data||[])
+    setLoadingDoc(true)
+    setLoadError(false)
+    const bail=setTimeout(()=>{ setLoadingDoc(false); setLoadError(true) },20000)
+    try{
+      const { data, error } = await supabase.from('cheltuieli')
+        .select('id,descriere,categorie,valoare,data,nota,fisier_url,apartament_id,status,created_at')
+        .ilike('nota', '%[DOC]%')
+        .not('fisier_url', 'is', null)
+        .order('created_at', { ascending: false })
+      if(error) throw error
+      setDocumente(data||[])
+      clearTimeout(bail)
+    }catch(err){console.error('[documente loadDocumente]',err);clearTimeout(bail);setLoadError(true)}
+    setLoadingDoc(false)
   }
 
   async function uploadDoc(file: File) {
@@ -166,7 +179,11 @@ export default function DocumentePage() {
 
         {/* Document list */}
         <div style={{ ...glassCard, overflow:'hidden' }}>
-          {filtered.length === 0 ? (
+          {loadError ? (
+            <ConnectionError onRetry={()=>loadDocumente()}/>
+          ) : loadingDoc ? (
+            <div style={{ padding:40, textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13 }}>Se încarcă...</div>
+          ) : filtered.length === 0 ? (
             <div style={{ padding:40, textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13 }}>
               {documente.length === 0 ? 'Niciun document încărcat. Trage un fișier în zona de sus.' : 'Niciun document găsit.'}
             </div>

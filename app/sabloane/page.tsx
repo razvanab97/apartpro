@@ -73,17 +73,19 @@ function MesajeMasaContent() {
     else if (filtru==='checkout_azi')              q = q.eq('data_checkout',today)
     else if (filtru==='checkin_7')                 q = q.gte('data_checkin',today).lte('data_checkin',d7)
     else                                           q = q.gte('data_checkin','2025-08-01')
-    const {data} = await q
-    const {data:apts} = await supabase.from('apartamente').select('id,nota,nume')
-    const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
-    const seen = new Map<string,any>()
-    for (const r of (data||[])) {
-      const tel = (r.telefon_client||'').replace(/\D/g,'')
-      if (tel && !seen.has(tel)) seen.set(tel, {...r, apartament: aptMap.get(r.apartament_id)||null})
-    }
-    const list = Array.from(seen.values())
-    setClienti(list)
-    setSelectati(new Set(list.map((r:any)=>r.id)))
+    try{
+      const {data} = await q
+      const {data:apts} = await supabase.from('apartamente').select('id,nota,nume')
+      const aptMap = new Map((apts||[]).map((a:any)=>[a.id,a]))
+      const seen = new Map<string,any>()
+      for (const r of (data||[])) {
+        const tel = (r.telefon_client||'').replace(/\D/g,'')
+        if (tel && !seen.has(tel)) seen.set(tel, {...r, apartament: aptMap.get(r.apartament_id)||null})
+      }
+      const list = Array.from(seen.values())
+      setClienti(list)
+      setSelectati(new Set(list.map((r:any)=>r.id)))
+    }catch(err){ console.error('[sabloane loadClienti]',err); mShow('error','Conexiune întreruptă - încearcă din nou') }
     setLoading(false)
   }
 
@@ -365,14 +367,20 @@ export default function SabloanePage() {
 
   useEffect(() => {
     supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota')
-      .then(({data}) => { setApts(data||[]); if(data?.length) { setSelApt(data[0]); loadSabloane(data[0].id) } })
+      .then(
+        ({data}) => { setApts(data||[]); if(data?.length) { setSelApt(data[0]); loadSabloane(data[0].id) } },
+        (err) => console.error('[sabloane apts]', err)
+      )
   }, [])
 
   async function loadSabloane(aptId: string) {
     setLoading(true)
-    const { data } = await supabase.from('sabloane_mesaje')
-      .select('*').eq('apartament_id', aptId).order('tip')
-    setSabloane(data||[])
+    try{
+      const { data, error } = await supabase.from('sabloane_mesaje')
+        .select('*').eq('apartament_id', aptId).order('tip')
+      if(error) throw error
+      setSabloane(data||[])
+    }catch(err){ console.error('[sabloane loadSabloane]',err); show('error','Conexiune întreruptă - încearcă din nou') }
     setLoading(false)
   }
 

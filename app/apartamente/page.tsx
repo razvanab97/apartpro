@@ -78,16 +78,15 @@ function Calc({ apt }: { apt: any }) {
     // Preia curs BNR
     let curs = 5.0
     try {
-      const res = await fetch('https://www.bnr.ro/nbrfxrates.xml')
-      const txt = await res.text()
-      const match = txt.match(/<Rate currency="EUR">([\d.]+)<\/Rate>/)
-      if(match) curs = parseFloat(match[1])
+      const res = await fetch('/api/curs-bnr')
+      const data = await res.json()
+      if(data?.curs) curs = data.curs
     } catch {}
     setCursEUR(curs)
 
     // Preia chiria fixa din chirii_fixe
     const { data: chirieData } = await supabase.from('chirii_fixe')
-      .select('suma,moneda').eq('apartament_id', apt.id).eq('activ', true).single()
+      .select('suma,moneda').eq('apartament_id', apt.id).eq('activ', true).maybeSingle()
     if(chirieData) {
       setChirieMoneda(chirieData.moneda)
       if(chirieData.moneda === 'EUR') {

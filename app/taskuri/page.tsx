@@ -751,10 +751,11 @@ export default function TaskuriPage() {
 
   async function checkRecurente() {
     const today = new Date().toISOString().slice(0, 10)
-    const { data: recurente } = await supabase
+    const { data: recurente, error } = await supabase
       .from('taskuri').select('*')
       .eq('recurent', true)
       .not('interval_zile', 'is', null)
+    if (error) { console.error('[checkRecurente]', error.message); return }
     for (const task of (recurente || [])) {
       if (!task.data_urmatoare || task.data_urmatoare > today) continue
       // Creeaza task nou activ
