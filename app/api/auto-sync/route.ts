@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   const startTime = Date.now()
-  const results = { inserted: 0, updated: 0, cancelled: 0, errors: [] as string[], skipped_no_apt: 0 }
+  const results = { inserted: 0, updated: 0, cancelled: 0, skipped_cancelled: 0, errors: [] as string[], skipped_no_apt: 0 }
 
   try {
     // Fetch apartamente active
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch rezervari existente din Supabase (non-interne)
     const { data: existing } = await supabase.from('rezervari')
-      .select('id,observatii,status_rezervare,data_checkin,data_checkout,apartament_id')
+      .select('id,observatii,status_rezervare,data_checkin,data_checkout,apartament_id,valoare_bruta,nr_persoane')
       .gte('data_checkout', fmtISO(dateFrom))
       // Incluse toate canalele, inclusiv manual/intern
 
@@ -137,16 +137,20 @@ export async function GET(req: NextRequest) {
         const existing5 = existingMap.get(id5)
 
         if (existing5) {
-          // Verifica daca trebuie actualizat
+          // Verifica daca trebuie actualizat - inclusiv mutari de date (+/- zile) si sume schimbate pe 5SD
           const changed = existing5.status_rezervare !== statusRez ||
             existing5.data_checkin !== checkin ||
-            existing5.data_checkout !== checkout
+            existing5.data_checkout !== checkout ||
+            (valoare > 0 && Number(existing5.valoare_bruta) !== valoare) ||
+            (nrPers > 0 && Number(existing5.nr_persoane) !== nrPers)
 
           if (changed) {
             const { error } = await supabase.from('rezervari').update({
               status_rezervare: statusRez,
               data_checkin: checkin,
               data_checkout: checkout,
+              ...(valoare > 0 ? { valoare_bruta: valoare, suma_incasata: valoare } : {}),
+              ...(nrPers > 0 ? { nr_persoane: nrPers } : {}),
               ...(apt ? { apartament_id: apt.id } : {}),
             }).eq('id', existing5.id)
             if (!error) {
@@ -154,6 +158,9 @@ export async function GET(req: NextRequest) {
               else results.updated++
             } else results.errors.push(`Update 5SD-${id5}: ${error.message}`)
           }
+        } else if (statusRez === 'anulata') {
+          // Nu inseram rezervari noi care sunt deja anulate pe 5starDesk
+          results.skipped_cancelled++
         } else {
           // Insereaza rezervare noua
           const { error } = await supabase.from('rezervari').insert({

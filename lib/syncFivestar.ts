@@ -154,13 +154,15 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           continue
         }
 
+        const statusNou = b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata'
+
         const idExternValid = idExtern && idExtern.length > 2
         const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-          .select('id,telefon_client,apartament_id').ilike('observatii', `%${idExtern}%`).limit(1)
+          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata').ilike('observatii', `%${idExtern}%`).limit(1)
           : { data: [] }
         const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id')
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata')
             .eq('apartament_id', aptId)
             .eq('data_checkin', checkin)
             .eq('data_checkout', checkout)
@@ -168,7 +170,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           : { data: [] }
         const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
           : { data: [] }
 
         const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
@@ -177,11 +179,24 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           const updates: any = {}
           if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
           if (aptId && !existing[0].apartament_id) updates.apartament_id = aptId
+          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma - altfel rezervarea
+          // ramane "confirmata"/cu datele vechi la nesfarsit chiar daca s-a anulat/modificat pe 5SD
+          if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
+          if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
+          if (checkout && existing[0].data_checkout !== checkout) updates.data_checkout = checkout
+          if (totalPret > 0 && Number(existing[0].suma_incasata) !== totalPret) {
+            updates.suma_incasata = totalPret
+            updates.valoare_bruta = totalPret
+          }
           if (Object.keys(updates).length > 0) {
             await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
           }
           res.skipped++
-          res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat':''}` })
+          res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat ('+Object.keys(updates).join(',')+')':''}` })
+        } else if (statusNou === 'anulata') {
+          // Nu inseram rezervari noi care sunt deja anulate pe 5starDesk
+          res.skipped++
+          res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — anulată, nu se importă` })
         } else {
           const { error } = await supabase.from('rezervari').insert({
             apartament_id: aptId,
@@ -193,7 +208,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             valoare_bruta: totalPret,
             moneda: 'RON',
             telefon_client: telefon,
-            status_rezervare: b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata',
+            status_rezervare: statusNou,
             status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
             status_decont: 'nedecontat',
             observatii: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
