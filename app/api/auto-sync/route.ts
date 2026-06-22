@@ -137,12 +137,14 @@ export async function GET(req: NextRequest) {
         const existing5 = existingMap.get(id5)
 
         if (existing5) {
-          // Verifica daca trebuie actualizat - inclusiv mutari de date (+/- zile) si sume schimbate pe 5SD
+          // Verifica daca trebuie actualizat - inclusiv mutari de date (+/- zile), sume schimbate
+          // si mutare pe alt apartament/locatie pe 5SD
           const changed = existing5.status_rezervare !== statusRez ||
             existing5.data_checkin !== checkin ||
             existing5.data_checkout !== checkout ||
             (valoare > 0 && Number(existing5.valoare_bruta) !== valoare) ||
-            (nrPers > 0 && Number(existing5.nr_persoane) !== nrPers)
+            (nrPers > 0 && Number(existing5.nr_persoane) !== nrPers) ||
+            (apt && existing5.apartament_id !== apt.id)
 
           if (changed) {
             const { error } = await supabase.from('rezervari').update({

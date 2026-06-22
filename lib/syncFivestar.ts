@@ -178,9 +178,9 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
         if (existing && existing.length > 0) {
           const updates: any = {}
           if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
-          if (aptId && !existing[0].apartament_id) updates.apartament_id = aptId
-          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma - altfel rezervarea
-          // ramane "confirmata"/cu datele vechi la nesfarsit chiar daca s-a anulat/modificat pe 5SD
+          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma, mutare pe alt apartament -
+          // altfel rezervarea ramane "confirmata"/cu datele vechi la nesfarsit chiar daca s-a modificat pe 5SD
+          if (aptId && existing[0].apartament_id !== aptId) updates.apartament_id = aptId
           if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
           if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
           if (checkout && existing[0].data_checkout !== checkout) updates.data_checkout = checkout
