@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    const total = parsed.total || 0
+    // total poate veni ca numar, ca string cu separator de mii ("1.234"/"1,234") sau lipsi complet
+    const totalRaw = parsed.total
+    const total = typeof totalRaw === 'number' ? totalRaw
+      : typeof totalRaw === 'string' ? (parseInt(totalRaw.replace(/[^\d]/g, ''), 10) || 0)
+      : 0
     const lowestPrice = Math.min(...results.map((r: any) => r.price))
     const ourResults = results.filter((r: any) => r.isOurs)
     const weAreLowest = ourResults.some((r: any) => r.price === lowestPrice)

@@ -388,7 +388,12 @@ Pași:
 2. Așteaptă 3 secunde
 3. Închide orice popup/banner
 4. Extrage primele 5 proprietăți: numele exact și prețul per noapte în lei
-5. Extrage numărul total de proprietăți găsite
+5. Extrage numărul total de proprietăți găsite — NU sări peste acest pas, e obligatoriu.
+   Caută textul din partea de sus a rezultatelor, deasupra listei de proprietăți sau lângă filtrele
+   din stânga, gen "Iași: 1.234 cazări găsite" / "1,234 properties found" / "1234 unități cazare".
+   Extrage DOAR cifrele din acel text, ca număr întreg (elimină punctele/virgulele folosite ca
+   separator de mii, ex. "1.234" → 1234). Dacă din orice motiv nu găsești acest text nicăieri pe
+   pagină, trimite "total": null (NU trimite 0 și NU omite câmpul - lipsa reală trebuie sa fie vizibilă).
 6. Trimite rezultatele cu un fetch POST la: ${receiveUrl}
 
 Body-ul POST (JSON exact):
@@ -396,7 +401,7 @@ Body-ul POST (JSON exact):
   "jobId": "${job.id}",
   "checkin": "${checkinMonitor}",
   "checkout": "${checkoutMonitor}",
-  "rawJson": "{\"total\": NUMAR_TOTAL, \"results\": [{\"rank\":1,\"name\":\"Nume\",\"priceText\":\"182 lei\",\"price\":182}, ...]}"
+  "rawJson": "{\"total\": NUMAR_TOTAL_SAU_null, \"results\": [{\"rank\":1,\"name\":\"Nume\",\"priceText\":\"182 lei\",\"price\":182}, ...]}"
 }
 
 IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScript în consolă sau direct fetch() din pagină.`
