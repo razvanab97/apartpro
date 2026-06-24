@@ -44,8 +44,14 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [image, setImage] = useState<{base64:string;type:string;preview:string}|null>(null)
   const imgRef = useRef<HTMLInputElement>(null)
   const recognitionRef = { current: null as any }
+  const saveBtnRef = useRef<HTMLButtonElement>(null)
   const { toast, show } = useToast()
   function resetAll() { setInput(''); setResult(null); setForcedBiz(''); setForcedDate(''); setImage(null) }
+
+  useEffect(() => {
+    // Focus automat pe Salveaza, ca userul sa poata confirma instant cu Enter, fara click
+    if (result) saveBtnRef.current?.focus()
+  }, [result])
 
   function handleImageUpload(file: File) {
     if (!file.type.startsWith('image/')) return
@@ -109,13 +115,6 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     recognitionRef.current = recognition
     recognition.start()
     setListening(true)
-  }
-
-  async function classifyAndSave() {
-    // Scurtatura: analizeaza si salveaza direct fara a mai astepta confirmare
-    if (!input.trim() && !image) return
-    if (listening) { recognitionRef.current?.stop(); setListening(false) }
-    await classify()
   }
 
   async function classify() {
@@ -404,6 +403,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
             <div style={{ display: 'flex', gap: 8 }}>
               <button
+                ref={saveBtnRef}
                 onClick={saveTask}
                 disabled={saving}
                 style={{
@@ -412,7 +412,7 @@ function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
                   color: '#4ADE80', fontSize: 13, fontWeight: 500, cursor: 'pointer',
                 }}
               >
-                {saving ? 'Salvează...' : '✓ Salvează ca task'}
+                {saving ? 'Salvează...' : '✓ Salvează ca task (Enter)'}
               </button>
               <button onClick={() => setResult(null)} style={{ padding: '10px 16px', borderRadius: 10, background: 'transparent', border: '1px solid rgba(159,215,255,0.12)', color: 'rgba(159,215,255,0.5)', fontSize: 13, cursor: 'pointer' }}>
                 Reclasifică
@@ -900,6 +900,11 @@ export default function TaskuriPage() {
   })
   const byStatus = (s: Task['status']) => sortTasks(filtered.filter(t => t.status === s))
 
+  const FINALIZAT_CAP = 20
+  const finalizatAll = [...filtered.filter(t => t.status === 'finalizat')].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  const finalizatShown = finalizatAll.slice(0, FINALIZAT_CAP)
+  const finalizatHidden = finalizatAll.length - finalizatShown.length
+
   const dateGroups = (() => {
     const todayStr = new Date().toISOString().split('T')[0]
     const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0]
@@ -997,25 +1002,32 @@ export default function TaskuriPage() {
       ) : (
         viewMode === 'coloane' ? (
         <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, overflowY: 'auto', flex: 1 }}>
-          {COLS.map(col => (
+          {COLS.map(col => {
+            const totalCount = byStatus(col.key).length
+            const colTasks = col.key === 'finalizat' ? finalizatShown : byStatus(col.key)
+            return (
             <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: `${col.color}0F`, border: `1px solid ${col.color}25`, borderRadius: 10, borderTop: `2px solid ${col.color}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 7, height: 7, borderRadius: '50%', background: col.color, boxShadow: `0 0 5px ${col.color}` }}/>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#FFFFFF' }}>{col.label}</span>
                 </div>
-                <span style={{ fontSize: 11, color: col.color, fontFamily: 'monospace', fontWeight: 600 }}>{byStatus(col.key).length}</span>
+                <span style={{ fontSize: 11, color: col.color, fontFamily: 'monospace', fontWeight: 600 }}>{totalCount}</span>
               </div>
-              {byStatus(col.key).length === 0 ? (
+              {colTasks.length === 0 ? (
                 <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.2)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun task</div>
-              ) : byStatus(col.key).map(t => (
+              ) : colTasks.map(t => (
                 <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
               ))}
+              {col.key === 'finalizat' && finalizatHidden > 0 && (
+                <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(159,215,255,0.3)', padding: '4px 0' }}>+{finalizatHidden} mai vechi</div>
+              )}
               <button onClick={openNew} style={{ width: '100%', padding: '8px', borderRadius: 8, background: 'transparent', border: '1px dashed rgba(159,215,255,0.08)', color: 'rgba(159,215,255,0.25)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                 <Plus size={11}/> Adaugă task
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
         ) : (
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', flex: 1 }}>
