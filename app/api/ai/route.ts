@@ -127,8 +127,10 @@ export async function POST(req: NextRequest) {
 
   const data = await res.json()
   if (data.error) {
-    console.error('Claude error:', data.error)
-    return NextResponse.json({ content: [{ text: '{}' }] })
+    console.error('Claude error:', res.status, JSON.stringify(data.error))
+    // DEBUG TEMPORAR: expunem eroarea reala in raspuns ca sa o vedem din consola
+    // browserului, fara acces la log-urile Vercel - de scos dupa diagnosticare
+    return NextResponse.json({ content: [{ text: '{}' }], debugError: { status: res.status, error: data.error } })
   }
 
   const raw = data.content?.[0]?.text || '{}'
