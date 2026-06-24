@@ -33,6 +33,30 @@ const COLS: { key: Task['status']; label: string; color: string }[] = [
 const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
 const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 const BIZ = ['Property Management', 'Marketplace', 'Spălătorie', 'Personal', 'Admin', 'Financiar', 'Alt business']
+const BIZ_COLOR: Record<string, string> = {
+  'Property Management': '#4DA3FF', 'Marketplace': '#22C55E', 'Spălătorie': '#F59E0B',
+  'Personal': '#C4B5FD', 'Admin': '#94A3B8', 'Financiar': '#FCD34D', 'Alt business': '#64748B',
+}
+
+/* ── PILLS — selector cu butoane colorate, in loc de <select> nativ ── */
+function Pills({ options, value, onChange }: { options: { value: string; label: string; color: string }[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {options.map(o => {
+        const active = value === o.value
+        return (
+          <button key={o.value || '_empty'} type="button" onClick={() => onChange(o.value)} style={{
+            display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+            background: active ? `${o.color}22` : 'rgba(214,228,244,0.05)',
+            border: `1px solid ${active ? o.color + '70' : 'rgba(159,215,255,0.12)'}`,
+            color: active ? o.color : 'rgba(159,215,255,0.5)',
+            fontSize: 12, fontWeight: active ? 600 : 400, transition: 'all 0.12s', whiteSpace: 'nowrap',
+          }}>{o.label}</button>
+        )
+      })}
+    </div>
+  )
+}
 const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '', recurent: false, interval_zile: 7 }
 
 /* ── BRAIN DUMP MODAL ── */
@@ -1068,49 +1092,57 @@ export default function TaskuriPage() {
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title={editing.id ? 'Editează task' : 'Task nou'} width="560px">
         <FormGroup><label>Titlu *</label><input value={editing.titlu || ''} onChange={e => setEditing({ ...editing, titlu: e.target.value })} placeholder="Ce trebuie făcut?"/></FormGroup>
         <FormGroup><label>Descriere</label><textarea value={editing.descriere || ''} onChange={e => setEditing({ ...editing, descriere: e.target.value })} rows={2}/></FormGroup>
-        <FormRow cols={3}>
-          <FormGroup><label>Status</label>
-            <select value={editing.status || 'de_facut'} onChange={e => setEditing({ ...editing, status: e.target.value })}>
-              <option value="de_facut">De făcut</option>
-              <option value="in_lucru">În lucru</option>
-              <option value="finalizat">Finalizat</option>
-            </select>
-          </FormGroup>
-          <FormGroup><label>Prioritate</label>
-            <select value={editing.prioritate || 'normala'} onChange={e => setEditing({ ...editing, prioritate: e.target.value })}>
-              <option value="urgenta">🔴 Urgentă</option>
-              <option value="normala">🔵 Normală</option>
-              <option value="scazuta">⚫ Scăzută</option>
-            </select>
-          </FormGroup>
-          <FormGroup><label>Business</label>
-            <select value={editing.business || ''} onChange={e => setEditing({ ...editing, business: e.target.value })}>
-              <option value="">— Selectează —</option>
-              {BIZ.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </FormGroup>
-        </FormRow>
+
+        <div style={{ marginBottom: 14 }}>
+          <label>Status</label>
+          <Pills value={editing.status || 'de_facut'} onChange={v => setEditing({ ...editing, status: v })}
+            options={COLS.map(c => ({ value: c.key, label: c.label, color: c.color }))}/>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label>Prioritate</label>
+          <Pills value={editing.prioritate || 'normala'} onChange={v => setEditing({ ...editing, prioritate: v })}
+            options={[
+              { value: 'urgenta', label: PRIO_LABEL.urgenta, color: PRIO_COLOR.urgenta },
+              { value: 'normala', label: PRIO_LABEL.normala, color: PRIO_COLOR.normala },
+              { value: 'scazuta', label: PRIO_LABEL.scazuta, color: PRIO_COLOR.scazuta },
+            ]}/>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label>Business</label>
+          <Pills value={editing.business || ''} onChange={v => setEditing({ ...editing, business: v })}
+            options={[{ value: '', label: '— Niciunul —', color: '#64748B' }, ...BIZ.map(b => ({ value: b, label: b, color: BIZ_COLOR[b] || '#94A3B8' }))]}/>
+        </div>
+
         <FormRow cols={2}>
           <FormGroup><label>Persoană</label><input value={editing.persoana || ''} onChange={e => setEditing({ ...editing, persoana: e.target.value })} placeholder="Nume..."/></FormGroup>
           <FormGroup><label>Telefon/WA persoană</label><input value={(editing as any).telefon_persoana || ''} onChange={e=>setEditing({...editing,telefon_persoana:e.target.value} as any)} placeholder="+40 7xx xxx xxx"/></FormGroup>
-          <FormGroup><label>Dată limită</label><input type="date" value={editing.data_limita || ''} onChange={e => setEditing({ ...editing, data_limita: e.target.value })}/></FormGroup>
-           <FormGroup><label>⏰ Oră (opțional)</label><input type="time" value={editing.ora_limita || ''} onChange={e=>setEditing({...editing,ora_limita:e.target.value})} style={{width:'100%'}}/></FormGroup>
         </FormRow>
         <FormRow cols={2}>
-          <FormGroup><label>Impact (1-10): <span style={{ color: '#4ADE80' }}>{editing.impact_score || 5}</span></label><input type="range" min={1} max={10} value={editing.impact_score || 5} onChange={e => setEditing({ ...editing, impact_score: parseInt(e.target.value) })}/></FormGroup>
-          <FormGroup><label>Efort (1-10): <span style={{ color: '#FCD34D' }}>{editing.effort_score || 5}</span></label><input type="range" min={1} max={10} value={editing.effort_score || 5} onChange={e => setEditing({ ...editing, effort_score: parseInt(e.target.value) })}/></FormGroup>
+          <FormGroup><label>Dată limită</label><input type="date" value={editing.data_limita || ''} onChange={e => setEditing({ ...editing, data_limita: e.target.value })}/></FormGroup>
+          <FormGroup><label>⏰ Oră (opțional)</label><input type="time" value={editing.ora_limita || ''} onChange={e=>setEditing({...editing,ora_limita:e.target.value})} style={{width:'100%'}}/></FormGroup>
         </FormRow>
-        <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginBottom: 16 }}>
-          Priority Score: <span style={{ color: '#4DA3FF', fontWeight: 600 }}>{Math.round(((editing.impact_score || 5) * 2 + (11 - (editing.effort_score || 5))) / 3)}/10</span>
+
+        <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: 'rgba(214,228,244,0.04)', border: '1px solid rgba(159,215,255,0.1)' }}>
+          <FormRow cols={2}>
+            <FormGroup><label>Impact (1-10): <span style={{ color: '#4ADE80' }}>{editing.impact_score || 5}</span></label><input type="range" min={1} max={10} value={editing.impact_score || 5} onChange={e => setEditing({ ...editing, impact_score: parseInt(e.target.value) })}/></FormGroup>
+            <FormGroup><label>Efort (1-10): <span style={{ color: '#FCD34D' }}>{editing.effort_score || 5}</span></label><input type="range" min={1} max={10} value={editing.effort_score || 5} onChange={e => setEditing({ ...editing, effort_score: parseInt(e.target.value) })}/></FormGroup>
+          </FormRow>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>
+            Priority Score:
+            <span style={{ background: 'rgba(77,163,255,0.15)', color: '#4DA3FF', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, fontSize: 12 }}>
+              {Math.round(((editing.impact_score || 5) * 2 + (11 - (editing.effort_score || 5))) / 3)}/10
+            </span>
+          </div>
         </div>
+
         {!editing.id && (
           <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#FFFFFF' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#FFFFFF', marginBottom: 0 }}>
               <input type="checkbox" checked={!!editing.recurent} onChange={e => setEditing({ ...editing, recurent: e.target.checked })}/>
               🔁 Task recurent
             </label>
             {editing.recurent && (
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Repetă la fiecare</span>
                 <input type="number" min={1} value={editing.interval_zile ?? 7} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
                 <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile, începând cu data limită de mai sus (sau azi, dacă nu e setată)</span>
