@@ -1,13 +1,18 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { MessageCircle, X, Send, Loader2, Phone, ExternalLink } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Phone, ExternalLink, Mic, Sparkles, Check } from 'lucide-react'
 
 type Message = {
   role: 'user' | 'assistant'
   content: string
   ts: Date
+  taskData?: any
+  taskSaved?: boolean
 }
+
+const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
+const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 
 const WHATSAPP_RAZVAN = '40749558705'
 const WHATSAPP_MSG = encodeURIComponent('Salut! Am o întrebare despre apartamentele AB Homes și am nevoie de ajutor.')
@@ -62,8 +67,11 @@ export default function Chatbot() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [taskMode, setTaskMode] = useState(false)
+  const [listening, setListening] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
     if (open) {
@@ -76,8 +84,89 @@ export default function Chatbot() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  function toggleVoice() {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    if (listening) {
+      recognitionRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'ro-RO'
+    recognition.continuous = true
+    recognition.interimResults = true
+    let finalTranscript = ''
+    recognition.onresult = (e: any) => {
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript
+        if (e.results[i].isFinal) finalTranscript += t + ' '
+        else interim = t
+      }
+      setInput(finalTranscript + interim)
+    }
+    recognition.onend = () => {
+      setListening(prevListening => {
+        if (prevListening) { try { recognition.start() } catch {} }
+        return prevListening
+      })
+    }
+    recognition.onerror = (e: any) => { if (e.error !== 'no-speech') setListening(false) }
+    recognitionRef.current = recognition
+    recognition.start()
+    setListening(true)
+  }
+
+  async function classifyTask(text: string) {
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const data = await res.json()
+      const raw = data.content?.[0]?.text || '{}'
+      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
+      setMessages(prev => [...prev, { role: 'assistant', content: '', ts: new Date(), taskData: parsed }])
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Nu am putut clasifica task-ul. Încearcă din nou.', ts: new Date() }])
+    }
+  }
+
+  async function saveTaskFromChat(idx: number) {
+    const m = messages[idx]
+    if (!m.taskData) return
+    const imp = Number(m.taskData.impact_score) || 5
+    const eff = Number(m.taskData.effort_score) || 5
+    const { error } = await supabase.from('taskuri').insert({
+      titlu: m.taskData.titlu || 'Task nou',
+      descriere: m.taskData.descriere || null,
+      status: 'de_facut',
+      prioritate: m.taskData.prioritate || 'normala',
+      business: m.taskData.business || null,
+      persoana: m.taskData.persoana || null,
+      data_limita: m.taskData.data_limita || null,
+      impact_score: imp,
+      effort_score: eff,
+      priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
+    })
+    if (!error) setMessages(prev => prev.map((mm, i) => i === idx ? { ...mm, taskSaved: true } : mm))
+  }
+
   async function send() {
     if (!input.trim() || loading) return
+    if (listening) { recognitionRef.current?.stop(); setListening(false) }
+    if (taskMode) {
+      const userMsg = input.trim()
+      setInput('')
+      setMessages(prev => [...prev, { role: 'user', content: userMsg, ts: new Date() }])
+      setLoading(true)
+      await classifyTask(userMsg)
+      setLoading(false)
+      return
+    }
     const userMsg = input.trim()
     setInput('')
     setMessages(prev => [...prev, { role: 'user', content: userMsg, ts: new Date() }])
@@ -178,17 +267,39 @@ export default function Chatbot() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '82%',
-                  padding: '9px 13px',
-                  borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                  background: m.role === 'user' ? 'rgba(77,163,255,0.8)' : 'rgba(214,228,244,0.08)',
-                  border: m.role === 'user' ? '1px solid rgba(159,215,255,0.3)' : '1px solid rgba(159,215,255,0.1)',
-                  fontSize: 13,
-                  color: '#FFFFFF',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                }}>{m.content}</div>
+                {m.taskData ? (
+                  <div style={{ maxWidth: '88%', width: '88%', background: 'rgba(77,163,255,0.08)', border: '1px solid rgba(77,163,255,0.3)', borderRadius: '14px 14px 14px 4px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <Sparkles size={12} color="#7BC8FF" />
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#7BC8FF', textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Task detectat</span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginBottom: 6 }}>{m.taskData.titlu || 'Task nou'}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5, marginBottom: 10 }}>
+                      <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${PRIO_COLOR[m.taskData.prioritate]||'#94A3B8'}18`, color: PRIO_COLOR[m.taskData.prioritate]||'#94A3B8', border: `1px solid ${PRIO_COLOR[m.taskData.prioritate]||'#94A3B8'}30` }}>{PRIO_LABEL[m.taskData.prioritate] || 'Normală'}</span>
+                      {m.taskData.business && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.15)' }}>{m.taskData.business}</span>}
+                      {m.taskData.data_limita && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(148,163,184,0.1)', color: '#94A3B8', border: '1px solid rgba(148,163,184,0.15)' }}>📅 {m.taskData.data_limita}</span>}
+                    </div>
+                    {m.taskSaved ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ADE80', fontSize: 12, fontWeight: 600 }}><Check size={14} /> Salvat ca task</div>
+                    ) : (
+                      <button onClick={() => saveTaskFromChat(i)} style={{ width: '100%', padding: '8px', borderRadius: 8, background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.35)', color: '#4ADE80', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        ✓ Salvează
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{
+                    maxWidth: '82%',
+                    padding: '9px 13px',
+                    borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                    background: m.role === 'user' ? 'rgba(77,163,255,0.8)' : 'rgba(214,228,244,0.08)',
+                    border: m.role === 'user' ? '1px solid rgba(159,215,255,0.3)' : '1px solid rgba(159,215,255,0.1)',
+                    fontSize: 13,
+                    color: '#FFFFFF',
+                    lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap',
+                  }}>{m.content}</div>
+                )}
               </div>
             ))}
             {loading && (
@@ -213,18 +324,49 @@ export default function Chatbot() {
             <div ref={bottomRef} />
           </div>
 
+          {/* Toggle Task */}
+          <div style={{ padding: '8px 12px 0', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={() => setTaskMode(t => !t)}
+              title="Activează modul Task — ce trimiți devine task, nu o întrebare către asistent"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20,
+                border: `1px solid ${taskMode ? 'rgba(77,163,255,0.5)' : 'rgba(159,215,255,0.15)'}`,
+                background: taskMode ? 'rgba(77,163,255,0.18)' : 'rgba(214,228,244,0.05)',
+                color: taskMode ? '#7BC8FF' : 'rgba(159,215,255,0.45)',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              📝 Task {taskMode && '· activ'}
+            </button>
+            {taskMode && <span style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)' }}>Ce trimiți devine task, nu o întrebare</span>}
+          </div>
+
           {/* Input */}
-          <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(159,215,255,0.08)', display: 'flex', gap: 8, flexShrink: 0 }}>
+          <div style={{ padding: '8px 12px 10px', borderTop: '1px solid rgba(159,215,255,0.08)', display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={toggleVoice}
+              title={listening ? 'Stop înregistrare' : 'Dictează cu vocea'}
+              style={{
+                width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                background: listening ? 'rgba(239,68,68,0.2)' : 'rgba(214,228,244,0.08)',
+                border: `1px solid ${listening ? 'rgba(239,68,68,0.4)' : 'rgba(159,215,255,0.15)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: listening ? '#F87171' : 'rgba(159,215,255,0.6)', transition: 'all 0.15s',
+              }}
+            >
+              <Mic size={15} />
+            </button>
             <input
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-              placeholder="Scrie un mesaj..."
+              placeholder={taskMode ? 'Descrie task-ul...' : 'Scrie un mesaj...'}
               style={{
                 flex: 1, padding: '9px 13px', borderRadius: 10,
                 background: 'rgba(214,228,244,0.08)',
-                border: '1px solid rgba(159,215,255,0.15)',
+                border: `1px solid ${taskMode ? 'rgba(77,163,255,0.3)' : 'rgba(159,215,255,0.15)'}`,
                 color: '#FFFFFF', fontSize: 13,
                 outline: 'none', fontFamily: 'inherit',
               }}
