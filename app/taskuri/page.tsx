@@ -9,7 +9,7 @@ type Task = {
   id: string
   titlu: string
   descriere?: string
-  status: 'de_facut' | 'in_lucru' | 'finalizat'
+  status: 'de_facut' | 'in_lucru' | 'finalizat' | 'template'
   prioritate: 'urgenta' | 'normala' | 'scazuta'
   business?: string
   persoana?: string
@@ -19,6 +19,9 @@ type Task = {
   impact_score?: number
   effort_score?: number
   priority_score?: number
+  recurent?: boolean
+  interval_zile?: number | null
+  data_urmatoare?: string | null
   created_at: string
 }
 
@@ -30,7 +33,7 @@ const COLS: { key: Task['status']; label: string; color: string }[] = [
 const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
 const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 const BIZ = ['Property Management', 'Marketplace', 'Spălătorie', 'Personal', 'Admin', 'Financiar', 'Alt business']
-const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '' }
+const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '', recurent: false, interval_zile: 7 }
 
 /* ── BRAIN DUMP MODAL ── */
 function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -770,10 +773,11 @@ export default function TaskuriPage() {
         interval_zile: null,
       })
       // Actualizeaza data urmatoare pe template
-      await supabase.from('taskuri').update({
+      const { error: updErr } = await supabase.from('taskuri').update({
         data_urmatoare: addDays(today, task.interval_zile),
         status: 'template'
       }).eq('id', task.id)
+      if (updErr) console.error('[checkRecurente] update sablon', updErr.message)
       // Push notification
       fetch('/api/push-send', {
         method: 'POST',
@@ -850,20 +854,26 @@ export default function TaskuriPage() {
     setSaving(true)
     const imp = Number(editing.impact_score) || 5
     const eff = Number(editing.effort_score) || 5
-    const payload = {
+    // Recurenta se poate seta doar la creare - un task existent, vizibil in Kanban,
+    // nu se transforma retroactiv in sablon ascuns
+    const isRecurent = !editing.id && !!editing.recurent
+    const payload: any = {
       titlu: editing.titlu, descriere: editing.descriere || null,
-      status: editing.status, prioritate: editing.prioritate,
+      status: isRecurent ? 'template' : editing.status, prioritate: editing.prioritate,
       business: editing.business || null, persoana: editing.persoana || null,
       data_limita: editing.data_limita || null,
       ora_limita: editing.ora_limita || null,
       impact_score: imp, effort_score: eff,
       priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
+      recurent: isRecurent,
+      interval_zile: isRecurent ? (Number(editing.interval_zile) || 7) : null,
+      data_urmatoare: isRecurent ? (editing.data_limita || new Date().toISOString().slice(0, 10)) : null,
     }
     const { error } = editing.id
       ? await supabase.from('taskuri').update(payload).eq('id', editing.id)
       : await supabase.from('taskuri').insert(payload)
     if (error) { show('error', error.message); setSaving(false); return }
-    show('success', editing.id ? 'Actualizat' : 'Task creat')
+    show('success', isRecurent ? 'Task recurent creat — va genera copii automat' : (editing.id ? 'Actualizat' : 'Task creat'))
     setEditOpen(false); setSaving(false); load()
   }
 
@@ -882,6 +892,7 @@ export default function TaskuriPage() {
 
   const filtered = tasks.filter(t => {
     if (t.business === '__rutina__') return false  // rutina zilei e separata
+    if (t.status === 'template') return false  // sablon recurent, generat automat de checkRecurente()
     if (filterBusiness && t.business !== filterBusiness) return false
     if (filterPrio && t.prioritate !== filterPrio) return false
     return true
@@ -1092,6 +1103,21 @@ export default function TaskuriPage() {
         <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginBottom: 16 }}>
           Priority Score: <span style={{ color: '#4DA3FF', fontWeight: 600 }}>{Math.round(((editing.impact_score || 5) * 2 + (11 - (editing.effort_score || 5))) / 3)}/10</span>
         </div>
+        {!editing.id && (
+          <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#FFFFFF' }}>
+              <input type="checkbox" checked={!!editing.recurent} onChange={e => setEditing({ ...editing, recurent: e.target.checked })}/>
+              🔁 Task recurent
+            </label>
+            {editing.recurent && (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Repetă la fiecare</span>
+                <input type="number" min={1} value={editing.interval_zile ?? 7} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile, începând cu data limită de mai sus (sau azi, dacă nu e setată)</span>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="primary" onClick={save} loading={saving} style={{ flex: 1 }}>Salvează</Button>
           <Button variant="secondary" onClick={() => setEditOpen(false)} style={{ flex: 1 }}>Anulează</Button>
