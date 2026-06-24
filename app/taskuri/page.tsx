@@ -672,6 +672,7 @@ export default function TaskuriPage() {
   const [deleting, setDeleting] = useState(false)
   const [filterBusiness, setFilterBusiness] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
+  const [viewMode, setViewMode] = useState<'coloane' | 'date'>('coloane')
   const { toast, show } = useToast()
   const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
   const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
@@ -899,6 +900,30 @@ export default function TaskuriPage() {
   })
   const byStatus = (s: Task['status']) => sortTasks(filtered.filter(t => t.status === s))
 
+  const dateGroups = (() => {
+    const todayStr = new Date().toISOString().split('T')[0]
+    const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+    const weekEndStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+    const buckets = [
+      { key: 'restante',    label: '🔴 Restante',       color: '#EF4444', items: [] as Task[] },
+      { key: 'azi',         label: '📅 Azi',             color: '#F59E0B', items: [] as Task[] },
+      { key: 'maine',       label: '🌤 Mâine',           color: '#FCD34D', items: [] as Task[] },
+      { key: 'saptamana',   label: '📆 Săptămâna asta',  color: '#4DA3FF', items: [] as Task[] },
+      { key: 'mai_tarziu',  label: '🗓 Mai târziu',      color: '#94A3B8', items: [] as Task[] },
+      { key: 'fara_data',   label: '⚪ Fără dată',       color: '#64748B', items: [] as Task[] },
+    ]
+    const active = filtered.filter(t => t.status !== 'finalizat')
+    for (const t of active) {
+      if (!t.data_limita) buckets[5].items.push(t)
+      else if (t.data_limita < todayStr) buckets[0].items.push(t)
+      else if (t.data_limita === todayStr) buckets[1].items.push(t)
+      else if (t.data_limita === tomorrowStr) buckets[2].items.push(t)
+      else if (t.data_limita <= weekEndStr) buckets[3].items.push(t)
+      else buckets[4].items.push(t)
+    }
+    return buckets.map(b => ({ ...b, items: sortTasks(b.items) })).filter(b => b.items.length > 0)
+  })()
+
   return (
     <>
       <PageHeader
@@ -906,6 +931,10 @@ export default function TaskuriPage() {
         subtitle={`${tasks.length} total · ${byStatus('de_facut').length} de făcut · ${byStatus('in_lucru').length} în lucru`}
         actions={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)', borderRadius: 8, padding: 2 }}>
+              <button onClick={() => setViewMode('coloane')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'coloane' ? '#4DA3FF' : 'transparent', color: viewMode === 'coloane' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe coloane</button>
+              <button onClick={() => setViewMode('date')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'date' ? '#4DA3FF' : 'transparent', color: viewMode === 'date' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe date</button>
+            </div>
             <select value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', width: 160 }}>
               <option value="">Toate businessurile</option>
               {BIZ.map(b => <option key={b} value={b}>{b}</option>)}
@@ -966,6 +995,7 @@ export default function TaskuriPage() {
           <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#4DA3FF' }}/>
         </div>
       ) : (
+        viewMode === 'coloane' ? (
         <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, overflowY: 'auto', flex: 1 }}>
           {COLS.map(col => (
             <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -987,6 +1017,25 @@ export default function TaskuriPage() {
             </div>
           ))}
         </div>
+        ) : (
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', flex: 1 }}>
+          {dateGroups.length === 0 ? (
+            <div style={{ padding: '40px 14px', textAlign: 'center', fontSize: 13, color: 'rgba(159,215,255,0.25)' }}>Niciun task activ — toate sunt finalizate 🎉</div>
+          ) : dateGroups.map(g => (
+            <div key={g.key}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: `${g.color}0F`, border: `1px solid ${g.color}25`, borderRadius: 10, borderTop: `2px solid ${g.color}`, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#FFFFFF' }}>{g.label}</span>
+                <span style={{ fontSize: 11, color: g.color, fontFamily: 'monospace', fontWeight: 600 }}>{g.items.length}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+                {g.items.map(t => (
+                  <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        )
       )}
 
       {/* BRAIN DUMP MODAL — portal-style, outside kanban */}
