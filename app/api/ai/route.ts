@@ -127,8 +127,7 @@ export async function POST(req: NextRequest) {
   const data = await res.json()
   if (data.error) {
     console.error('OpenAI error:', res.status, JSON.stringify(data.error))
-    // DEBUG TEMPORAR: de scos dupa diagnosticare
-    return NextResponse.json({ content: [{ text: '{}' }], debugError: { status: res.status, error: data.error, hasKey: !!OPENAI_KEY, keyLen: OPENAI_KEY.length } })
+    return NextResponse.json({ content: [{ text: '{}' }] })
   }
 
   const raw = data.choices?.[0]?.message?.content || '{}'
