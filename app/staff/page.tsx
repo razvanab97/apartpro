@@ -174,7 +174,7 @@ export default function StaffPage() {
           .select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
           : { data: null }
         const template = sab?.text || sabGlobal?.text ||
-          `Bună ziua, {nume}! 🏠 Am terminat pregătirile la *{apartament}*. Apartamentul vă așteaptă, puteți veni oricând! 🗝️\nEchipa AB Homes`
+          `Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
         const aptObj = apts.find((a:any) => a.id === aptId)
         const waMsg = template
           .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])

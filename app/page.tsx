@@ -109,6 +109,14 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   if(aptMsg) return applyVars(aptMsg,nume,apt,co)
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
+function msgGataAcces(r:any, sabloane:Record<string,string>){
+  const apt = r.apartament?.nume || 'apartament'
+  const aptId = r.apartament?.id || ''
+  const nume = firstName(r.nume_client)
+  const sablon = sabloane[aptId] || sabloane['__global__']
+  if(sablon) return applyVars(sablon,nume,apt,'')
+  return `Bună ziua, ${nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *${apt}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+}
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
@@ -143,6 +151,16 @@ export default function DashboardPage() {
   })
   const [coMesajeTrimise,setCoMesajeTrimise]=useState(()=>{
     try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
+  const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
+  const [gataWizardOpen,setGataWizardOpen]=useState(false)
+  const [gataWizardIdx,setGataWizardIdx]=useState(0)
+  const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
+    try{return localStorage.getItem('gata_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [gataMesajeTrimise,setGataMesajeTrimise]=useState(()=>{
+    try{return localStorage.getItem('gata_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
 
   useEffect(()=>{loadData()},[])
@@ -267,6 +285,15 @@ export default function DashboardPage() {
       const coMap:Record<string,string>={}
       ;(sD||[]).forEach((s:any)=>{ if(s.apartament_id && s.text) coMap[s.apartament_id]=s.text })
       setSabloaneCO(coMap)
+    })
+    // curatenie gata azi + sabloane mesaj acces — non-blocking
+    void supabase.from('curatenie_status').select('apartament_id,status').eq('data',today0).eq('status','gata').then(({data:cgD})=>{
+      setCuratenieGataIds(new Set((cgD||[]).map((s:any)=>s.apartament_id)))
+    })
+    void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','gata_curatenie').then(({data:sgD})=>{
+      const gMap:Record<string,string>={}
+      ;(sgD||[]).forEach((s:any)=>{ if(s.text) gMap[s.apartament_id||'__global__']=s.text })
+      setSabloaneGata(gMap)
     })
 
     // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
@@ -512,6 +539,38 @@ export default function DashboardPage() {
                   </button>
                 )}
                 <button onClick={()=>{setCoBannerDismissed(true);try{localStorage.setItem('co_banner_'+todayStr,'1')}catch{}}}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Ignoră
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* BANNER LOCATII GATA — DATE ACCES */}
+        {(()=>{
+          const gataCheckins=checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
+          const gataWithPhone=gataCheckins.filter((r:any)=>r.telefon_client)
+          if(gataCheckins.length===0||gataBannerDismissed||gataMesajeTrimise)return null
+          return(
+            <div style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+              <div style={{fontSize:20}}>🔑</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#7BC8FF',marginBottom:2}}>
+                  {gataCheckins.length === 1 ? '1 locație pregătită' : `${gataCheckins.length} locații pregătite`} — trimite datele de acces
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                  {gataCheckins.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+                {gataWithPhone.length>0&&(
+                  <button onClick={()=>{setGataWizardIdx(0);setGataWizardOpen(true)}}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    <Key size={13}/>Trimite mesaje ({gataWithPhone.length})
+                  </button>
+                )}
+                <button onClick={()=>{setGataBannerDismissed(true);try{localStorage.setItem('gata_banner_'+todayStr,'1')}catch{}}}
                   style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                   Ignoră
                 </button>
@@ -1161,6 +1220,58 @@ export default function DashboardPage() {
                   setCoMesajeTrimise(true)
                   try{localStorage.setItem('co_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
                 }else{setCoWizardIdx(i=>i+1)}
+              }}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* WIZARD DATE ACCES (locatii gata) */}
+      {gataWizardOpen&&(()=>{
+        const gataList=checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id)&&r.telefon_client)
+        const r=gataList[gataWizardIdx]
+        if(!r)return null
+        const isLast=gataWizardIdx>=gataList.length-1
+        const msg=msgGataAcces(r,sabloaneGata)
+        const link=waLink(r.telefon_client,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setGataWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(77,163,255,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj date acces</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#7BC8FF'}}>{gataWizardIdx+1} / {gataList.length}</div>
+                </div>
+                <button onClick={()=>setGataWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(77,163,255,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((gataWizardIdx+1)/gataList.length)*100}%`,background:'#4DA3FF',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={()=>{
+                if(isLast){
+                  setGataWizardOpen(false)
+                  setGataMesajeTrimise(true)
+                  try{localStorage.setItem('gata_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
+                }else{setGataWizardIdx(i=>i+1)}
               }}
                 style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
