@@ -1093,6 +1093,44 @@ export default function TaskuriPage() {
         <FormGroup><label>Titlu *</label><input value={editing.titlu || ''} onChange={e => setEditing({ ...editing, titlu: e.target.value })} placeholder="Ce trebuie făcut?"/></FormGroup>
         <FormGroup><label>Descriere</label><textarea value={editing.descriere || ''} onChange={e => setEditing({ ...editing, descriere: e.target.value })} rows={2}/></FormGroup>
 
+        {!editing.id ? (
+          <div style={{ marginBottom: 16 }}>
+            <label>Recurență</label>
+            <Pills value={editing.recurent ? 'da' : 'nu'} onChange={v => setEditing({ ...editing, recurent: v === 'da' })}
+              options={[
+                { value: 'nu', label: 'Task unic', color: '#94A3B8' },
+                { value: 'da', label: '🔁 Task recurent', color: '#4DA3FF' },
+              ]}/>
+            {editing.recurent && (
+              <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
+                <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 8 }}>Se repetă:</div>
+                <Pills value={[1,7,30].includes(Number(editing.interval_zile)) ? String(editing.interval_zile) : 'custom'}
+                  onChange={v => setEditing({ ...editing, interval_zile: v === 'custom' ? 14 : parseInt(v) })}
+                  options={[
+                    { value: '1', label: 'Zilnic', color: '#4ADE80' },
+                    { value: '7', label: 'Săptămânal', color: '#4DA3FF' },
+                    { value: '30', label: 'Lunar', color: '#C4B5FD' },
+                    { value: 'custom', label: 'Personalizat', color: '#FCD34D' },
+                  ]}/>
+                {![1,7,30].includes(Number(editing.interval_zile)) && (
+                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
+                    <input type="number" min={1} value={editing.interval_zile ?? 14} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                    <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
+                  </div>
+                )}
+                <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>
+                  Începând cu data limită de mai jos (sau azi, dacă nu o setezi). Task-ul se salvează ca șablon ascuns — la fiecare interval se generează automat o copie activă.
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginBottom: 16, fontSize: 11, color: 'rgba(159,215,255,0.35)', fontStyle: 'italic' }}>
+            Recurența se poate seta doar la crearea unui task nou.
+          </div>
+        )}
+
         <div style={{ marginBottom: 14 }}>
           <label>Status</label>
           <Pills value={editing.status || 'de_facut'} onChange={v => setEditing({ ...editing, status: v })}
@@ -1135,21 +1173,6 @@ export default function TaskuriPage() {
           </div>
         </div>
 
-        {!editing.id && (
-          <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#FFFFFF', marginBottom: 0 }}>
-              <input type="checkbox" checked={!!editing.recurent} onChange={e => setEditing({ ...editing, recurent: e.target.checked })}/>
-              🔁 Task recurent
-            </label>
-            {editing.recurent && (
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Repetă la fiecare</span>
-                <input type="number" min={1} value={editing.interval_zile ?? 7} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
-                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile, începând cu data limită de mai sus (sau azi, dacă nu e setată)</span>
-              </div>
-            )}
-          </div>
-        )}
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="primary" onClick={save} loading={saving} style={{ flex: 1 }}>Salvează</Button>
           <Button variant="secondary" onClick={() => setEditOpen(false)} style={{ flex: 1 }}>Anulează</Button>
