@@ -42,9 +42,16 @@ export async function POST(req: NextRequest) {
 
     // total poate veni ca numar, ca string cu separator de mii ("1.234"/"1,234") sau lipsi complet
     const totalRaw = parsed.total
-    const total = typeof totalRaw === 'number' ? totalRaw
+    let total = typeof totalRaw === 'number' ? totalRaw
       : typeof totalRaw === 'string' ? (parseInt(totalRaw.replace(/[^\d]/g, ''), 10) || 0)
       : 0
+    // Fallback: daca "total" nu a fost completat corect, mai cautam textul exact de pe
+    // pagina Booking ("Iaşi: au fost găsite NUMĂR proprietăţi" / "X properties found")
+    // in cazul in care agentul a trimis si bucati de text brut in rawJson
+    if (!total) {
+      const m = rawJson.match(/g[aă]site\s*([\d.,\s]+)\s*propriet[aă]ț/i) || rawJson.match(/([\d.,\s]+)\s*properties found/i)
+      if (m) total = parseInt(m[1].replace(/[^\d]/g, ''), 10) || 0
+    }
     const lowestPrice = Math.min(...results.map((r: any) => r.price))
     const ourResults = results.filter((r: any) => r.isOurs)
     const weAreLowest = ourResults.some((r: any) => r.price === lowestPrice)
