@@ -1,6 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
+
+const STOPWORDS = new Set(['de','la','cu','si','sa','pe','in','un','o','ca','din','pentru','este','sunt','mai','nu','se','le','lui','care','daca','dar','ce','am','ai','are','fi'])
+
+function normalizeWords(text: string): Set<string> {
+  const norm = (text || '').toLowerCase()
+    .replace(/[ăâ]/g, 'a').replace(/î/g, 'i').replace(/ș/g, 's').replace(/ț/g, 't')
+  const words = norm.match(/[a-z0-9]+/g) || []
+  return new Set(words.filter(w => w.length >= 3 && !STOPWORDS.has(w)))
+}
+
+async function findSimilarTasks(text: string, limit = 5) {
+  const inputWords = normalizeWords(text)
+  if (inputWords.size === 0) return []
+
+  const { data: past } = await supabase
+    .from('taskuri')
+    .select('titlu,descriere,business,prioritate,persoana')
+    .neq('business', '__rutina__')
+    .not('titlu', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(300)
+
+  if (!past || past.length === 0) return []
+
+  const scored = past.map((t: any) => {
+    const taskWords = normalizeWords(`${t.titlu || ''} ${t.descriere || ''}`)
+    let overlap = 0
+    for (const w of inputWords) if (taskWords.has(w)) overlap++
+    return { task: t, score: overlap }
+  })
+
+  return scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, limit).map(s => s.task)
+}
 
 const BIZ_CODES: Record<string, string> = {
   '01': 'Property Management', '02': 'Marketplace',
@@ -66,6 +100,14 @@ export async function POST(req: NextRequest) {
        '- personal/familie/sanatate → Personal\n' +
        '- altceva → Admin')
 
+  const similarTasks = await findSimilarTasks(cleanText)
+  const examplesBlock = similarTasks.length
+    ? ('ISTORIC — asa ai clasificat task-uri asemanatoare inainte (foloseste-le ca ghid de stil, business, prioritate, persoana):\n' +
+       similarTasks.map((t: any, i: number) =>
+         `${i + 1}. "${t.titlu}"${t.descriere ? ' (' + t.descriere + ')' : ''} → business=${t.business || 'necunoscut'}, prioritate=${t.prioritate || 'necunoscut'}${t.persoana ? ', persoana=' + t.persoana : ''}`
+       ).join('\n'))
+    : ''
+
   let prompt: string
 
   if (imageBase64) {
@@ -74,6 +116,7 @@ export async function POST(req: NextRequest) {
       'Esti asistentul AI al lui Razvan, antreprenor roman.',
       bizRules,
       '',
+      examplesBlock,
       'DATA AZI: ' + today,
       '',
       'Citeste TOT textul vizibil din imagine (WhatsApp, email, SMS, notita, orice).',
@@ -93,6 +136,7 @@ export async function POST(req: NextRequest) {
       'Esti asistentul AI al lui Razvan, antreprenor roman.',
       bizRules,
       '',
+      examplesBlock,
       'Transforma textul in task. Returneaza DOAR JSON:',
       jsonSchema,
       '',
