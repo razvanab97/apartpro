@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase, Proprietar, calculeazaDecont } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
-import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, Clock, TrendingUp, FileText, Download } from 'lucide-react'
+import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, TrendingUp, FileText, Download } from 'lucide-react'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
@@ -293,7 +293,7 @@ export default function ProprietariPage() {
     try{
       const [{ data: propData }, { data: aptData }, { data: chiriiData }] = await Promise.all([
         supabase.from('proprietari').select('*').order('nume'),
-        supabase.from('apartamente').select('id,nume,nota,status,proprietar_id').order('nota'),
+        supabase.from('apartamente').select('id,nume,nota,status,proprietar_id,utilitati_la_proprietar').order('nota'),
         supabase.from('chirii_fixe').select('*').eq('activ', true),
       ])
       setProprietari(propData||[])
@@ -312,72 +312,91 @@ export default function ProprietariPage() {
   async function loadLunar() {
     const pz = `${an}-${pad(luna)}-01`
     const uz = new Date(an, luna, 0).toISOString().slice(0,10)
-    const [{ data: chData }, { data: platiData }] = await Promise.all([
+    const [{ data: chData }, { data: liniiData }] = await Promise.all([
       supabase.from('cheltuieli')
         .select('apartament_id,categorie,valoare,status')
         .gte('data', pz).lte('data', uz)
         .in('categorie', ['asociatie','eon_curent','eon_gaz','eon_duo']),
-      supabase.from('plati_proprietari').select('*')
+      supabase.from('plati_proprietari_linii').select('*')
         .eq('luna', luna).eq('an', an),
     ])
     setCheltuieli(chData||[])
-    const pm: Record<string,any> = {}
-    ;(platiData||[]).forEach((p:any) => { pm[p.proprietar_id] = p })
-    setPlatiStatus(pm)
+    const lm: Record<string, any> = {}
+    ;(liniiData || []).forEach((l: any) => { lm[`${l.apartament_id}_${l.tip}`] = l })
+    setPlatiStatus(lm)
   }
 
-  // Calcul total de plătit pentru un proprietar
+  // Calcul detaliat per apartament: chirie (live, la cursul curent) + utilitati (doar daca apt.utilitati_la_proprietar)
+  // + starea liniei de plata salvata (platit/nu, si suma inghetata in momentul platii)
   function calcTotal(propId: string) {
     const propApts = apts.filter(a => a.proprietar_id === propId)
-    let totalRON = 0
+    let totalRON = 0, totalPlatit = 0
     const detalii: any[] = []
 
     propApts.forEach(apt => {
       const chirie = chirii.find(c => c.apartament_id === apt.id)
-      if (!chirie) return
-
-      const valRON = chirie.moneda === 'EUR'
-        ? Math.round(chirie.suma * cursEUR)
-        : chirie.suma
-
-      // Utilități pentru acest apartament în luna selectată
       const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id)
       const eon = utilApt.filter(c => ['eon_curent','eon_gaz','eon_duo'].includes(c.categorie)).reduce((s:number,c:any) => s+Number(c.valoare||0), 0)
       const asoc = utilApt.filter(c => c.categorie === 'asociatie').reduce((s:number,c:any) => s+Number(c.valoare||0), 0)
       const utilTotal = Math.round(eon + asoc)
+      const utilPermis = !!apt.utilitati_la_proprietar
 
-      totalRON += valRON + utilTotal
+      if (!chirie && (!utilPermis || utilTotal === 0)) return
 
-      detalii.push({
-        apt,
-        chirie: { valoare: chirie.suma, moneda: chirie.moneda, valRON },
-        util: { eon: Math.round(eon), asoc: Math.round(asoc), total: utilTotal },
-        subtotal: valRON + utilTotal,
-      })
+      const liniiApt: any[] = []
+
+      if (chirie) {
+        const liveRON = chirie.moneda === 'EUR' ? Math.round(chirie.suma * cursEUR) : chirie.suma
+        const linie = platiStatus[`${apt.id}_chirie`]
+        const platit = !!linie?.platit
+        const sumaAfisata = platit ? Number(linie.suma_ron) : liveRON
+        liniiApt.push({ tip: 'chirie', label: chirie.moneda === 'EUR' ? `${chirie.suma} EUR (${platit ? Number(linie.curs_eur).toFixed(4) : cursEUR.toFixed(4)})` : 'RON', suma: sumaAfisata, platit, linie })
+        totalRON += sumaAfisata
+        if (platit) totalPlatit += sumaAfisata
+      }
+
+      if (utilPermis && utilTotal > 0) {
+        const linie = platiStatus[`${apt.id}_utilitati`]
+        const platit = !!linie?.platit
+        const sumaAfisata = platit ? Number(linie.suma_ron) : utilTotal
+        liniiApt.push({ tip: 'utilitati', label: `E.ON ${Math.round(eon)} + Asociație ${Math.round(asoc)}`, suma: sumaAfisata, platit, linie })
+        totalRON += sumaAfisata
+        if (platit) totalPlatit += sumaAfisata
+      }
+
+      if (liniiApt.length === 0) return
+      detalii.push({ apt, linii: liniiApt, subtotal: liniiApt.reduce((s,l) => s+l.suma, 0) })
     })
 
-    return { totalRON, detalii }
+    return { totalRON, totalPlatit, totalRamas: totalRON - totalPlatit, detalii }
   }
 
-  async function salveazaPlata(propId: string, status: string, sumaPartial?: number) {
-    setSavingPlata(propId)
-    const { totalRON } = calcTotal(propId)
-    const existing = platiStatus[propId]
-    const payload = {
-      proprietar_id: propId,
-      luna, an,
-      suma_totala: totalRON,
-      suma_platita: status === 'platit' ? totalRON : (sumaPartial || existing?.suma_platita || 0),
-      status,
-      data_plata: status !== 'neplatit' ? new Date().toISOString().slice(0,10) : null,
-    }
-    if (existing) {
-      await supabase.from('plati_proprietari').update(payload).eq('id', existing.id)
+  async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati', linieExistenta: any) {
+    const key = `${apt.id}_${tip}`
+    setSavingPlata(key)
+    const nouPlatit = !linieExistenta?.platit
+    let payload: any
+    if (nouPlatit) {
+      // La marcarea ca platit, inghetam suma RON + cursul EUR folosit ACUM (aprox data platii)
+      if (tip === 'chirie') {
+        const chirie = chirii.find(c => c.apartament_id === apt.id)
+        const sumaRon = chirie.moneda === 'EUR' ? Math.round(chirie.suma * cursEUR) : chirie.suma
+        payload = { proprietar_id: propId, apartament_id: apt.id, luna, an, tip, suma_ron: sumaRon, curs_eur: chirie.moneda === 'EUR' ? cursEUR : null, suma_eur: chirie.moneda === 'EUR' ? chirie.suma : null, platit: true, data_platii: new Date().toISOString().slice(0,10) }
+      } else {
+        const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id)
+        const total = Math.round(utilApt.filter(c => ['eon_curent','eon_gaz','eon_duo','asociatie'].includes(c.categorie)).reduce((s:number,c:any) => s+Number(c.valoare||0), 0))
+        payload = { proprietar_id: propId, apartament_id: apt.id, luna, an, tip, suma_ron: total, curs_eur: null, suma_eur: null, platit: true, data_platii: new Date().toISOString().slice(0,10) }
+      }
     } else {
-      await supabase.from('plati_proprietari').insert(payload)
+      payload = { platit: false, data_platii: null }
+    }
+    if (linieExistenta?.id) {
+      await supabase.from('plati_proprietari_linii').update(payload).eq('id', linieExistenta.id)
+    } else {
+      await supabase.from('plati_proprietari_linii').insert(payload)
     }
     setSavingPlata(null)
-    show('success', 'Status actualizat')
+    show('success', nouPlatit ? 'Marcat ca plătit' : 'Marcat ca neplătit')
     loadLunar()
   }
 
@@ -419,7 +438,6 @@ export default function ProprietariPage() {
     row: { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' },
     label: { fontSize:11, color:'rgba(159,215,255,0.5)' },
     val: { fontSize:12, fontWeight:600, color:'#fff' },
-    statusBtn: (active:boolean, color:string) => ({ padding:'6px 14px', borderRadius:8, border:`1px solid ${active?color:'rgba(255,255,255,0.1)'}`, background:active?`${color}20`:'transparent', color:active?color:'rgba(159,215,255,0.4)', fontSize:12, fontWeight:600, cursor:'pointer' as const }),
   }
 
   const tabStyle = (a: boolean): React.CSSProperties => ({
@@ -468,10 +486,9 @@ export default function ProprietariPage() {
             action={<Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Adaugă proprietar</Button>}/>
         ) : proprietari.map(p => {
           const propApts = apts.filter(a => a.proprietar_id === p.id)
-          const { totalRON, detalii } = calcTotal(p.id)
-          const plata = platiStatus[p.id]
-          const statusPlata = plata?.status || 'neplatit'
+          const { totalRON, totalRamas, detalii } = calcTotal(p.id)
           const isExpanded = expandedId === p.id
+          const statusPlata = totalRON === 0 ? 'neplatit' : totalRamas === 0 ? 'platit' : totalRamas === totalRON ? 'neplatit' : 'partial'
           const statusColor = statusPlata === 'platit' ? '#4ADE80' : statusPlata === 'partial' ? '#FCD34D' : '#F87171'
 
           return (
@@ -507,54 +524,45 @@ export default function ProprietariPage() {
                     </div>
                   ) : (
                     <>
-                      {/* Tabel per apartament */}
+                      {/* Tabel per apartament, cu bifa Platit pe fiecare linie */}
                       <div style={{ marginTop:12, marginBottom:14 }}>
                         {detalii.map(d => (
                           <div key={d.apt.id} style={{ padding:'10px 12px', background:'rgba(255,255,255,0.03)', borderRadius:9, marginBottom:6, border:'1px solid rgba(255,255,255,0.06)' }}>
-                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                 <span style={s.nota}>{d.apt.nota}</span>
                                 <span style={{ fontSize:12, color:'rgba(159,215,255,0.6)' }}>{d.apt.nume}</span>
                               </div>
                               <span style={{ fontSize:14, fontWeight:700, color:'#fff', fontFamily:'monospace' }}>{d.subtotal.toLocaleString('ro-RO')} RON</span>
                             </div>
-                            <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const }}>
-                              <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>
-                                Chirie: <span style={{ color:'#7BC8FF', fontWeight:600 }}>
-                                  {d.chirie.moneda === 'EUR' ? `${d.chirie.valoare} EUR (${d.chirie.valRON} RON)` : `${d.chirie.valRON} RON`}
-                                </span>
-                              </div>
-                              {d.util.eon > 0 && <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>E.ON: <span style={{ color:'#FCD34D', fontWeight:600 }}>{d.util.eon} RON</span></div>}
-                              {d.util.asoc > 0 && <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>Asociație: <span style={{ color:'#A78BFA', fontWeight:600 }}>{d.util.asoc} RON</span></div>}
-                              {d.util.total === 0 && <div style={{ fontSize:11, color:'rgba(159,215,255,0.25)' }}>Fără utilități înregistrate luna aceasta</div>}
+                            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                              {d.linii.map((l:any) => (
+                                <label key={l.tip} style={{ display:'flex', alignItems:'center', gap:8, cursor: savingPlata===`${d.apt.id}_${l.tip}` ? 'wait' : 'pointer', padding:'5px 8px', borderRadius:6, background: l.platit ? 'rgba(74,222,128,0.06)' : 'rgba(255,255,255,0.02)' }}>
+                                  <input type="checkbox" checked={l.platit} disabled={savingPlata===`${d.apt.id}_${l.tip}`}
+                                    onChange={() => toggleLinie(p.id, d.apt, l.tip, l.linie)}/>
+                                  <span style={{ fontSize:11, color: l.platit ? '#4ADE80' : 'rgba(159,215,255,0.6)', fontWeight:600, minWidth:62 }}>
+                                    {l.tip === 'chirie' ? 'Chirie' : 'Utilități'}
+                                  </span>
+                                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', flex:1 }}>{l.label}</span>
+                                  <span style={{ fontSize:12, fontWeight:700, fontFamily:'monospace', color: l.platit ? '#4ADE80' : '#fff', textDecoration: l.platit ? 'line-through' : 'none' }}>{l.suma.toLocaleString('ro-RO')} RON</span>
+                                  {l.platit && <Check size={12} color="#4ADE80"/>}
+                                </label>
+                              ))}
                             </div>
                           </div>
                         ))}
                       </div>
 
-                      {/* Total + status plată */}
+                      {/* Total ramas de plata */}
                       <div style={{ background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:10, padding:'12px 14px' }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-                          <span style={{ fontSize:12, color:'rgba(159,215,255,0.6)' }}>Total de plătit {LUNI[luna]} {an}</span>
-                          <span style={{ fontSize:20, fontWeight:800, color:'#fff', fontFamily:'monospace' }}>{totalRON.toLocaleString('ro-RO')} RON</span>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          <span style={{ fontSize:12, color:'rgba(159,215,255,0.6)' }}>Total {LUNI[luna]} {an}</span>
+                          <span style={{ fontSize:16, fontWeight:700, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{totalRON.toLocaleString('ro-RO')} RON</span>
                         </div>
-                        <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
-                          {(['neplatit','partial','platit'] as const).map(st => (
-                            <button key={st} disabled={savingPlata === p.id}
-                              onClick={() => salveazaPlata(p.id, st)}
-                              style={s.statusBtn(statusPlata === st, st === 'platit' ? '#4ADE80' : st === 'partial' ? '#FCD34D' : '#F87171')}>
-                              {st === 'platit' ? '✓ Platit' : st === 'partial' ? '◑ Partial' : '✗ Neplatit'}
-                            </button>
-                          ))}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:6 }}>
+                          <span style={{ fontSize:12, color: totalRamas>0 ? '#F87171' : '#4ADE80', fontWeight:600 }}>{totalRamas>0 ? 'Rămas de plătit' : '✓ Totul plătit'}</span>
+                          <span style={{ fontSize:20, fontWeight:800, color: totalRamas>0 ? '#F87171' : '#4ADE80', fontFamily:'monospace' }}>{totalRamas.toLocaleString('ro-RO')} RON</span>
                         </div>
-                        {plata?.data_plata && (
-                          <div style={{ marginTop:8, fontSize:11, color:'rgba(159,215,255,0.4)', display:'flex', alignItems:'center', gap:4 }}>
-                            <Clock size={10}/> Actualizat: {plata.data_plata}
-                            {plata.suma_platita && plata.suma_platita < plata.suma_totala && (
-                              <span style={{ marginLeft:8, color:'#FCD34D' }}>Plătit parțial: {Number(plata.suma_platita).toLocaleString('ro-RO')} RON</span>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </>
                   )}

@@ -47,6 +47,7 @@ export type Apartament = {
   mesaj_checkin?: string; mesaj_checkout?: string
   link_maps?: string; booking_links?: string[]; airbnb_links?: string[]
   reguli?: string; dotari?: string[]; status: string; nota?: string; created_at: string
+  utilitati_la_proprietar?: boolean
 }
 export type Rezervare = {
   id: string; apartament_id: string; apartament?: Apartament; proprietar_id?: string; proprietar?: Proprietar

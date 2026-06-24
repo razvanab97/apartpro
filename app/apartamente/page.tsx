@@ -36,7 +36,7 @@ function withToday(url: string, platform: 'booking'|'airbnb'): string {
   return url
 }
 
-const empty: Partial<Apartament> = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'' }
+const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON' }
 
 function CopyBtn({ text }: { text: string }) {
   const [c, setC] = useState(false)
@@ -238,7 +238,7 @@ export default function ApartamentePage() {
   const [proprietari, setProprietari] = useState<Proprietar[]>([])
   const [editOpen, setEditOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string|null>(null)
-  const [editing, setEditing] = useState<Partial<Apartament>>(empty)
+  const [editing, setEditing] = useState<Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string }>(empty)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string|null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -264,7 +264,13 @@ export default function ApartamentePage() {
   }
 
   function openNew(){ setEditing(empty); setEditOpen(true) }
-  function openEdit(a:Apartament){ setEditing({...a}); setEditOpen(true) }
+  async function openEdit(a:Apartament){
+    setEditing({...a, chirie_suma:0, chirie_moneda:'RON'})
+    setEditOpen(true)
+    const { data: chirieData } = await supabase.from('chirii_fixe')
+      .select('suma,moneda').eq('apartament_id', a.id).eq('activ', true).maybeSingle()
+    if (chirieData) setEditing((prev:any) => ({ ...prev, chirie_suma: chirieData.suma, chirie_moneda: chirieData.moneda }))
+  }
 
   async function toggleAptStatus(id:string, newStatus:string){
     await supabase.from('apartamente').update({status:newStatus}).eq('id',id)
@@ -274,9 +280,25 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
     setSaving(true)
-    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null }
-    const { error } = editing.id ? await supabase.from('apartamente').update(p).eq('id',editing.id) : await supabase.from('apartamente').insert(p)
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar }
+    const aptId = editing.id
+    const { data: savedApt, error } = editing.id
+      ? await supabase.from('apartamente').update(p).eq('id',editing.id).select('id').single()
+      : await supabase.from('apartamente').insert(p).select('id').single()
     if(error){ show('error',error.message); setSaving(false); return }
+    const finalAptId = aptId || savedApt?.id
+    if (finalAptId) {
+      const chirieSuma = Number((editing as any).chirie_suma) || 0
+      const chirieMoneda = (editing as any).chirie_moneda || 'RON'
+      const { data: existingChirie } = await supabase.from('chirii_fixe')
+        .select('id').eq('apartament_id', finalAptId).eq('activ', true).maybeSingle()
+      if (chirieSuma > 0) {
+        if (existingChirie) await supabase.from('chirii_fixe').update({ suma: chirieSuma, moneda: chirieMoneda }).eq('id', existingChirie.id)
+        else await supabase.from('chirii_fixe').insert({ apartament_id: finalAptId, suma: chirieSuma, moneda: chirieMoneda, activ: true })
+      } else if (existingChirie) {
+        await supabase.from('chirii_fixe').update({ activ: false }).eq('id', existingChirie.id)
+      }
+    }
     show('success',editing.id?'Actualizat':'Adăugat')
     setEditOpen(false); setSaving(false); load()
   }
@@ -508,6 +530,23 @@ export default function ApartamentePage() {
           <FormGroup><label>Procent (%)</label><input type="number" value={editing.comision_procent||20} onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}/></FormGroup>
           <FormGroup><label>Fix (RON)</label><input type="number" value={editing.comision_fix||0} onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
         </FormRow>
+
+        <div style={{ marginTop: 4, marginBottom: 16, padding: 14, borderRadius: 10, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.12)' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>
+          <FormRow cols={2}>
+            <FormGroup><label>Chirie / lună</label><input type="number" value={(editing as any).chirie_suma||0} onChange={e=>setEditing({...editing,chirie_suma:parseFloat(e.target.value)||0} as any)} min={0}/></FormGroup>
+            <FormGroup><label>Monedă</label>
+              <select value={(editing as any).chirie_moneda||'RON'} onChange={e=>setEditing({...editing,chirie_moneda:e.target.value} as any)}>
+                <option value="RON">RON</option>
+                <option value="EUR">EUR (convertit automat la curs BNR)</option>
+              </select>
+            </FormGroup>
+          </FormRow>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:'rgba(159,215,255,0.7)', marginBottom:0, marginTop: 4 }}>
+            <input type="checkbox" checked={!!(editing as any).utilitati_la_proprietar} onChange={e=>setEditing({...editing,utilitati_la_proprietar:e.target.checked} as any)}/>
+            Facturile (gaz/curent/asociație) se decontează proprietarului
+          </label>
+        </div>
         <FormRow cols={2}>
           <FormGroup><label>Link Site</label><input value={editing.link_site||''} onChange={e=>setEditing({...editing,link_site:e.target.value})} placeholder="https://abhomesiasi.ro/..."/></FormGroup>
           <FormGroup><label>📍 Link Google Maps</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
