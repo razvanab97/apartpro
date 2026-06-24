@@ -119,33 +119,27 @@ export default function Chatbot() {
   }
 
   async function classifyTask(text: string, attempt = 1) {
-    console.log('[DEBUG classifyTask] start, attempt=', attempt, 'text=', text)
     try {
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       })
-      console.log('[DEBUG classifyTask] fetch raspuns status=', res.status, res.statusText)
       const data = await res.json()
-      console.log('[DEBUG classifyTask] data primit=', JSON.stringify(data))
       const raw = data.content?.[0]?.text || '{}'
       const jsonMatch = raw.match(/\{[\s\S]*\}/)
       const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw)
-      console.log('[DEBUG classifyTask] parsed=', JSON.stringify(parsed))
       // Daca AI-ul (sau apelul catre el) a picat tranzitoriu, /api/ai raspunde cu
       // {} fara titlu — nu afisam un card de "succes" gol (induce in eroare, pare
       // ca a mers dar de fapt nu s-a clasificat nimic). Reincercam o data automat
       // inainte sa aratam eroarea, ca un singur hiccup de retea/AI sa nu blocheze taskul.
       if (!parsed.titlu) {
-        console.warn('[DEBUG classifyTask] parsed.titlu lipseste!', parsed)
         if (attempt < 2) { await classifyTask(text, attempt + 1); return }
         setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Nu am putut clasifica task-ul (AI indisponibil momentan). Încearcă din nou în câteva secunde.', ts: new Date() }])
         return
       }
       setMessages(prev => [...prev, { role: 'assistant', content: '', ts: new Date(), taskData: parsed }])
-    } catch (err) {
-      console.error('[DEBUG classifyTask] EXCEPTIE:', err)
+    } catch {
       if (attempt < 2) { await classifyTask(text, attempt + 1); return }
       setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Nu am putut clasifica task-ul. Încearcă din nou.', ts: new Date() }])
     }
@@ -172,7 +166,6 @@ export default function Chatbot() {
   }
 
   async function send() {
-    console.log('[DEBUG send] taskMode=', taskMode, 'input=', input, 'loading=', loading)
     if (!input.trim() || loading) return
     if (listening) { recognitionRef.current?.stop(); setListening(false) }
     if (taskMode) {

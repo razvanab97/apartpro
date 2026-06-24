@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 const FURNIZORI: Record<string, string[]> = {
   'E.ON Curent':    ['e.on energie','eon energie','eon curent','energie electrica','electricitate','standard electricity','curent electric','kwh'],
@@ -68,41 +68,35 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
   "detalii": "orice info relevant"
 }`
 
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const filePart = isImage
+      ? { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64Data}` } }
+      : { type: 'file', file: { filename: filename || 'factura.pdf', file_data: `data:${mediaType};base64,${base64Data}` } }
+
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_KEY,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${OPENAI_KEY}`,
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'gpt-4o-mini',
         max_tokens: 1024,
+        response_format: { type: 'json_object' },
         messages: [{
           role: 'user',
-          content: [
-            {
-              type: isImage ? 'image' : 'document',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data,
-              },
-            },
-            { type: 'text', text: prompt },
-          ],
+          content: [filePart, { type: 'text', text: prompt }],
         }],
       }),
     })
 
-    const claudeData = await claudeRes.json()
+    const openaiData = await openaiRes.json()
 
-    if (claudeData.error) {
-      console.error('Claude API error:', claudeData.error)
-      return NextResponse.json({ error: claudeData.error.message }, { status: 500 })
+    if (openaiData.error) {
+      console.error('OpenAI API error:', openaiData.error)
+      return NextResponse.json({ error: openaiData.error.message }, { status: 500 })
     }
 
-    const raw = claudeData?.content?.[0]?.text || '{}'
+    const raw = openaiData?.choices?.[0]?.message?.content || '{}'
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     const cleaned = jsonMatch ? jsonMatch[0] : '{}'
 

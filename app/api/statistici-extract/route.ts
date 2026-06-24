@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 export async function POST(req: NextRequest) {
-  if (!CLAUDE_KEY) return NextResponse.json({ error: 'ANTHROPIC_API_KEY nu este configurat pe server' }, { status: 500 })
+  if (!OPENAI_KEY) return NextResponse.json({ error: 'OPENAI_API_KEY nu este configurat pe server' }, { status: 500 })
   try {
     const body = await req.json()
     const { base64Data, mimeType, filename, aptList } = body
@@ -191,30 +191,29 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
     let content: any[]
     if (isPDF) {
       content = [
-        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Data } },
+        { type: 'file', file: { filename: filename || 'statistici.pdf', file_data: `data:application/pdf;base64,${base64Data}` } },
         { type: 'text', text: prompt }
       ]
     } else {
       content = [
-        { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Data } },
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
         { type: 'text', text: prompt }
       ]
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_KEY,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${OPENAI_KEY}`,
       },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000, messages: [{ role: 'user', content }] })
+      body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 2000, response_format: { type: 'json_object' }, messages: [{ role: 'user', content }] })
     })
 
     const data = await res.json().catch(() => null)
     if (!res.ok || !data) return NextResponse.json({ error: data?.error?.message || `API error ${res.status}` }, { status: 500 })
 
-    const text = data.content?.find((c: any) => c.type === 'text')?.text || '{}'
+    const text = data.choices?.[0]?.message?.content || '{}'
     const clean = text.replace(/```json|```/g, '').trim()
     try {
       return NextResponse.json(JSON.parse(clean))

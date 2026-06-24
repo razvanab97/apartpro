@@ -1,34 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 async function callClaude(prompt: string, imageBase64?: string, imageType?: string): Promise<string> {
-  const content: any[] = []
-  
+  const content: any[] = [{ type: 'text', text: prompt }]
+
   if (imageBase64) {
     content.push({
-      type: 'image',
-      source: { type: 'base64', media_type: imageType || 'image/jpeg', data: imageBase64 }
+      type: 'image_url',
+      image_url: { url: `data:${imageType || 'image/jpeg'};base64,${imageBase64}` }
     })
   }
-  content.push({ type: 'text', text: prompt })
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': CLAUDE_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': `Bearer ${OPENAI_KEY}`,
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'gpt-4o-mini',
       max_tokens: 1024,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content }],
     }),
   })
   const data = await res.json()
   if (data.error) throw new Error(data.error.message)
-  return data.content?.[0]?.text || '{}'
+  return data.choices?.[0]?.message?.content || '{}'
 }
 const SUPABASE_URL = 'https://lsmraxevzkmupaidianv.supabase.co'
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzbXJheGV2emttdXBhaWRpYW52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTkwMDA5NywiZXhwIjoyMDk1NDc2MDk3fQ.CagkIVPFE6r8D1oZPoxvs3jzJDR3HSwtx0GzM0etpss'

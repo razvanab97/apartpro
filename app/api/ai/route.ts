@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 const BIZ_CODES: Record<string, string> = {
   '01': 'Property Management', '02': 'Marketplace',
@@ -104,36 +104,33 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean).join('\n')
   }
 
-  // Build Claude message
-  const msgContent: any[] = []
+  // Build mesaj OpenAI (suporta text + imagine in acelasi format de continut)
+  const msgContent: any[] = [{ type: 'text', text: prompt }]
   if (imageBase64) {
-    msgContent.push({ type: 'image', source: { type: 'base64', media_type: imageType, data: imageBase64 } })
+    msgContent.push({ type: 'image_url', image_url: { url: `data:${imageType};base64,${imageBase64}` } })
   }
-  msgContent.push({ type: 'text', text: prompt })
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': CLAUDE_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': `Bearer ${OPENAI_KEY}`,
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'gpt-4o-mini',
       max_tokens: 512,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: msgContent }],
     }),
   })
 
   const data = await res.json()
   if (data.error) {
-    console.error('Claude error:', res.status, JSON.stringify(data.error))
-    // DEBUG TEMPORAR: expunem eroarea reala in raspuns ca sa o vedem din consola
-    // browserului, fara acces la log-urile Vercel - de scos dupa diagnosticare
-    return NextResponse.json({ content: [{ text: '{}' }], debugError: { status: res.status, error: data.error } })
+    console.error('OpenAI error:', res.status, JSON.stringify(data.error))
+    return NextResponse.json({ content: [{ text: '{}' }] })
   }
 
-  const raw = data.content?.[0]?.text || '{}'
+  const raw = data.choices?.[0]?.message?.content || '{}'
   const jsonMatch = raw.match(/\{[\s\S]*\}/)
   const cleaned = jsonMatch ? jsonMatch[0] : raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
 
