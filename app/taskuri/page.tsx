@@ -679,13 +679,22 @@ function TaskProgress({ tasks }: { tasks: Task[] }) {
 /* ── MAIN PAGE ── */
 const RUTINA_ITEMS_LIST: [string, string][] = [
   ['💬', 'Mesaje check-out'],
-  ['🧹', 'Mesaje curățenie'],
   ['📢', 'Actualizare Publi24'],
   ['📦', 'Pregătit comenzi'],
   ['📱', 'Postare SM - Spălătorie'],
   ['🏠', 'Postare SM - Apartamente'],
   ['💰', 'Actualizare prețuri'],
+  ['📖', 'Citit'],
 ]
+const CITIT_IDX = RUTINA_ITEMS_LIST.findIndex(r => r[1] === 'Citit')
+function fmtElapsed(sec: number) {
+  const m = Math.floor(sec / 60); const s = sec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+function fmtZiScurt(dataStr: string) {
+  const d = new Date(dataStr + 'T00:00:00')
+  return d.toLocaleDateString('ro-RO', { weekday: 'short', day: '2-digit', month: '2-digit' })
+}
 
 export default function TaskuriPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -704,6 +713,12 @@ export default function TaskuriPage() {
   const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
   const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
   const todayRutina = new Date().toISOString().split('T')[0]
+  const [citireActiva, setCitireActiva] = useState<{ id: string; ora_start: string } | null>(null)
+  const [citireTotalMin, setCitireTotalMin] = useState(0)
+  const [citireNrSesiuni, setCitireNrSesiuni] = useState(0)
+  const [citireElapsed, setCitireElapsed] = useState(0)
+  const [citireStatsOpen, setCitireStatsOpen] = useState(false)
+  const [citireIstoric, setCitireIstoric] = useState<{ data: string; total_min: number }[]>([])
 
 
   useEffect(() => {
@@ -749,7 +764,16 @@ export default function TaskuriPage() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => { loadRutina() }, [])
+  useEffect(() => { loadRutina(); loadCitire() }, [])
+
+  useEffect(() => {
+    if (!citireActiva) return
+    const start = new Date(citireActiva.ora_start).getTime()
+    const tick = () => setCitireElapsed(Math.floor((Date.now() - start) / 1000))
+    tick()
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [citireActiva])
 
   async function registerPush() {
     try {
@@ -855,6 +879,48 @@ export default function TaskuriPage() {
         setTasks((prev:Task[]) => [...prev, data as Task])
       }
     }
+  }
+
+  async function loadCitire() {
+    const { data } = await supabase.from('citire_sesiuni')
+      .select('id,ora_start,ora_stop,durata_min').eq('data', todayRutina).order('ora_start')
+    if (!data) return
+    const activa = data.find((s:any) => !s.ora_stop)
+    const terminate = data.filter((s:any) => s.ora_stop)
+    setCitireActiva(activa ? { id: activa.id, ora_start: activa.ora_start } : null)
+    setCitireTotalMin(terminate.reduce((sum:number, s:any) => sum + (s.durata_min || 0), 0))
+    setCitireNrSesiuni(terminate.length)
+  }
+
+  async function startCitire() {
+    const { data, error } = await supabase.from('citire_sesiuni')
+      .insert({ data: todayRutina, ora_start: new Date().toISOString() }).select().single()
+    if (error) { console.error('[startCitire]', error); show('error', 'Nu s-a putut porni sesiunea de citit'); return }
+    if (data) setCitireActiva({ id: data.id, ora_start: data.ora_start })
+  }
+
+  async function stopCitire() {
+    if (!citireActiva) return
+    const start = new Date(citireActiva.ora_start).getTime()
+    const durataMin = Math.max(1, Math.round((Date.now() - start) / 60000))
+    const { error } = await supabase.from('citire_sesiuni').update({ ora_stop: new Date().toISOString(), durata_min: durataMin }).eq('id', citireActiva.id)
+    if (error) { console.error('[stopCitire]', error); show('error', 'Nu s-a putut salva sesiunea de citit'); return }
+    const eraPrimaAzi = citireNrSesiuni === 0
+    setCitireActiva(null)
+    setCitireElapsed(0)
+    setCitireTotalMin(prev => prev + durataMin)
+    setCitireNrSesiuni(prev => prev + 1)
+    if (eraPrimaAzi && CITIT_IDX >= 0 && !rutinaBifata.has(CITIT_IDX)) await toggleRutina(CITIT_IDX)
+  }
+
+  async function loadCitireIstoric() {
+    const acum7zile = new Date(); acum7zile.setDate(acum7zile.getDate() - 6)
+    const { data } = await supabase.from('citire_sesiuni')
+      .select('data,durata_min').gte('data', acum7zile.toISOString().split('T')[0]).not('durata_min', 'is', null)
+    if (!data) return
+    const perZi: Record<string, number> = {}
+    data.forEach((s:any) => { perZi[s.data] = (perZi[s.data] || 0) + (s.durata_min || 0) })
+    setCitireIstoric(Object.entries(perZi).map(([data, total_min]) => ({ data, total_min })).sort((a,b) => b.data.localeCompare(a.data)))
   }
 
   async function load() {
@@ -1004,6 +1070,7 @@ export default function TaskuriPage() {
           </div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
             {RUTINA_ITEMS_LIST.map(([emoji, titlu], idx) => {
+              if (idx === CITIT_IDX) return null
               const bifat = rutinaBifata.has(idx)
               return (
                 <button key={idx} onClick={() => toggleRutina(idx)}
@@ -1020,6 +1087,62 @@ export default function TaskuriPage() {
                 </button>
               )
             })}
+          </div>
+
+          {/* CITIT - tracking sesiuni cu Start/Stop */}
+          <div style={{ marginTop:10, padding:'10px 13px', borderRadius:8,
+            background: citireActiva ? 'rgba(251,146,60,0.08)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.08)' : 'rgba(77,163,255,0.06)',
+            border: `1px solid ${citireActiva ? 'rgba(251,146,60,0.3)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.25)' : 'rgba(77,163,255,0.15)'}` }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap' as const, gap:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:14 }}>📖</span>
+                <span style={{ fontSize:11, fontWeight:600, color: rutinaBifata.has(CITIT_IDX) ? '#4ADE80' : 'rgba(159,215,255,0.7)' }}>
+                  {CITIT_IDX+1}. Citit
+                </span>
+                {rutinaBifata.has(CITIT_IDX) && <span style={{ fontSize:11, color:'#4ADE80' }}>✓</span>}
+                {citireNrSesiuni>0 && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>
+                  {citireTotalMin} min azi ({citireNrSesiuni} {citireNrSesiuni===1?'sesiune':'sesiuni'})
+                </span>}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                {citireActiva ? (
+                  <>
+                    <span style={{ fontSize:12, fontWeight:700, color:'#FB923C', fontFamily:'monospace' }}>⏱ {fmtElapsed(citireElapsed)}</span>
+                    <button onClick={stopCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(248,113,113,0.35)',
+                      background:'rgba(248,113,113,0.12)', color:'#F87171', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                      ⏹ Stop citit
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={startCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.35)',
+                    background:'rgba(74,222,128,0.12)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                    ▶️ Început citit
+                  </button>
+                )}
+                <button onClick={() => { setCitireStatsOpen(o => !o); if (!citireStatsOpen) loadCitireIstoric() }}
+                  style={{ padding:'5px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.15)',
+                    background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:11, cursor:'pointer' }}>
+                  📊 Statistici
+                </button>
+              </div>
+            </div>
+            {citireStatsOpen && (
+              <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
+                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6, textTransform:'uppercase' as const, letterSpacing:'.05em' }}>Ultimele 7 zile</div>
+                {citireIstoric.length===0 ? (
+                  <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Niciun minut citit înregistrat.</div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {citireIstoric.map(z => (
+                      <div key={z.data} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{fmtZiScurt(z.data)}{z.data===todayRutina?' (azi)':''}</span>
+                        <span style={{ color:'#7BC8FF', fontWeight:600 }}>{z.total_min} min</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
