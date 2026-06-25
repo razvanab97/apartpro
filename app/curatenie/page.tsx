@@ -29,7 +29,7 @@ export default function CuratenePage() {
   const [co, setCo] = useState<any[]>([])
   const [ci, setCi] = useState<any[]>([])
   const [len, setLen] = useState<Record<string,number>>({})
-  const { toast } = useToast()
+  const { toast, show } = useToast()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
@@ -109,9 +109,12 @@ export default function CuratenePage() {
   async function saveMesajGata() {
     setSavingMesajGata(true)
     const { data: ex } = await supabase.from('sabloane_mesaje').select('id').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
-    if(ex?.id) await supabase.from('sabloane_mesaje').update({text:mesajGata}).eq('id',ex.id)
-    else await supabase.from('sabloane_mesaje').insert({tip:'gata_curatenie',apartament_id:null,text:mesajGata,nume:'Mesaj gata curățenie'})
+    const { error } = ex?.id
+      ? await supabase.from('sabloane_mesaje').update({text:mesajGata}).eq('id',ex.id)
+      : await supabase.from('sabloane_mesaje').insert({tip:'gata_curatenie',apartament_id:null,text:mesajGata,titlu:'Mesaj gata curățenie'})
     setSavingMesajGata(false)
+    if(error){ console.error('[saveMesajGata]',error); show('error','Nu s-a putut salva mesajul') }
+    else show('success','✓ Mesaj salvat')
   }
 
   async function loadStaffStatus() {
