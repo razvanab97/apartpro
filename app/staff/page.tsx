@@ -140,6 +140,23 @@ export default function StaffPage() {
     await supabase.from('deplasari_curatenie').insert({ data, de_la: deLa, la, km, cost_lei })
   }
 
+  async function buildWaGataInfo(aptId:string) {
+    const ciRez = checkins.find((c:any) => c.apartament_id === aptId)
+    if (!ciRez?.telefon_client) return
+    const { data: sab } = await supabase.from('sabloane_mesaje')
+      .select('text').eq('tip','gata_curatenie').eq('apartament_id',aptId).maybeSingle()
+    const { data: sabGlobal } = !sab ? await supabase.from('sabloane_mesaje')
+      .select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
+      : { data: null }
+    const template = sab?.text || sabGlobal?.text ||
+      `Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+    const aptObj = apts.find((a:any) => a.id === aptId)
+    const waMsg = template
+      .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
+      .replace(/\{apartament\}/gi, aptObj?.nume || aptObj?.nota || '')
+    setWaGataInfo({ apt: aptObj, rez: ciRez, msg: waMsg })
+  }
+
   async function setStatus(aptId:string, status:'inceput'|'gata') {
     const now = new Date()
     const ora = `${P(now.getHours())}:${P(now.getMinutes())}`
@@ -166,21 +183,7 @@ export default function StaffPage() {
       const toateGata = deCuratat.every(a => a.id===aptId || newStatusuri[a.id]?.status==='gata')
       if (toateGata) await inregistreazaDeplasare(aptNota, 'CANTA')
       // Mesaj WA pentru clientul care face check-in azi
-      const ciRez = checkins.find((c:any) => c.apartament_id === aptId)
-      if (ciRez?.telefon_client) {
-        const { data: sab } = await supabase.from('sabloane_mesaje')
-          .select('text').eq('tip','gata_curatenie').eq('apartament_id',aptId).maybeSingle()
-        const { data: sabGlobal } = !sab ? await supabase.from('sabloane_mesaje')
-          .select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
-          : { data: null }
-        const template = sab?.text || sabGlobal?.text ||
-          `Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
-        const aptObj = apts.find((a:any) => a.id === aptId)
-        const waMsg = template
-          .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
-          .replace(/\{apartament\}/gi, aptObj?.nume || aptObj?.nota || '')
-        setWaGataInfo({ apt: aptObj, rez: ciRez, msg: waMsg })
-      }
+      await buildWaGataInfo(aptId)
     }
 
     const msg = status==='inceput' ? `🧹 Curățenie începută — ${aptNota}` : `✅ Gata — ${aptNota} (${ora})`
@@ -386,9 +389,13 @@ export default function StaffPage() {
                       {co.telefon_client&&<a href={'tel:'+co.telefon_client} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
                       {co.nr_nopti&&<span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>{'- '+co.nr_nopti+' nopti'}</span>}
                     </div>}
-                    {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:6}}>
+                    {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:6,display:'flex',alignItems:'center',flexWrap:'wrap',gap:0}}>
                       {'Check-in azi: '}<span style={{fontWeight:700}}>{ci.nume_client}</span>
                       {ci.telefon_client&&<a href={'tel:'+ci.telefon_client} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>Suna</a>}
+                      {ci.telefon_client&&<button onClick={()=>buildWaGataInfo(apt.id)}
+                        style={{marginLeft:10,padding:'3px 10px',borderRadius:20,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                        📱 Trimite WA
+                      </button>}
                     </div>}
                     {ci&&(()=>{
                       const stLen=statusuri[apt.id]?.nr_lenjerii
