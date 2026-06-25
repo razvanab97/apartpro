@@ -41,6 +41,12 @@ const BIZ_CODES: Record<string, string> = {
   '03': 'Spalatorie', '04': 'Personal', '05': 'Admin', '06': 'Financiar',
 }
 
+function addDaysISO(dateStr: string, n: number): string {
+  const d = new Date(dateStr)
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
 function detectDate(text: string): string | null {
   if (!text) return null
   const t = text.toLowerCase()
@@ -60,6 +66,10 @@ function detectDate(text: string): string | null {
   if (/\bazi\b|astazi|ast\u0103zi|\bacum\b/.test(t)) return fmt(now)
   if (/\bm\u00e2ine\b|\bmaine\b/.test(t)) return add(1)
   if (/poim\u00e2ine|poimaine/.test(t)) return add(2)
+  const inZile = t.match(/(?:\u00een|in|peste)\s+(\d+)\s*zil/)
+  if (inZile) return add(Number(inZile[1]))
+  const inSaptamani = t.match(/(?:\u00een|in|peste)\s+(\d+)\s*s\u0103pt\u0103m/) || t.match(/(?:\u00een|in|peste)\s+(\d+)\s*saptam/)
+  if (inSaptamani) return add(Number(inSaptamani[1]) * 7)
   if (/s\u0103pt\u0103m\u00e2na asta|saptamana asta/.test(t)) return add(7 - now.getDay())
   if (/s\u0103pt\u0103m\u00e2na viitoare|saptamana viitoare/.test(t)) return add(7)
   if (/luna asta|aceast\u0103 lun\u0103|aceasta luna/.test(t)) return fmt(new Date(now.getFullYear(), now.getMonth()+1, 0))
@@ -88,7 +98,7 @@ export async function POST(req: NextRequest) {
   const activeBiz = forcedBiz || (codeMatch ? BIZ_CODES[codeMatch[1]] : null)
   const cleanText = codeMatch ? text.replace(/^\d{2}\s+/, '') : text
 
-  const jsonSchema = '{"titlu":"VERB + obiect concret","descriere":"detalii relevante","prioritate":"urgenta|normala|scazuta","business":"categoria","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"de ce"}'
+  const jsonSchema = '{"titlu":"reformulare minimala, fidela cuvintelor utilizatorului, cu verb activ la inceput","descriere":"detalii suplimentare din text, daca exista, altfel null","prioritate":"urgenta|normala|scazuta","business":"categoria","data_limita":"YYYY-MM-DD sau null","impact_score":7,"effort_score":4,"persoana":null,"rationale":"de ce"}'
 
   const bizRules = activeBiz
     ? ('Business: ' + activeBiz + ' — NU schimba!')
@@ -108,43 +118,80 @@ export async function POST(req: NextRequest) {
        ).join('\n'))
     : ''
 
+  const ziueSaptamana = ['duminică','luni','marți','miercuri','joi','vineri','sâmbătă'][new Date().getDay()]
+  const tomorrowStr = (() => { const d = new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10) })()
+
+  const titluRules = [
+    'TITLU — reformuleaza MINIMAL, nu rezuma si nu generaliza:',
+    '- Pastreaza EXACT numele, locurile, sumele, platformele, obiectele mentionate de utilizator.',
+    '- Elimina DOAR cuvintele de umplutura (trebuie sa, vreau sa, mi-a zis, reamineste-mi, am de) si pune un verb activ la inceput.',
+    '- NU inventa detalii care nu apar in text. Daca textul e vag, titlul ramane vag (nu completezi tu lipsurile).',
+    'Exemple (input → titlu corect):',
+    '"trebuie sa sun furnizorul de prosoape saptamana asta" → "Sună furnizorul de prosoape"',
+    '"reamineste-mi marti sa trimit factura la Booking" → "Trimite factura la Booking"',
+    '"idee: pachete weekend romantic la Airy Palas cu sampanie" → "Creează pachet weekend romantic la Airy Palas cu șampanie"',
+    '"vodafone mi-a zis ca trebuie sa platesc 150 lei pentru roaming" → "Plătește 150 lei la Vodafone pentru roaming"',
+  ].join('\n')
+
+  const dateRules = [
+    'DATA AZI: ' + today + ' (' + ziueSaptamana + ')',
+    'Calculeaza data_limita relativ la DATA AZI, doar daca textul mentioneaza vreun moment de timp:',
+    '- azi/acum → ' + today,
+    '- mâine → ' + tomorrowStr,
+    '- poimâine → ' + addDaysISO(today, 2),
+    '- "în N zile" / "peste N zile" → DATA AZI + N zile',
+    '- "în N săptămâni" / "peste N săptămâni" → DATA AZI + N×7 zile',
+    '- luni/marți/.../duminică (nume de zi, fara "viitoare") → prima zi cu acel nume care vine după azi',
+    '- "săptămâna asta" → ultima zi a săptămânii curente',
+    '- "săptămâna viitoare" → DATA AZI + 7 zile',
+    '- "luna asta" → ultima zi a lunii curente',
+    '- "luna viitoare" → DATA AZI + 30 zile',
+    '- data exacta (15 iunie, 15.06, 2026-06-15) → conversie directa la YYYY-MM-DD',
+    '- daca textul NU mentioneaza niciun moment de timp → data_limita = null (nu inventa o data)',
+  ].join('\n')
+
   let prompt: string
+
+  const prioritateRules = 'PRIORITATE: urgenta=azi/maine/cuvinte ca URGENT,ASAP,imediat | normala=in cateva zile, fara presiune | scazuta=cand am timp, fara termen clar'
+  const contextRules = 'CONTEXT: esti asistentul lui Razvan, antreprenor roman care administreaza apartamente in regim hotelier (Booking/Airbnb), o mica spalatorie si vanzari pe Marketplace/Emag. Cand textul e ambiguu, aleg interpretarea cea mai probabila in acest context, nu cea mai literala. Intelege referinte indirecte (nume de platforme, furnizori, apartamente) fara sa le explici inapoi in titlu.'
 
   if (imageBase64) {
     // Prompt special pentru imagine
     prompt = [
       'Esti asistentul AI al lui Razvan, antreprenor roman.',
+      contextRules,
       bizRules,
       '',
       examplesBlock,
-      'DATA AZI: ' + today,
+      dateRules,
       '',
       'Citeste TOT textul vizibil din imagine (WhatsApp, email, SMS, notita, orice).',
       'Identifica ce actiune trebuie facuta, cine e implicat, ce data/termen apare.',
       'Returneaza DOAR JSON valid, fara explicatii:',
       jsonSchema,
       '',
-      'REGULI:',
-      '- TITLU: verb activ (Suna/Plateste/Mergi/Verifica/Trimite) + obiect concret',
-      '- DATA_LIMITA: daca apare o zi (sambata, luni) sau data (7 iunie, 15.06) in imagine, calculeaza YYYY-MM-DD fata de azi (' + today + ')',
-      '- PRIORITATE: urgenta=azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
-      finalDate ? ('- Daca utilizatorul a selectat data: ' + finalDate + ' — foloseste-o!') : '',
+      titluRules,
+      prioritateRules,
+      finalDate ? ('Utilizatorul a selectat deja data: ' + finalDate + ' — foloseste-o exact pe asta, nu recalcula.') : '',
     ].filter(Boolean).join('\n')
   } else {
     // Prompt pentru text
     prompt = [
       'Esti asistentul AI al lui Razvan, antreprenor roman.',
+      contextRules,
       bizRules,
       '',
       examplesBlock,
-      'Transforma textul in task. Returneaza DOAR JSON:',
+      dateRules,
+      '',
+      'Transforma textul de mai jos intr-un task. Returneaza DOAR JSON valid, fara explicatii:',
       jsonSchema,
       '',
-      'TITLU: verb activ la infinitiv (Suna/Plateste/Trimite/Verifica)',
-      'PRIORITATE: urgenta=azi/maine/URGENT | normala=in cateva zile | scazuta=cand am timp',
-      'DATA_LIMITA: ' + (finalDate ? finalDate : 'null'),
+      titluRules,
+      prioritateRules,
+      finalDate ? ('Utilizatorul a selectat deja data: ' + finalDate + ' — foloseste-o exact pe asta, nu recalcula.') : '',
       '',
-      'Text: ' + cleanText,
+      'Text de clasificat: ' + cleanText,
     ].filter(Boolean).join('\n')
   }
 
