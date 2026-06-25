@@ -50,7 +50,7 @@ export default function CuratenePage() {
   const [consumMasina, setConsumMasina] = useState('7.5')
   const [savingComb, setSavingComb] = useState(false)
   const [expandedZiComb, setExpandedZiComb] = useState<string|null>(null)
-  const [mesajGata, setMesajGata] = useState('Bună ziua, {nume}! 🏠 Am terminat pregătirile la *{apartament}*. Apartamentul vă așteaptă, puteți veni oricând! 🗝️\nEchipa AB Homes')
+  const [mesajGata, setMesajGata] = useState('Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași')
   const [savingMesajGata, setSavingMesajGata] = useState(false)
   const [mesajGataLoaded, setMesajGataLoaded] = useState(false)
 
