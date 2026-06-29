@@ -76,7 +76,7 @@ export default function StaffPage() {
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
       const [a, co, ci, ocp, st] = await Promise.all([
-        supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
+        supabase.from('apartamente').select('id,nota,nume,cod_locker').eq('status','activ').order('nota'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
@@ -369,6 +369,7 @@ export default function StaffPage() {
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
                       <span style={{fontSize:17,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
                       <span style={{fontSize:12,color:'rgba(159,215,255,0.5)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt.nume}</span>
+                      {apt.cod_locker&&<span style={{fontSize:11,fontWeight:700,color:'#FCD34D',fontFamily:'monospace',background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.25)',padding:'2px 7px',borderRadius:6,flexShrink:0,letterSpacing:1}}>🔒{apt.cod_locker}</span>}
                     </div>
                     <div style={{display:'flex',gap:5,marginTop:4,flexWrap:'wrap'}}>
                       {isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(34,197,94,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(34,197,94,0.25)'}}>{'Gata'+(st?.ora_gata?' '+st.ora_gata:'')}</span>}

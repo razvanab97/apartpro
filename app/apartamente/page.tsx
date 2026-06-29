@@ -519,8 +519,8 @@ export default function ApartamentePage() {
           <FormGroup><label>Preț (RON/n)</label><input type="number" value={editing.pret_standard||0} onChange={e=>setEditing({...editing,pret_standard:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
         </FormRow>
         <FormGroup><label>🔒 Cod locker</label>
-          <input value={(editing as any).cod_locker||''} maxLength={4} inputMode="numeric" placeholder="ex: 4821"
-            onChange={e=>setEditing({...editing,cod_locker:e.target.value.replace(/\D/g,'').slice(0,4)} as any)}/>
+          <input value={(editing as any).cod_locker||''} maxLength={10} inputMode="numeric" placeholder="ex: 4821"
+            onChange={e=>setEditing({...editing,cod_locker:e.target.value.replace(/\D/g,'').slice(0,10)} as any)}/>
         </FormGroup>
         <FormRow cols={2}>
           <FormGroup><label>Proprietar</label>
