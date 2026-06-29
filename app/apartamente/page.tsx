@@ -36,7 +36,7 @@ function withToday(url: string, platform: 'booking'|'airbnb'): string {
   return url
 }
 
-const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON' }
+const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON', cod_locker:'' }
 
 function CopyBtn({ text }: { text: string }) {
   const [c, setC] = useState(false)
@@ -280,7 +280,7 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
     setSaving(true)
-    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar }
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null }
     const aptId = editing.id
     const { data: savedApt, error } = editing.id
       ? await supabase.from('apartamente').update(p).eq('id',editing.id).select('id').single()
@@ -436,6 +436,15 @@ export default function ApartamentePage() {
 
             {/* Info */}
             <div style={{ display:'flex', flexDirection:'column', gap:6, fontSize:12 }}>
+              {(selected as any).cod_locker && (
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', borderRadius:8, background:'rgba(252,211,77,0.08)', border:'1px solid rgba(252,211,77,0.2)' }}>
+                  <span style={{ color:'#FCD34D', fontWeight:600 }}>🔒 Cod locker</span>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <span style={{ color:'#FCD34D', fontFamily:'monospace', fontSize:16, fontWeight:700, letterSpacing:2 }}>{(selected as any).cod_locker}</span>
+                    <CopyBtn text={(selected as any).cod_locker}/>
+                  </div>
+                </div>
+              )}
               {selected.proprietar?.nume && (
                 <div style={{ display:'flex', justifyContent:'space-between' }}>
                   <span style={{ color:'rgba(159,215,255,0.4)' }}>Proprietar</span>
@@ -509,6 +518,10 @@ export default function ApartamentePage() {
           <FormGroup><label>Max pers.</label><input type="number" value={editing.capacitate_max||4} onChange={e=>setEditing({...editing,capacitate_max:parseInt(e.target.value)||1})} min={1}/></FormGroup>
           <FormGroup><label>Preț (RON/n)</label><input type="number" value={editing.pret_standard||0} onChange={e=>setEditing({...editing,pret_standard:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
         </FormRow>
+        <FormGroup><label>🔒 Cod locker</label>
+          <input value={(editing as any).cod_locker||''} maxLength={4} inputMode="numeric" placeholder="ex: 4821"
+            onChange={e=>setEditing({...editing,cod_locker:e.target.value.replace(/\D/g,'').slice(0,4)} as any)}/>
+        </FormGroup>
         <FormRow cols={2}>
           <FormGroup><label>Proprietar</label>
             <select value={editing.proprietar_id||''} onChange={e=>setEditing({...editing,proprietar_id:e.target.value||undefined})}>
@@ -632,6 +645,16 @@ function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean;
         <div style={{ display:'flex', alignItems:'center', gap:3, marginBottom:5 }}>
           <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{a.adresa}</span>
           <button onClick={e=>cp(e,a.adresa)} style={{ background:'none', border:'none', cursor:'pointer', padding:'1px 3px', color:'rgba(159,215,255,0.3)', flexShrink:0, display:'flex', alignItems:'center' }}>
+            <Copy size={9}/>
+          </button>
+        </div>
+      )}
+      {/* Cod locker */}
+      {a.cod_locker && (
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5, padding:'3px 8px', borderRadius:6, background:'rgba(252,211,77,0.1)', border:'1px solid rgba(252,211,77,0.25)', width:'fit-content' }}>
+          <span style={{ fontSize:10 }}>🔒</span>
+          <span style={{ fontSize:12, fontWeight:700, color:'#FCD34D', fontFamily:'monospace', letterSpacing:1 }}>{a.cod_locker}</span>
+          <button onClick={e=>cp(e,a.cod_locker)} style={{ background:'none', border:'none', cursor:'pointer', padding:0, color:'rgba(252,211,77,0.5)', display:'flex', alignItems:'center' }}>
             <Copy size={9}/>
           </button>
         </div>
