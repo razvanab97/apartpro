@@ -41,6 +41,12 @@ function waLink(phone:string, msg:string){
 
 function nightsBetween(a:string,b:string){ return Math.round((new Date(b).getTime()-new Date(a).getTime())/(1000*60*60*24)) }
 
+const PLATFORME_CU_COMISION = ['airbnb','booking']
+const COMISION_PLATFORMA = 0.15
+
+function esteplatforma(canal: string) { return PLATFORME_CU_COMISION.includes(canal?.toLowerCase()) }
+function netAprox(suma: number, canal: string) { return esteplatforma(canal) ? Math.round(suma * (1 - COMISION_PLATFORMA)) : suma }
+
 function proRataMonth(r: Rez, y: number, m: number): number {
   const brut = Number(r.suma_incasata || 0)
   const totalN = r.nr_nopti || Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000)
@@ -398,10 +404,16 @@ export default function CalendarPage() {
                               onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.15)')}
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
                               {viewMode==='sume'
-                                ? <>
-                                    <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{proRataMonth(r,year,month).toLocaleString('ro-RO')} RON</span>
-                                    <span style={{ fontSize:10, color:'rgba(255,255,255,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:2 }}>{r.nr_nopti||'?'}n · {r.canal}</span>
-                                  </>
+                                ? (()=>{
+                                    const brut=proRataMonth(r,year,month)
+                                    const net=netAprox(brut,r.canal)
+                                    const isPlatf=esteplatforma(r.canal)
+                                    return <>
+                                      <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{brut.toLocaleString('ro-RO')} RON</span>
+                                      {isPlatf && <span style={{ fontSize:10, color:'rgba(255,255,220,0.75)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, fontFamily:'monospace' }}>≈{net.toLocaleString('ro-RO')} net</span>}
+                                      <span style={{ fontSize:10, color:'rgba(255,255,255,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:1 }}>{r.nr_nopti||'?'}n · {r.canal}</span>
+                                    </>
+                                  })()
                                 : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
                               }
                             </div>
@@ -419,9 +431,12 @@ export default function CalendarPage() {
                   {viewMode==='sume'&&(()=>{
                     const aptRez=rez.filter(r=>r.apartament?.id===apt.id)
                     const total=Math.round(aptRez.reduce((s,r)=>s+proRataMonth(r,year,month),0))
+                    const totalNet=Math.round(aptRez.reduce((s,r)=>s+netAprox(proRataMonth(r,year,month),r.canal),0))
+                    const areaPlatf=aptRez.some(r=>esteplatforma(r.canal))
                     return(
-                      <div style={{ width:90,flexShrink:0,height:ROW_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}>
+                      <div style={{ width:90,flexShrink:0,height:ROW_H,display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)',gap:1 }}>
                         <span style={{ fontFamily:'monospace',fontSize:13,fontWeight:700,color:'#4ADE80' }}>{total.toLocaleString('ro-RO')}</span>
+                        {areaPlatf&&<span style={{ fontFamily:'monospace',fontSize:10,fontWeight:600,color:'rgba(253,224,71,0.75)' }}>≈{totalNet.toLocaleString('ro-RO')}</span>}
                       </div>
                     )
                   })()}
@@ -432,14 +447,16 @@ export default function CalendarPage() {
             {/* Rând total general (modul Sume) */}
             {viewMode==='sume'&&!loading&&(()=>{
               const grandTotal=Math.round(rez.reduce((s,r)=>s+proRataMonth(r,year,month),0))
+              const grandNet=Math.round(rez.reduce((s,r)=>s+netAprox(proRataMonth(r,year,month),r.canal),0))
               return(
                 <div style={{ display:'flex',borderTop:'2px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.05)',position:'sticky',bottom:0,zIndex:6 }}>
                   <div style={{ width:LABEL_W,flexShrink:0,height:44,display:'flex',alignItems:'center',padding:'0 14px',position:'sticky',left:0,background:'rgba(8,18,36,0.98)',borderRight:'1px solid rgba(74,222,128,0.2)' }}>
                     <span style={{ fontSize:11,fontWeight:700,color:'rgba(74,222,128,0.8)',textTransform:'uppercase',letterSpacing:'.08em' }}>TOTAL LUNĂ</span>
                   </div>
                   <div style={{ flex:1 }}/>
-                  <div style={{ width:90,flexShrink:0,height:44,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.3)' }}>
+                  <div style={{ width:90,flexShrink:0,height:44,display:'flex',flexDirection:'column',alignItems:'flex-end',justifyContent:'center',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.3)',gap:1 }}>
                     <span style={{ fontFamily:'monospace',fontSize:15,fontWeight:700,color:'#4ADE80' }}>{grandTotal.toLocaleString('ro-RO')}</span>
+                    {grandNet!==grandTotal&&<span style={{ fontFamily:'monospace',fontSize:11,fontWeight:600,color:'rgba(253,224,71,0.8)' }}>≈{grandNet.toLocaleString('ro-RO')} net</span>}
                   </div>
                 </div>
               )
@@ -707,6 +724,7 @@ Echipa AB Homes Iași`)}
       {calcSel.size>0&&(()=>{
         const items=Array.from(calcSel.values())
         const total=Math.round(items.reduce((s,r)=>s+proRataMonth(r,year,month),0))
+        const totalNet=Math.round(items.reduce((s,r)=>s+netAprox(proRataMonth(r,year,month),r.canal),0))
         return(
           <div style={{ position:'fixed',bottom:24,right:24,zIndex:500,background:'rgba(6,14,26,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(74,222,128,0.45)',borderRadius:14,padding:'14px 16px',minWidth:280,maxWidth:340,boxShadow:'0 12px 40px rgba(0,0,0,0.7)' }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
@@ -714,18 +732,28 @@ Echipa AB Homes Iași`)}
               <button onClick={()=>setCalcSel(new Map())} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.35)',fontSize:18,lineHeight:1,padding:'0 2px' }}>✕</button>
             </div>
             <div style={{ display:'flex',flexDirection:'column',gap:5,maxHeight:260,overflowY:'auto',marginBottom:10 }}>
-              {items.map(r=>(
-                <div key={r.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'rgba(255,255,255,0.04)' }}>
-                  <span style={{ fontSize:11,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace',flexShrink:0 }}>{r.apartament?.nota||'—'}</span>
-                  <span style={{ fontSize:10,color:'rgba(159,215,255,0.45)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{r.data_checkin?.slice(5)} → {r.data_checkout?.slice(5)}</span>
-                  <span style={{ fontSize:12,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',flexShrink:0 }}>{proRataMonth(r,year,month).toLocaleString('ro-RO')}</span>
-                  <button onClick={()=>setCalcSel(p=>{const n=new Map(p);n.delete(r.id);return n})} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.25)',fontSize:15,lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
-                </div>
-              ))}
+              {items.map(r=>{
+                const brut=proRataMonth(r,year,month)
+                const net=netAprox(brut,r.canal)
+                return(
+                  <div key={r.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,background:'rgba(255,255,255,0.04)' }}>
+                    <span style={{ fontSize:11,fontWeight:700,color:'#7BC8FF',fontFamily:'monospace',flexShrink:0 }}>{r.apartament?.nota||'—'}</span>
+                    <span style={{ fontSize:10,color:'rgba(159,215,255,0.45)',flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{r.data_checkin?.slice(5)} → {r.data_checkout?.slice(5)}</span>
+                    <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0 }}>
+                      <span style={{ fontSize:12,fontWeight:700,fontFamily:'monospace',color:'#4ADE80' }}>{brut.toLocaleString('ro-RO')}</span>
+                      {esteplatforma(r.canal)&&<span style={{ fontSize:10,fontFamily:'monospace',color:'rgba(253,224,71,0.7)' }}>≈{net.toLocaleString('ro-RO')}</span>}
+                    </div>
+                    <button onClick={()=>setCalcSel(p=>{const n=new Map(p);n.delete(r.id);return n})} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.25)',fontSize:15,lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
+                  </div>
+                )
+              })}
             </div>
             <div style={{ borderTop:'1px solid rgba(74,222,128,0.25)',paddingTop:10,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
               <span style={{ fontSize:11,color:'rgba(159,215,255,0.4)' }}>{items.length} rezervări selectate</span>
-              <span style={{ fontSize:20,fontWeight:800,fontFamily:'monospace',color:'#4ADE80' }}>{total.toLocaleString('ro-RO')} <span style={{ fontSize:12,fontWeight:600,color:'rgba(74,222,128,0.6)' }}>RON</span></span>
+              <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1 }}>
+                <span style={{ fontSize:20,fontWeight:800,fontFamily:'monospace',color:'#4ADE80' }}>{total.toLocaleString('ro-RO')} <span style={{ fontSize:12,fontWeight:600,color:'rgba(74,222,128,0.6)' }}>RON</span></span>
+                {totalNet!==total&&<span style={{ fontSize:13,fontWeight:700,fontFamily:'monospace',color:'rgba(253,224,71,0.85)' }}>≈{totalNet.toLocaleString('ro-RO')} <span style={{ fontSize:10,fontWeight:600,color:'rgba(253,224,71,0.5)' }}>net</span></span>}
+              </div>
             </div>
           </div>
         )
