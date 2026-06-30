@@ -9,8 +9,15 @@ export const metadata: Metadata = {
       { url: '/favicon-staff.svg', type: 'image/svg+xml' },
       { url: '/favicon-staff.png', sizes: '180x180', type: 'image/png' },
     ],
+    apple: [{ url: '/favicon-staff.png', sizes: '180x180', type: 'image/png' }],
     shortcut: '/favicon-staff.svg',
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'AB Homes Staff',
+  },
+  themeColor: '#060D1A',
 }
 
 export const viewport: Viewport = {

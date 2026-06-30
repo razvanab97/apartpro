@@ -1,8 +1,10 @@
 {
-  "name": "ApartPro \u2014 AB Homes",
+  "id": "/",
+  "name": "ApartPro — AB Homes",
   "short_name": "ApartPro",
-  "description": "ERP management AB Homes Ia\u0219i",
+  "description": "ERP management AB Homes Iași",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0A1628",
   "theme_color": "#0A1628",

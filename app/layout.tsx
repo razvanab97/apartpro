@@ -29,11 +29,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ro">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-        <link rel="manifest" href="/manifest.json"/>
-        <meta name="apple-mobile-web-app-capable" content="yes"/>
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-        <meta name="apple-mobile-web-app-title" content="AB Homes"/>
-        <meta name="theme-color" content="#0A1628"/>
       </head>
       <body style={{background:'#060E1A'}}>
         <div style={{position:'fixed',inset:0,zIndex:-2,background:'linear-gradient(160deg,#040C18 0%,#071220 40%,#0A1828 100%)'}}/>
