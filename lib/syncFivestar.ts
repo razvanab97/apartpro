@@ -168,11 +168,11 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
 
         const idExternValid = idExtern && idExtern.length > 2
         const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata').ilike('observatii', `%${idExtern}%`).limit(1)
+          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii').ilike('observatii', `%${idExtern}%`).limit(1)
           : { data: [] }
         const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata')
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii')
             .eq('apartament_id', aptId)
             .eq('data_checkin', checkin)
             .eq('data_checkout', checkout)
@@ -180,16 +180,29 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           : { data: [] }
         const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
           : { data: [] }
 
         const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
 
         if (existing && existing.length > 0) {
           const updates: any = {}
+          // Cand gasim prin date (nu prin ID extern), e posibil sa fie o rezervare noua pe acelasi slot
+          // (ex: veche anulata, noua activa cu alt client) → actualizam si datele clientului + ID extern
+          const foundById = (existingById?.length ?? 0) > 0
+          if (!foundById) {
+            // Gasit prin date/nume: actualizam clientul si ID-ul extern daca difera
+            if (numeClient && existing[0].nume_client !== numeClient) updates.nume_client = numeClient
+            if (canal && existing[0].canal !== canal) updates.canal = canal
+            if (idExternValid) {
+              const obsActuala = existing[0].observatii || ''
+              if (!obsActuala.includes(idExtern)) {
+                updates.observatii = [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ')
+              }
+            }
+          }
           if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
-          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma, mutare pe alt apartament -
-          // altfel rezervarea ramane "confirmata"/cu datele vechi la nesfarsit chiar daca s-a modificat pe 5SD
+          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma, mutare pe alt apartament
           if (aptId && existing[0].apartament_id !== aptId) updates.apartament_id = aptId
           if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
           if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
