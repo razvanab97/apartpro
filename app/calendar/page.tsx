@@ -130,6 +130,12 @@ export default function CalendarPage() {
     const d = isoDate(year, month, day)
     return rez.find(r => r.apartament?.id === aptId && r.data_checkin <= d && r.data_checkout > d) || null
   }
+  // Rezervari care au checkin luna trecuta si checkout exact pe ziua 1 a lunii curente
+  // (invizibile in getRez standard, dar trebuie afisate ca "coada" pe ziua 1)
+  function getRezTail(aptId:string): Rez|null {
+    const firstDay = isoDate(year, month, 1)
+    return rez.find(r => r.apartament?.id === aptId && r.data_checkin < firstDay && r.data_checkout === firstDay) || null
+  }
 
   function prevMonth(){ if(month===0){setMonth(11);setYear(y=>y-1)}else setMonth(m=>m-1); clearSel() }
   function nextMonth(){ if(month===11){setMonth(0);setYear(y=>y+1)}else setMonth(m=>m+1); clearSel() }
@@ -353,10 +359,12 @@ export default function CalendarPage() {
                     const isT = ds===today
                     const inSel = isInSel(apt.id,d)
 
+                    const tail    = d===1 && !r ? getRezTail(apt.id) : null
+                    const rOrTail = r || tail
                     const isStart = r && (r.data_checkin===ds || d===1)
                     const nextR   = d<days ? getRez(apt.id,d+1) : null
                     const isEnd   = r && nextR?.id!==r.id
-                    const style   = cs(r?.canal||'direct')
+                    const style   = cs(rOrTail?.canal||'direct')
 
                     let cellBg = 'transparent'
                     if(inSel)    cellBg = 'rgba(124,58,237,0.2)'
@@ -420,6 +428,19 @@ export default function CalendarPage() {
                           )
                         })()}
 
+                        {/* Coada rezervare cross-luna: checkout exact pe ziua 1 */}
+                        {tail && (()=>{
+                          const tailStyle = cs(tail.canal||'direct')
+                          return (
+                            <div data-rez="1"
+                              onClick={e=>{ e.stopPropagation(); if(viewMode==='rez') setTooltip(t=>t?.rez.id===tail.id?null:{rez:tail,x:e.clientX,y:e.clientY}) }}
+                              style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:0, width:COL_W/2-2, background:tailStyle.bg, borderRadius:'0 6px 6px 0', display:'flex', alignItems:'center', justifyContent:'flex-end', paddingRight:4, overflow:'hidden', cursor:'pointer', zIndex:4, opacity:0.7 }}
+                              onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.2)')}
+                              onMouseLeave={e=>(e.currentTarget.style.filter='')}>
+                              <span style={{ fontSize:9, color:'rgba(255,255,255,0.8)', whiteSpace:'nowrap' }}>CO</span>
+                            </div>
+                          )
+                        })()}
                         {isT && <div style={{ position:'absolute', top:0, bottom:0, left:'50%', width:2, background:'rgba(74,222,128,0.5)', zIndex:10, pointerEvents:'none' }}/>}
                         {isWk && !isT && <div style={{ position:'absolute', top:0, bottom:0, left:0, width:1, background:'rgba(107,142,255,0.15)', zIndex:3, pointerEvents:'none' }}/>}
                         {selectedDay===d && <div style={{ position:'absolute', top:0, bottom:0, left:0, right:0, background:'rgba(123,200,255,0.07)', borderLeft:'2px solid rgba(123,200,255,0.5)', zIndex:8, pointerEvents:'none' }}/>}
