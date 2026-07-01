@@ -40,6 +40,10 @@ export function parseCanal(s: string): string {
   return 'direct'
 }
 
+function normCod(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim()
+}
+
 export const ALIAS_MAP: Record<string, string> = {
   'MV07': 'VM07', 'VMV07': 'VM07', 'VILA07': 'VM07', 'VILA 07': 'VM07',
   'VILA PACURARI': 'VM07', 'VM 07': 'VM07',
@@ -48,12 +52,12 @@ export const ALIAS_MAP: Record<string, string> = {
   'PEACEFUL COPOU RETREAT': 'CG40', 'PEACEFUL COPOU': 'CG40', 'APARTAMENT 40': 'CG40',
   'COPOU RETREAT': 'CG40',
   'GREEN STATION': 'GS08', 'GS 08': 'GS08',
-  'HIDEOUT': 'HD02', 'HD 02': 'HD02',
-  'LAZAR COMFY': 'L83', 'LAZAR': 'L83',
-  'PALAS SKYNEST': 'L88', 'SKYNEST': 'L88',
-  'PALAS RETREAT': 'L94',
-  'AIRY PALAS': 'L99',
-  'MINT LOFT': 'N32', 'MINT LOFT COPOU': 'N32',
+  'HIDEOUT': 'HD02', 'HD 02': 'HD02', 'HIDEOUT ROZELOR': 'HD02',
+  'LAZAR COMFY': 'L83', 'LAZAR': 'L83', 'L 83': 'L83', 'LAZĂR COMFY': 'L83', 'LAZĂR': 'L83', 'LAZR': 'L83',
+  'PALAS SKYNEST': 'L88', 'SKYNEST': 'L88', 'L 88': 'L88',
+  'PALAS RETREAT': 'L94', 'L 94': 'L94',
+  'AIRY PALAS': 'L99', 'L 99': 'L99',
+  'MINT LOFT': 'N32', 'MINT LOFT COPOU': 'N32', 'N 32': 'N32',
   'NEWTON URBAN': 'NT9', 'NEWTON': 'NT9', 'NT 9': 'NT9',
 }
 
@@ -124,25 +128,31 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           b.id_camera, b.camera, b.unitate, b.room,
           b.numar_camera, b.tip_camera, b.cod_camera,
           b.denumire_camera, b.name, b.room_name
-        ].filter(Boolean).map((s:any) => String(s).toUpperCase().trim())
+        ].filter(Boolean).map((s:any) => normCod(String(s)))
+
+        // Construieste si un aptByNota cu chei normalizate (fara diacritice) pentru matching robust
+        const aptByNotaNorm: Record<string,string> = {}
+        for (const [k, v] of Object.entries(aptByNota)) aptByNotaNorm[normCod(k)] = v
+        const aliasNorm: Record<string,string> = {}
+        for (const [k, v] of Object.entries(ALIAS_MAP)) aliasNorm[normCod(k)] = v
 
         for (const cod of codCandidati) {
-          if (aptByNota[cod]) { aptId = aptByNota[cod]; break }
-          if (ALIAS_MAP[cod] && aptByNota[ALIAS_MAP[cod]]) { aptId = aptByNota[ALIAS_MAP[cod]]; break }
+          if (aptByNotaNorm[cod]) { aptId = aptByNotaNorm[cod]; break }
+          if (aliasNorm[cod] && aptByNotaNorm[aliasNorm[cod]]) { aptId = aptByNotaNorm[aliasNorm[cod]]; break }
           const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
           if (matches) {
             for (const m of matches) {
-              if (aptByNota[m]) { aptId = aptByNota[m]; break }
-              if (ALIAS_MAP[m] && aptByNota[ALIAS_MAP[m]]) { aptId = aptByNota[ALIAS_MAP[m]]; break }
+              if (aptByNotaNorm[m]) { aptId = aptByNotaNorm[m]; break }
+              if (aliasNorm[m] && aptByNotaNorm[aliasNorm[m]]) { aptId = aptByNotaNorm[aliasNorm[m]]; break }
             }
             if (aptId) break
           }
-          for (const [alias, codCorect] of Object.entries(ALIAS_MAP)) {
-            if (cod.includes(alias) && aptByNota[codCorect]) { aptId = aptByNota[codCorect]; break }
+          for (const [alias, codCorect] of Object.entries(aliasNorm)) {
+            if (cod.includes(alias) && aptByNotaNorm[normCod(codCorect)]) { aptId = aptByNotaNorm[normCod(codCorect)]; break }
           }
           if (aptId) break
-          for (const nota of Object.keys(aptByNota)) {
-            if (cod.includes(nota)) { aptId = aptByNota[nota]; break }
+          for (const nota of Object.keys(aptByNotaNorm)) {
+            if (cod.includes(nota)) { aptId = aptByNotaNorm[nota]; break }
           }
           if (aptId) break
         }
@@ -204,6 +214,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             nume_client: numeClient,
             data_checkin: checkin,
             data_checkout: checkout,
+            nr_nopti: checkin && checkout ? Math.round((new Date(checkout).getTime()-new Date(checkin).getTime())/86400000) : null,
             suma_incasata: totalPret,
             valoare_bruta: totalPret,
             moneda: 'RON',
