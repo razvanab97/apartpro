@@ -82,6 +82,7 @@ export default function CuratenePage() {
     const primaZi = `${an}-${luna}-01`
     const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
     supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
+    supabase.from('staff_casa').select('*').gte('data',primaZi).lte('data',ultimaZi).order('created_at',{ascending:false}).then(({data:d})=>setCasaLuna(d||[]))
     loadRapoarte(rapoarteLuna)
     if(!mesajGataLoaded){
       supabase.from('sabloane_mesaje').select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle().then(({data:d})=>{
