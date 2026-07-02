@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase as sb } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
 const T1  = '3cvbat7zgH54347Artesrtyrt466yj57se4lkg4'
 const T   = 'Y5paEuVpBBop8pHG1qLVF6ymqCdPkzlncJGK0L50'
 const API = 'https://www.5stardesk.ro/apih.php'
 const CRON_SECRET = process.env.CRON_SECRET || 'apartpro-cron-2026'
+
+// Pe server folosim direct URL-ul Supabase, nu proxy-ul browser
+const sb = createClient(
+  'https://lsmraxevzkmupaidianv.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+)
 
 function normCod(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim()
