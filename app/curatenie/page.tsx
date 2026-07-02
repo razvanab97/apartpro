@@ -41,6 +41,7 @@ export default function CuratenePage() {
   const [showAddProblema, setShowAddProblema] = useState(false)
   const [rapoarteData, setRapoarteData] = useState<any[]>([])
   const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
+  const [casaLuna, setCasaLuna] = useState<any[]>([])
   const [costPerCuratenie, setCostPerCuratenie] = useState(150)
   const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
   const [filtruAptRaport, setFiltruAptRaport] = useState<Set<string>>(new Set())
