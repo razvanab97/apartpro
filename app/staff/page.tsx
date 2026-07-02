@@ -34,6 +34,7 @@ export default function StaffPage() {
   const [newProbStaff, setNewProbStaff] = useState({titlu:'',descriere:'',prioritate:'normal',apartament_id:''})
   const [savingProb, setSavingProb] = useState(false)
   const [distante, setDistante] = useState<Record<string,number>>({})
+  const [coRamasite, setCoRamasite] = useState<{rez:any, dataCheckout:string}[]>([])
   const [setariComb, setSetariComb] = useState({pret: 8.5, consum: 7.5})
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
 
@@ -75,12 +76,15 @@ export default function StaffPage() {
     setLoadError(false)
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
-      const [a, co, ci, ocp, st] = await Promise.all([
+      const past7 = addDays(data, -7)
+      const [a, co, ci, ocp, st, coTrecut, stTrecut] = await Promise.all([
         supabase.from('apartamente').select('id,nota,nume,cod_locker').eq('status','activ').order('nota'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('curatenie_status').select('*').eq('data',data),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').gte('data_checkout',past7).lt('data_checkout',data).neq('status_rezervare','anulata'),
+        supabase.from('curatenie_status').select('apartament_id,data,status').gte('data',past7).lt('data',data),
       ])
       setApts(a.data||[])
       setCheckouts(co.data||[])
@@ -89,6 +93,13 @@ export default function StaffPage() {
       const m:Record<string,any>={}
       ;(st.data||[]).forEach((s:any)=>{ m[s.apartament_id]=s })
       setStatusuri(m)
+      // Checkouturi din zilele trecute fara curatenie finalizata
+      const DONE = new Set(['gata','anulat','doar_lenjerie'])
+      const stTrecutMap:Record<string,string>={}
+      ;(stTrecut.data||[]).forEach((s:any)=>{ stTrecutMap[`${s.apartament_id}_${s.data}`]=s.status })
+      const ramasite:(typeof coRamasite) = []
+      ;(coTrecut.data||[]).forEach((rez:any)=>{ if(!DONE.has(stTrecutMap[`${rez.apartament_id}_${rez.data_checkout}`]||'')) ramasite.push({rez,dataCheckout:rez.data_checkout}) })
+      setCoRamasite(ramasite)
       // setEliberatIds din curatenie_status
       clearTimeout(bail)
     }catch(err){console.error('[staff load]',err);clearTimeout(bail);setLoadError(true)}
@@ -348,6 +359,31 @@ export default function StaffPage() {
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
 
         {/* CURATENIE */}
+        {tab==='curatenie'&&coRamasite.length>0&&(
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:10,fontWeight:700,color:'rgba(248,113,113,0.7)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:6,paddingLeft:2}}>⚠ Neterminate din zilele trecute</div>
+            {coRamasite.map(({rez,dataCheckout})=>{
+              const apt=apts.find((a:any)=>a.id===rez.apartament_id)
+              if(!apt) return null
+              const zileAgo=Math.round((new Date(data).getTime()-new Date(dataCheckout).getTime())/86400000)
+              return (
+                <div key={rez.id} style={{borderRadius:12,padding:'10px 14px',border:'1.5px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.06)',marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:18}}>⏳</span>
+                  <div style={{flex:1}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:15,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
+                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{apt.nume}</span>
+                      {apt.cod_locker&&<span style={{fontSize:11,fontWeight:700,color:'#FCD34D',fontFamily:'monospace',background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.25)',padding:'2px 7px',borderRadius:6,letterSpacing:1}}>🔒{apt.cod_locker}</span>}
+                    </div>
+                    <div style={{fontSize:11,color:'rgba(248,113,113,0.7)',marginTop:3}}>
+                      Checkout {zileAgo===1?'ieri':zileAgo===2?'alaltaieri':`acum ${zileAgo} zile`} ({dataCheckout}) — {rez.nume_client}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
         {tab==='curatenie'&&(
           deCuratat.length===0
           ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>

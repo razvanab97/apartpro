@@ -227,7 +227,6 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             nume_client: numeClient,
             data_checkin: checkin,
             data_checkout: checkout,
-            nr_nopti: checkin && checkout ? Math.round((new Date(checkout).getTime()-new Date(checkin).getTime())/86400000) : null,
             suma_incasata: totalPret,
             valoare_bruta: totalPret,
             moneda: 'RON',
