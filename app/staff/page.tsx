@@ -276,7 +276,9 @@ export default function StaffPage() {
   const coSet = new Set(checkouts.map((r:any)=>r.apartament_id))
   const ciSet = new Set(checkins.map((r:any)=>r.apartament_id))
   const ocpSet = new Set(ocupate.map((r:any)=>r.apartament_id))
-  const deCuratat = apts.filter(a=>coSet.has(a.id))
+  // Apartamente cu curatenie neterminata din zilele trecute (excluse din lista de azi deja)
+  const ramasiteMap = new Map(coRamasite.filter(({rez})=>!coSet.has(rez.apartament_id)).map(({rez,dataCheckout})=>[rez.apartament_id,{rez,dataCheckout}]))
+  const deCuratat = apts.filter(a=>coSet.has(a.id)||ramasiteMap.has(a.id))
   const disponibile = apts.filter(a=>!ocpSet.has(a.id))
   const ocupateApts = apts.filter(a=>ocpSet.has(a.id))
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
@@ -359,31 +361,6 @@ export default function StaffPage() {
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
 
         {/* CURATENIE */}
-        {tab==='curatenie'&&coRamasite.length>0&&(
-          <div style={{marginBottom:10}}>
-            <div style={{fontSize:10,fontWeight:700,color:'rgba(248,113,113,0.7)',textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:6,paddingLeft:2}}>⚠ Neterminate din zilele trecute</div>
-            {coRamasite.map(({rez,dataCheckout})=>{
-              const apt=apts.find((a:any)=>a.id===rez.apartament_id)
-              if(!apt) return null
-              const zileAgo=Math.round((new Date(data).getTime()-new Date(dataCheckout).getTime())/86400000)
-              return (
-                <div key={rez.id} style={{borderRadius:12,padding:'10px 14px',border:'1.5px solid rgba(248,113,113,0.35)',background:'rgba(248,113,113,0.06)',marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
-                  <span style={{fontSize:18}}>⏳</span>
-                  <div style={{flex:1}}>
-                    <div style={{display:'flex',alignItems:'center',gap:6}}>
-                      <span style={{fontSize:15,fontWeight:800,color:'#F0F8FF'}}>{apt.nota}</span>
-                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{apt.nume}</span>
-                      {apt.cod_locker&&<span style={{fontSize:11,fontWeight:700,color:'#FCD34D',fontFamily:'monospace',background:'rgba(252,211,77,0.12)',border:'1px solid rgba(252,211,77,0.25)',padding:'2px 7px',borderRadius:6,letterSpacing:1}}>🔒{apt.cod_locker}</span>}
-                    </div>
-                    <div style={{fontSize:11,color:'rgba(248,113,113,0.7)',marginTop:3}}>
-                      Checkout {zileAgo===1?'ieri':zileAgo===2?'alaltaieri':`acum ${zileAgo} zile`} ({dataCheckout}) — {rez.nume_client}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
         {tab==='curatenie'&&(
           deCuratat.length===0
           ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>
@@ -393,9 +370,10 @@ export default function StaffPage() {
             const isInceput=st?.status==='inceput'
             const co=checkouts.find((r:any)=>r.apartament_id===apt.id)
             const ci=checkins.find((r:any)=>r.apartament_id===apt.id)
+            const ramasita=ramasiteMap.get(apt.id)
             const isOpen=expandedApt===apt.id
-            const borderColor=isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
-            const bgColor=isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
+            const borderColor=ramasita&&!isGata?'rgba(248,113,113,0.4)':isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
+            const bgColor=ramasita&&!isGata?'rgba(248,113,113,0.06)':isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
             return (
               <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'1.5px solid '+borderColor,background:bgColor,marginBottom:8,width:'100%'}}>
                 <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
@@ -413,6 +391,7 @@ export default function StaffPage() {
                       {!isInceput&&!isGata&&st?.status!=='anulat'&&st?.status!=='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(255,255,255,0.05)',color:'rgba(159,215,255,0.4)',border:'1px solid rgba(255,255,255,0.08)'}}>Neinceput</span>}
                       {st?.status==='anulat'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>Anulat</span>}
                       {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>Doar lenjerie</span>}
+                      {ramasita&&!isGata&&(()=>{const z=Math.round((new Date(data).getTime()-new Date(ramasita.dataCheckout).getTime())/86400000);return<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.2)',color:'#FCA5A5',fontWeight:700,border:'1px solid rgba(248,113,113,0.4)'}}>{'⚠ '+(z===1?'de ieri':z===2?'de alaltaieri':`de ${z} zile`)}</span>})()}
                       {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
                       {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>{'Eliberat'+(st.eliberat_la?' '+st.eliberat_la:'')}</span>}
                     </div>
