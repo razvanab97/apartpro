@@ -81,15 +81,15 @@ export default function StaffPage() {
     setLoadError(false)
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
-      const past7 = addDays(data, -7)
+      const past2 = addDays(data, -2)  // doar ieri + alaltaieri
       const [a, co, ci, ocp, st, coTrecut, stTrecut] = await Promise.all([
         supabase.from('apartamente').select('id,nota,nume,cod_locker').eq('status','activ').order('nota'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('curatenie_status').select('*').eq('data',data),
-        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').gte('data_checkout',past7).lt('data_checkout',data).neq('status_rezervare','anulata'),
-        supabase.from('curatenie_status').select('apartament_id,data,status').gte('data',past7).lt('data',data),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').gte('data_checkout',past2).lt('data_checkout',data).neq('status_rezervare','anulata'),
+        supabase.from('curatenie_status').select('apartament_id,data,status').gte('data',past2).lt('data',data),
       ])
       setApts(a.data||[])
       setCheckouts(co.data||[])
@@ -99,7 +99,7 @@ export default function StaffPage() {
       ;(st.data||[]).forEach((s:any)=>{ m[s.apartament_id]=s })
       setStatusuri(m)
       // Checkouturi din zilele trecute fara curatenie finalizata
-      const DONE = new Set(['gata','anulat','doar_lenjerie'])
+      const DONE = new Set(['gata','anulat','doar_lenjerie','liber'])
       const stTrecutMap:Record<string,string>={}
       ;(stTrecut.data||[]).forEach((s:any)=>{ stTrecutMap[`${s.apartament_id}_${s.data}`]=s.status })
       const ramasite:(typeof coRamasite) = []
