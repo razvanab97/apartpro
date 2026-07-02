@@ -12,7 +12,8 @@ const todayStr = () => new Date().toISOString().slice(0,10)
 function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||0; if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
 function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 
-type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar'
+type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar' | 'casa'
+type TipCasa = 'incasare' | 'cheltuiala'
 
 export default function StaffPage() {
   const [auth, setAuth] = useState(false)
@@ -35,6 +36,9 @@ export default function StaffPage() {
   const [savingProb, setSavingProb] = useState(false)
   const [distante, setDistante] = useState<Record<string,number>>({})
   const [coRamasite, setCoRamasite] = useState<{rez:any, dataCheckout:string}[]>([])
+  const [casaEntries, setCasaEntries] = useState<any[]>([])
+  const [casaForm, setCasaForm] = useState<{open:boolean, tip:TipCasa, suma:string, motiv:string}>({open:false, tip:'incasare', suma:'', motiv:''})
+  const [casaSaving, setCasaSaving] = useState(false)
   const [setariComb, setSetariComb] = useState({pret: 8.5, consum: 7.5})
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
 
@@ -47,6 +51,7 @@ export default function StaffPage() {
     load()
     if(tab==='calendar') loadCalendar()
     if(tab==='probleme') loadProblemeStaff()
+    if(tab==='casa') loadCasa()
   }, [auth, data, tab])
 
   useEffect(() => {
@@ -114,6 +119,31 @@ export default function StaffPage() {
       .lte('data_checkin', to).gt('data_checkout', from)
       .neq('status_rezervare','anulata')
     setCalData(rez||[])
+  }
+
+  async function loadCasa() {
+    const { data: rows } = await supabase.from('staff_casa')
+      .select('*').eq('data', data).order('created_at', {ascending: false})
+    setCasaEntries(rows || [])
+  }
+
+  async function saveCasa() {
+    const suma = parseFloat(casaForm.suma.replace(',', '.'))
+    if (!suma || suma <= 0 || !casaForm.motiv.trim()) return
+    setCasaSaving(true)
+    const { error } = await supabase.from('staff_casa').insert({
+      data: data, tip: casaForm.tip, suma, motiv: casaForm.motiv.trim(),
+    })
+    setCasaSaving(false)
+    if (!error) {
+      setCasaForm(f => ({...f, open:false, suma:'', motiv:''}))
+      loadCasa()
+    }
+  }
+
+  async function deleteCasaEntry(id: string) {
+    await supabase.from('staff_casa').delete().eq('id', id)
+    loadCasa()
   }
 
   async function loadProblemeStaff() {
@@ -283,11 +313,14 @@ export default function StaffPage() {
   const ocupateApts = apts.filter(a=>ocpSet.has(a.id))
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
 
+  const casaTotalIn  = casaEntries.filter((e:any)=>e.tip==='incasare').reduce((s:number,e:any)=>s+Number(e.suma),0)
+  const casaTotalOut = casaEntries.filter((e:any)=>e.tip==='cheltuiala').reduce((s:number,e:any)=>s+Number(e.suma),0)
   const TABS: {k:Tab,l:string,n?:number}[] = [
     {k:'curatenie', l:'🧹', n:deCuratat.length},
     {k:'disponibile', l:'🟢', n:disponibile.length},
     {k:'ocupate', l:'🔴', n:ocupateApts.length},
     {k:'probleme', l:'🔧'},
+    {k:'casa', l:'💰'},
     {k:'calendar', l:'📅'},
   ]
 
@@ -538,6 +571,89 @@ export default function StaffPage() {
               )
             })}
             {problemeStaff.length===0&&<div style={{textAlign:'center',padding:'24px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>Nicio problema deschisa</div>}
+          </div>
+        )}
+
+        {/* CASĂ */}
+        {tab==='casa'&&(
+          <div>
+            {/* Summary */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
+              {[
+                {l:'Încasat',v:casaTotalIn,c:'#4ADE80',bg:'rgba(74,222,128,0.08)',border:'rgba(74,222,128,0.2)'},
+                {l:'Cheltuit',v:casaTotalOut,c:'#F87171',bg:'rgba(248,113,113,0.08)',border:'rgba(248,113,113,0.2)'},
+                {l:'Sold',v:casaTotalIn-casaTotalOut,c:casaTotalIn-casaTotalOut>=0?'#7BC8FF':'#FCD34D',bg:'rgba(77,163,255,0.08)',border:'rgba(77,163,255,0.2)'},
+              ].map(s=>(
+                <div key={s.l} style={{borderRadius:10,padding:'10px 8px',background:s.bg,border:'1px solid '+s.border,textAlign:'center'}}>
+                  <div style={{fontSize:16,fontWeight:800,fontFamily:'monospace',color:s.c}}>{s.v.toFixed(0)}</div>
+                  <div style={{fontSize:10,color:'rgba(159,215,255,0.45)',marginTop:2}}>{s.l} RON</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Butoane add */}
+            <div style={{display:'flex',gap:8,marginBottom:14}}>
+              <button onClick={()=>setCasaForm({open:true,tip:'incasare',suma:'',motiv:''})}
+                style={{flex:1,padding:'13px',borderRadius:12,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:14,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                + Încasare
+              </button>
+              <button onClick={()=>setCasaForm({open:true,tip:'cheltuiala',suma:'',motiv:''})}
+                style={{flex:1,padding:'13px',borderRadius:12,border:'1px solid rgba(248,113,113,0.4)',background:'rgba(248,113,113,0.1)',color:'#F87171',fontSize:14,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                − Cheltuială
+              </button>
+            </div>
+
+            {/* Lista */}
+            {casaEntries.length===0
+              ? <div style={{textAlign:'center',padding:'40px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>Nicio înregistrare azi</div>
+              : casaEntries.map((e:any)=>{
+                  const isIn = e.tip==='incasare'
+                  return (
+                    <div key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 13px',borderRadius:10,background:isIn?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:'1px solid '+(isIn?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'),marginBottom:7}}>
+                      <span style={{fontSize:18,flexShrink:0}}>{isIn?'📥':'📤'}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:isIn?'#4ADE80':'#F87171'}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON</div>
+                        <div style={{fontSize:11,color:'rgba(159,215,255,0.55)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.motiv}</div>
+                      </div>
+                      <div style={{fontSize:10,color:'rgba(159,215,255,0.3)',flexShrink:0,textAlign:'right'}}>
+                        {new Date(e.created_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}
+                      </div>
+                      <button onClick={()=>deleteCasaEntry(e.id)}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.2)',fontSize:18,padding:'2px 4px',flexShrink:0,lineHeight:1}}>×</button>
+                    </div>
+                  )
+                })
+            }
+
+            {/* Modal adaugare */}
+            {casaForm.open&&(
+              <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'flex-end'}} onClick={()=>setCasaForm(f=>({...f,open:false}))}>
+                <div style={{background:'#0B1220',border:'1px solid rgba(159,215,255,0.15)',borderRadius:'20px 20px 0 0',padding:`20px 20px calc(20px + env(safe-area-inset-bottom, 0px))`,width:'100%'}} onClick={e=>e.stopPropagation()}>
+                  <div style={{width:36,height:4,background:'rgba(159,215,255,0.15)',borderRadius:2,margin:'0 auto 16px'}}/>
+                  <div style={{fontSize:16,fontWeight:700,color:casaForm.tip==='incasare'?'#4ADE80':'#F87171',marginBottom:16}}>
+                    {casaForm.tip==='incasare'?'📥 Încasare cash':'📤 Cheltuială cash'}
+                  </div>
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginBottom:5}}>Sumă (RON)</div>
+                    <input type="number" inputMode="decimal" placeholder="0" value={casaForm.suma}
+                      onChange={e=>setCasaForm(f=>({...f,suma:e.target.value}))}
+                      style={{width:'100%',background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:10,color:'#F0F8FF',fontSize:24,fontWeight:700,padding:'12px 14px',outline:'none',boxSizing:'border-box' as const,fontFamily:'monospace'}}
+                      autoFocus/>
+                  </div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginBottom:5}}>Motiv / Descriere</div>
+                    <input type="text" placeholder={casaForm.tip==='incasare'?'ex: plata cash rezervare':'ex: consumabile curăță'} value={casaForm.motiv}
+                      onChange={e=>setCasaForm(f=>({...f,motiv:e.target.value}))}
+                      onKeyDown={e=>{if(e.key==='Enter') saveCasa()}}
+                      style={{width:'100%',background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:10,color:'#F0F8FF',fontSize:14,padding:'12px 14px',outline:'none',boxSizing:'border-box' as const}}/>
+                  </div>
+                  <button onClick={saveCasa} disabled={casaSaving||!casaForm.suma||!casaForm.motiv}
+                    style={{width:'100%',padding:'15px',borderRadius:13,border:'none',background:casaForm.tip==='incasare'?'#22C55E':'#EF4444',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',opacity:!casaForm.suma||!casaForm.motiv?0.5:1}}>
+                    {casaSaving?'Se salvează...':'Salvează'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
