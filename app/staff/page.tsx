@@ -206,6 +206,16 @@ export default function StaffPage() {
     if (status==='inceput') update.ora_inceput = ora
     if (status==='gata') { update.ora_gata = ora; update.ora_inceput = prev.ora_inceput||ora }
     await supabase.from('curatenie_status').upsert(update, {onConflict:'apartament_id,data'})
+    // Daca e o curatenie ramasita din alta zi, marcheaza si data originala ca finalizata
+    // ca sa nu mai apara in lista de neterminate a doua zi
+    const ramasitaInfo = ramasiteMap.get(aptId)
+    if (ramasitaInfo && status === 'gata') {
+      await supabase.from('curatenie_status').upsert(
+        { apartament_id: aptId, data: ramasitaInfo.dataCheckout, status: 'gata', ora_gata: ora },
+        { onConflict: 'apartament_id,data' }
+      )
+      setCoRamasite(prev => prev.filter(({rez}) => rez.apartament_id !== aptId))
+    }
     const newStatusuri = {...statusuri, [aptId]: {...statusuri[aptId], ...update}}
     setStatusuri(newStatusuri)
 

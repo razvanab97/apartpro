@@ -665,6 +665,48 @@ export default function CuratenePage() {
           </div>
         </div>
 
+        {/* CASĂ STAFF */}
+        {(()=>{
+          const totalIn=casaLuna.filter(e=>e.tip==='incasare').reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const totalOut=casaLuna.filter(e=>e.tip==='cheltuiala').reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const sold=totalIn-totalOut
+          const [an,lun]=rapoarteLuna.split('-')
+          const lunaLabel=['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][Number(lun)]
+          return(
+            <div style={{background:'rgba(252,211,77,0.04)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:10,padding:'14px 16px',marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#FCD34D',marginBottom:12,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>💰 Casă staff — {lunaLabel} {an}</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:casaLuna.length?12:0}}>
+                {[
+                  {l:'Total încasat',v:totalIn,c:'#4ADE80'},
+                  {l:'Total cheltuit',v:totalOut,c:'#F87171'},
+                  {l:'Sold',v:sold,c:sold>=0?'#7BC8FF':'#FCD34D'},
+                ].map(s=>(
+                  <div key={s.l} style={{textAlign:'center',padding:'10px 6px',borderRadius:8,background:'rgba(14,27,43,0.5)'}}>
+                    <div style={{fontSize:18,fontWeight:800,fontFamily:'monospace',color:s.c}}>{s.v.toFixed(0)}</div>
+                    <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginTop:2}}>{s.l} RON</div>
+                  </div>
+                ))}
+              </div>
+              {casaLuna.length>0&&(
+                <div style={{display:'flex',flexDirection:'column' as const,gap:5}}>
+                  {casaLuna.map((e:any)=>{
+                    const isIn=e.tip==='incasare'
+                    return(
+                      <div key={e.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:7,background:isIn?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:'1px solid '+(isIn?'rgba(74,222,128,0.12)':'rgba(248,113,113,0.12)')}}>
+                        <span style={{fontSize:11,flexShrink:0}}>{isIn?'📥':'📤'}</span>
+                        <span style={{fontSize:11,fontWeight:700,color:isIn?'#4ADE80':'#F87171',fontFamily:'monospace',flexShrink:0}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON</span>
+                        <span style={{fontSize:11,color:'rgba(159,215,255,0.6)',flex:1}}>{e.motiv}</span>
+                        <span style={{fontSize:10,color:'rgba(159,215,255,0.3)',flexShrink:0}}>{e.data} {new Date(e.created_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {casaLuna.length===0&&<div style={{textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)',padding:'8px 0'}}>Nicio înregistrare în această lună</div>}
+            </div>
+          )
+        })()}
+
         {/* Mesaj WA gata curatenie */}
         <div style={{background:'rgba(74,222,128,0.05)',border:'1px solid rgba(74,222,128,0.15)',borderRadius:10,padding:'14px 16px',marginBottom:8}}>
           <div style={{fontSize:11,fontWeight:600,color:'#4ADE80',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>📱 Mesaj WA — Curățenie gata</div>
