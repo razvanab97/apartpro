@@ -162,8 +162,14 @@ export default function DashboardPage() {
   const [gataMesajeTrimise,setGataMesajeTrimise]=useState(()=>{
     try{return localStorage.getItem('gata_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
+  const [casaAzi,setCasaAzi]=useState<any[]>([])
 
-  useEffect(()=>{loadData()},[])
+  useEffect(()=>{
+    loadData()
+    const today0=new Date().toISOString().split('T')[0]
+    supabase.from('staff_casa').select('*').eq('data',today0).order('created_at',{ascending:false})
+      .then(({data:d})=>setCasaAzi(d||[]))
+  },[])
 
   const now=new Date()
   const luna=now.getMonth()+1
@@ -602,6 +608,41 @@ export default function DashboardPage() {
             </div>
           ))}
         </div>
+
+        {/* ══ CASĂ STAFF AZI ══ */}
+        {casaAzi.length>0&&(()=>{
+          const totalIn=casaAzi.filter((e:any)=>e.tip==='incasare').reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const totalOut=casaAzi.filter((e:any)=>e.tip==='cheltuiala').reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const sold=totalIn-totalOut
+          return(
+            <div style={{...panel,borderTop:'2px solid rgba(253,224,71,0.6)'}}>
+              <div style={panelHdr}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                  <span style={{fontSize:13}}>💰</span>
+                  <span style={{...panelTitle,color:'#FCD34D'}}>Casă staff azi</span>
+                </div>
+                <div style={{display:'flex',gap:12,fontSize:11,fontFamily:'monospace'}}>
+                  <span style={{color:'#4ADE80'}}>+{totalIn.toFixed(0)}</span>
+                  <span style={{color:'#F87171'}}>−{totalOut.toFixed(0)}</span>
+                  <span style={{color:sold>=0?'#7BC8FF':'#FCD34D',fontWeight:700}}>={sold.toFixed(0)} RON</span>
+                </div>
+              </div>
+              <div style={{padding:'8px 10px',display:'flex',flexDirection:'column',gap:5}}>
+                {casaAzi.map((e:any)=>{
+                  const isIn=e.tip==='incasare'
+                  return(
+                    <div key={e.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,background:isIn?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:'1px solid '+(isIn?'rgba(74,222,128,0.15)':'rgba(248,113,113,0.15)')}}>
+                      <span style={{fontSize:12}}>{isIn?'📥':'📤'}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:isIn?'#4ADE80':'#F87171',fontFamily:'monospace',flexShrink:0}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON</span>
+                      <span style={{fontSize:11,color:'rgba(159,215,255,0.6)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.motiv}</span>
+                      <span style={{fontSize:10,color:'rgba(159,215,255,0.3)',flexShrink:0}}>{new Date(e.created_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         <div className="prognoza-card">
         {/* ══ PROGNOZA LUNA VIITOARE ══ */}
