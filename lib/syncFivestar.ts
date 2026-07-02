@@ -187,9 +187,14 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
 
         if (existing && existing.length > 0) {
           const updates: any = {}
-          // Cand gasim prin date (nu prin ID extern), e posibil sa fie o rezervare noua pe acelasi slot
-          // (ex: veche anulata, noua activa cu alt client) → actualizam si datele clientului + ID extern
           const foundById = (existingById?.length ?? 0) > 0
+          // Daca gasim prin date (nu ID) si rezervarea curenta e anulata → NU suprascriem
+          // (slotul poate fi ocupat de o rezervare activa noua pentru un alt client)
+          if (!foundById && statusNou === 'anulata') {
+            res.skipped++
+            res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — anulata gasita prin date, slot poate fi activ cu alt client` })
+            continue
+          }
           if (!foundById) {
             // Gasit prin date/nume: actualizam clientul si ID-ul extern daca difera
             if (numeClient && existing[0].nume_client !== numeClient) updates.nume_client = numeClient
