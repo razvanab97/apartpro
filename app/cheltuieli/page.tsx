@@ -30,6 +30,15 @@ function getDueForApt(aptNota: string|null, colKey: string, defaultDue: number):
 }
 const UTIL_KEYS = UTIL_COLS.map(c=>c.key)
 
+// Calculeaza payload-ul de status + data_plata pentru orice bifa de platit din pagina
+// (grid utilitati, costuri extra, costuri flat, obligatii fiscale, plata partiala, restante)
+function withPaidDate(prevStatus: string|undefined, nextStatus: string): { status: string; data_plata?: string|null } {
+  if (nextStatus === 'validat') {
+    return prevStatus === 'validat' ? { status: nextStatus } : { status: nextStatus, data_plata: new Date().toISOString().slice(0,10) }
+  }
+  return { status: nextStatus, data_plata: null }
+}
+
 const FISCAL_ROWS = [
   { key:'tva_intracomunitar', label:'TVA Intracomunitar',  due:25 },
   { key:'impozit_profit',     label:'Impozit pe profit',   due:25 },
@@ -250,18 +259,18 @@ export default function CheltuieliPage(){
     const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .gte('data',`${an}-${pad(luna)}-01`)
         .lte('data',ultimaZiLuna),
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .gte('data',`${prevAn}-${pad(prevLuna)}-01`)
         .lte('data',ultimaZiPrevLuna)
         .eq('status','nevalidat'),
       // Toate facturile reale (cu fisier_url) neplatite - orice data
       // Acestea trebuie sa apara intotdeauna in cheltuieli pana sunt platite
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .not('fisier_url','is',null)
         .eq('status','nevalidat'),
     ])
@@ -364,7 +373,7 @@ export default function CheltuieliPage(){
       ))
       // Reincarca chData dupa mutare
       const {data: chDataNew} = await supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url')
+        .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .gte('data',`${an}-${pad(luna)}-01`)
         .lte('data',ultimaZiLuna)
       // Adauga in u cele mutate
@@ -538,12 +547,12 @@ export default function CheltuieliPage(){
 
     if(suma >= valoareTotala){
       // Plata integrala
-      await supabase.from('cheltuieli').update({ status:'validat' }).eq('id', item.id)
+      await supabase.from('cheltuieli').update(withPaidDate(item.status,'validat')).eq('id', item.id)
       show('success', `Plată integrală ${suma} RON ✓`)
     } else {
       // Plata partiala: marcheaza originalul ca validat cu suma platita, creaza rest
       await supabase.from('cheltuieli').update({
-        status: 'validat',
+        ...withPaidDate(item.status,'validat'),
         valoare: suma,
         nota: (item.nota||'') + ` | Plătit parțial: ${suma} RON din ${valoareTotala} RON`
       }).eq('id', item.id)
@@ -594,6 +603,7 @@ export default function CheltuieliPage(){
     if(!item){show('error','Introdu mai întâi valoarea');return}
     const k=aptId+col; setSaving(k)
     const ns=item.status==='validat'?'nevalidat':'validat'
+    const payload=withPaidDate(item.status,ns)
 
     // Daca nu are ID, creeaza in DB
     if(!item.id){
@@ -604,17 +614,18 @@ export default function CheltuieliPage(){
         apartament_id:aptId,categorie:col,descriere:colDef.label,
         valoare:Number(item.valoare)||0,
         data:`${an}-${pad(luna)}-${pad(dueDay)}`,
-        status:ns,suportat_de:'proprietar',tva:0,
+        suportat_de:'proprietar',tva:0,
+        ...payload,
       }).select().single()
       if(insErr){show('error',insErr.message);setSaving(null);return}
-      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...newItem,status:ns}}}}))
+      setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...newItem,...payload}}}}))
       show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
       setSaving(null); return
     }
 
-    const {error}=await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
+    const {error}=await supabase.from('cheltuieli').update(payload).eq('id',item.id)
     if(error){show('error',error.message);setSaving(null);return}
-    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,status:ns}}}}))
+    setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...item,...payload}}}}))
     show('success',ns==='validat'?'✓ Plătit':'↩ Neachitat')
     setSaving(null)
   }
@@ -682,8 +693,9 @@ export default function CheltuieliPage(){
 
   async function toggleExtra(aptId:string,item:any){
     const ns=item.status==='validat'?'nevalidat':'validat'
-    await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
-    setExtras(e=>({...e,[aptId]:e[aptId].map(i=>i.id===item.id?{...i,status:ns}:i)}))
+    const payload=withPaidDate(item.status,ns)
+    await supabase.from('cheltuieli').update(payload).eq('id',item.id)
+    setExtras(e=>({...e,[aptId]:e[aptId].map(i=>i.id===item.id?{...i,...payload}:i)}))
   }
 
   async function deleteExtra(aptId:string,item:any){
@@ -693,8 +705,9 @@ export default function CheltuieliPage(){
 
   async function toggleFlat(item:any,setter:React.Dispatch<React.SetStateAction<any[]>>){
     const ns=item.status==='validat'?'nevalidat':'validat'
-    await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
-    setter((l:any[])=>l.map(i=>i.id===item.id?{...i,status:ns}:i))
+    const payload=withPaidDate(item.status,ns)
+    await supabase.from('cheltuieli').update(payload).eq('id',item.id)
+    setter((l:any[])=>l.map(i=>i.id===item.id?{...i,...payload}:i))
   }
   async function deleteFlat(item:any,setter:React.Dispatch<React.SetStateAction<any[]>>){
     await supabase.from('cheltuieli').delete().eq('id',item.id)
@@ -761,8 +774,9 @@ export default function CheltuieliPage(){
     const item=fiscal[key]
     if(!item){show('error','Introdu mai întâi valoarea');return}
     const ns=item.status==='validat'?'nevalidat':'validat'
-    await supabase.from('cheltuieli').update({status:ns}).eq('id',item.id)
-    setFiscal(f=>({...f,[key]:{...item,status:ns}}))
+    const payload=withPaidDate(item.status,ns)
+    await supabase.from('cheltuieli').update(payload).eq('id',item.id)
+    setFiscal(f=>({...f,[key]:{...item,...payload}}))
   }
 
   /* ── calcule ─────────────────────────────────────────────────────────── */
@@ -823,8 +837,8 @@ export default function CheltuieliPage(){
   const extraApts  =apts.filter(a=>!AB_CODES.includes(a.nota)&&!isAbExtra(a))
 
   /* ── Pill cheltuiala ─────────────────────────────────────────────────── */
-  function CostPill({label,val,due,paid,onToggle,onEdit,onDelete,busy}:{
-    label:string;val:number;due:string;paid:boolean;
+  function CostPill({label,val,due,paid,dataPlata,onToggle,onEdit,onDelete,busy}:{
+    label:string;val:number;due:string;paid:boolean;dataPlata?:string|null;
     onToggle:()=>void;onEdit?:()=>void;onDelete?:()=>void;busy?:boolean
   }){
     return(
@@ -840,6 +854,9 @@ export default function CheltuieliPage(){
               scad. {due}{!paid&&ds.color==='#F87171'?' ⚠':!paid&&ds.color==='#FCD34D'?' ●':''}
             </div>
           )})()}
+          {paid&&dataPlata&&(
+            <div style={{fontSize:9,marginTop:2,color:'rgba(74,222,128,0.5)'}}>din {dataPlata}</div>
+          )}
         </div>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12}}>
           <div style={{display:'flex',gap:4}}>
@@ -867,8 +884,8 @@ export default function CheltuieliPage(){
   }
 
   /* ── CostPill cu Muta la alta luna ──────────────────────────────────── */
-  function CostPillWithMove({label,val,due,paid,onToggle,onEdit,onPlataPart,onMove,lunaC,anC,busy}:{
-    label:string;val:number;due:string;paid:boolean;
+  function CostPillWithMove({label,val,due,paid,dataPlata,onToggle,onEdit,onPlataPart,onMove,lunaC,anC,busy}:{
+    label:string;val:number;due:string;paid:boolean;dataPlata?:string|null;
     onToggle:()=>void;onEdit?:()=>void;onPlataPart?:(s:number)=>void;
     onMove:(l:number,a:number)=>void;lunaC:number;anC:number;busy?:boolean
   }){
@@ -908,6 +925,9 @@ export default function CheltuieliPage(){
               {depasit?'⚠ depășit ':aproape?'⏰ ':''}{paid?'✓ ':''}{due?`scad. ${due}`:'—'}
             </div>
           })()}
+          {paid&&dataPlata&&(
+            <div style={{fontSize:9,marginTop:2,color:'rgba(74,222,128,0.5)'}}>din {dataPlata}</div>
+          )}
         </div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
           <div style={{display:'flex',gap:4}}>
@@ -1066,7 +1086,7 @@ export default function CheltuieliPage(){
                     ) : (
                       <div style={{position:'relative' as const}}>
                         <CostPillWithMove
-                          label={col.label} val={val} due={due} paid={isPaid}
+                          label={col.label} val={val} due={due} paid={isPaid} dataPlata={item?.data_plata}
                           busy={saving===apt.id+col.key}
                           onToggle={()=>toggleUtil(apt.id,col.key)}
                           onEdit={()=>{setEditVal(val>0?String(val):'');setEditCell({aptId:apt.id,col:col.key});setEditCol(col.key)}}
@@ -1114,7 +1134,8 @@ export default function CheltuieliPage(){
                               const itemId = it.id
                               if(!itemId){show('error','Eroare: ID lipsă');return}
                               setSaving('restant-'+itemId)
-                              const {error}=await supabase.from('cheltuieli').update({status:'validat'}).eq('id',itemId)
+                              const payload=withPaidDate(it.status,'validat')
+                              const {error}=await supabase.from('cheltuieli').update(payload).eq('id',itemId)
                               setSaving(null)
                               if(error){show('error','DB: '+error.message);return}
                               // Update local state
@@ -1126,7 +1147,7 @@ export default function CheltuieliPage(){
                                 if(!colEntry)return prev
                                 if(Array.isArray(colEntry.restante)){
                                   colEntry.restante=colEntry.restante.map((r:any)=>
-                                    r.id===itemId?{...r,status:'validat'}:r
+                                    r.id===itemId?{...r,...payload}:r
                                   )
                                 }
                                 return next
@@ -1149,7 +1170,7 @@ export default function CheltuieliPage(){
                 return(
                   <CostPill key={item.id}
                     label={item.descriere} val={Number(item.valoare)}
-                    due={item.data?.slice(8,10)+'/'+item.data?.slice(5,7)} paid={isPaid}
+                    due={item.data?.slice(8,10)+'/'+item.data?.slice(5,7)} paid={isPaid} dataPlata={item.data_plata}
                     onToggle={()=>toggleExtra(apt.id,item)}
                     onDelete={()=>deleteExtra(apt.id,item)}
                   />
@@ -1193,6 +1214,9 @@ export default function CheltuieliPage(){
             {Number(item.valoare).toLocaleString('ro-RO')}<span style={{fontSize:11,fontWeight:400,marginLeft:4,color:'rgba(159,215,255,0.4)'}}>RON</span>
           </div>
           <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginTop:4}}>{item.data||'—'}</div>
+          {paid&&item.data_plata&&(
+            <div style={{fontSize:9,marginTop:2,color:'rgba(74,222,128,0.5)'}}>din {item.data_plata}</div>
+          )}
         </div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12}}>
           <button onClick={()=>deleteFlat(item,setter)} style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.15)',borderRadius:6,cursor:'pointer',padding:'4px 6px',display:'flex',color:'rgba(248,113,113,0.5)'}}>
@@ -1342,7 +1366,7 @@ export default function CheltuieliPage(){
                 )
                 return(
                   <CostPill key={ft.key}
-                    label={ft.label} val={val} due={`${ft.due}/${pad(luna)}`} paid={isPaid}
+                    label={ft.label} val={val} due={`${ft.due}/${pad(luna)}`} paid={isPaid} dataPlata={item?.data_plata}
                     onToggle={()=>toggleFisc(ft.key)}
                     onEdit={()=>{setEditFiscVal(val>0?String(val):'');setEditFisc(ft.key)}}
                   />
