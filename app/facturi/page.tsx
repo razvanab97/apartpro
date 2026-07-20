@@ -19,6 +19,17 @@ const FURNIZOR_COLORS: Record<string,string> = {
   'Alta':         '#94A3B8',
 }
 
+// Categoriile reale din tabela `cheltuieli` (folosite in arhiva salvata)
+const CATEGORIE_ARHIVA: Record<string,{label:string,color:string}> = {
+  eon_curent: { label:'E.ON Energie', color:'#FCD34D' },
+  eon_gaz:    { label:'E.ON Gaz',     color:'#FB923C' },
+  eon_duo:    { label:'E.ON DUO',     color:'#FBBF24' },
+  asociatie:  { label:'Asociație',    color:'#A78BFA' },
+  salubris:   { label:'Salubris',     color:'#4ADE80' },
+  internet:   { label:'Internet',     color:'#38BDF8' },
+  alte:       { label:'Alte',         color:'#94A3B8' },
+}
+
 type Factura = {
   id?: string
   filename: string
@@ -61,7 +72,7 @@ export default function FacturiPage() {
   const [searchArchiva, setSearchArchiva] = useState<string>('')
   const [syncingAll, setSyncingAll] = useState(false)
   const [editArchiva, setEditArchiva] = useState<any>(null)
-  const [editArchivaForm, setEditArchivaForm] = useState({apartament_id:'',valoare:'',status:'nevalidat',data:''})
+  const [editArchivaForm, setEditArchivaForm] = useState({apartament_id:'',valoare:'',status:'nevalidat',data:'',categorie:'alte'})
   const { toast, show } = useToast()
 
   useEffect(() => {
@@ -226,12 +237,21 @@ export default function FacturiPage() {
   async function saveEditArchiva() {
     if (!editArchiva) return
     setSaving('archiva-edit')
-    const { error } = await supabase.from('cheltuieli').update({
+    const eraValidat = editArchiva.status === 'validat'
+    const devineValidat = editArchivaForm.status === 'validat'
+    const updates: {
+      apartament_id: string | null; valoare: number; status: string; data: string; categorie: string; data_plata?: string | null
+    } = {
       apartament_id: editArchivaForm.apartament_id || null,
       valoare: parseFloat(editArchivaForm.valoare) || editArchiva.valoare,
       status: editArchivaForm.status,
       data: editArchivaForm.data || editArchiva.data,
-    }).eq('id', editArchiva.id)
+      categorie: editArchivaForm.categorie || editArchiva.categorie,
+    }
+    // Inregistreaza automat data cand factura e marcata ca platita (tranzitie nevalidat -> validat)
+    if (devineValidat && !eraValidat) updates.data_plata = new Date().toISOString().slice(0,10)
+    else if (!devineValidat) updates.data_plata = null
+    const { error } = await supabase.from('cheltuieli').update(updates).eq('id', editArchiva.id)
     if (error) show('error', error.message)
     else { show('success', 'Factură actualizată'); setEditArchiva(null); loadSaved() }
     setSaving(null)
@@ -280,7 +300,7 @@ export default function FacturiPage() {
     const bail = setTimeout(()=>{ setLoadingArchiva(false); setLoadError(true) }, 20000)
     try{
       const { data, error } = await supabase.from('cheltuieli')
-        .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
+        .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url,data_plata')
         .not('fisier_url', 'is', null)
         .order('data', { ascending: false })
       if(error) throw error
@@ -845,14 +865,26 @@ export default function FacturiPage() {
                       {items.map((f,i) => (
                         <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 100px 110px 90px auto', padding:'10px 16px', borderBottom: i<items.length-1?'1px solid rgba(100,160,255,0.05)':'none', alignItems:'center', gap:10 }}>
                           <div>
-                            <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
+                            <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' as const }}>
+                              <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
+                              {CATEGORIE_ARHIVA[f.categorie] && (
+                                <span style={{ fontSize:9, fontWeight:600, padding:'1px 6px', borderRadius:4, background:`${CATEGORIE_ARHIVA[f.categorie].color}18`, color:CATEGORIE_ARHIVA[f.categorie].color, border:`1px solid ${CATEGORIE_ARHIVA[f.categorie].color}40`, textTransform:'uppercase' as const, letterSpacing:'.03em' }}>
+                                  {CATEGORIE_ARHIVA[f.categorie].label}
+                                </span>
+                              )}
+                            </div>
                             {f.nota && <div style={{ fontSize:10, color:'rgba(159,215,255,0.3)', marginTop:1 }}>{f.nota}</div>}
                           </div>
                           <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{f.data}</div>
                           <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF', fontFamily:'monospace' }}>{Number(f.valoare).toLocaleString('ro-RO')} RON</div>
-                          <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500, textAlign:'center' as const }}>
-                            {f.status==='validat'?'Plătit':'Neachitat'}
-                          </span>
+                          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                            <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500, textAlign:'center' as const }}>
+                              {f.status==='validat'?'Plătit':'Neachitat'}
+                            </span>
+                            {f.status==='validat' && f.data_plata && (
+                              <span style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>din {f.data_plata}</span>
+                            )}
+                          </div>
                           <div style={{ display:'flex', gap:5, alignItems:'center' }}>
                             {f.fisier_url && (<>
                               <a href={f.fisier_url} target="_blank" rel="noopener"
@@ -867,7 +899,7 @@ export default function FacturiPage() {
                               </a>
                             </>)}
                             <button
-                              onClick={() => { setEditArchiva(f); setEditArchivaForm({apartament_id:f.apartament_id||'',valoare:String(f.valoare),status:f.status,data:f.data||''}) }}
+                              onClick={() => { setEditArchiva(f); setEditArchivaForm({apartament_id:f.apartament_id||'',valoare:String(f.valoare),status:f.status,data:f.data||'',categorie:f.categorie||'alte'}) }}
                               title="Editează"
                               style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(252,211,77,0.25)', background:'rgba(252,211,77,0.08)', color:'#FCD34D', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13 }}>
                               ✏️
@@ -909,6 +941,16 @@ export default function FacturiPage() {
                 <option value="">— Fără apartament —</option>
                 {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=>(
                   <option key={a.id} value={a.id}>{a.nota ? `[${a.nota}] ` : ''}{a.nume}{a.status!=='activ'?' ⚠':''}</option>
+                ))}
+              </select>
+            </div>
+            {/* Categorie */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Categorie</div>
+              <select value={editArchivaForm.categorie} onChange={e=>setEditArchivaForm(f=>({...f,categorie:e.target.value}))}
+                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}>
+                {Object.entries(CATEGORIE_ARHIVA).map(([key,{label}])=>(
+                  <option key={key} value={key}>{label}</option>
                 ))}
               </select>
             </div>

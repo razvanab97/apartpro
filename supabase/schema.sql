@@ -117,6 +117,7 @@ create table if not exists cheltuieli (
   procent_impartit numeric(5,2) default 50,
   atasament_url text,
   status text default 'validat', -- nevalidat | validat | inclus_decont
+  data_plata date, -- data la care factura a fost marcata ca platita (validat)
   nota text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
