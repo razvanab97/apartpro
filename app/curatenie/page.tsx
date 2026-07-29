@@ -574,6 +574,48 @@ export default function CuratenePage() {
           <button onClick={waEchipa} disabled={locatii.length===0} style={{flex:2,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'10px',borderRadius:9,border:'0.5px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:600,cursor:'pointer',opacity:locatii.length===0?0.4:1}}>
             <MessageCircle size={15}/>WA echipă
           </button>
+          <button onClick={resetZi} title="Resetează progresul zilei" style={{flexShrink:0,width:40,padding:'10px',borderRadius:9,border:'0.5px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.06)',color:'#F87171',fontSize:15,cursor:'pointer'}}>
+            🔄
+          </button>
+        </div>
+
+        {/* Mesaj general pentru ziua selectata */}
+        <div style={{marginBottom:14}}>
+          {mesajZi&&!editingMesajZi&&(
+            <div style={{display:'flex',alignItems:'flex-start',gap:8,padding:'11px 12px',borderRadius:10,background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.25)'}}>
+              <span style={{fontSize:15,flexShrink:0}}>📣</span>
+              <div style={{flex:1,fontSize:13,color:'#93C5FD',whiteSpace:'pre-wrap' as const}}>{mesajZi.text}</div>
+              <div style={{display:'flex',gap:4,flexShrink:0}}>
+                <button onClick={()=>{setMesajZiDraft(mesajZi.text);setEditingMesajZi(true)}}
+                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(147,197,253,0.6)',fontSize:13,padding:'2px 4px'}}>✎</button>
+                <button onClick={deleteMesajZi}
+                  style={{background:'none',border:'none',cursor:'pointer',color:'rgba(147,197,253,0.4)',fontSize:16,padding:'2px 4px',lineHeight:1}}>×</button>
+              </div>
+            </div>
+          )}
+          {!mesajZi&&!editingMesajZi&&(
+            <button onClick={()=>{setMesajZiDraft('');setEditingMesajZi(true)}}
+              style={{width:'100%',padding:'9px',borderRadius:9,border:'1px dashed rgba(77,163,255,0.3)',background:'transparent',color:'rgba(147,197,253,0.7)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              📣 Adaugă mesaj general pentru {fmtDate(selectedDate)}
+            </button>
+          )}
+          {editingMesajZi&&(
+            <div style={{padding:10,borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.2)'}}>
+              <textarea value={mesajZiDraft} onChange={e=>setMesajZiDraft(e.target.value)} rows={2} autoFocus
+                placeholder="ex: Astăzi nu vine Ana, are liber. Verificați cu Maria."
+                style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(77,163,255,0.25)',borderRadius:8,padding:'8px 10px',color:'#E8F4FF',fontSize:13,outline:'none',resize:'vertical' as const,fontFamily:'inherit',marginBottom:8}}/>
+              <div style={{display:'flex',gap:8}}>
+                <button onClick={saveMesajZi} disabled={savingMesajZi||!mesajZiDraft.trim()}
+                  style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:'#4DA3FF',color:'#0E1B2B',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!mesajZiDraft.trim()?0.5:1}}>
+                  {savingMesajZi?'Se salvează...':'Salvează'}
+                </button>
+                <button onClick={()=>setEditingMesajZi(false)}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Anulează
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {loading&&<div style={{color:'rgba(159,215,255,0.4)',fontSize:14,padding:'30px',textAlign:'center'}}>Se încarcă...</div>}

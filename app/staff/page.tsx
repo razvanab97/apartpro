@@ -42,6 +42,7 @@ export default function StaffPage() {
   const [setariComb, setSetariComb] = useState({pret: 8.5, consum: 7.5})
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
   const [baniPending, setBaniPending] = useState<Record<string,any>>({})
+  const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
 
   useEffect(() => {
     if (document.cookie.includes('staff_auth=1111')) setAuth(true)
@@ -51,6 +52,7 @@ export default function StaffPage() {
     if (!auth) return
     load()
     loadBaniPending()
+    loadMesajZi()
     if(tab==='calendar') loadCalendar()
     if(tab==='probleme') loadProblemeStaff()
     if(tab==='casa') loadCasa()
@@ -58,7 +60,7 @@ export default function StaffPage() {
 
   useEffect(() => {
     if (!auth) return
-    const i = setInterval(loadBaniPending, 30000)
+    const i = setInterval(()=>{ loadBaniPending(); loadMesajZi() }, 30000)
     return ()=>clearInterval(i)
   }, [auth, data])
 
@@ -68,6 +70,11 @@ export default function StaffPage() {
     const m:Record<string,any>={}
     ;(rows||[]).forEach((r:any)=>{ m[r.apartament_id]=r })
     setBaniPending(m)
+  }
+
+  async function loadMesajZi() {
+    const { data: row } = await supabase.from('mesaje_zi').select('id,text').eq('data', data).maybeSingle()
+    setMesajZi(row||null)
   }
 
 
@@ -428,8 +435,14 @@ export default function StaffPage() {
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'12px 14px 20px',WebkitOverflowScrolling:'touch' as any}}>
 
         {/* CURATENIE */}
-        {tab==='curatenie'&&(
-          deCuratat.length===0
+        {tab==='curatenie'&&(<>
+          {mesajZi&&(
+            <div style={{display:'flex',alignItems:'flex-start',gap:8,padding:'12px 14px',borderRadius:12,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.3)',marginBottom:10}}>
+              <span style={{fontSize:17,flexShrink:0}}>📣</span>
+              <div style={{flex:1,fontSize:13,fontWeight:600,color:'#93C5FD',whiteSpace:'pre-wrap' as const}}>{mesajZi.text}</div>
+            </div>
+          )}
+          {deCuratat.length===0
           ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>
           : deCuratat.map(apt=>{
             const st=statusuri[apt.id]
@@ -544,8 +557,8 @@ export default function StaffPage() {
                 )}
               </div>
             )
-          })
-        )}
+          })}
+        </>)}
 
         {/* LIBERE */}
         {tab==='disponibile'&&(disponibile.length===0
