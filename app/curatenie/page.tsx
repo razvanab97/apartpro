@@ -24,6 +24,7 @@ function fmtDate(iso:string){
 }
 
 function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
+function ultimele3(phone:string){ const c=phone.replace(/\D/g,''); return c.slice(-3) }
 
 export default function CuratenePage() {
   const todayIso = new Date().toISOString().split('T')[0]
@@ -57,6 +58,7 @@ export default function CuratenePage() {
   const [savingMesajGata, setSavingMesajGata] = useState(false)
   const [mesajGataLoaded, setMesajGataLoaded] = useState(false)
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
+  const [expandedOre, setExpandedOre] = useState<string|null>(null)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -481,118 +483,137 @@ export default function CuratenePage() {
           const isCOCI=!!(coRez&&ciRez), isCIonly=!!(!coRez&&ciRez)
           const col=isCOCI?'#F87171':isCIonly?'#4ADE80':'#FCD34D'
           const badge=isCOCI?'CO→CI':isCIonly?'CI':'CO'
+          const st = staffStatus[apt?.id]
+          const special = (st?.status === 'anulat' || st?.status === 'doar_lenjerie') ? st?.status : null
+          const oreSetate = !!(oraSpeciala[aptId]?.co_tarziu || oraSpeciala[aptId]?.ci_devreme)
+          const oreOpen = expandedOre===aptId
           return(
-            <div key={aptId} style={{...s.card,border:`0.5px solid ${col}25`,background:`${col}05`}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4,flexWrap:'wrap' as const}}>
-                  {apt?.nota&&<span style={{fontSize:11,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 8px',borderRadius:4,fontFamily:'monospace'}}>{apt.nota}</span>}
-                  {apt?.id&&staffStatus[apt.id]&&(
-                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:5,fontWeight:600,
-                      background:staffStatus[apt.id].status==='gata'?'rgba(74,222,128,0.15)':'rgba(251,146,60,0.15)',
-                      border:`1px solid ${staffStatus[apt.id].status==='gata'?'rgba(74,222,128,0.3)':'rgba(251,146,60,0.3)'}`,
-                      color:staffStatus[apt.id].status==='gata'?'#4ADE80':'#FB923C'}}>
-                      {staffStatus[apt.id].status==='gata'?`✅ Gata ${staffStatus[apt.id].ora_gata||''}`:staffStatus[apt.id].status==='inceput'?`🧹 început ${staffStatus[apt.id].ora_inceput||''}`:'' }
-                    </span>
-                  )}
-                  {/* Buton Eliberat */}
-                  {apt?.id&&(
-                    <button onClick={()=>toggleEliberat(apt.id, apt?.nota||'')}
-                      style={{padding:'2px 10px',borderRadius:5,border:`1px solid ${eliberat.has(apt.id)?'rgba(74,222,128,0.4)':'rgba(252,211,77,0.3)'}`,
-                        background:eliberat.has(apt.id)?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.08)',
-                        color:eliberat.has(apt.id)?'#4ADE80':'#FCD34D',
-                        fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                      {eliberat.has(apt.id)?'✓ Eliberat':'🚪 Eliberat?'}
-                    </button>
-                  )}
-                  {/* Buton Anulare / Doar lenjerie */}
-                  {apt?.id&&(()=>{
-                    const st = staffStatus[apt.id]
-                    const special = (st?.status === 'anulat' || st?.status === 'doar_lenjerie') ? st?.status : null
-                    return (
-                      <div style={{display:'flex',gap:4}}>
-                        <button onClick={()=>setSpecialStatus(apt.id, '', special==='anulat'?null:'anulat')}
-                          style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
-                            border:`1px solid ${special==='anulat'?'rgba(248,113,113,0.5)':'rgba(248,113,113,0.2)'}`,
-                            background:special==='anulat'?'rgba(248,113,113,0.15)':'rgba(248,113,113,0.06)',
-                            color:special==='anulat'?'#F87171':'rgba(248,113,113,0.5)'}}>
-                          {special==='anulat'?'✕ Anulat':'✕ Anulează'}
-                        </button>
-                        <button onClick={()=>setSpecialStatus(apt.id, '', special==='doar_lenjerie'?null:'doar_lenjerie')}
-                          style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700,cursor:'pointer',
-                            border:`1px solid ${special==='doar_lenjerie'?'rgba(167,139,250,0.5)':'rgba(167,139,250,0.2)'}`,
-                            background:special==='doar_lenjerie'?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.06)',
-                            color:special==='doar_lenjerie'?'#A78BFA':'rgba(167,139,250,0.5)'}}>
-                          {special==='doar_lenjerie'?'🛏 Doar lenjerie':'🛏 Lenjerie'}
-                        </button>
-                      </div>
-                    )
-                  })()}
-                  <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
-                  <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>
+            <div key={aptId} style={{background:'rgba(20,35,58,0.6)',borderRadius:14,marginBottom:10,overflow:'hidden',border:'0.5px solid rgba(159,215,255,0.1)',borderLeft:`3px solid ${col}`}}>
+
+              {/* Header: cod + nume + badge */}
+              <div style={{padding:'12px 14px 6px',display:'flex',alignItems:'center',gap:8}}>
+                {apt?.nota&&<span style={{fontSize:11,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'3px 8px',borderRadius:6,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                <span style={{fontSize:15,fontWeight:600,color:'#E8F4FF',flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{apt?.nume||'—'}</span>
+                <span style={{fontSize:10,fontWeight:700,padding:'3px 9px',borderRadius:20,color:col,background:`${col}18`,border:`0.5px solid ${col}40`,flexShrink:0}}>{badge}</span>
+              </div>
+
+              {/* Status curatenie (gata / inceput / anulat / doar lenjerie) */}
+              {(st?.status==='gata'||st?.status==='inceput'||special)&&(
+                <div style={{padding:'0 14px 8px',display:'flex',gap:6,flexWrap:'wrap' as const}}>
+                  {st?.status==='gata'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(74,222,128,0.15)',border:'1px solid rgba(74,222,128,0.3)',color:'#4ADE80'}}>✅ Gata {st.ora_gata||''}</span>}
+                  {st?.status==='inceput'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.3)',color:'#FB923C'}}>🧹 Început {st.ora_inceput||''}</span>}
+                  {special==='anulat'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',color:'#F87171'}}>✕ Anulat</span>}
+                  {special==='doar_lenjerie'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.3)',color:'#A78BFA'}}>🛏 Doar lenjerie</span>}
                 </div>
+              )}
+
+              {/* Oaspeti: check-out / check-in */}
+              <div style={{padding:'0 14px 10px',display:'flex',flexDirection:'column',gap:8}}>
                 {coRez&&(
-                  <div style={{fontSize:12,color:'#F87171',marginBottom:2,display:'flex',alignItems:'center',flexWrap:'wrap' as const}}>
-                    ↗ Check-out: <span style={{fontWeight:600,marginLeft:4}}>{coRez.nume_client}</span>
-                    {coRez.telefon_client&&<a href={'tel:'+coRez.telefon_client} style={{marginLeft:8,color:'#F87171',textDecoration:'none',fontSize:12}}>📞 Sună</a>}
+                  <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(248,113,113,0.07)',borderRadius:10}}>
+                    <span style={{fontSize:15,flexShrink:0}}>↗</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:10,color:'rgba(248,113,113,0.65)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'0.4px'}}>Check-out</div>
+                      <div style={{fontSize:13,fontWeight:600,color:'#FCA5A5',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{coRez.nume_client}</div>
+                    </div>
+                    {coRez.telefon_client&&<a href={'tel:'+coRez.telefon_client} style={{flexShrink:0,padding:'6px 10px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#FCA5A5',textDecoration:'none',fontSize:12,fontWeight:600}}>📞 ···{ultimele3(coRez.telefon_client)}</a>}
                   </div>
                 )}
                 {ciRez&&(
-                  <div>
-                    <div style={{fontSize:12,color:'#4ADE80',marginBottom:2,display:'flex',alignItems:'center',flexWrap:'wrap' as const}}>
-                      ↙ Check-in: <span style={{fontWeight:600,marginLeft:4}}>{ciRez.nume_client}</span>
-                      {ciRez.telefon_client&&<a href={'tel:'+ciRez.telefon_client} style={{marginLeft:8,color:'#4ADE80',textDecoration:'none',fontSize:12}}>📞 Sună</a>}
-                      {ciRez.telefon_client&&<button onClick={()=>buildWaGataInfo(apt,ciRez)}
-                        style={{marginLeft:8,padding:'2px 9px',borderRadius:20,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                        📱 WA
-                      </button>}
+                  <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(74,222,128,0.07)',borderRadius:10}}>
+                    <span style={{fontSize:15,flexShrink:0}}>↙</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:10,color:'rgba(74,222,128,0.65)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'0.4px'}}>Check-in</div>
+                      <div style={{fontSize:13,fontWeight:600,color:'#86EFAC',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{ciRez.nume_client}</div>
                     </div>
-                    {(()=>{
-                      const pers = Number(ciRez.nr_persoane)||2
-                      const lenActual = l
-                      return (
-                        <div style={{fontSize:11,color:'rgba(74,222,128,0.6)',marginTop:2}}>✓ {lenActual} {lenActual===1?'lenjerie':'lenjerii'} ({pers} pers.)</div>
-                      )
-                    })()}
+                    {ciRez.telefon_client&&(
+                      <div style={{display:'flex',gap:6,flexShrink:0}}>
+                        <a href={'tel:'+ciRez.telefon_client} style={{padding:'6px 10px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#86EFAC',textDecoration:'none',fontSize:12,fontWeight:600}}>📞 ···{ultimele3(ciRez.telefon_client)}</a>
+                        <button onClick={()=>buildWaGataInfo(apt,ciRez)}
+                          style={{padding:'6px 10px',borderRadius:20,border:'none',background:'rgba(74,222,128,0.15)',color:'#86EFAC',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                          📱
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
-                {!ciRez&&coRez&&<div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Eliberare — fără check-in azi · Liber după checkout</div>}
+                {!ciRez&&coRez&&<div style={{fontSize:12,color:'rgba(159,215,255,0.4)',paddingLeft:2}}>Fără check-in azi · Liber după checkout</div>}
               </div>
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:4}}>
-                  <BedDouble size={13} color="rgba(159,215,255,0.4)"/>
-                  <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>lenjerii</span>
+
+              {/* Lenjerii */}
+              {ciRez&&(
+                <div style={{margin:'0 14px 10px',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'rgba(252,211,77,0.07)',borderRadius:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <BedDouble size={14} color="#FCD34D"/>
+                    <span style={{fontSize:12,color:'rgba(252,211,77,0.8)'}}>lenjerii · {Number(ciRez.nr_persoane)||2} pers.</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <button onClick={()=>setLen(v=>{const n=Math.max(1,(v[aptId]??lenDef)-1);saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Minus size={14}/></button>
+                    <span style={{fontSize:20,fontWeight:700,color:'#FCD34D',minWidth:26,textAlign:'center' as const}}>{l}</span>
+                    <button onClick={()=>setLen(v=>{const n=(v[aptId]??lenDef)+1;saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Plus size={14}/></button>
+                  </div>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <button onClick={()=>setLen(v=>{const n=Math.max(1,(v[aptId]??lenDef)-1);saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Minus size={14}/></button>
-                  <span style={{fontSize:24,fontWeight:700,color:'#FCD34D',minWidth:32,textAlign:'center' as const}}>{l}</span>
-                  <button onClick={()=>setLen(v=>{const n=(v[aptId]??lenDef)+1;saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Plus size={14}/></button>
+              )}
+
+              {/* Actiuni rapide */}
+              {apt?.id&&(
+                <div style={{display:'flex',gap:6,padding:'0 14px 12px'}}>
+                  <button onClick={()=>toggleEliberat(apt.id, apt?.nota||'')}
+                    style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${eliberat.has(apt.id)?'rgba(74,222,128,0.4)':'rgba(252,211,77,0.3)'}`,
+                      background:eliberat.has(apt.id)?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.08)',
+                      color:eliberat.has(apt.id)?'#4ADE80':'#FCD34D',
+                      fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    {eliberat.has(apt.id)?'✓ Eliberat':'🚪 Eliberat?'}
+                  </button>
+                  <button onClick={()=>setSpecialStatus(apt.id, '', special==='anulat'?null:'anulat')}
+                    style={{flex:1,padding:'8px 6px',borderRadius:9,fontSize:11,fontWeight:700,cursor:'pointer',
+                      border:`1px solid ${special==='anulat'?'rgba(248,113,113,0.5)':'rgba(248,113,113,0.2)'}`,
+                      background:special==='anulat'?'rgba(248,113,113,0.15)':'rgba(248,113,113,0.06)',
+                      color:special==='anulat'?'#F87171':'rgba(248,113,113,0.6)'}}>
+                    {special==='anulat'?'✕ Anulat':'✕ Anulează'}
+                  </button>
+                  <button onClick={()=>setSpecialStatus(apt.id, '', special==='doar_lenjerie'?null:'doar_lenjerie')}
+                    style={{flex:1,padding:'8px 6px',borderRadius:9,fontSize:11,fontWeight:700,cursor:'pointer',
+                      border:`1px solid ${special==='doar_lenjerie'?'rgba(167,139,250,0.5)':'rgba(167,139,250,0.2)'}`,
+                      background:special==='doar_lenjerie'?'rgba(167,139,250,0.15)':'rgba(167,139,250,0.06)',
+                      color:special==='doar_lenjerie'?'#A78BFA':'rgba(167,139,250,0.6)'}}>
+                    {special==='doar_lenjerie'?'🛏 Doar lenjerie':'🛏 Lenjerie'}
+                  </button>
                 </div>
-              </div>
-              {/* CO tarziu / CI devreme */}
-              <div style={{padding:'10px 14px 12px',borderTop:'1px solid rgba(255,255,255,0.05)',display:'flex',gap:10,flexWrap:'wrap' as const}}>
-                <div style={{flex:1,minWidth:160}}>
-                  <div style={{fontSize:10,color:'rgba(248,113,113,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Checkout târziu</div>
-                  <input
-                    type="text"
-                    placeholder="ex: ora 13:00"
-                    value={oraSpeciala[aptId]?.co_tarziu||''}
-                    onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],co_tarziu:e.target.value,ci_devreme:v[aptId]?.ci_devreme||''}}))}
-                    onBlur={e=>saveOraSpeciala(aptId,'co_tarziu',e.target.value)}
-                    style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:8,padding:'6px 10px',color:'#FCA5A5',fontSize:12,outline:'none'}}
-                  />
+              )}
+
+              {/* Ore speciale - colapsabil */}
+              <button onClick={()=>setExpandedOre(oreOpen?null:aptId)}
+                style={{width:'100%',padding:'9px 14px',border:'none',borderTop:'1px solid rgba(255,255,255,0.05)',background:'transparent',color:'rgba(159,215,255,0.45)',fontSize:11,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                🕐 Ore speciale {oreOpen?'▲':'▼'}
+                {oreSetate&&!oreOpen&&<span style={{width:6,height:6,borderRadius:3,background:'#FCD34D'}}/>}
+              </button>
+              {oreOpen&&(
+                <div style={{padding:'4px 14px 14px',display:'flex',gap:10,flexWrap:'wrap' as const}}>
+                  <div style={{flex:1,minWidth:160}}>
+                    <div style={{fontSize:10,color:'rgba(248,113,113,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Checkout târziu</div>
+                    <input
+                      type="text"
+                      placeholder="ex: ora 13:00"
+                      value={oraSpeciala[aptId]?.co_tarziu||''}
+                      onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],co_tarziu:e.target.value,ci_devreme:v[aptId]?.ci_devreme||''}}))}
+                      onBlur={e=>saveOraSpeciala(aptId,'co_tarziu',e.target.value)}
+                      style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:8,padding:'6px 10px',color:'#FCA5A5',fontSize:12,outline:'none'}}
+                    />
+                  </div>
+                  <div style={{flex:1,minWidth:160}}>
+                    <div style={{fontSize:10,color:'rgba(77,163,255,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Check-in devreme</div>
+                    <input
+                      type="text"
+                      placeholder="ex: ora 10:00"
+                      value={oraSpeciala[aptId]?.ci_devreme||''}
+                      onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],ci_devreme:e.target.value,co_tarziu:v[aptId]?.co_tarziu||''}}))}
+                      onBlur={e=>saveOraSpeciala(aptId,'ci_devreme',e.target.value)}
+                      style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:8,padding:'6px 10px',color:'#93C5FD',fontSize:12,outline:'none'}}
+                    />
+                  </div>
                 </div>
-                <div style={{flex:1,minWidth:160}}>
-                  <div style={{fontSize:10,color:'rgba(77,163,255,0.7)',fontWeight:600,marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'0.5px'}}>🕐 Check-in devreme</div>
-                  <input
-                    type="text"
-                    placeholder="ex: ora 10:00"
-                    value={oraSpeciala[aptId]?.ci_devreme||''}
-                    onChange={e=>setOraSpeciala(v=>({...v,[aptId]:{...v[aptId],ci_devreme:e.target.value,co_tarziu:v[aptId]?.co_tarziu||''}}))}
-                    onBlur={e=>saveOraSpeciala(aptId,'ci_devreme',e.target.value)}
-                    style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.2)',borderRadius:8,padding:'6px 10px',color:'#93C5FD',fontSize:12,outline:'none'}}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           )
         })}
