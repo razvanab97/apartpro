@@ -124,10 +124,12 @@ export default function CuratenePage() {
   }
 
   async function resetZi() {
-    if(!confirm(`Sigur? Se resetează tot progresul de curățenie pentru ${fmtDate(selectedDate)} — status, eliberat, lenjerii, ore speciale. Nu se poate anula.`)) return
+    if(!confirm(`Sigur? Se resetează tot pentru ${fmtDate(selectedDate)} — status curățenie, eliberat, lenjerii, ore speciale ȘI toate înregistrările de bani (încasări/cheltuieli) din acea zi. Nu se poate anula.`)) return
     await supabase.from('curatenie_status').delete().eq('data', selectedDate)
+    await supabase.from('staff_casa').delete().eq('data', selectedDate)
     await loadStaffStatus()
-    show('success','✓ Ziua a fost resetată')
+    await loadBaniPending()
+    show('success','✓ Ziua a fost resetată complet')
   }
 
   useEffect(()=>{
