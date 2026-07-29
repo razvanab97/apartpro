@@ -851,7 +851,7 @@ export default function CuratenePage() {
           return(
             <div style={{background:'rgba(252,211,77,0.04)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:10,padding:'14px 16px',marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:700,color:'#FCD34D',marginBottom:12,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>💰 Casă staff — {lunaLabel} {an}</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:casaLuna.length?12:0}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:casaLuna.filter((e:any)=>e.preluat!==false).length?12:0}}>
                 {[
                   {l:'Total încasat',v:totalIn,c:'#4ADE80'},
                   {l:'Total cheltuit',v:totalOut,c:'#F87171'},
