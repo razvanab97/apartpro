@@ -23,6 +23,8 @@ function fmtDate(iso:string){
   return d.toLocaleDateString('ro-RO',{weekday:'short',day:'numeric',month:'short'})
 }
 
+function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
+
 export default function CuratenePage() {
   const todayIso = new Date().toISOString().split('T')[0]
   const [selectedDate, setSelectedDate] = useState(todayIso)
@@ -54,6 +56,7 @@ export default function CuratenePage() {
   const [mesajGata, setMesajGata] = useState('Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași')
   const [savingMesajGata, setSavingMesajGata] = useState(false)
   const [mesajGataLoaded, setMesajGataLoaded] = useState(false)
+  const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -181,6 +184,20 @@ export default function CuratenePage() {
     }).catch(()=>{})
   }
 
+  async function buildWaGataInfo(apt: any, ciRez: any) {
+    if (!ciRez?.telefon_client) return
+    const { data: sab } = await supabase.from('sabloane_mesaje')
+      .select('text').eq('tip','gata_curatenie').eq('apartament_id',apt?.id).maybeSingle()
+    const { data: sabGlobal } = !sab ? await supabase.from('sabloane_mesaje')
+      .select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle()
+      : { data: null }
+    const template = sab?.text || sabGlobal?.text || mesajGata
+    const waMsg = template
+      .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
+      .replace(/\{apartament\}/gi, apt?.nume || apt?.nota || '')
+    setWaGataInfo({ apt, rez: ciRez, msg: waMsg })
+  }
+
   async function setSpecialStatus(aptId: string, _aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
     const newStatus = tip || 'liber'
     // Try update first
@@ -292,12 +309,12 @@ export default function CuratenePage() {
     try{
       const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
         supabase.from('rezervari')
-          .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
           .eq('data_checkout', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),
         supabase.from('rezervari')
-          .select('id,nume_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
           .eq('data_checkin', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),
@@ -344,7 +361,7 @@ export default function CuratenePage() {
   const aptMap:Record<string,{apt:any,coRez?:any,ciRez?:any}>={}
   co.forEach((r:any)=>{ const id=r.apartament?.id||r.id; if(!aptMap[id]) aptMap[id]={apt:r.apartament}; aptMap[id].coRez=r })
   ci.forEach((r:any)=>{ const id=r.apartament?.id||r.id; if(!aptMap[id]) aptMap[id]={apt:r.apartament}; aptMap[id].ciRez=r })
-  const locatii=Object.values(aptMap)
+  const locatii=Object.values(aptMap).filter(({apt})=>staffStatus[apt?.id]?.status!=='anulat')
 
   async function saveLenjerii(aptId: string, nrLen: number) {
     await supabase.from('curatenie_status').upsert(
@@ -513,10 +530,21 @@ export default function CuratenePage() {
                   <span style={{fontSize:14,fontWeight:600,color:'#E8F4FF'}}>{apt?.nume||'—'}</span>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:4,color:col,background:`${col}15`,border:`0.5px solid ${col}40`}}>{badge}</span>
                 </div>
+                {coRez&&(
+                  <div style={{fontSize:12,color:'#F87171',marginBottom:2,display:'flex',alignItems:'center',flexWrap:'wrap' as const}}>
+                    ↗ Check-out: <span style={{fontWeight:600,marginLeft:4}}>{coRez.nume_client}</span>
+                    {coRez.telefon_client&&<a href={'tel:'+coRez.telefon_client} style={{marginLeft:8,color:'#F87171',textDecoration:'none',fontSize:12}}>📞 Sună</a>}
+                  </div>
+                )}
                 {ciRez&&(
                   <div>
-                    <div style={{fontSize:12,color:'#4ADE80',marginBottom:2}}>
-                      ↙ Check-in: <span style={{fontWeight:600}}>{ciRez.nume_client}</span>
+                    <div style={{fontSize:12,color:'#4ADE80',marginBottom:2,display:'flex',alignItems:'center',flexWrap:'wrap' as const}}>
+                      ↙ Check-in: <span style={{fontWeight:600,marginLeft:4}}>{ciRez.nume_client}</span>
+                      {ciRez.telefon_client&&<a href={'tel:'+ciRez.telefon_client} style={{marginLeft:8,color:'#4ADE80',textDecoration:'none',fontSize:12}}>📞 Sună</a>}
+                      {ciRez.telefon_client&&<button onClick={()=>buildWaGataInfo(apt,ciRez)}
+                        style={{marginLeft:8,padding:'2px 9px',borderRadius:20,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                        📱 WA
+                      </button>}
                     </div>
                     {(()=>{
                       const pers = Number(ciRez.nr_persoane)||2
@@ -985,6 +1013,30 @@ export default function CuratenePage() {
           )
         })()}
       </div>}
+
+      {waGataInfo&&(
+        <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setWaGataInfo(null)}>
+          <div style={{background:'#0B1220',border:'1px solid rgba(74,222,128,0.3)',borderRadius:'20px 20px 0 0',padding:'20px 20px calc(20px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:480}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:36,height:4,background:'rgba(159,215,255,0.2)',borderRadius:2,margin:'0 auto 16px'}}/>
+            <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',marginBottom:4}}>📱 Mesaj presetat</div>
+            <div style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:14}}>Trimite mesajul de bun venit clientului?</div>
+            <div style={{background:'rgba(14,27,43,0.7)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',marginBottom:2}}>{waGataInfo.rez.nume_client}</div>
+              <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:8}}>{waGataInfo.apt?.nota}{waGataInfo.apt?.nota&&' · '}{waGataInfo.rez.telefon_client}</div>
+              <pre style={{fontSize:11,color:'rgba(214,228,244,0.65)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{waGataInfo.msg}</pre>
+            </div>
+            <a href={waLink(waGataInfo.rez.telefon_client,waGataInfo.msg)} target="_blank" rel="noreferrer"
+              onClick={()=>setWaGataInfo(null)}
+              style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'14px',borderRadius:14,background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,textDecoration:'none',marginBottom:10}}>
+              📱 Trimite pe WhatsApp
+            </a>
+            <button onClick={()=>setWaGataInfo(null)}
+              style={{width:'100%',padding:'12px',borderRadius:14,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:13,cursor:'pointer'}}>
+              Nu acum
+            </button>
+          </div>
+        </div>
+      )}
 
       <Toast toast={toast}/>
     </>
