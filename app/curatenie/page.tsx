@@ -75,6 +75,10 @@ export default function CuratenePage() {
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string,tip:'checkin'|'checkout'}|null>(null)
   const [sabloaneCO, setSabloaneCO] = useState<Record<string,string>>({})
   const [expandedOre, setExpandedOre] = useState<string|null>(null)
+  const [baniPending, setBaniPending] = useState<Record<string,any>>({})
+  const [baniOpen, setBaniOpen] = useState<string|null>(null)
+  const [baniForm, setBaniForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
+  const [savingBani, setSavingBani] = useState(false)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -82,7 +86,8 @@ export default function CuratenePage() {
   useEffect(()=>{
     loadStaffStatus()
     loadProbleme()
-    const i = setInterval(loadStaffStatus, 30000)
+    loadBaniPending()
+    const i = setInterval(()=>{ loadStaffStatus(); loadBaniPending() }, 30000)
     return ()=>clearInterval(i)
   }, [selectedDate])
 
@@ -164,6 +169,38 @@ export default function CuratenePage() {
     setEliberat(elib)
     setOraSpeciala(prev=>({...prev,...oraInit}))
     if(Object.keys(lenFromDb).length>0) setLen(prev=>({...prev,...lenFromDb}))
+  }
+
+  async function loadBaniPending() {
+    const { data } = await supabase.from('staff_casa')
+      .select('*').eq('data', selectedDate).not('apartament_id','is',null)
+    const m:Record<string,any>={}
+    ;(data||[]).forEach((r:any)=>{ m[r.apartament_id]=r })
+    setBaniPending(m)
+  }
+
+  async function addBani(aptId: string) {
+    const suma = parseFloat(baniForm.suma.replace(',','.'))
+    if(!suma || suma<=0) return
+    setSavingBani(true)
+    const { error } = await supabase.from('staff_casa').insert({
+      data: selectedDate, apartament_id: aptId, tip: 'incasare',
+      suma, motiv: baniForm.motiv.trim() || 'Numerar de la client', preluat: false,
+    })
+    setSavingBani(false)
+    if(!error){
+      setBaniForm({suma:'',motiv:''})
+      setBaniOpen(null)
+      loadBaniPending()
+      show('success','✓ Înregistrat, apare în Casă la staff')
+    } else {
+      show('error','Nu s-a putut salva')
+    }
+  }
+
+  async function deleteBani(id: string) {
+    await supabase.from('staff_casa').delete().eq('id', id)
+    loadBaniPending()
   }
 
   async function loadProbleme() {
@@ -619,6 +656,56 @@ export default function CuratenePage() {
                   </button>
                 </div>
               )}
+
+              {/* Bani de preluat */}
+              {apt?.id&&(()=>{
+                const pending = baniPending[apt.id]
+                if(pending){
+                  return (
+                    <div style={{margin:'0 14px 12px',display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,
+                      background:pending.preluat?'rgba(74,222,128,0.08)':'rgba(252,211,77,0.08)'}}>
+                      <span style={{fontSize:15}}>💰</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,color:pending.preluat?'#4ADE80':'#FCD34D'}}>
+                        {Number(pending.suma).toFixed(0)} RON {pending.preluat?'· preluat':'· de preluat'}
+                      </span>
+                      {!pending.preluat&&<button onClick={()=>deleteBani(pending.id)}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.3)',fontSize:16,padding:'0 4px',lineHeight:1}}>×</button>}
+                    </div>
+                  )
+                }
+                if(baniOpen===aptId){
+                  return (
+                    <div style={{margin:'0 14px 12px',padding:'10px',borderRadius:10,background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.2)'}}>
+                      <div style={{display:'flex',gap:8,marginBottom:8}}>
+                        <input type="text" inputMode="decimal" placeholder="Sumă RON" value={baniForm.suma}
+                          onChange={e=>setBaniForm(f=>({...f,suma:e.target.value}))}
+                          style={{width:90,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(252,211,77,0.25)',borderRadius:8,padding:'7px 9px',color:'#FCD34D',fontSize:13,outline:'none'}}/>
+                        <input type="text" placeholder="Motiv (opțional)" value={baniForm.motiv}
+                          onChange={e=>setBaniForm(f=>({...f,motiv:e.target.value}))}
+                          style={{flex:1,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(252,211,77,0.25)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
+                      </div>
+                      <div style={{display:'flex',gap:8}}>
+                        <button onClick={()=>addBani(apt.id)} disabled={savingBani||!baniForm.suma}
+                          style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:'#FCD34D',color:'#3A2A00',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!baniForm.suma?0.5:1}}>
+                          {savingBani?'Se salvează...':'Salvează'}
+                        </button>
+                        <button onClick={()=>{setBaniOpen(null);setBaniForm({suma:'',motiv:''})}}
+                          style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                          Anulează
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+                return (
+                  <div style={{margin:'0 14px 12px'}}>
+                    <button onClick={()=>{setBaniOpen(aptId);setBaniForm({suma:'',motiv:''})}}
+                      style={{width:'100%',padding:'8px',borderRadius:9,border:'1px dashed rgba(252,211,77,0.3)',background:'transparent',color:'rgba(252,211,77,0.7)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                      💰 Bani de preluat
+                    </button>
+                  </div>
+                )
+              })()}
 
               {/* Ore speciale - colapsabil */}
               <button onClick={()=>setExpandedOre(oreOpen?null:aptId)}

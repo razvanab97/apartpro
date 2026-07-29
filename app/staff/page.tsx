@@ -123,8 +123,13 @@ export default function StaffPage() {
 
   async function loadCasa() {
     const { data: rows } = await supabase.from('staff_casa')
-      .select('*').eq('data', data).order('created_at', {ascending: false})
+      .select('*,apartament:apartament_id(nota,nume)').eq('data', data).order('created_at', {ascending: false})
     setCasaEntries(rows || [])
+  }
+
+  async function confirmaPreluare(id: string) {
+    await supabase.from('staff_casa').update({ preluat: true }).eq('id', id)
+    loadCasa()
   }
 
   async function saveCasa() {
@@ -323,8 +328,9 @@ export default function StaffPage() {
   const ocupateApts = apts.filter(a=>ocpSet.has(a.id))
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
 
-  const casaTotalIn  = casaEntries.filter((e:any)=>e.tip==='incasare').reduce((s:number,e:any)=>s+Number(e.suma),0)
-  const casaTotalOut = casaEntries.filter((e:any)=>e.tip==='cheltuiala').reduce((s:number,e:any)=>s+Number(e.suma),0)
+  const casaTotalIn  = casaEntries.filter((e:any)=>e.tip==='incasare'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
+  const casaTotalOut = casaEntries.filter((e:any)=>e.tip==='cheltuiala'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
+  const casaDePreluat = casaEntries.filter((e:any)=>e.preluat===false)
   const TABS: {k:Tab,l:string,n?:number}[] = [
     {k:'curatenie', l:'🧹', n:deCuratat.length},
     {k:'disponibile', l:'🟢', n:disponibile.length},
@@ -626,16 +632,36 @@ export default function StaffPage() {
               </button>
             </div>
 
+            {/* De preluat - trimise din Curatenie, neconfirmate inca */}
+            {casaDePreluat.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#FCD34D',textTransform:'uppercase' as const,letterSpacing:'0.5px',marginBottom:8}}>💰 Bani de preluat</div>
+                {casaDePreluat.map((e:any)=>(
+                  <div key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 13px',borderRadius:10,background:'rgba(252,211,77,0.08)',border:'1px solid rgba(252,211,77,0.3)',marginBottom:7}}>
+                    <span style={{fontSize:18,flexShrink:0}}>💰</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>{Number(e.suma).toFixed(0)} RON{e.apartament?.nota?' · '+e.apartament.nota:''}</div>
+                      <div style={{fontSize:11,color:'rgba(159,215,255,0.55)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.motiv}</div>
+                    </div>
+                    <button onClick={()=>confirmaPreluare(e.id)}
+                      style={{flexShrink:0,padding:'8px 12px',borderRadius:9,border:'none',background:'#FCD34D',color:'#3A2A00',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                      ✓ Am preluat
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Lista */}
-            {casaEntries.length===0
+            {casaEntries.filter((e:any)=>e.preluat!==false).length===0
               ? <div style={{textAlign:'center',padding:'40px 0',color:'rgba(159,215,255,0.25)',fontSize:13}}>Nicio înregistrare azi</div>
-              : casaEntries.map((e:any)=>{
+              : casaEntries.filter((e:any)=>e.preluat!==false).map((e:any)=>{
                   const isIn = e.tip==='incasare'
                   return (
                     <div key={e.id} style={{display:'flex',alignItems:'center',gap:10,padding:'11px 13px',borderRadius:10,background:isIn?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:'1px solid '+(isIn?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'),marginBottom:7}}>
                       <span style={{fontSize:18,flexShrink:0}}>{isIn?'📥':'📤'}</span>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:isIn?'#4ADE80':'#F87171'}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON</div>
+                        <div style={{fontSize:13,fontWeight:700,color:isIn?'#4ADE80':'#F87171'}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON{e.apartament?.nota?' · '+e.apartament.nota:''}</div>
                         <div style={{fontSize:11,color:'rgba(159,215,255,0.55)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.motiv}</div>
                       </div>
                       <div style={{fontSize:10,color:'rgba(159,215,255,0.3)',flexShrink:0,textAlign:'right'}}>
