@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { ConnectionError } from '@/components/ui'
 
@@ -43,6 +43,7 @@ export default function StaffPage() {
   const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
   const [baniPending, setBaniPending] = useState<Record<string,any>>({})
   const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
+  const dateInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (document.cookie.includes('staff_auth=1111')) setAuth(true)
@@ -399,13 +400,16 @@ export default function StaffPage() {
               style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
               {'<'}
             </button>
-            <div style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-              <button onClick={()=>setData(todayStr())}
-                style={{padding:'0 10px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
-                {fmtFull(data)}
-              </button>
-              <input type="date" value={data} onChange={e=>setData(e.target.value)} style={{position:'absolute',inset:0,opacity:0,width:'100%',height:'100%',cursor:'pointer'}}/>
-            </div>
+            <button onClick={()=>setData(todayStr())}
+              style={{padding:'0 10px',height:36,borderRadius:10,border:'1px solid '+(data===todayStr()?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.1)'),background:data===todayStr()?'rgba(74,222,128,0.1)':'rgba(255,255,255,0.05)',color:data===todayStr()?'#4ADE80':'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+              {fmtFull(data)}
+            </button>
+            <button onClick={()=>dateInputRef.current?.showPicker?.() ?? dateInputRef.current?.click()}
+              style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent',position:'relative'}}>
+              📅
+              <input ref={dateInputRef} type="date" value={data} onChange={e=>setData(e.target.value)}
+                style={{position:'absolute',width:1,height:1,opacity:0,pointerEvents:'none'}}/>
+            </button>
             <button onClick={()=>setData(addDays(data,1))}
               style={{width:36,height:36,borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.05)',color:'#7BC8FF',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent'}}>
               {'>'}
