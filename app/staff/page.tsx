@@ -478,7 +478,7 @@ export default function StaffPage() {
                       {ramasita&&!isGata&&(()=>{const z=Math.round((new Date(data).getTime()-new Date(ramasita.dataCheckout).getTime())/86400000);return<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.2)',color:'#FCA5A5',fontWeight:700,border:'1px solid rgba(248,113,113,0.4)'}}>{'⚠ '+(z===1?'de ieri':z===2?'de alaltaieri':`de ${z} zile`)}</span>})()}
                       {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
                       {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>{'Eliberat'+(st.eliberat_la?' '+st.eliberat_la:'')}</span>}
-                      {baniPending[apt.id]&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.18)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.35)'}}>{'💰 '+Number(baniPending[apt.id].suma).toFixed(0)+' RON de încasat'}</span>}
+                      {baniPending[apt.id]&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(77,163,255,0.18)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(77,163,255,0.4)'}}>{'💰 '+Number(baniPending[apt.id].suma).toFixed(0)+' RON de încasat'}</span>}
                     </div>
                   </div>
                   <span style={{fontSize:18,color:'rgba(159,215,255,0.3)',transform:isOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.2s',flexShrink:0}}>{'>'}</span>
@@ -523,11 +523,11 @@ export default function StaffPage() {
                       )
                     })()}
                     {apt?.id&&baniPending[apt.id]&&(
-                      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.3)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:10,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.35)'}}>
                         <span style={{fontSize:15,flexShrink:0}}>💰</span>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:13,fontWeight:700,color:'#FCD34D'}}>{Number(baniPending[apt.id].suma).toFixed(0)+' RON de încasat'}</div>
-                          <div style={{fontSize:11,color:'rgba(252,211,77,0.6)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{baniPending[apt.id].motiv}</div>
+                          <div style={{fontSize:11,color:'rgba(147,197,253,0.65)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{baniPending[apt.id].motiv}</div>
                         </div>
                         <button onClick={()=>confirmaPreluare(baniPending[apt.id].id)}
                           style={{flexShrink:0,padding:'8px 12px',borderRadius:9,border:'none',background:'#FCD34D',color:'#3A2A00',fontSize:12,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
