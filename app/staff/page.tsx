@@ -418,7 +418,7 @@ export default function StaffPage() {
             const borderColor=ramasita&&!isGata?'rgba(248,113,113,0.4)':isGata?'rgba(34,197,94,0.4)':isInceput?'rgba(251,146,60,0.4)':ci?'rgba(252,211,77,0.3)':'rgba(255,255,255,0.08)'
             const bgColor=ramasita&&!isGata?'rgba(248,113,113,0.06)':isGata?'rgba(34,197,94,0.06)':isInceput?'rgba(251,146,60,0.06)':'rgba(255,255,255,0.02)'
             return (
-              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'1.5px solid '+borderColor,background:bgColor,marginBottom:8,width:'100%'}}>
+              <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'0.5px solid '+borderColor,borderLeft:'3px solid '+borderColor,background:bgColor,marginBottom:8,width:'100%'}}>
                 <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
                   style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
                   <span style={{fontSize:22,flexShrink:0}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
@@ -442,42 +442,55 @@ export default function StaffPage() {
                   <span style={{fontSize:18,color:'rgba(159,215,255,0.3)',transform:isOpen?'rotate(90deg)':'rotate(0deg)',transition:'transform 0.2s',flexShrink:0}}>{'>'}</span>
                 </div>
                 {isOpen&&(
-                  <div style={{borderTop:'1px solid '+borderColor,padding:'14px 14px 0'}}>
-                    {co&&<div style={{fontSize:13,color:'rgba(159,215,255,0.55)',marginBottom:6}}>
-                      {'Checkout: '}<span style={{color:'rgba(255,255,255,0.8)',fontWeight:600}}>{co.nume_client}</span>
-                      {co.telefon_client&&<a href={'tel:'+co.telefon_client} style={{marginLeft:10,color:'#7BC8FF',textDecoration:'none',fontSize:13}}>Suna</a>}
-                      {co.nr_nopti&&<span style={{marginLeft:8,fontSize:12,color:'rgba(159,215,255,0.35)'}}>{'- '+co.nr_nopti+' nopti'}</span>}
-                    </div>}
-                    {ci&&<div style={{fontSize:13,color:'#FCD34D',marginBottom:6,display:'flex',alignItems:'center',flexWrap:'wrap',gap:0}}>
-                      {'Check-in azi: '}<span style={{fontWeight:700}}>{ci.nume_client}</span>
-                      {ci.telefon_client&&<a href={'tel:'+ci.telefon_client} style={{marginLeft:10,color:'#FCD34D',textDecoration:'none',fontSize:13}}>Suna</a>}
-                      {ci.telefon_client&&<button onClick={()=>buildWaGataInfo(apt.id)}
-                        style={{marginLeft:10,padding:'3px 10px',borderRadius:20,border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
-                        📱 Trimite WA
-                      </button>}
-                    </div>}
+                  <div style={{borderTop:'1px solid '+borderColor,padding:'12px 14px 14px',display:'flex',flexDirection:'column',gap:8}}>
+                    {co&&(
+                      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(248,113,113,0.07)',borderRadius:10}}>
+                        <span style={{fontSize:15,flexShrink:0}}>↗</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:10,color:'rgba(248,113,113,0.65)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'0.4px'}}>Check-out</div>
+                          <div style={{fontSize:13,fontWeight:600,color:'#FCA5A5',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{co.nume_client}{co.nr_nopti?` · ${co.nr_nopti} nopți`:''}</div>
+                        </div>
+                        {co.telefon_client&&<a href={'tel:'+co.telefon_client} style={{flexShrink:0,padding:'6px 10px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#FCA5A5',textDecoration:'none',fontSize:12,fontWeight:600}}>Sună</a>}
+                      </div>
+                    )}
+                    {ci&&(
+                      <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(252,211,77,0.08)',borderRadius:10}}>
+                        <span style={{fontSize:15,flexShrink:0}}>↙</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:10,color:'rgba(252,211,77,0.7)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'0.4px'}}>Check-in azi</div>
+                          <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{ci.nume_client}</div>
+                        </div>
+                        <div style={{display:'flex',gap:6,flexShrink:0}}>
+                          {ci.telefon_client&&<a href={'tel:'+ci.telefon_client} style={{padding:'6px 10px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',textDecoration:'none',fontSize:12,fontWeight:600}}>Sună</a>}
+                          {ci.telefon_client&&<button onClick={()=>buildWaGataInfo(apt.id)}
+                            style={{padding:'6px 10px',borderRadius:20,border:'none',background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                            📱
+                          </button>}
+                        </div>
+                      </div>
+                    )}
                     {ci&&(()=>{
                       const stLen=statusuri[apt.id]?.nr_lenjerii
                       const l=stLen||nrLenSmart(ci)
                       return (
-                        <div style={{display:'inline-flex',alignItems:'center',gap:6,marginBottom:8,padding:'5px 12px',borderRadius:8,background:'rgba(252,211,77,0.1)',border:'1px solid rgba(252,211,77,0.25)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 12px',borderRadius:10,background:'rgba(167,139,250,0.08)'}}>
                           <span style={{fontSize:15}}>🛏</span>
-                          <span style={{fontSize:14,fontWeight:700,color:'#FCD34D'}}>{l+' '+(l===1?'lenjerie':'lenjerii')}</span>
-                          <span style={{fontSize:11,color:'rgba(252,211,77,0.5)'}}>{'('+( Number(ci.nr_persoane)||2)+' pers.)'}</span>
+                          <span style={{fontSize:13,fontWeight:700,color:'#C4B5FD'}}>{l+' '+(l===1?'lenjerie':'lenjerii')}</span>
+                          <span style={{fontSize:11,color:'rgba(196,181,253,0.6)'}}>{'('+( Number(ci.nr_persoane)||2)+' pers.)'}</span>
                         </div>
                       )
                     })()}
                     {(st?.co_tarziu||st?.ci_devreme)&&(
-                      <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:8}}>
-                        {st?.co_tarziu&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',color:'#FCA5A5',fontWeight:600}}>{'CO tarziu: '+st.co_tarziu}</div>}
-                        {st?.ci_devreme&&<div style={{fontSize:12,padding:'5px 10px',borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',color:'#93C5FD',fontWeight:600}}>{'CI devreme: '+st.ci_devreme}</div>}
+                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {st?.co_tarziu&&<div style={{fontSize:12,padding:'7px 10px',borderRadius:9,background:'rgba(248,113,113,0.1)',color:'#FCA5A5',fontWeight:600}}>{'🕐 Checkout târziu: '+st.co_tarziu}</div>}
+                        {st?.ci_devreme&&<div style={{fontSize:12,padding:'7px 10px',borderRadius:9,background:'rgba(77,163,255,0.1)',color:'#93C5FD',fontWeight:600}}>{'🕐 Check-in devreme: '+st.ci_devreme}</div>}
                       </div>
                     )}
-                    {st&&(isInceput||isGata)&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C',marginBottom:8}}>
+                    {st&&(isInceput||isGata)&&<div style={{fontSize:12,color:isGata?'#4ADE80':'#FB923C'}}>
                       {isInceput&&!isGata&&('Inceput la '+st.ora_inceput)}
                       {isGata&&('Terminat la '+st.ora_gata+(st.ora_inceput?' (inceput '+st.ora_inceput+')':''))}
                     </div>}
-                    <div style={{paddingBottom:14,display:'flex',gap:8}}>
+                    <div style={{display:'flex',gap:8,marginTop:4}}>
                       {!isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#FB923C',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Incepe curatenia</button>}
                       {isInceput&&!isGata&&<button onClick={()=>setStatus(apt.id,'gata')} style={{flex:1,padding:'15px',borderRadius:14,border:'none',background:'#22C55E',color:'#fff',fontSize:15,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>Am terminat!</button>}
                       {isGata&&<button onClick={()=>setStatus(apt.id,'inceput')} style={{flex:1,padding:'13px',borderRadius:14,border:'1px solid rgba(251,146,60,0.3)',background:'transparent',color:'#FB923C',fontSize:13,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>Reincepe</button>}
@@ -486,7 +499,7 @@ export default function StaffPage() {
                       setNewProbStaff({titlu:'',descriere:'',prioritate:'normal',apartament_id:apt.id})
                       setTab('probleme')
                       setExpandedApt(null)
-                    }} style={{width:'100%',marginBottom:14,padding:'10px',borderRadius:12,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.06)',color:'#F87171',fontSize:13,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent',textAlign:'center' as const}}>
+                    }} style={{width:'100%',padding:'10px',borderRadius:12,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.06)',color:'#F87171',fontSize:13,fontWeight:600,cursor:'pointer',WebkitTapHighlightColor:'transparent',textAlign:'center' as const}}>
                       🔧 Raporteaza problema
                     </button>
                   </div>

@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { format } from 'date-fns'
+import { ro } from 'date-fns/locale'
 
 function nrLen(p:number){ if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
 function nrLenSmart(r:any){
@@ -25,6 +27,19 @@ function fmtDate(iso:string){
 
 function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 function ultimele3(phone:string){ const c=phone.replace(/\D/g,''); return c.slice(-3) }
+function firstName(name:string){ return (name||'').split(' ')[0] }
+function applyVars(tmpl:string, nume:string, apt:string, co:string){
+  return tmpl.replace(/\{nume\}/gi,nume).replace(/\{apartament\}/gi,apt).replace(/\{data_checkout\}/gi,co).replace(/\{data\}/gi,co)
+}
+function msgCheckoutGen(r:any, sabloane:Record<string,string>){
+  const apt = r.apartament?.nume || 'apartament'
+  const aptId = r.apartament?.id || ''
+  const co = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
+  const nume = firstName(r.nume_client)
+  const sablon = sabloane[aptId]
+  if(sablon) return applyVars(sablon,nume,apt,co)
+  return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
+}
 
 export default function CuratenePage() {
   const todayIso = new Date().toISOString().split('T')[0]
@@ -57,7 +72,8 @@ export default function CuratenePage() {
   const [mesajGata, setMesajGata] = useState('Bună ziua, {nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *{apartament}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași')
   const [savingMesajGata, setSavingMesajGata] = useState(false)
   const [mesajGataLoaded, setMesajGataLoaded] = useState(false)
-  const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string}|null>(null)
+  const [waGataInfo, setWaGataInfo] = useState<{apt:any,rez:any,msg:string,tip:'checkin'|'checkout'}|null>(null)
+  const [sabloaneCO, setSabloaneCO] = useState<Record<string,string>>({})
   const [expandedOre, setExpandedOre] = useState<string|null>(null)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
@@ -69,6 +85,14 @@ export default function CuratenePage() {
     const i = setInterval(loadStaffStatus, 30000)
     return ()=>clearInterval(i)
   }, [selectedDate])
+
+  useEffect(()=>{
+    supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data:sD})=>{
+      const coMap:Record<string,string>={}
+      ;(sD||[]).forEach((s:any)=>{ if(s.apartament_id && s.text) coMap[s.apartament_id]=s.text })
+      setSabloaneCO(coMap)
+    })
+  }, [])
 
   useEffect(()=>{
     supabase.from('setari').select('cheie,valoare').in('cheie',['pret_combustibil','consum_masina','cost_curatenie']).then(({data:d})=>{
@@ -197,7 +221,13 @@ export default function CuratenePage() {
     const waMsg = template
       .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
       .replace(/\{apartament\}/gi, apt?.nume || apt?.nota || '')
-    setWaGataInfo({ apt, rez: ciRez, msg: waMsg })
+    setWaGataInfo({ apt, rez: ciRez, msg: waMsg, tip: 'checkin' })
+  }
+
+  function buildWaCheckout(apt: any, coRez: any) {
+    if (!coRez?.telefon_client) return
+    const msg = msgCheckoutGen({ ...coRez, apartament: apt }, sabloaneCO)
+    setWaGataInfo({ apt, rez: coRez, msg, tip: 'checkout' })
   }
 
   async function setSpecialStatus(aptId: string, _aptNota: string, tip: 'anulat'|'doar_lenjerie'|null) {
@@ -311,7 +341,7 @@ export default function CuratenePage() {
     try{
       const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,data_checkout,apartament:apartamente!inner(id,nume,nota,adresa,status)')
           .eq('data_checkout', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),
@@ -516,7 +546,15 @@ export default function CuratenePage() {
                       <div style={{fontSize:10,color:'rgba(248,113,113,0.65)',fontWeight:600,textTransform:'uppercase' as const,letterSpacing:'0.4px'}}>Check-out</div>
                       <div style={{fontSize:13,fontWeight:600,color:'#FCA5A5',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{coRez.nume_client}</div>
                     </div>
-                    {coRez.telefon_client&&<a href={'tel:'+coRez.telefon_client} style={{flexShrink:0,padding:'6px 10px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#FCA5A5',textDecoration:'none',fontSize:12,fontWeight:600}}>📞 ···{ultimele3(coRez.telefon_client)}</a>}
+                    {coRez.telefon_client&&(
+                      <div style={{display:'flex',gap:6,flexShrink:0}}>
+                        <a href={'tel:'+coRez.telefon_client} style={{padding:'6px 10px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#FCA5A5',textDecoration:'none',fontSize:12,fontWeight:600}}>📞 ···{ultimele3(coRez.telefon_client)}</a>
+                        <button onClick={()=>buildWaCheckout(apt,coRez)}
+                          style={{padding:'6px 10px',borderRadius:20,border:'none',background:'rgba(248,113,113,0.15)',color:'#FCA5A5',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                          📱
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {ciRez&&(
@@ -1035,12 +1073,15 @@ export default function CuratenePage() {
         })()}
       </div>}
 
-      {waGataInfo&&(
+      {waGataInfo&&(()=>{
+        const isCO = waGataInfo.tip==='checkout'
+        const accent = isCO?'#F87171':'#4ADE80'
+        return (
         <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={()=>setWaGataInfo(null)}>
-          <div style={{background:'#0B1220',border:'1px solid rgba(74,222,128,0.3)',borderRadius:'20px 20px 0 0',padding:'20px 20px calc(20px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:480}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:'#0B1220',border:`1px solid ${accent}4D`,borderRadius:'20px 20px 0 0',padding:'20px 20px calc(20px + env(safe-area-inset-bottom, 0px))',width:'100%',maxWidth:480}} onClick={e=>e.stopPropagation()}>
             <div style={{width:36,height:4,background:'rgba(159,215,255,0.2)',borderRadius:2,margin:'0 auto 16px'}}/>
-            <div style={{fontSize:16,fontWeight:700,color:'#4ADE80',marginBottom:4}}>📱 Mesaj presetat</div>
-            <div style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:14}}>Trimite mesajul de bun venit clientului?</div>
+            <div style={{fontSize:16,fontWeight:700,color:accent,marginBottom:4}}>{isCO?'🌅 Mesaj checkout':'📱 Mesaj presetat'}</div>
+            <div style={{fontSize:13,color:'rgba(159,215,255,0.5)',marginBottom:14}}>{isCO?'Trimite mesajul de checkout clientului?':'Trimite mesajul de bun venit clientului?'}</div>
             <div style={{background:'rgba(14,27,43,0.7)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
               <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',marginBottom:2}}>{waGataInfo.rez.nume_client}</div>
               <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:8}}>{waGataInfo.apt?.nota}{waGataInfo.apt?.nota&&' · '}{waGataInfo.rez.telefon_client}</div>
@@ -1057,7 +1098,8 @@ export default function CuratenePage() {
             </button>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       <Toast toast={toast}/>
     </>
