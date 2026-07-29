@@ -79,6 +79,10 @@ export default function CuratenePage() {
   const [baniOpen, setBaniOpen] = useState<string|null>(null)
   const [baniForm, setBaniForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
   const [savingBani, setSavingBani] = useState(false)
+  const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
+  const [editingMesajZi, setEditingMesajZi] = useState(false)
+  const [mesajZiDraft, setMesajZiDraft] = useState('')
+  const [savingMesajZi, setSavingMesajZi] = useState(false)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
 
@@ -87,9 +91,44 @@ export default function CuratenePage() {
     loadStaffStatus()
     loadProbleme()
     loadBaniPending()
+    loadMesajZi()
     const i = setInterval(()=>{ loadStaffStatus(); loadBaniPending() }, 30000)
     return ()=>clearInterval(i)
   }, [selectedDate])
+
+  async function loadMesajZi() {
+    const { data } = await supabase.from('mesaje_zi').select('id,text').eq('data', selectedDate).maybeSingle()
+    setMesajZi(data||null)
+    setEditingMesajZi(false)
+  }
+
+  async function saveMesajZi() {
+    const text = mesajZiDraft.trim()
+    if(!text) return
+    setSavingMesajZi(true)
+    const { error } = await supabase.from('mesaje_zi').upsert({ data: selectedDate, text }, { onConflict: 'data' })
+    setSavingMesajZi(false)
+    if(!error){
+      setEditingMesajZi(false)
+      loadMesajZi()
+      show('success','✓ Mesaj salvat, apare și în staff')
+    } else {
+      show('error','Nu s-a putut salva')
+    }
+  }
+
+  async function deleteMesajZi() {
+    if(!confirm('Ștergi mesajul zilei?')) return
+    await supabase.from('mesaje_zi').delete().eq('data', selectedDate)
+    loadMesajZi()
+  }
+
+  async function resetZi() {
+    if(!confirm(`Sigur? Se resetează tot progresul de curățenie pentru ${fmtDate(selectedDate)} — status, eliberat, lenjerii, ore speciale. Nu se poate anula.`)) return
+    await supabase.from('curatenie_status').delete().eq('data', selectedDate)
+    await loadStaffStatus()
+    show('success','✓ Ziua a fost resetată')
+  }
 
   useEffect(()=>{
     supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data:sD})=>{
