@@ -179,13 +179,15 @@ export default function CuratenePage() {
     setBaniPending(m)
   }
 
-  async function addBani(aptId: string) {
+  async function addBani(aptId: string, aptNota: string) {
     const suma = parseFloat(baniForm.suma.replace(',','.'))
     if(!suma || suma<=0) return
     setSavingBani(true)
+    const baseMotiv = 'Numerar' + (aptNota ? ' ' + aptNota : '')
+    const motiv = baniForm.motiv.trim() ? `${baseMotiv} · ${baniForm.motiv.trim()}` : baseMotiv
     const { error } = await supabase.from('staff_casa').insert({
       data: selectedDate, apartament_id: aptId, tip: 'incasare',
-      suma, motiv: baniForm.motiv.trim() || 'Numerar de la client', preluat: false,
+      suma, motiv, preluat: false,
     })
     setSavingBani(false)
     if(!error){
@@ -680,12 +682,12 @@ export default function CuratenePage() {
                         <input type="text" inputMode="decimal" placeholder="Sumă RON" value={baniForm.suma}
                           onChange={e=>setBaniForm(f=>({...f,suma:e.target.value}))}
                           style={{width:90,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(252,211,77,0.25)',borderRadius:8,padding:'7px 9px',color:'#FCD34D',fontSize:13,outline:'none'}}/>
-                        <input type="text" placeholder="Motiv (opțional)" value={baniForm.motiv}
+                        <input type="text" placeholder={'Detaliu (opțional, ex: după Numerar '+(apt?.nota||'')+')'} value={baniForm.motiv}
                           onChange={e=>setBaniForm(f=>({...f,motiv:e.target.value}))}
                           style={{flex:1,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(252,211,77,0.25)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
                       </div>
                       <div style={{display:'flex',gap:8}}>
-                        <button onClick={()=>addBani(apt.id)} disabled={savingBani||!baniForm.suma}
+                        <button onClick={()=>addBani(apt.id, apt?.nota||'')} disabled={savingBani||!baniForm.suma}
                           style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:'#FCD34D',color:'#3A2A00',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!baniForm.suma?0.5:1}}>
                           {savingBani?'Se salvează...':'Salvează'}
                         </button>
@@ -841,8 +843,8 @@ export default function CuratenePage() {
 
         {/* CASĂ STAFF */}
         {(()=>{
-          const totalIn=casaLuna.filter(e=>e.tip==='incasare').reduce((s:number,e:any)=>s+Number(e.suma),0)
-          const totalOut=casaLuna.filter(e=>e.tip==='cheltuiala').reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const totalIn=casaLuna.filter(e=>e.tip==='incasare'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
+          const totalOut=casaLuna.filter(e=>e.tip==='cheltuiala'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
           const sold=totalIn-totalOut
           const [an,lun]=rapoarteLuna.split('-')
           const lunaLabel=['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][Number(lun)]
@@ -861,9 +863,9 @@ export default function CuratenePage() {
                   </div>
                 ))}
               </div>
-              {casaLuna.length>0&&(
+              {casaLuna.filter((e:any)=>e.preluat!==false).length>0&&(
                 <div style={{display:'flex',flexDirection:'column' as const,gap:5}}>
-                  {casaLuna.map((e:any)=>{
+                  {casaLuna.filter((e:any)=>e.preluat!==false).map((e:any)=>{
                     const isIn=e.tip==='incasare'
                     return(
                       <div key={e.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:7,background:isIn?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:'1px solid '+(isIn?'rgba(74,222,128,0.12)':'rgba(248,113,113,0.12)')}}>
@@ -876,7 +878,7 @@ export default function CuratenePage() {
                   })}
                 </div>
               )}
-              {casaLuna.length===0&&<div style={{textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)',padding:'8px 0'}}>Nicio înregistrare în această lună</div>}
+              {casaLuna.filter((e:any)=>e.preluat!==false).length===0&&<div style={{textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)',padding:'8px 0'}}>Nicio înregistrare în această lună</div>}
             </div>
           )
         })()}
