@@ -25,10 +25,10 @@ type Task = {
   created_at: string
 }
 
-const COLS: { key: Task['status']; label: string; color: string }[] = [
-  { key: 'de_facut',  label: 'De făcut',  color: '#F59E0B' },
-  { key: 'in_lucru',  label: 'În lucru',  color: '#4DA3FF' },
-  { key: 'finalizat', label: 'Finalizat', color: '#22C55E' },
+const COLS: { key: Task['status']; label: string; color: string; icon: string }[] = [
+  { key: 'de_facut',  label: 'De făcut',  color: '#F59E0B', icon: '📋' },
+  { key: 'in_lucru',  label: 'În lucru',  color: '#4DA3FF', icon: '⚡' },
+  { key: 'finalizat', label: 'Finalizat', color: '#22C55E', icon: '✅' },
 ]
 const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
 const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
@@ -461,12 +461,16 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
   const daysLeft = task.data_limita ? Math.ceil((new Date(task.data_limita).getTime() - new Date(today).getTime()) / 86400000) : null
   const isCriticalDeadline = daysLeft !== null && daysLeft <= 1
   const isWarningDeadline = daysLeft !== null && daysLeft >= 2 && daysLeft <= 3
+  const accent = overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc
   return (
-    <div onClick={() => onEdit(task)} style={{
-      background: 'rgba(214,228,244,0.06)', border: `1px solid rgba(159,215,255,0.1)`,
-      borderLeft: `3px solid ${overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc}`, borderRadius: 10, padding: '12px 12px 10px', cursor: 'pointer', transition: 'border-color 0.12s',
+    <div onClick={() => onEdit(task)} className="task-card" style={{
+      position: 'relative', overflow: 'hidden',
+      background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))',
+      border: '1px solid rgba(159,215,255,0.1)',
+      borderRadius: 12, padding: '14px 13px 11px', cursor: 'pointer', transition: 'transform 0.15s, border-color 0.15s, box-shadow 0.15s',
     }}>
-      <div style={{ fontSize: 13, fontWeight: 500, color: '#FFFFFF', marginBottom: 5, lineHeight: 1.4 }}>{task.titlu}</div>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent }}/>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginBottom: 5, lineHeight: 1.4 }}>{task.titlu}</div>
       {task.descriere && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginBottom: 7, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
         <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${sc}18`, color: sc, border: `1px solid ${sc}25` }}>{PRIO_LABEL[task.prioritate]}</span>
@@ -1368,21 +1372,26 @@ export default function TaskuriPage() {
           </div>
         </div>
         ) : viewMode === 'coloane' ? (
-        <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, overflowY: 'auto', flex: 1 }}>
+        <div className="kanban-grid" style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, overflowY: 'auto', flex: 1, alignContent: 'start' }}>
           {COLS.map(col => {
             const totalCount = byStatus(col.key).length
             const colTasks = col.key === 'finalizat' ? finalizatShown : byStatus(col.key)
             return (
-            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 14px', background: `${col.color}0F`, border: `1px solid ${col.color}25`, borderRadius: 10, borderTop: `2px solid ${col.color}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: col.color, boxShadow: `0 0 5px ${col.color}` }}/>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#FFFFFF' }}>{col.label}</span>
+            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 14,
+                background: `linear-gradient(135deg, ${col.color}20, ${col.color}06)`, border: `1px solid ${col.color}35`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 9, background: `${col.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>
+                    {col.icon}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#FFFFFF' }}>{col.label}</span>
                 </div>
-                <span style={{ fontSize: 11, color: col.color, fontFamily: 'monospace', fontWeight: 600 }}>{totalCount}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: col.color, background: `${col.color}1A`, borderRadius: 20, padding: '3px 11px', minWidth: 24, textAlign: 'center' as const }}>{totalCount}</span>
               </div>
               {colTasks.length === 0 ? (
-                <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.2)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun task</div>
+                <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.2)', border: '1px dashed rgba(159,215,255,0.1)', borderRadius: 12 }}>Niciun task</div>
               ) : colTasks.map(t => (
                 <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
               ))}
@@ -1543,6 +1552,13 @@ export default function TaskuriPage() {
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={delTask} loading={deleting} title="Șterge task" message="Sigur vrei să ștergi acest task?"/>
       <Toast toast={toast}/>
+
+      <style>{`
+        .task-card:hover { border-color: rgba(159,215,255,0.28) !important; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+        @media (max-width: 720px) {
+          .kanban-grid { grid-template-columns: 1fr !important; padding: 12px 14px !important; }
+        }
+      `}</style>
     </>
   )
 }
