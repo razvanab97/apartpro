@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
+import UpdatesWidget from '@/components/UpdatesWidget'
 import { usePathname } from 'next/navigation'
 import { ReactNode, useState, useEffect } from 'react'
 import {
@@ -209,6 +210,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       </nav>}
 
       <Chatbot/>
+      <UpdatesWidget/>
 
       <style>{`
         .staff-hidden { display: none !important; }

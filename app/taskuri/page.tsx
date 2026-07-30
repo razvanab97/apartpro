@@ -686,7 +686,6 @@ const RUTINA_ITEMS_LIST: [string, string][] = [
   ['💰', 'Actualizare prețuri'],
   ['📖', 'Citit'],
 ]
-const CITIT_IDX = RUTINA_ITEMS_LIST.findIndex(r => r[1] === 'Citit')
 function fmtElapsed(sec: number) {
   const m = Math.floor(sec / 60); const s = sec % 60
   return `${m}:${String(s).padStart(2, '0')}`
@@ -708,10 +707,26 @@ export default function TaskuriPage() {
   const [deleting, setDeleting] = useState(false)
   const [filterBusiness, setFilterBusiness] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
-  const [viewMode, setViewMode] = useState<'coloane' | 'date'>('coloane')
+  const [viewMode, setViewMode] = useState<'coloane' | 'date' | 'publi24'>('coloane')
   const { toast, show } = useToast()
   const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
   const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
+  const [rutinaItems, setRutinaItems] = useState<[string,string][]>(RUTINA_ITEMS_LIST)
+  const [rutinaEditOpen, setRutinaEditOpen] = useState(false)
+  const [rutinaDraft, setRutinaDraft] = useState<[string,string][]>(RUTINA_ITEMS_LIST)
+  const [rutinaNewEmoji, setRutinaNewEmoji] = useState('')
+  const [rutinaNewTitlu, setRutinaNewTitlu] = useState('')
+  const [savingRutina, setSavingRutina] = useState(false)
+  const [quickAddCol, setQuickAddCol] = useState<string | null>(null)
+  const [quickAddText, setQuickAddText] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [publi24Conturi, setPubli24Conturi] = useState<any[]>([])
+  const [publi24Info, setPubli24Info] = useState('')
+  const [editingPubli24Info, setEditingPubli24Info] = useState(false)
+  const [publi24InfoDraft, setPubli24InfoDraft] = useState('')
+  const [publi24Form, setPubli24Form] = useState({ cont: '', parola: '', nota: '' })
+  const [publi24FormOpen, setPubli24FormOpen] = useState(false)
+  const [revealPass, setRevealPass] = useState<Set<string>>(new Set())
   const todayRutina = new Date().toISOString().split('T')[0]
   const [citireActiva, setCitireActiva] = useState<{ id: string; ora_start: string } | null>(null)
   const [citireTotalMin, setCitireTotalMin] = useState(0)
@@ -719,6 +734,7 @@ export default function TaskuriPage() {
   const [citireElapsed, setCitireElapsed] = useState(0)
   const [citireStatsOpen, setCitireStatsOpen] = useState(false)
   const [citireIstoric, setCitireIstoric] = useState<{ data: string; total_min: number }[]>([])
+  const CITIT_IDX = rutinaItems.findIndex(r => r[1] === 'Citit')
 
 
   useEffect(() => {
@@ -764,7 +780,44 @@ export default function TaskuriPage() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => { loadRutina(); loadCitire() }, [])
+  useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadPubli24() }, [])
+
+  async function loadPubli24() {
+    const { data: conturi } = await supabase.from('publi24_conturi').select('*').order('created_at')
+    setPubli24Conturi(conturi || [])
+    const { data: info } = await supabase.from('setari').select('valoare').eq('cheie', 'publi24_info').maybeSingle()
+    setPubli24Info(info?.valoare || '')
+  }
+
+  async function savePubli24Info() {
+    const { data: ex } = await supabase.from('setari').select('id').eq('cheie', 'publi24_info').maybeSingle()
+    if (ex?.id) await supabase.from('setari').update({ valoare: publi24InfoDraft }).eq('id', ex.id)
+    else await supabase.from('setari').insert({ cheie: 'publi24_info', valoare: publi24InfoDraft })
+    setPubli24Info(publi24InfoDraft)
+    setEditingPubli24Info(false)
+    show('success', '✓ Info salvat')
+  }
+
+  async function addPubli24Cont() {
+    if (!publi24Form.cont.trim() || !publi24Form.parola.trim()) return
+    const { error } = await supabase.from('publi24_conturi').insert({
+      cont: publi24Form.cont.trim(), parola: publi24Form.parola.trim(), nota: publi24Form.nota.trim() || null,
+    })
+    if (error) { show('error', error.message); return }
+    setPubli24Form({ cont: '', parola: '', nota: '' })
+    setPubli24FormOpen(false)
+    loadPubli24()
+  }
+
+  async function deletePubli24Cont(id: string) {
+    if (!confirm('Ștergi acest cont Publi24?')) return
+    await supabase.from('publi24_conturi').delete().eq('id', id)
+    loadPubli24()
+  }
+
+  function togglePassReveal(id: string) {
+    setRevealPass(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
 
   useEffect(() => {
     if (!citireActiva) return
@@ -841,7 +894,33 @@ export default function TaskuriPage() {
     load()
   }
 
-  async function loadRutina() {
+  async function loadRutinaItems(): Promise<[string,string][]> {
+    const { data } = await supabase.from('setari').select('valoare').eq('cheie', 'rutina_items').maybeSingle()
+    let items: [string,string][] = RUTINA_ITEMS_LIST
+    if (data?.valoare) {
+      try {
+        const parsed = JSON.parse(data.valoare)
+        if (Array.isArray(parsed) && parsed.length > 0) items = parsed
+      } catch {}
+    }
+    setRutinaItems(items)
+    return items
+  }
+
+  async function saveRutinaItems(items: [string,string][]) {
+    setSavingRutina(true)
+    const { data: ex } = await supabase.from('setari').select('id').eq('cheie', 'rutina_items').maybeSingle()
+    const valoare = JSON.stringify(items)
+    if (ex?.id) await supabase.from('setari').update({ valoare }).eq('id', ex.id)
+    else await supabase.from('setari').insert({ cheie: 'rutina_items', valoare })
+    setSavingRutina(false)
+    setRutinaItems(items)
+    setRutinaEditOpen(false)
+    show('success', '✓ Rutina a fost actualizată')
+    loadRutina()
+  }
+
+  async function loadRutina(items: [string,string][] = rutinaItems) {
     const { data } = await supabase.from('taskuri')
       .select('id,titlu,status')
       .eq('business', '__rutina__')
@@ -851,7 +930,7 @@ export default function TaskuriPage() {
     const bifate = new Set<number>()
     const ids: Record<number,string> = {}
     data.forEach((t:any) => {
-      const idx = RUTINA_ITEMS_LIST.findIndex(r => r[1] === t.titlu)
+      const idx = items.findIndex(r => r[1] === t.titlu)
       if (idx >= 0) {
         ids[idx] = t.id
         if (t.status === 'finalizat') bifate.add(idx)
@@ -862,7 +941,7 @@ export default function TaskuriPage() {
   }
 
   async function toggleRutina(idx: number) {
-    const item = RUTINA_ITEMS_LIST[idx]
+    const item = rutinaItems[idx]
     const isBifat = rutinaBifata.has(idx)
     if (rutinaTaskIds[idx]) {
       const newStatus = isBifat ? 'de_facut' : 'finalizat'
@@ -936,8 +1015,22 @@ export default function TaskuriPage() {
     setLoading(false)
   }
 
-  function openNew() { setEditing(empty); setEditOpen(true) }
-  function openEdit(t: Task) { setEditing({ ...t }); setEditOpen(true) }
+  function openNew() { setEditing(empty); setShowAdvanced(false); setEditOpen(true) }
+  function openEdit(t: Task) { setEditing({ ...t }); setShowAdvanced(false); setEditOpen(true) }
+
+  async function quickAddTask(status: string) {
+    const titlu = quickAddText.trim()
+    if (!titlu) { setQuickAddCol(null); return }
+    const { error } = await supabase.from('taskuri').insert({
+      titlu, status, prioritate: 'normala',
+      business: filterBusiness || null,
+      impact_score: 5, effort_score: 5, priority_score: 5,
+    })
+    if (error) { show('error', error.message); return }
+    setQuickAddText('')
+    setQuickAddCol(null)
+    load()
+  }
 
   async function save() {
     if (!editing.titlu) { show('error', 'Adaugă un titlu'); return }
@@ -1040,6 +1133,7 @@ export default function TaskuriPage() {
             <div style={{ display: 'flex', background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)', borderRadius: 8, padding: 2 }}>
               <button onClick={() => setViewMode('coloane')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'coloane' ? '#4DA3FF' : 'transparent', color: viewMode === 'coloane' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe coloane</button>
               <button onClick={() => setViewMode('date')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'date' ? '#4DA3FF' : 'transparent', color: viewMode === 'date' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe date</button>
+              <button onClick={() => setViewMode('publi24')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'publi24' ? '#4DA3FF' : 'transparent', color: viewMode === 'publi24' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>📢 Publi24</button>
             </div>
             <select value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', width: 160 }}>
               <option value="">Toate businessurile</option>
@@ -1062,14 +1156,21 @@ export default function TaskuriPage() {
         <div style={{ background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14, padding:'14px 18px' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
             <div style={{ fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'.08em' }}>
-              ☀️ Rutina zilei — {rutinaBifata.size}/{RUTINA_ITEMS_LIST.length} completate
+              ☀️ Rutina zilei — {rutinaBifata.size}/{rutinaItems.length} completate
             </div>
-            <div style={{ fontSize:11, color: rutinaBifata.size === RUTINA_ITEMS_LIST.length ? '#4ADE80' : 'rgba(159,215,255,0.3)' }}>
-              {rutinaBifata.size === RUTINA_ITEMS_LIST.length ? '✓ Zi completă!' : `${RUTINA_ITEMS_LIST.length - rutinaBifata.size} rămase`}
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ fontSize:11, color: rutinaBifata.size === rutinaItems.length ? '#4ADE80' : 'rgba(159,215,255,0.3)' }}>
+                {rutinaBifata.size === rutinaItems.length ? '✓ Zi completă!' : `${rutinaItems.length - rutinaBifata.size} rămase`}
+              </div>
+              <button onClick={() => { setRutinaDraft(rutinaItems.filter(([,t]) => t !== 'Citit')); setRutinaEditOpen(true) }}
+                title="Editează rutina"
+                style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(159,215,255,0.15)', background:'rgba(159,215,255,0.06)', color:'rgba(159,215,255,0.5)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>
+                ✎
+              </button>
             </div>
           </div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
-            {RUTINA_ITEMS_LIST.map(([emoji, titlu], idx) => {
+            {rutinaItems.map(([emoji, titlu], idx) => {
               if (idx === CITIT_IDX) return null
               const bifat = rutinaBifata.has(idx)
               return (
@@ -1147,6 +1248,37 @@ export default function TaskuriPage() {
         </div>
       </div>
 
+      {/* EDITARE RUTINA ZILEI */}
+      <Modal open={rutinaEditOpen} onClose={() => setRutinaEditOpen(false)} title="Editează rutina zilei" width="480px">
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+          {rutinaDraft.map(([emoji, titlu], idx) => (
+            <div key={idx} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:8, background:'rgba(20,38,65,0.6)' }}>
+              <span style={{ fontSize:16 }}>{emoji}</span>
+              <span style={{ flex:1, fontSize:13, color:'#E8F4FF' }}>{titlu}</span>
+              <button onClick={() => setRutinaDraft(d => d.filter((_,i) => i!==idx))}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'rgba(248,113,113,0.7)', fontSize:16, lineHeight:1 }}>×</button>
+            </div>
+          ))}
+          {rutinaDraft.length===0 && <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)', textAlign:'center', padding:'10px 0' }}>Nicio activitate</div>}
+        </div>
+        <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)', marginBottom:8 }}>Adaugă activitate nouă:</div>
+        <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+          <input value={rutinaNewEmoji} onChange={e => setRutinaNewEmoji(e.target.value)} placeholder="🔹" style={{ width:50, textAlign:'center' as const }}/>
+          <input value={rutinaNewTitlu} onChange={e => setRutinaNewTitlu(e.target.value)}
+            onKeyDown={e => { if(e.key==='Enter' && rutinaNewTitlu.trim()){ setRutinaDraft(d => [...d,[rutinaNewEmoji.trim()||'☑️', rutinaNewTitlu.trim()]]); setRutinaNewEmoji(''); setRutinaNewTitlu('') } }}
+            placeholder="ex: Verificat stoc consumabile" style={{ flex:1 }}/>
+          <Button variant="secondary" onClick={() => {
+            if(!rutinaNewTitlu.trim()) return
+            setRutinaDraft(d => [...d, [rutinaNewEmoji.trim()||'☑️', rutinaNewTitlu.trim()]])
+            setRutinaNewEmoji(''); setRutinaNewTitlu('')
+          }}>+ Adaugă</Button>
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <Button variant="primary" onClick={() => saveRutinaItems([...rutinaDraft, ['📖','Citit']])} loading={savingRutina} style={{ flex:1 }}>Salvează</Button>
+          <Button variant="secondary" onClick={() => setRutinaEditOpen(false)} style={{ flex:1 }}>Anulează</Button>
+        </div>
+      </Modal>
+
       {/* PROGRESS BAR SECTION */}
       <TaskProgress tasks={tasks}/>
 
@@ -1158,7 +1290,74 @@ export default function TaskuriPage() {
           <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#4DA3FF' }}/>
         </div>
       ) : (
-        viewMode === 'coloane' ? (
+        viewMode === 'publi24' ? (
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, maxWidth: 640 }}>
+          {/* INFO */}
+          <div style={{ background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.2)', borderRadius: 12, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#7BC8FF', textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>ℹ️ Info — cum adaugi un anunț</div>
+              {!editingPubli24Info && (
+                <button onClick={() => { setPubli24InfoDraft(publi24Info); setEditingPubli24Info(true) }}
+                  style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid rgba(159,215,255,0.15)', background: 'rgba(159,215,255,0.06)', color: 'rgba(159,215,255,0.5)', cursor: 'pointer', fontSize: 12 }}>✎</button>
+              )}
+            </div>
+            {editingPubli24Info ? (
+              <>
+                <textarea value={publi24InfoDraft} onChange={e => setPubli24InfoDraft(e.target.value)} rows={5}
+                  placeholder="ex: 1. Intră pe publi24.ro cu contul... 2. Categorie Imobiliare > Închirieri... 3. Adaugă poze din Drive..."
+                  style={{ width: '100%', boxSizing: 'border-box' as const, marginBottom: 10, fontFamily: 'inherit' }}/>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button variant="primary" onClick={savePubli24Info} style={{ flex: 1 }}>Salvează</Button>
+                  <Button variant="secondary" onClick={() => setEditingPubli24Info(false)} style={{ flex: 1 }}>Anulează</Button>
+                </div>
+              </>
+            ) : (
+              publi24Info
+                ? <div style={{ fontSize: 13, color: 'rgba(214,228,244,0.75)', whiteSpace: 'pre-wrap' as const }}>{publi24Info}</div>
+                : <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.3)', fontStyle: 'italic' }}>Niciun info salvat încă — apasă ✎ ca să adaugi pașii de urmat.</div>
+            )}
+          </div>
+
+          {/* CONTURI */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>Conturi Publi24</div>
+              <Button variant="secondary" onClick={() => setPubli24FormOpen(o => !o)}>{publi24FormOpen ? 'Anulează' : '+ Adaugă cont'}</Button>
+            </div>
+
+            {publi24FormOpen && (
+              <div style={{ background: 'rgba(20,38,65,0.6)', border: '1px solid rgba(159,215,255,0.12)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                <FormRow cols={2}>
+                  <FormGroup><label>Cont (email/user)</label><input value={publi24Form.cont} onChange={e => setPubli24Form(f => ({ ...f, cont: e.target.value }))} placeholder="ex: office@abhomes.ro"/></FormGroup>
+                  <FormGroup><label>Parolă</label><input value={publi24Form.parola} onChange={e => setPubli24Form(f => ({ ...f, parola: e.target.value }))} placeholder="parolă"/></FormGroup>
+                </FormRow>
+                <FormGroup><label>Notă (opțional)</label><input value={publi24Form.nota} onChange={e => setPubli24Form(f => ({ ...f, nota: e.target.value }))} placeholder="ex: cont pentru Green Station"/></FormGroup>
+                <Button variant="primary" onClick={addPubli24Cont} style={{ width: '100%' }}>Salvează contul</Button>
+              </div>
+            )}
+
+            {publi24Conturi.length === 0 ? (
+              <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.25)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun cont adăugat</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {publi24Conturi.map((c: any) => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(20,38,65,0.6)', border: '1px solid rgba(159,215,255,0.1)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.cont}</div>
+                      <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)', fontFamily: 'monospace', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {revealPass.has(c.id) ? c.parola : '••••••••'}
+                        <button onClick={() => togglePassReveal(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12 }}>{revealPass.has(c.id) ? '🙈' : '👁'}</button>
+                      </div>
+                      {c.nota && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)', marginTop: 2 }}>{c.nota}</div>}
+                    </div>
+                    <button onClick={() => deletePubli24Cont(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.5)', fontSize: 18, padding: '2px 4px', flexShrink: 0, lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        ) : viewMode === 'coloane' ? (
         <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, overflowY: 'auto', flex: 1 }}>
           {COLS.map(col => {
             const totalCount = byStatus(col.key).length
@@ -1180,9 +1379,29 @@ export default function TaskuriPage() {
               {col.key === 'finalizat' && finalizatHidden > 0 && (
                 <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(159,215,255,0.3)', padding: '4px 0' }}>+{finalizatHidden} mai vechi</div>
               )}
-              <button onClick={openNew} style={{ width: '100%', padding: '8px', borderRadius: 8, background: 'transparent', border: '1px dashed rgba(159,215,255,0.08)', color: 'rgba(159,215,255,0.25)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                <Plus size={11}/> Adaugă task
-              </button>
+              {quickAddCol === col.key ? (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input autoFocus value={quickAddText} onChange={e => setQuickAddText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') quickAddTask(col.key)
+                      if (e.key === 'Escape') { setQuickAddCol(null); setQuickAddText('') }
+                    }}
+                    onBlur={() => { if (!quickAddText.trim()) setQuickAddCol(null) }}
+                    placeholder="Titlu task... (Enter)" style={{ flex: 1, fontSize: 12, padding: '7px 9px' }}/>
+                  <button onClick={() => quickAddTask(col.key)} title="Adaugă"
+                    style={{ width: 30, borderRadius: 8, border: 'none', background: '#4DA3FF', color: '#0E1B2B', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>✓</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => { setQuickAddCol(col.key); setQuickAddText('') }} style={{ flex: 1, padding: '8px', borderRadius: 8, background: 'transparent', border: '1px dashed rgba(159,215,255,0.15)', color: 'rgba(159,215,255,0.4)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                    <Plus size={11}/> Adaugă task
+                  </button>
+                  <button onClick={() => { setEditing({ ...empty, status: col.key }); setShowAdvanced(false); setEditOpen(true) }} title="Task detaliat"
+                    style={{ width: 30, borderRadius: 8, background: 'transparent', border: '1px dashed rgba(159,215,255,0.08)', color: 'rgba(159,215,255,0.25)', fontSize: 12, cursor: 'pointer' }}>
+                    ⋯
+                  </button>
+                </div>
+              )}
             </div>
             )
           })}
@@ -1213,46 +1432,7 @@ export default function TaskuriPage() {
 
       {/* EDIT MODAL */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title={editing.id ? 'Editează task' : 'Task nou'} width="560px">
-        <FormGroup><label>Titlu *</label><input value={editing.titlu || ''} onChange={e => setEditing({ ...editing, titlu: e.target.value })} placeholder="Ce trebuie făcut?"/></FormGroup>
-        <FormGroup><label>Descriere</label><textarea value={editing.descriere || ''} onChange={e => setEditing({ ...editing, descriere: e.target.value })} rows={2}/></FormGroup>
-
-        {!editing.id ? (
-          <div style={{ marginBottom: 16 }}>
-            <label>Recurență</label>
-            <Pills value={editing.recurent ? 'da' : 'nu'} onChange={v => setEditing({ ...editing, recurent: v === 'da' })}
-              options={[
-                { value: 'nu', label: 'Task unic', color: '#94A3B8' },
-                { value: 'da', label: '🔁 Task recurent', color: '#4DA3FF' },
-              ]}/>
-            {editing.recurent && (
-              <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
-                <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 8 }}>Se repetă:</div>
-                <Pills value={[1,7,30].includes(Number(editing.interval_zile)) ? String(editing.interval_zile) : 'custom'}
-                  onChange={v => setEditing({ ...editing, interval_zile: v === 'custom' ? 14 : parseInt(v) })}
-                  options={[
-                    { value: '1', label: 'Zilnic', color: '#4ADE80' },
-                    { value: '7', label: 'Săptămânal', color: '#4DA3FF' },
-                    { value: '30', label: 'Lunar', color: '#C4B5FD' },
-                    { value: 'custom', label: 'Personalizat', color: '#FCD34D' },
-                  ]}/>
-                {![1,7,30].includes(Number(editing.interval_zile)) && (
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
-                    <input type="number" min={1} value={editing.interval_zile ?? 14} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
-                    <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
-                  </div>
-                )}
-                <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>
-                  Începând cu data limită de mai jos (sau azi, dacă nu o setezi). Task-ul se salvează ca șablon ascuns — la fiecare interval se generează automat o copie activă.
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ marginBottom: 16, fontSize: 11, color: 'rgba(159,215,255,0.35)', fontStyle: 'italic' }}>
-            Recurența se poate seta doar la crearea unui task nou.
-          </div>
-        )}
+        <FormGroup><label>Titlu *</label><input autoFocus value={editing.titlu || ''} onChange={e => setEditing({ ...editing, titlu: e.target.value })} placeholder="Ce trebuie făcut?"/></FormGroup>
 
         <div style={{ marginBottom: 14 }}>
           <label>Status</label>
@@ -1273,28 +1453,77 @@ export default function TaskuriPage() {
           <Pills value={editing.business || ''} onChange={v => setEditing({ ...editing, business: v })}
             options={[{ value: '', label: '— Niciunul —', color: '#64748B' }, ...BIZ.map(b => ({ value: b, label: b, color: BIZ_COLOR[b] || '#94A3B8' }))]}/>
         </div>
-
-        <FormRow cols={2}>
-          <FormGroup><label>Persoană</label><input value={editing.persoana || ''} onChange={e => setEditing({ ...editing, persoana: e.target.value })} placeholder="Nume..."/></FormGroup>
-          <FormGroup><label>Telefon/WA persoană</label><input value={(editing as any).telefon_persoana || ''} onChange={e=>setEditing({...editing,telefon_persoana:e.target.value} as any)} placeholder="+40 7xx xxx xxx"/></FormGroup>
-        </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Dată limită</label><input type="date" value={editing.data_limita || ''} onChange={e => setEditing({ ...editing, data_limita: e.target.value })}/></FormGroup>
           <FormGroup><label>⏰ Oră (opțional)</label><input type="time" value={editing.ora_limita || ''} onChange={e=>setEditing({...editing,ora_limita:e.target.value})} style={{width:'100%'}}/></FormGroup>
         </FormRow>
 
-        <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: 'rgba(214,228,244,0.04)', border: '1px solid rgba(159,215,255,0.1)' }}>
-          <FormRow cols={2}>
-            <FormGroup><label>Impact (1-10): <span style={{ color: '#4ADE80' }}>{editing.impact_score || 5}</span></label><input type="range" min={1} max={10} value={editing.impact_score || 5} onChange={e => setEditing({ ...editing, impact_score: parseInt(e.target.value) })}/></FormGroup>
-            <FormGroup><label>Efort (1-10): <span style={{ color: '#FCD34D' }}>{editing.effort_score || 5}</span></label><input type="range" min={1} max={10} value={editing.effort_score || 5} onChange={e => setEditing({ ...editing, effort_score: parseInt(e.target.value) })}/></FormGroup>
-          </FormRow>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>
-            Priority Score:
-            <span style={{ background: 'rgba(77,163,255,0.15)', color: '#4DA3FF', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, fontSize: 12 }}>
-              {Math.round(((editing.impact_score || 5) * 2 + (11 - (editing.effort_score || 5))) / 3)}/10
-            </span>
-          </div>
-        </div>
+        <button type="button" onClick={() => setShowAdvanced(v => !v)}
+          style={{ width: '100%', padding: '8px', marginBottom: showAdvanced ? 14 : 4, borderRadius: 8, border: 'none', background: 'transparent', color: 'rgba(159,215,255,0.5)', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          {showAdvanced ? '▲ Ascunde detalii avansate' : '▼ Detalii avansate (descriere, persoană, impact/efort...)'}
+        </button>
+
+        {showAdvanced && (
+          <>
+            <FormGroup><label>Descriere</label><textarea value={editing.descriere || ''} onChange={e => setEditing({ ...editing, descriere: e.target.value })} rows={2}/></FormGroup>
+
+            {!editing.id ? (
+              <div style={{ marginBottom: 16 }}>
+                <label>Recurență</label>
+                <Pills value={editing.recurent ? 'da' : 'nu'} onChange={v => setEditing({ ...editing, recurent: v === 'da' })}
+                  options={[
+                    { value: 'nu', label: 'Task unic', color: '#94A3B8' },
+                    { value: 'da', label: '🔁 Task recurent', color: '#4DA3FF' },
+                  ]}/>
+                {editing.recurent && (
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.15)' }}>
+                    <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 8 }}>Se repetă:</div>
+                    <Pills value={[1,7,30].includes(Number(editing.interval_zile)) ? String(editing.interval_zile) : 'custom'}
+                      onChange={v => setEditing({ ...editing, interval_zile: v === 'custom' ? 14 : parseInt(v) })}
+                      options={[
+                        { value: '1', label: 'Zilnic', color: '#4ADE80' },
+                        { value: '7', label: 'Săptămânal', color: '#4DA3FF' },
+                        { value: '30', label: 'Lunar', color: '#C4B5FD' },
+                        { value: 'custom', label: 'Personalizat', color: '#FCD34D' },
+                      ]}/>
+                    {![1,7,30].includes(Number(editing.interval_zile)) && (
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
+                        <input type="number" min={1} value={editing.interval_zile ?? 14} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                        <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>
+                      Începând cu data limită de mai jos (sau azi, dacă nu o setezi). Task-ul se salvează ca șablon ascuns — la fiecare interval se generează automat o copie activă.
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ marginBottom: 16, fontSize: 11, color: 'rgba(159,215,255,0.35)', fontStyle: 'italic' }}>
+                Recurența se poate seta doar la crearea unui task nou.
+              </div>
+            )}
+
+            <FormRow cols={2}>
+              <FormGroup><label>Persoană</label><input value={editing.persoana || ''} onChange={e => setEditing({ ...editing, persoana: e.target.value })} placeholder="Nume..."/></FormGroup>
+              <FormGroup><label>Telefon/WA persoană</label><input value={(editing as any).telefon_persoana || ''} onChange={e=>setEditing({...editing,telefon_persoana:e.target.value} as any)} placeholder="+40 7xx xxx xxx"/></FormGroup>
+            </FormRow>
+
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: 'rgba(214,228,244,0.04)', border: '1px solid rgba(159,215,255,0.1)' }}>
+              <FormRow cols={2}>
+                <FormGroup><label>Impact (1-10): <span style={{ color: '#4ADE80' }}>{editing.impact_score || 5}</span></label><input type="range" min={1} max={10} value={editing.impact_score || 5} onChange={e => setEditing({ ...editing, impact_score: parseInt(e.target.value) })}/></FormGroup>
+                <FormGroup><label>Efort (1-10): <span style={{ color: '#FCD34D' }}>{editing.effort_score || 5}</span></label><input type="range" min={1} max={10} value={editing.effort_score || 5} onChange={e => setEditing({ ...editing, effort_score: parseInt(e.target.value) })}/></FormGroup>
+              </FormRow>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>
+                Priority Score:
+                <span style={{ background: 'rgba(77,163,255,0.15)', color: '#4DA3FF', border: '1px solid rgba(77,163,255,0.3)', borderRadius: 20, padding: '2px 10px', fontWeight: 700, fontSize: 12 }}>
+                  {Math.round(((editing.impact_score || 5) * 2 + (11 - (editing.effort_score || 5))) / 3)}/10
+                </span>
+              </div>
+            </div>
+          </>
+        )}
 
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="primary" onClick={save} loading={saving} style={{ flex: 1 }}>Salvează</Button>
