@@ -726,7 +726,6 @@ export default function TaskuriPage() {
   const [publi24InfoDraft, setPubli24InfoDraft] = useState('')
   const [publi24Form, setPubli24Form] = useState({ cont: '', parola: '', nota: '' })
   const [publi24FormOpen, setPubli24FormOpen] = useState(false)
-  const [revealPass, setRevealPass] = useState<Set<string>>(new Set())
   const todayRutina = new Date().toISOString().split('T')[0]
   const [citireActiva, setCitireActiva] = useState<{ id: string; ora_start: string } | null>(null)
   const [citireTotalMin, setCitireTotalMin] = useState(0)
@@ -815,8 +814,13 @@ export default function TaskuriPage() {
     loadPubli24()
   }
 
-  function togglePassReveal(id: string) {
-    setRevealPass(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  async function copyPubli24(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      show('success', `✓ ${label} copiat`)
+    } catch {
+      show('error', 'Nu s-a putut copia')
+    }
   }
 
   useEffect(() => {
@@ -1340,13 +1344,19 @@ export default function TaskuriPage() {
               <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.25)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun cont adăugat</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {publi24Conturi.map((c: any) => (
+                {publi24Conturi.map((c: any, idx: number) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(20,38,65,0.6)', border: '1px solid rgba(159,215,255,0.1)' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(159,215,255,0.4)', flexShrink: 0, width: 20 }}>{idx + 1}.</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.cont}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.cont}</span>
+                        <button onClick={() => copyPubli24(c.cont, 'Email')} title="Copiază email"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12, flexShrink: 0 }}>📋</button>
+                      </div>
                       <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)', fontFamily: 'monospace', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {revealPass.has(c.id) ? c.parola : '••••••••'}
-                        <button onClick={() => togglePassReveal(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12 }}>{revealPass.has(c.id) ? '🙈' : '👁'}</button>
+                        {c.parola}
+                        <button onClick={() => copyPubli24(c.parola, 'Parola')} title="Copiază parola"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12 }}>📋</button>
                       </div>
                       {c.nota && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)', marginTop: 2 }}>{c.nota}</div>}
                     </div>
