@@ -465,34 +465,35 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
   const daysLeft = task.data_limita ? Math.ceil((new Date(task.data_limita).getTime() - new Date(today).getTime()) / 86400000) : null
   const isCriticalDeadline = daysLeft !== null && daysLeft <= 1
   const isWarningDeadline = daysLeft !== null && daysLeft >= 2 && daysLeft <= 3
-  const accent = overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc
+  const accent = task.status === 'finalizat' ? '#22C55E' : overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   return (
     <div ref={setNodeRef} onClick={() => onEdit(task)} className="task-card" style={{
       position: 'relative', overflow: 'hidden',
       background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))',
       border: '1px solid rgba(159,215,255,0.1)',
-      borderRadius: 10, padding: '9px 10px 8px 26px', cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
+      borderRadius: 10, padding: '8px 9px 7px 22px', cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
       transform: CSS.Transform.toString(transform), transitionProperty: transition ? transition : undefined,
       opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined,
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent }}/>
       <div {...attributes} {...listeners} onClick={e => e.stopPropagation()}
         title="Trage pentru a reordona"
-        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', color: 'rgba(159,215,255,0.25)', touchAction: 'none' }}>
-        <GripVertical size={14}/>
+        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', color: 'rgba(159,215,255,0.25)', touchAction: 'none' }}>
+        <GripVertical size={13}/>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginBottom: 4, lineHeight: 1.35 }}>{task.titlu}</div>
-      {task.descriere && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginBottom: 6, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#FFFFFF', marginBottom: 3, lineHeight: 1.3 }}>{task.titlu}</div>
+      {task.descriere && <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', marginBottom: 5, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>
         <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${sc}18`, color: sc, border: `1px solid ${sc}25` }}>{PRIO_LABEL[task.prioritate]}</span>
         {task.business && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.15)' }}>{task.business}</span>}
         {task.data_limita && (() => {
           const today = new Date().toISOString().split('T')[0]
           const diff = Math.ceil((new Date(task.data_limita).getTime() - new Date(today).getTime()) / 86400000)
-          const isOverdue = diff < 0
-          const isCritical = diff >= 0 && diff <= 1  // azi sau maine = rosu
-          const isWarning = diff >= 2 && diff <= 3   // 2-3 zile = galben
+          const isDone = task.status === 'finalizat'
+          const isOverdue = !isDone && diff < 0
+          const isCritical = !isDone && diff >= 0 && diff <= 1  // azi sau maine = rosu
+          const isWarning = !isDone && diff >= 2 && diff <= 3   // 2-3 zile = galben
           const bg = isOverdue || isCritical ? 'rgba(239,68,68,0.18)' : isWarning ? 'rgba(245,158,11,0.18)' : 'rgba(148,163,184,0.1)'
           const color = isOverdue || isCritical ? '#F87171' : isWarning ? '#FCD34D' : '#94A3B8'
           const border = isOverdue || isCritical ? 'rgba(239,68,68,0.3)' : isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(148,163,184,0.15)'
@@ -1381,24 +1382,30 @@ export default function TaskuriPage() {
             {publi24Conturi.length === 0 ? (
               <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.25)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun cont adăugat</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {publi24Conturi.map((c: any, idx: number) => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(20,38,65,0.6)', border: '1px solid rgba(159,215,255,0.1)' }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(159,215,255,0.4)', flexShrink: 0, width: 20 }}>{idx + 1}.</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.cont}</span>
-                        <button onClick={() => copyPubli24(c.cont, 'Email')} title="Copiază email"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12, flexShrink: 0 }}>📋</button>
-                      </div>
-                      <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)', fontFamily: 'monospace', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {c.parola}
-                        <button onClick={() => copyPubli24(c.parola, 'Parola')} title="Copiază parola"
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', fontSize: 12 }}>📋</button>
-                      </div>
-                      {c.nota && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)', marginTop: 2 }}>{c.nota}</div>}
+                  <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 12, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.18)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#4DA3FF', background: 'rgba(77,163,255,0.15)', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>{idx + 1}</span>
+                      {c.nota && <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.nota}</span>}
+                      <button onClick={() => deletePubli24Cont(c.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.5)', fontSize: 17, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>×</button>
                     </div>
-                    <button onClick={() => deletePubli24Cont(c.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.5)', fontSize: 18, padding: '2px 4px', flexShrink: 0, lineHeight: 1 }}>×</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(14,27,43,0.55)', borderRadius: 9 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: 'rgba(77,163,255,0.65)', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }}>Email</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.cont}</div>
+                      </div>
+                      <button onClick={() => copyPubli24(c.cont, 'Email')}
+                        style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 20, border: 'none', background: 'rgba(77,163,255,0.15)', color: '#7BC8FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📋 Copiază</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(14,27,43,0.55)', borderRadius: 9 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: 'rgba(252,211,77,0.7)', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }}>Parolă</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#FCD34D', fontFamily: 'monospace' }}>{c.parola}</div>
+                      </div>
+                      <button onClick={() => copyPubli24(c.parola, 'Parola')}
+                        style={{ flexShrink: 0, padding: '6px 11px', borderRadius: 20, border: 'none', background: 'rgba(252,211,77,0.15)', color: '#FCD34D', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📋 Copiază</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1411,7 +1418,7 @@ export default function TaskuriPage() {
             const totalCount = byStatus(col.key).length
             const colTasks = col.key === 'finalizat' ? finalizatShown : byStatus(col.key)
             return (
-            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 14,
                 background: `linear-gradient(135deg, ${col.color}20, ${col.color}06)`, border: `1px solid ${col.color}35`,
