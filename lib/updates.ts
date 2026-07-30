@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Task-uri: culoare urgentă schimbată din roșu, drag-and-drop pentru reordonare, carduri mai compacte', date: '2026-07-30' },
   { text: 'Task-uri: kanban redesenat (culori, carduri) și responsive pe telefon', date: '2026-07-30' },
   { text: 'Publi24: conturi numerotate, email + parolă vizibile cu buton de copiat', date: '2026-07-30' },
   { text: 'Widget actualizări: mai mic, poziționat mai sus, numerotare Update N', date: '2026-07-30' },

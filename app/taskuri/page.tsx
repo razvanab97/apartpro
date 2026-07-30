@@ -3,7 +3,10 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
-import { Plus, Trash2, Edit2, Loader2, Sparkles, X, ImagePlus, Camera } from 'lucide-react'
+import { Plus, Trash2, Edit2, Loader2, Sparkles, X, ImagePlus, Camera, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type Task = {
   id: string
@@ -23,6 +26,7 @@ type Task = {
   interval_zile?: number | null
   data_urmatoare?: string | null
   created_at: string
+  ordine?: number | null
 }
 
 const COLS: { key: Task['status']; label: string; color: string; icon: string }[] = [
@@ -30,8 +34,8 @@ const COLS: { key: Task['status']; label: string; color: string; icon: string }[
   { key: 'in_lucru',  label: 'În lucru',  color: '#4DA3FF', icon: '⚡' },
   { key: 'finalizat', label: 'Finalizat', color: '#22C55E', icon: '✅' },
 ]
-const PRIO_COLOR: Record<string, string> = { urgenta: '#EF4444', normala: '#4DA3FF', scazuta: '#94A3B8' }
-const PRIO_LABEL: Record<string, string> = { urgenta: '🔴 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
+const PRIO_COLOR: Record<string, string> = { urgenta: '#F97316', normala: '#4DA3FF', scazuta: '#94A3B8' }
+const PRIO_LABEL: Record<string, string> = { urgenta: '🟠 Urgentă', normala: '🔵 Normală', scazuta: '⚫ Scăzută' }
 const BIZ = ['Property Management', 'Marketplace', 'Spălătorie', 'Personal', 'Admin', 'Financiar', 'Alt business']
 const BIZ_COLOR: Record<string, string> = {
   'Property Management': '#4DA3FF', 'Marketplace': '#22C55E', 'Spălătorie': '#F59E0B',
@@ -462,17 +466,25 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
   const isCriticalDeadline = daysLeft !== null && daysLeft <= 1
   const isWarningDeadline = daysLeft !== null && daysLeft >= 2 && daysLeft <= 3
   const accent = overdue || isCriticalDeadline ? '#EF4444' : isWarningDeadline ? '#F59E0B' : sc
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   return (
-    <div onClick={() => onEdit(task)} className="task-card" style={{
+    <div ref={setNodeRef} onClick={() => onEdit(task)} className="task-card" style={{
       position: 'relative', overflow: 'hidden',
       background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008))',
       border: '1px solid rgba(159,215,255,0.1)',
-      borderRadius: 12, padding: '14px 13px 11px', cursor: 'pointer', transition: 'transform 0.15s, border-color 0.15s, box-shadow 0.15s',
+      borderRadius: 10, padding: '9px 10px 8px 26px', cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s',
+      transform: CSS.Transform.toString(transform), transitionProperty: transition ? transition : undefined,
+      opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined,
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent }}/>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginBottom: 5, lineHeight: 1.4 }}>{task.titlu}</div>
-      {task.descriere && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginBottom: 7, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+      <div {...attributes} {...listeners} onClick={e => e.stopPropagation()}
+        title="Trage pentru a reordona"
+        style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', color: 'rgba(159,215,255,0.25)', touchAction: 'none' }}>
+        <GripVertical size={14}/>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', marginBottom: 4, lineHeight: 1.35 }}>{task.titlu}</div>
+      {task.descriere && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginBottom: 6, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
         <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${sc}18`, color: sc, border: `1px solid ${sc}25` }}>{PRIO_LABEL[task.prioritate]}</span>
         {task.business && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.15)' }}>{task.business}</span>}
         {task.data_limita && (() => {
@@ -499,13 +511,13 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
             onClick={() => onMove(task.id, 'finalizat')}
             title="Marchează ca finalizat"
             style={{
-              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
               background: 'rgba(34,197,94,0.1)', border: '1.5px solid rgba(34,197,94,0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: '#4ADE80', transition: 'all 0.15s',
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
         )}
         {task.status === 'finalizat' && (
@@ -513,13 +525,13 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
             onClick={() => onMove(task.id, 'de_facut')}
             title="Redeschide task"
             style={{
-              width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
               background: 'rgba(34,197,94,0.25)', border: '1.5px solid rgba(34,197,94,0.5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: '#4ADE80', transition: 'all 0.15s',
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
         )}
         {/* In lucru toggle */}
@@ -657,7 +669,7 @@ function TaskProgress({ tasks }: { tasks: Task[] }) {
       <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
         {urgent > 0 && (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#F87171', fontFamily: 'monospace' }}>{urgent}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#F97316', fontFamily: 'monospace' }}>{urgent}</div>
             <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)' }}>urgente</div>
           </div>
         )}
@@ -721,6 +733,7 @@ export default function TaskuriPage() {
   const [rutinaNewEmoji, setRutinaNewEmoji] = useState('')
   const [rutinaNewTitlu, setRutinaNewTitlu] = useState('')
   const [savingRutina, setSavingRutina] = useState(false)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [quickAddCol, setQuickAddCol] = useState<string | null>(null)
   const [quickAddText, setQuickAddText] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -1100,7 +1113,28 @@ export default function TaskuriPage() {
     // 3. Priority score desc
     return (b.priority_score||0) - (a.priority_score||0)
   })
-  const byStatus = (s: Task['status']) => sortTasks(filtered.filter(t => t.status === s))
+  const byStatus = (s: Task['status']) => {
+    const list = filtered.filter(t => t.status === s)
+    const hasManualOrder = list.some(t => t.ordine != null)
+    if (hasManualOrder) return [...list].sort((a, b) => (a.ordine ?? Infinity) - (b.ordine ?? Infinity))
+    return sortTasks(list)
+  }
+
+  async function handleDragEnd(colKey: Task['status'], event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const list = colKey === 'finalizat' ? finalizatShown : byStatus(colKey)
+    const oldIndex = list.findIndex(t => t.id === active.id)
+    const newIndex = list.findIndex(t => t.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(list, oldIndex, newIndex)
+    const updates = reordered.map((t, i) => ({ id: t.id, ordine: i * 100 }))
+    setTasks(prev => prev.map(t => {
+      const u = updates.find(x => x.id === t.id)
+      return u ? { ...t, ordine: u.ordine } : t
+    }))
+    await Promise.all(updates.map(u => supabase.from('taskuri').update({ ordine: u.ordine }).eq('id', u.id)))
+  }
 
   const FINALIZAT_CAP = 20
   const finalizatAll = [...filtered.filter(t => t.status === 'finalizat')].sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -1149,7 +1183,7 @@ export default function TaskuriPage() {
             </select>
             <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', width: 120 }}>
               <option value="">Toate prioritățile</option>
-              <option value="urgenta">🔴 Urgentă</option>
+              <option value="urgenta">🟠 Urgentă</option>
               <option value="normala">🔵 Normală</option>
               <option value="scazuta">⚫ Scăzută</option>
             </select>
@@ -1377,7 +1411,7 @@ export default function TaskuriPage() {
             const totalCount = byStatus(col.key).length
             const colTasks = col.key === 'finalizat' ? finalizatShown : byStatus(col.key)
             return (
-            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div key={col.key} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 14,
                 background: `linear-gradient(135deg, ${col.color}20, ${col.color}06)`, border: `1px solid ${col.color}35`,
@@ -1392,9 +1426,15 @@ export default function TaskuriPage() {
               </div>
               {colTasks.length === 0 ? (
                 <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.2)', border: '1px dashed rgba(159,215,255,0.1)', borderRadius: 12 }}>Niciun task</div>
-              ) : colTasks.map(t => (
-                <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
-              ))}
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => handleDragEnd(col.key, e)}>
+                  <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                    {colTasks.map(t => (
+                      <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              )}
               {col.key === 'finalizat' && finalizatHidden > 0 && (
                 <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(159,215,255,0.3)', padding: '4px 0' }}>+{finalizatHidden} mai vechi</div>
               )}
