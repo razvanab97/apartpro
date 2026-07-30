@@ -1334,9 +1334,9 @@ export default function TaskuriPage() {
         </div>
       ) : (
         viewMode === 'publi24' ? (
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1, maxWidth: 640 }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
           {/* INFO */}
-          <div style={{ background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.2)', borderRadius: 12, padding: 16 }}>
+          <div style={{ background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.2)', borderRadius: 12, padding: 16, maxWidth: 700 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#7BC8FF', textTransform: 'uppercase' as const, letterSpacing: '.06em' }}>ℹ️ Info — cum adaugi un anunț</div>
               {!editingPubli24Info && (
@@ -1382,7 +1382,7 @@ export default function TaskuriPage() {
             {publi24Conturi.length === 0 ? (
               <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.25)', border: '1px dashed rgba(159,215,255,0.08)', borderRadius: 8 }}>Niciun cont adăugat</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="publi24-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 {publi24Conturi.map((c: any, idx: number) => (
                   <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 12, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.18)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1602,8 +1602,12 @@ export default function TaskuriPage() {
 
       <style>{`
         .task-card:hover { border-color: rgba(159,215,255,0.28) !important; transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+        @media (max-width: 1000px) {
+          .publi24-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
         @media (max-width: 720px) {
           .kanban-grid { grid-template-columns: 1fr !important; padding: 12px 14px !important; }
+          .publi24-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </>
