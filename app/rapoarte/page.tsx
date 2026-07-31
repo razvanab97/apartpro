@@ -119,6 +119,7 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r:
 }
 
 export default function RapoartePage() {
+  const [pageView, setPageView] = useState<'raport'|'evolutie'>('raport')
   const [apartamente, setApartamente] = useState<any[]>([])
   const [selectedApts, setSelectedApts] = useState<string[]>([])
   const [modSelectie, setModSelectie] = useState<'luna'|'zile'>('luna')
@@ -164,6 +165,10 @@ export default function RapoartePage() {
       (err) => console.error('[rapoarte apartamente]', err)
     )
   }, [])
+
+  useEffect(() => {
+    if (pageView === 'evolutie' && graficeData.length === 0 && !graficeLoading) loadGrafice()
+  }, [pageView])
 
   async function loadGrafice() {
     setGraficeLoading(true)
@@ -416,7 +421,15 @@ export default function RapoartePage() {
       <PageHeader title="Rapoarte" subtitle="Calcul comisioane și situație financiară"/>
       <div style={{ padding:'14px 20px', display:'flex', flexDirection:'column', gap:12, paddingBottom:60 }}>
 
-        {/* ── GRAFICE STATISTICI ── */}
+        {/* ── TAB-URI PAGINA ── */}
+        <div style={{ display:'flex', gap:4, background:'rgba(14,27,43,0.4)', borderRadius:10, padding:4, width:'fit-content' }}>
+          {([['raport','📄 Raport detaliat'],['evolutie','📊 Evoluție lunară']] as [string,string][]).map(([k,l])=>(
+            <button key={k} onClick={()=>setPageView(k as any)} style={{ fontSize:12, padding:'6px 16px', borderRadius:7, border:'none', cursor:'pointer', fontWeight:pageView===k?600:400, background:pageView===k?'rgba(77,163,255,0.2)':'transparent', color:pageView===k?'#FFFFFF':'rgba(159,215,255,0.45)', outline:pageView===k?'1px solid rgba(77,163,255,0.3)':'none' }}>{l}</button>
+          ))}
+        </div>
+
+        {/* ── GRAFICE STATISTICI (evolutie lunara) ── */}
+        {pageView==='evolutie' && (
         <div style={{ background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14, padding:'16px 20px' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: showGrafice?16:0 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -539,7 +552,9 @@ export default function RapoartePage() {
             </div>
           )}
         </div>
+        )}
 
+        {pageView==='raport' && (<>
         {/* TIP RAPORT */}
         <div style={{ display:'flex', gap:8 }}>
           {[
@@ -726,9 +741,10 @@ export default function RapoartePage() {
             )}
           </div>
         )}
+        </>)}
       </div>
       {/* TVA / FISCAL TAB */}
-      {generated && rezervari.length > 0 && (
+      {pageView==='raport' && generated && rezervari.length > 0 && (
         <div style={{ padding:'0 20px 20px' }}>
           <div style={{ display:'flex', gap:4, marginBottom:12, background:'rgba(14,27,43,0.4)', borderRadius:10, padding:4, width:'fit-content' }}>
             {([['rezervari','📋 Rezervări'],['fiscal','📊 Situație Fiscală']] as [string,string][]).map(([k,l])=>(
