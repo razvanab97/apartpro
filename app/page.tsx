@@ -162,6 +162,14 @@ export default function DashboardPage() {
   const [gataMesajeTrimise,setGataMesajeTrimise]=useState(()=>{
     try{return localStorage.getItem('gata_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
+  const [ciWizardOpen,setCiWizardOpen]=useState(false)
+  const [ciWizardIdx,setCiWizardIdx]=useState(0)
+  const [ciBannerDismissed,setCiBannerDismissed]=useState(()=>{
+    try{return localStorage.getItem('ci_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [ciMesajeTrimise,setCiMesajeTrimise]=useState(()=>{
+    try{return localStorage.getItem('ci_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
   useEffect(()=>{loadData()},[])
 
 
@@ -539,6 +547,37 @@ export default function DashboardPage() {
                   </button>
                 )}
                 <button onClick={()=>{setCoBannerDismissed(true);try{localStorage.setItem('co_banner_'+todayStr,'1')}catch{}}}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Ignoră
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* BANNER CHECK-IN AZI — CONFIRMARE REZERVARE */}
+        {(()=>{
+          const ciWithPhone=checkinAzi.filter((r:any)=>r.telefon_client)
+          if(checkinAzi.length===0||ciBannerDismissed||ciMesajeTrimise)return null
+          return(
+            <div style={{background:'rgba(252,211,77,0.08)',border:'1px solid rgba(252,211,77,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+              <div style={{fontSize:20}}>👋</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',marginBottom:2}}>
+                  {checkinAzi.length === 1 ? '1 client sosește azi' : `${checkinAzi.length} clienți sosesc azi`} — trimite mesajele de confirmare
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                  {checkinAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+                {ciWithPhone.length>0&&(
+                  <button onClick={()=>{setCiWizardIdx(0);setCiWizardOpen(true)}}
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                    <MessageCircle size={13}/>Trimite mesaje ({ciWithPhone.length})
+                  </button>
+                )}
+                <button onClick={()=>{setCiBannerDismissed(true);try{localStorage.setItem('ci_banner_'+todayStr,'1')}catch{}}}
                   style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                   Ignoră
                 </button>
@@ -1220,6 +1259,58 @@ export default function DashboardPage() {
                   setCoMesajeTrimise(true)
                   try{localStorage.setItem('co_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
                 }else{setCoWizardIdx(i=>i+1)}
+              }}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* WIZARD CHECK-IN AZI — CONFIRMARE */}
+      {ciWizardOpen&&(()=>{
+        const ciList=checkinAzi.filter((r:any)=>r.telefon_client)
+        const r=ciList[ciWizardIdx]
+        if(!r)return null
+        const isLast=ciWizardIdx>=ciList.length-1
+        const msg=msgCheckin(r)
+        const link=waLink(r.telefon_client,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCiWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj confirmare check-in</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#FCD34D'}}>{ciWizardIdx+1} / {ciList.length}</div>
+                </div>
+                <button onClick={()=>setCiWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(252,211,77,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((ciWizardIdx+1)/ciList.length)*100}%`,background:'#FCD34D',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={()=>{
+                if(isLast){
+                  setCiWizardOpen(false)
+                  setCiMesajeTrimise(true)
+                  try{localStorage.setItem('ci_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
+                }else{setCiWizardIdx(i=>i+1)}
               }}
                 style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
