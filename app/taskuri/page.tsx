@@ -744,6 +744,8 @@ export default function TaskuriPage() {
   const [publi24InfoDraft, setPubli24InfoDraft] = useState('')
   const [publi24Form, setPubli24Form] = useState({ cont: '', parola: '', nota: '' })
   const [publi24FormOpen, setPubli24FormOpen] = useState(false)
+  const [editingPubli24Nota, setEditingPubli24Nota] = useState<string | null>(null)
+  const [publi24NotaDraft, setPubli24NotaDraft] = useState('')
   const todayRutina = new Date().toISOString().split('T')[0]
   const [citireActiva, setCitireActiva] = useState<{ id: string; ora_start: string } | null>(null)
   const [citireTotalMin, setCitireTotalMin] = useState(0)
@@ -829,6 +831,12 @@ export default function TaskuriPage() {
   async function deletePubli24Cont(id: string) {
     if (!confirm('Ștergi acest cont Publi24?')) return
     await supabase.from('publi24_conturi').delete().eq('id', id)
+    loadPubli24()
+  }
+
+  async function savePubli24Nota(id: string) {
+    await supabase.from('publi24_conturi').update({ nota: publi24NotaDraft.trim() || null }).eq('id', id)
+    setEditingPubli24Nota(null)
     loadPubli24()
   }
 
@@ -1387,9 +1395,27 @@ export default function TaskuriPage() {
                   <div key={c.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 12, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.18)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#4DA3FF', background: 'rgba(77,163,255,0.15)', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>{idx + 1}</span>
-                      {c.nota && <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{c.nota}</span>}
+                      {editingPubli24Nota !== c.id && (
+                        <span onClick={() => { setPubli24NotaDraft(c.nota || ''); setEditingPubli24Nota(c.id) }}
+                          style={{ fontSize: 11, color: c.nota ? 'rgba(159,215,255,0.45)' : 'rgba(159,215,255,0.25)', fontStyle: c.nota ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, cursor: 'pointer' }}>
+                          {c.nota || 'adaugă mesaj...'}
+                        </span>
+                      )}
                       <button onClick={() => deletePubli24Cont(c.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.5)', fontSize: 17, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>×</button>
                     </div>
+                    {editingPubli24Nota === c.id && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <textarea autoFocus value={publi24NotaDraft} onChange={e => setPubli24NotaDraft(e.target.value)} rows={2}
+                          placeholder="ex: De cumpărat credite și adăugat anunțuri"
+                          style={{ width: '100%', boxSizing: 'border-box' as const, fontSize: 12, fontFamily: 'inherit', resize: 'vertical' as const }}/>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={() => savePubli24Nota(c.id)}
+                            style={{ flex: 1, padding: '6px', borderRadius: 8, border: 'none', background: '#4DA3FF', color: '#0E1B2B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Salvează</button>
+                          <button onClick={() => setEditingPubli24Nota(null)}
+                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(159,215,255,0.15)', background: 'transparent', color: 'rgba(159,215,255,0.4)', fontSize: 11, cursor: 'pointer' }}>Anulează</button>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(14,27,43,0.55)', borderRadius: 9 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 10, color: 'rgba(77,163,255,0.65)', fontWeight: 600, textTransform: 'uppercase' as const, letterSpacing: '0.4px' }}>Email</div>

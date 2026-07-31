@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Publi24: notița din fiecare cont se poate edita direct din casuță', date: '2026-07-31' },
   { text: 'Publi24: conturile se afișează acum pe 3 coloane (1 pe telefon)', date: '2026-07-30' },
   { text: 'Task-uri: fix accent roșu pe task-uri finalizate, spațiu între carduri, Publi24 restilizat ca în curățenie', date: '2026-07-30' },
   { text: 'Task-uri: culoare urgentă schimbată din roșu, drag-and-drop pentru reordonare, carduri mai compacte', date: '2026-07-30' },
