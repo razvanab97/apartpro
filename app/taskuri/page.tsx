@@ -37,7 +37,7 @@ type Carte = {
   tip: 'fizic' | 'digital'
   pagini_total?: number | null
   pagini_citite: number
-  status: 'in_curs' | 'terminata'
+  status: 'in_curs' | 'terminata' | 'de_citit'
   created_at: string
 }
 
@@ -723,6 +723,9 @@ function fmtZiScurt(dataStr: string) {
   const d = new Date(dataStr + 'T00:00:00')
   return d.toLocaleDateString('ro-RO', { weekday: 'short', day: '2-digit', month: '2-digit' })
 }
+function fmtDataScurta(d: Date) {
+  return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })
+}
 
 export default function TaskuriPage() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -774,16 +777,19 @@ export default function TaskuriPage() {
   const [editDurataDraft, setEditDurataDraft] = useState('')
   const [editDurataOpen, setEditDurataOpen] = useState(false)
   const [addCarteOpen, setAddCarteOpen] = useState(false)
-  const [addCarteForm, setAddCarteForm] = useState({ titlu: '', autor: '', tip: 'fizic' as 'fizic' | 'digital', pagini_total: '' })
+  const [addCarteForm, setAddCarteForm] = useState({ titlu: '', autor: '', tip: 'fizic' as 'fizic' | 'digital', pagini_total: '', deCitit: false })
   const [scanCarteLoading, setScanCarteLoading] = useState(false)
   const [confirmPagini, setConfirmPagini] = useState<{ sesiuneId: string; durataMin: number; pagini: string } | null>(null)
   const [citireSetariLoaded, setCitireSetariLoaded] = useState(false)
   const [editPaginiOpen, setEditPaginiOpen] = useState(false)
   const [editPaginiDraft, setEditPaginiDraft] = useState('')
+  const [deleteCarteId, setDeleteCarteId] = useState<string | null>(null)
   const carteScanInputRef = useRef<HTMLInputElement>(null)
   const CITIT_IDX = rutinaItems.findIndex(r => r[1] === 'Citit')
+  const cartiActive = carti.filter(c => c.status !== 'de_citit')
+  const cartiDeCitit = carti.filter(c => c.status === 'de_citit')
   const carteActiva = carti.find(c => c.id === carteActivaId) || null
-  const carteIndex = carti.findIndex(c => c.id === carteActivaId)
+  const carteIndex = cartiActive.findIndex(c => c.id === carteActivaId)
 
 
   useEffect(() => {
@@ -829,13 +835,13 @@ export default function TaskuriPage() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadPubli24(); loadCarti(); loadCitireSetari() }, [])
+  useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadCitireIstoric(); loadPubli24(); loadCarti(); loadCitireSetari() }, [])
 
   useEffect(() => {
-    if (citireSetariLoaded && carti.length > 0 && !carti.some(c => c.id === carteActivaId)) {
-      (async () => { await selectCarte(carti[0].id, true) })()
+    if (citireSetariLoaded && cartiActive.length > 0 && !cartiActive.some(c => c.id === carteActivaId)) {
+      (async () => { await selectCarte(cartiActive[0].id, true) })()
     }
-  }, [citireSetariLoaded, carti, carteActivaId])
+  }, [citireSetariLoaded, cartiActive, carteActivaId])
 
   async function loadPubli24() {
     const { data: conturi } = await supabase.from('publi24_conturi').select('*').order('created_at')
@@ -1117,15 +1123,15 @@ export default function TaskuriPage() {
   }
 
   function goPrevCarte() {
-    if (carti.length < 2) return
-    const idx = carteIndex < 0 ? 0 : (carteIndex - 1 + carti.length) % carti.length
-    selectCarte(carti[idx].id, true)
+    if (cartiActive.length < 2) return
+    const idx = carteIndex < 0 ? 0 : (carteIndex - 1 + cartiActive.length) % cartiActive.length
+    selectCarte(cartiActive[idx].id, true)
   }
 
   function goNextCarte() {
-    if (carti.length < 2) return
-    const idx = carteIndex < 0 ? 0 : (carteIndex + 1) % carti.length
-    selectCarte(carti[idx].id, true)
+    if (cartiActive.length < 2) return
+    const idx = carteIndex < 0 ? 0 : (carteIndex + 1) % cartiActive.length
+    selectCarte(cartiActive[idx].id, true)
   }
 
   async function saveEditPagini() {
@@ -1142,20 +1148,53 @@ export default function TaskuriPage() {
     if (terminata) show('success', `🎉 Ai terminat cartea „${carteActiva.titlu}"!`)
   }
 
+  async function terminaCarte() {
+    if (!carteActiva) return
+    await supabase.from('carti').update({
+      status: 'terminata', terminata_la: new Date().toISOString(),
+      pagini_citite: carteActiva.pagini_total ? carteActiva.pagini_total : carteActiva.pagini_citite,
+    }).eq('id', carteActiva.id)
+    setCarti(prev => prev.map(c => c.id === carteActiva.id
+      ? { ...c, status: 'terminata', pagini_citite: c.pagini_total ? c.pagini_total : c.pagini_citite }
+      : c))
+    show('success', `🎉 Ai terminat cartea „${carteActiva.titlu}"!`)
+  }
+
+  async function incepeCarteDeCitit(id: string) {
+    await supabase.from('carti').update({ status: 'in_curs' }).eq('id', id)
+    setCarti(prev => prev.map(c => c.id === id ? { ...c, status: 'in_curs' } : c))
+    await selectCarte(id)
+  }
+
+  async function stergeCarte() {
+    if (!deleteCarteId) return
+    const id = deleteCarteId
+    await supabase.from('citire_sesiuni').update({ carte_id: null }).eq('carte_id', id)
+    await supabase.from('carti').delete().eq('id', id)
+    setCarti(prev => prev.filter(c => c.id !== id))
+    if (carteActivaId === id) {
+      setCarteActivaId(null)
+      await setSetare('carte_activa_id', '')
+    }
+    setDeleteCarteId(null)
+  }
+
   async function addCarte() {
     if (!addCarteForm.titlu.trim()) { show('error', 'Titlul e obligatoriu'); return }
+    const status = addCarteForm.deCitit ? 'de_citit' : 'in_curs'
     const { data, error } = await supabase.from('carti').insert({
       titlu: addCarteForm.titlu.trim(),
       autor: addCarteForm.autor.trim() || null,
       tip: addCarteForm.tip,
       pagini_total: addCarteForm.pagini_total ? parseInt(addCarteForm.pagini_total) : null,
-      pagini_citite: 0, status: 'in_curs',
+      pagini_citite: 0, status,
     }).select().single()
     if (error) { console.error('[addCarte]', error); show('error', 'Nu s-a putut adăuga cartea'); return }
     setCarti(prev => [data as Carte, ...prev])
     setAddCarteOpen(false)
-    setAddCarteForm({ titlu: '', autor: '', tip: 'fizic', pagini_total: '' })
-    await selectCarte(data.id)
+    setAddCarteForm({ titlu: '', autor: '', tip: 'fizic', pagini_total: '', deCitit: false })
+    if (status === 'in_curs') await selectCarte(data.id)
+    else show('success', `Adăugată în coada „De citit": ${data.titlu}`)
   }
 
   async function scanCarteFoto(file: File) {
@@ -1489,7 +1528,7 @@ export default function TaskuriPage() {
             <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                 <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
-                  Carte curentă {carti.length > 1 ? `(${carteIndex+1}/${carti.length})` : ''}
+                  Carte curentă {cartiActive.length > 1 ? `(${carteIndex+1}/${cartiActive.length})` : ''}
                 </span>
                 <button onClick={() => setAddCarteOpen(true)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)',
                   background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' as const }}>
@@ -1500,21 +1539,36 @@ export default function TaskuriPage() {
                 <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte adăugată încă.</div>
               ) : carteActiva && (() => {
                 const progres = carteActiva.pagini_total ? Math.min(100, Math.round((carteActiva.pagini_citite / carteActiva.pagini_total) * 100)) : null
+                const totalMinIstoric = citireIstoric.reduce((s, z) => s + z.total_min, 0)
+                const paginiPeZi = totalMinIstoric > 0 ? (totalMinIstoric / 7) / carteMinPerPagina : 0
+                const paginiRamase = carteActiva.pagini_total ? Math.max(0, carteActiva.pagini_total - carteActiva.pagini_citite) : 0
+                const zilePanaTermin = carteActiva.status !== 'terminata' && paginiPeZi > 0 && paginiRamase > 0 ? Math.ceil(paginiRamase / paginiPeZi) : null
+                const dataEstimata = zilePanaTermin !== null ? new Date(Date.now() + zilePanaTermin * 86400000) : null
                 const arrowStyle = {
                   width:26, height:26, flexShrink:0, borderRadius:7, border:'1px solid rgba(159,215,255,0.2)',
-                  background:'rgba(255,255,255,0.03)', color: carti.length<2 ? 'rgba(159,215,255,0.2)' : '#7BC8FF',
-                  fontSize:15, cursor: carti.length<2 ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                  background:'rgba(255,255,255,0.03)', color: cartiActive.length<2 ? 'rgba(159,215,255,0.2)' : '#7BC8FF',
+                  fontSize:15, cursor: cartiActive.length<2 ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
                 } as const
                 return (
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <button onClick={goPrevCarte} disabled={carti.length<2} style={arrowStyle} title="Cartea anterioară">‹</button>
+                    <button onClick={goPrevCarte} disabled={cartiActive.length<2} style={arrowStyle} title="Cartea anterioară">‹</button>
                     <div style={{ flex:1, minWidth:0, padding:'7px 10px', borderRadius:8,
                       background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', opacity: carteActiva.status==='terminata' ? 0.6 : 1 }}>
-                      <div style={{ display:'flex', alignItems:'baseline', gap:6, flexWrap:'wrap' as const }}>
-                        <span style={{ fontSize:12, fontWeight:700, color:'#E8F4FF' }}>
-                          {carteActiva.status==='terminata' ? '✅' : (carteActiva.tip==='digital' ? '📱' : '📕')} {carteActiva.titlu}
+                      <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:6, flexWrap:'wrap' as const }}>
+                        <span style={{ display:'flex', alignItems:'baseline', gap:6, flexWrap:'wrap' as const }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:'#E8F4FF' }}>
+                            {carteActiva.status==='terminata' ? '✅' : (carteActiva.tip==='digital' ? '📱' : '📕')} {carteActiva.titlu}
+                          </span>
+                          {carteActiva.autor && <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>— {carteActiva.autor}</span>}
                         </span>
-                        {carteActiva.autor && <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>— {carteActiva.autor}</span>}
+                        <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                          {carteActiva.status !== 'terminata' && (
+                            <span onClick={terminaCarte} title="Marchează cartea ca terminată"
+                              style={{ fontSize:10, color:'#4ADE80', cursor:'pointer', fontWeight:600 }}>✅ Am terminat</span>
+                          )}
+                          <span onClick={() => setDeleteCarteId(carteActiva.id)} title="Șterge cartea"
+                            style={{ fontSize:12, color:'rgba(248,113,113,0.6)', cursor:'pointer' }}>🗑</span>
+                        </span>
                       </div>
                       {editPaginiOpen ? (
                         <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
@@ -1536,11 +1590,38 @@ export default function TaskuriPage() {
                           <div style={{ width:`${progres}%`, height:'100%', background: carteActiva.status==='terminata' ? '#4ADE80' : '#4DA3FF' }} />
                         </div>
                       )}
+                      {dataEstimata && (
+                        <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginTop:4 }}>
+                          📅 La ritmul tău din ultimele 7 zile, termini pe ~{fmtDataScurta(dataEstimata)}
+                        </div>
+                      )}
                     </div>
-                    <button onClick={goNextCarte} disabled={carti.length<2} style={arrowStyle} title="Cartea următoare">›</button>
+                    <button onClick={goNextCarte} disabled={cartiActive.length<2} style={arrowStyle} title="Cartea următoare">›</button>
                   </div>
                 )
               })()}
+              {cartiDeCitit.length > 0 && (
+                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
+                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
+                    📥 De citit ({cartiDeCitit.length})
+                  </span>
+                  {cartiDeCitit.map(c => (
+                    <div key={c.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
+                      padding:'5px 8px', borderRadius:6, background:'rgba(255,255,255,0.03)' }}>
+                      <span style={{ fontSize:11, color:'rgba(214,228,244,0.8)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
+                        {c.tip==='digital'?'📱':'📕'} {c.titlu}{c.autor ? ` — ${c.autor}` : ''}
+                      </span>
+                      <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                        <button onClick={() => incepeCarteDeCitit(c.id)} style={{ padding:'2px 8px', borderRadius:5, border:'1px solid rgba(74,222,128,0.3)',
+                          background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:10, fontWeight:700, cursor:'pointer' }}>
+                          ▶ Începe
+                        </button>
+                        <span onClick={() => setDeleteCarteId(c.id)} title="Șterge" style={{ fontSize:11, color:'rgba(248,113,113,0.6)', cursor:'pointer' }}>🗑</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:8, fontSize:10, color:'rgba(159,215,255,0.4)' }}>
                 {editRitmOpen ? (
                   <span style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -1616,8 +1697,8 @@ export default function TaskuriPage() {
                   <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
                     {carti.map(c => (
                       <div key={c.id} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
-                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{c.status==='terminata'?'✅':'📖'} {c.titlu}</span>
-                        <span style={{ color:'#7BC8FF', fontWeight:600 }}>{c.pagini_total ? `${c.pagini_citite}/${c.pagini_total}` : `${c.pagini_citite} pag.`}</span>
+                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{c.status==='terminata'?'✅':c.status==='de_citit'?'📥':'📖'} {c.titlu}</span>
+                        <span style={{ color:'#7BC8FF', fontWeight:600 }}>{c.status==='de_citit' ? 'de citit' : (c.pagini_total ? `${c.pagini_citite}/${c.pagini_total}` : `${c.pagini_citite} pag.`)}</span>
                       </div>
                     ))}
                   </div>
@@ -1661,6 +1742,11 @@ export default function TaskuriPage() {
                 style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.2)', background:'#0B1220', color:'#E8F4FF' }} />
             </FormGroup>
           </FormRow>
+          <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'rgba(159,215,255,0.6)', cursor:'pointer' }}>
+            <input type="checkbox" checked={addCarteForm.deCitit} onChange={e => setAddCarteForm(f => ({ ...f, deCitit: e.target.checked }))}
+              style={{ width:15, height:15, accentColor:'#4DA3FF', cursor:'pointer' }} />
+            📥 Adaugă în coada „De citit" (nu o încep acum)
+          </label>
           <Button variant="primary" onClick={addCarte} style={{ width:'100%' }}>Salvează</Button>
         </div>
       </Modal>
@@ -1990,6 +2076,7 @@ export default function TaskuriPage() {
       </Modal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={delTask} loading={deleting} title="Șterge task" message="Sigur vrei să ștergi acest task?"/>
+      <ConfirmDialog open={!!deleteCarteId} onClose={() => setDeleteCarteId(null)} onConfirm={stergeCarte} title="Șterge carte" message="Sigur vrei să ștergi această carte? Progresul ei se pierde."/>
       <Toast toast={toast}/>
 
       <style>{`
