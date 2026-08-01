@@ -275,6 +275,7 @@ export default function StaffPage() {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ title: msg, body: fmtFull(data), url:'/curatenie', tag:'staff-'+aptId })
     }).catch(()=>{})
+    supabase.from('notificari').insert({ mesaj: msg, tip: 'curatenie', citit: false, url: '/curatenie' }).then(()=>{})
   }
 
   const pressKey = useCallback((k: number|string) => {

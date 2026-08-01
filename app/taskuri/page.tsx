@@ -920,6 +920,9 @@ export default function TaskuriPage() {
           tag: 'recurent-' + task.id
         })
       }).catch(() => {})
+      supabase.from('notificari').insert({
+        mesaj: '🔔 ' + task.titlu, tip: 'task', citit: false, url: '/taskuri',
+      }).then(()=>{})
     }
     load()
   }

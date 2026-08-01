@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
 import UpdatesWidget from '@/components/UpdatesWidget'
+import NotificationBell from '@/components/NotificationBell'
 import { usePathname } from 'next/navigation'
 import { ReactNode, useState, useEffect } from 'react'
 import {
@@ -211,6 +212,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       <Chatbot/>
       <UpdatesWidget/>
+      <NotificationBell/>
 
       <style>{`
         .staff-hidden { display: none !important; }

@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Notificări: clopoțel nou în aplicație + notificări push reparate (lipseau cheile VAPID)', date: '2026-08-01' },
   { text: 'Dashboard: banner automat pentru mesajele de confirmare check-in, la orice oră', date: '2026-07-31' },
   { text: 'Rapoarte: tab nou "Evoluție lunară" cu grafice ale totalurilor pe fiecare lună', date: '2026-07-31' },
   { text: 'Publi24: notița din fiecare cont se poate edita direct din casuță', date: '2026-07-31' },

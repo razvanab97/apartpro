@@ -288,6 +288,10 @@ export default function CuratenePage() {
         url: '/staff', tag: 'eliberat-' + aptId
       })
     }).catch(()=>{})
+    supabase.from('notificari').insert({
+      mesaj: isEl ? `⏳ ${aptNota} — Oaspeții nu au plecat` : `🚪 ${aptNota} — Eliberat! Poți merge`,
+      tip: 'eliberat', citit: false, url: '/staff',
+    }).then(()=>{})
   }
 
   async function buildWaGataInfo(apt: any, ciRez: any) {
