@@ -777,9 +777,13 @@ export default function TaskuriPage() {
   const [addCarteForm, setAddCarteForm] = useState({ titlu: '', autor: '', tip: 'fizic' as 'fizic' | 'digital', pagini_total: '' })
   const [scanCarteLoading, setScanCarteLoading] = useState(false)
   const [confirmPagini, setConfirmPagini] = useState<{ sesiuneId: string; durataMin: number; pagini: string } | null>(null)
+  const [citireSetariLoaded, setCitireSetariLoaded] = useState(false)
+  const [editPaginiOpen, setEditPaginiOpen] = useState(false)
+  const [editPaginiDraft, setEditPaginiDraft] = useState('')
   const carteScanInputRef = useRef<HTMLInputElement>(null)
   const CITIT_IDX = rutinaItems.findIndex(r => r[1] === 'Citit')
   const carteActiva = carti.find(c => c.id === carteActivaId) || null
+  const carteIndex = carti.findIndex(c => c.id === carteActivaId)
 
 
   useEffect(() => {
@@ -826,6 +830,12 @@ export default function TaskuriPage() {
   }, [])
 
   useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadPubli24(); loadCarti(); loadCitireSetari() }, [])
+
+  useEffect(() => {
+    if (citireSetariLoaded && carti.length > 0 && !carti.some(c => c.id === carteActivaId)) {
+      (async () => { await selectCarte(carti[0].id, true) })()
+    }
+  }, [citireSetariLoaded, carti, carteActivaId])
 
   async function loadPubli24() {
     const { data: conturi } = await supabase.from('publi24_conturi').select('*').order('created_at')
@@ -1088,6 +1098,7 @@ export default function TaskuriPage() {
       if (row.cheie === 'citire_durata_presetata_min') setCitireDurataPresetata(Number(row.valoare) || 20)
       if (row.cheie === 'carte_activa_id') setCarteActivaId(row.valoare || null)
     }
+    setCitireSetariLoaded(true)
   }
 
   async function setSetare(cheie: string, valoare: string) {
@@ -1096,11 +1107,39 @@ export default function TaskuriPage() {
     else await supabase.from('setari').insert({ cheie, valoare })
   }
 
-  async function selectCarte(id: string) {
+  async function selectCarte(id: string, silent = false) {
     setCarteActivaId(id)
     await setSetare('carte_activa_id', id)
-    const c = carti.find(c => c.id === id)
-    show('success', `Carte selectată: ${c?.titlu || ''}`)
+    if (!silent) {
+      const c = carti.find(c => c.id === id)
+      show('success', `Carte selectată: ${c?.titlu || ''}`)
+    }
+  }
+
+  function goPrevCarte() {
+    if (carti.length < 2) return
+    const idx = carteIndex < 0 ? 0 : (carteIndex - 1 + carti.length) % carti.length
+    selectCarte(carti[idx].id, true)
+  }
+
+  function goNextCarte() {
+    if (carti.length < 2) return
+    const idx = carteIndex < 0 ? 0 : (carteIndex + 1) % carti.length
+    selectCarte(carti[idx].id, true)
+  }
+
+  async function saveEditPagini() {
+    if (!carteActiva) { setEditPaginiOpen(false); return }
+    const v = parseInt(editPaginiDraft)
+    if (isNaN(v) || v < 0) { setEditPaginiOpen(false); return }
+    const terminata = !!carteActiva.pagini_total && v >= carteActiva.pagini_total
+    await supabase.from('carti').update({
+      pagini_citite: v, status: terminata ? 'terminata' : 'in_curs',
+      terminata_la: terminata ? new Date().toISOString() : null,
+    }).eq('id', carteActiva.id)
+    setCarti(prev => prev.map(c => c.id === carteActiva.id ? { ...c, pagini_citite: v, status: terminata ? 'terminata' : 'in_curs' } : c))
+    setEditPaginiOpen(false)
+    if (terminata) show('success', `🎉 Ai terminat cartea „${carteActiva.titlu}"!`)
   }
 
   async function addCarte() {
@@ -1446,11 +1485,11 @@ export default function TaskuriPage() {
               </div>
             </div>
 
-            {/* Carusel carti */}
+            {/* Carte curenta - navigator pe o linie */}
             <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                 <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
-                  Carte curentă {carteActiva ? '— dublu-click pe alta ca s-o schimbi' : '— dublu-click ca să selectezi'}
+                  Carte curentă {carti.length > 1 ? `(${carteIndex+1}/${carti.length})` : ''}
                 </span>
                 <button onClick={() => setAddCarteOpen(true)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)',
                   background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' as const }}>
@@ -1459,36 +1498,49 @@ export default function TaskuriPage() {
               </div>
               {carti.length === 0 ? (
                 <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte adăugată încă.</div>
-              ) : (
-                <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
-                  {carti.map(c => {
-                    const activa = c.id === carteActivaId
-                    const progres = c.pagini_total ? Math.min(100, Math.round((c.pagini_citite / c.pagini_total) * 100)) : null
-                    return (
-                      <div key={c.id} onDoubleClick={() => selectCarte(c.id)}
-                        title="Dublu-click pentru a selecta cartea"
-                        style={{ minWidth:150, maxWidth:150, flexShrink:0, padding:'8px 10px', borderRadius:8, cursor:'pointer', userSelect:'none' as const,
-                          background: activa ? 'rgba(77,163,255,0.15)' : 'rgba(255,255,255,0.03)',
-                          border: `1px solid ${activa ? 'rgba(77,163,255,0.5)' : 'rgba(159,215,255,0.12)'}`,
-                          opacity: c.status === 'terminata' ? 0.55 : 1 }}>
-                        <div style={{ fontSize:11, fontWeight:700, color: activa ? '#E8F4FF' : '#D6E4F4', lineHeight:1.3,
-                          overflow:'hidden', textOverflow:'ellipsis', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const }}>
-                          {c.status === 'terminata' ? '✅ ' : (c.tip === 'digital' ? '📱 ' : '📕 ')}{c.titlu}
-                        </div>
-                        {c.autor && <div style={{ fontSize:10, color:'rgba(159,215,255,0.5)', marginTop:2 }}>{c.autor}</div>}
-                        <div style={{ fontSize:10, color:'rgba(159,215,255,0.45)', marginTop:4 }}>
-                          {c.pagini_total ? `${c.pagini_citite}/${c.pagini_total} pag. (${progres}%)` : `${c.pagini_citite} pag. citite`}
-                        </div>
-                        {progres !== null && (
-                          <div style={{ marginTop:4, height:4, borderRadius:2, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
-                            <div style={{ width:`${progres}%`, height:'100%', background: c.status==='terminata' ? '#4ADE80' : '#4DA3FF' }} />
-                          </div>
-                        )}
+              ) : carteActiva && (() => {
+                const progres = carteActiva.pagini_total ? Math.min(100, Math.round((carteActiva.pagini_citite / carteActiva.pagini_total) * 100)) : null
+                const arrowStyle = {
+                  width:26, height:26, flexShrink:0, borderRadius:7, border:'1px solid rgba(159,215,255,0.2)',
+                  background:'rgba(255,255,255,0.03)', color: carti.length<2 ? 'rgba(159,215,255,0.2)' : '#7BC8FF',
+                  fontSize:15, cursor: carti.length<2 ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                } as const
+                return (
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <button onClick={goPrevCarte} disabled={carti.length<2} style={arrowStyle} title="Cartea anterioară">‹</button>
+                    <div style={{ flex:1, minWidth:0, padding:'7px 10px', borderRadius:8,
+                      background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', opacity: carteActiva.status==='terminata' ? 0.6 : 1 }}>
+                      <div style={{ display:'flex', alignItems:'baseline', gap:6, flexWrap:'wrap' as const }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:'#E8F4FF' }}>
+                          {carteActiva.status==='terminata' ? '✅' : (carteActiva.tip==='digital' ? '📱' : '📕')} {carteActiva.titlu}
+                        </span>
+                        {carteActiva.autor && <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>— {carteActiva.autor}</span>}
                       </div>
-                    )
-                  })}
-                </div>
-              )}
+                      {editPaginiOpen ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
+                          <input autoFocus type="text" inputMode="numeric" value={editPaginiDraft}
+                            onChange={e=>setEditPaginiDraft(e.target.value.replace(/\D/g,''))}
+                            onKeyDown={e=>{ if(e.key==='Enter') saveEditPagini(); if(e.key==='Escape') setEditPaginiOpen(false) }}
+                            onBlur={saveEditPagini}
+                            style={{ width:48, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                          <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>/ {carteActiva.pagini_total ?? '—'} pag.</span>
+                        </div>
+                      ) : (
+                        <div onClick={() => { setEditPaginiDraft(String(carteActiva.pagini_citite)); setEditPaginiOpen(true) }}
+                          style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginTop:4, cursor:'pointer' }}>
+                          {carteActiva.pagini_total ? `${carteActiva.pagini_citite}/${carteActiva.pagini_total} pag. (${progres}%)` : `${carteActiva.pagini_citite} pag. citite`} ✏️
+                        </div>
+                      )}
+                      {progres !== null && (
+                        <div style={{ marginTop:4, height:4, borderRadius:2, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
+                          <div style={{ width:`${progres}%`, height:'100%', background: carteActiva.status==='terminata' ? '#4ADE80' : '#4DA3FF' }} />
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={goNextCarte} disabled={carti.length<2} style={arrowStyle} title="Cartea următoare">›</button>
+                  </div>
+                )
+              })()}
               <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:8, fontSize:10, color:'rgba(159,215,255,0.4)' }}>
                 {editRitmOpen ? (
                   <span style={{ display:'flex', alignItems:'center', gap:4 }}>
