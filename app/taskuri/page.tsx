@@ -723,6 +723,9 @@ function fmtZiScurt(dataStr: string) {
   const d = new Date(dataStr + 'T00:00:00')
   return d.toLocaleDateString('ro-RO', { weekday: 'short', day: '2-digit', month: '2-digit' })
 }
+function fmtOra(dataStr: string) {
+  return new Date(dataStr).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+}
 function fmtDataScurta(d: Date) {
   return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })
 }
@@ -767,7 +770,7 @@ export default function TaskuriPage() {
   const [citireNrSesiuni, setCitireNrSesiuni] = useState(0)
   const [citireElapsed, setCitireElapsed] = useState(0)
   const [citireStatsOpen, setCitireStatsOpen] = useState(false)
-  const [citireIstoric, setCitireIstoric] = useState<{ data: string; total_min: number }[]>([])
+  const [citireIstoric, setCitireIstoric] = useState<{ data: string; total_min: number; sesiuni: { id: string; ora_start: string; durata_min: number; pagini_citite: number | null; carte_titlu: string | null }[] }[]>([])
   const [carti, setCarti] = useState<Carte[]>([])
   const [carteActivaId, setCarteActivaId] = useState<string | null>(null)
   const [carteMinPerPagina, setCarteMinPerPagina] = useState(2)
@@ -1265,11 +1268,20 @@ export default function TaskuriPage() {
   async function loadCitireIstoric() {
     const acum7zile = new Date(); acum7zile.setDate(acum7zile.getDate() - 6)
     const { data } = await supabase.from('citire_sesiuni')
-      .select('data,durata_min').gte('data', acum7zile.toISOString().split('T')[0]).not('durata_min', 'is', null)
+      .select('id,data,ora_start,durata_min,pagini_citite,carti(titlu)')
+      .gte('data', acum7zile.toISOString().split('T')[0]).not('durata_min', 'is', null)
+      .order('ora_start')
     if (!data) return
-    const perZi: Record<string, number> = {}
-    data.forEach((s:any) => { perZi[s.data] = (perZi[s.data] || 0) + (s.durata_min || 0) })
-    setCitireIstoric(Object.entries(perZi).map(([data, total_min]) => ({ data, total_min })).sort((a,b) => b.data.localeCompare(a.data)))
+    const perZi: Record<string, { total_min: number; sesiuni: any[] }> = {}
+    data.forEach((s: any) => {
+      if (!perZi[s.data]) perZi[s.data] = { total_min: 0, sesiuni: [] }
+      perZi[s.data].total_min += s.durata_min || 0
+      perZi[s.data].sesiuni.push({
+        id: s.id, ora_start: s.ora_start, durata_min: s.durata_min,
+        pagini_citite: s.pagini_citite, carte_titlu: s.carti?.titlu || null,
+      })
+    })
+    setCitireIstoric(Object.entries(perZi).map(([data, v]) => ({ data, total_min: v.total_min, sesiuni: v.sesiuni })).sort((a, b) => b.data.localeCompare(a.data)))
   }
 
   async function load() {
@@ -1703,9 +1715,26 @@ export default function TaskuriPage() {
                 ) : (
                   <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                     {citireIstoric.map(z => (
-                      <div key={z.data} style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
-                        <span style={{ color:'rgba(159,215,255,0.5)' }}>{fmtZiScurt(z.data)}{z.data===todayRutina?' (azi)':''}</span>
-                        <span style={{ color:'#7BC8FF', fontWeight:600 }}>{z.total_min} min</span>
+                      <div key={z.data}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+                          <span style={{ color:'rgba(159,215,255,0.5)' }}>{fmtZiScurt(z.data)}{z.data===todayRutina?' (azi)':''}</span>
+                          <span style={{ color:'#7BC8FF', fontWeight:600 }}>{z.total_min} min</span>
+                        </div>
+                        {z.sesiuni.length === 1 ? (
+                          (z.sesiuni[0].carte_titlu || z.sesiuni[0].pagini_citite) && (
+                            <div style={{ fontSize:10, color:'rgba(159,215,255,0.35)', marginTop:1 }}>
+                              {z.sesiuni[0].carte_titlu ? `📕 ${z.sesiuni[0].carte_titlu}` : ''}{z.sesiuni[0].pagini_citite ? `${z.sesiuni[0].carte_titlu?' · ':''}${z.sesiuni[0].pagini_citite} pag.` : ''}
+                            </div>
+                          )
+                        ) : (
+                          <div style={{ marginTop:2, display:'flex', flexDirection:'column', gap:1 }}>
+                            {z.sesiuni.map(s => (
+                              <div key={s.id} style={{ fontSize:10, color:'rgba(159,215,255,0.35)', paddingLeft:8 }}>
+                                🕐 {fmtOra(s.ora_start)}{s.carte_titlu ? ` · 📕 ${s.carte_titlu}` : ''}{s.pagini_citite ? ` · ${s.pagini_citite} pag.` : ''}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
