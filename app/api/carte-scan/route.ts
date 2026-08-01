@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,47 +10,42 @@ export async function POST(req: NextRequest) {
     const prompt = `Esti expert in identificarea cartilor dupa coperta. Din aceasta imagine extrage:
 - Titlul cartii
 - Autorul (daca e vizibil)
-Raspunde STRICT doar cu JSON, fara nimic altceva: {"titlu":"Numele cartii","autor":"Numele autorului"}
+Raspunde DOAR cu JSON valid, fara markdown: {"titlu":"Numele cartii","autor":"Numele autorului"}
 Daca nu poti citi coperta, raspunde cu {"titlu":"","autor":""}`
 
-    const geminiResp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Data } }
-            ]
-          }],
-          generationConfig: { temperature: 0, maxOutputTokens: 256 }
-        })
-      }
-    )
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 256,
+        response_format: { type: 'json_object' },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Data}` } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    })
 
-    const geminiData = await geminiResp.json()
+    const openaiData = await openaiRes.json()
 
-    if (!geminiResp.ok) {
-      return NextResponse.json({
-        success: false,
-        error: geminiData?.error?.message || 'Gemini API error',
-      }, { status: 200 })
+    if (openaiData.error) {
+      console.error('carte-scan OpenAI error:', openaiData.error)
+      return NextResponse.json({ success: false, error: openaiData.error.message }, { status: 200 })
     }
 
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim()
+    const rawText = openaiData?.choices?.[0]?.message?.content || '{}'
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
     let parsed: any = {}
-
     try {
-      parsed = JSON.parse(cleaned)
-    } catch {
-      const match = cleaned.match(/\{[^}]+\}/)
-      if (match) {
-        try { parsed = JSON.parse(match[0]) } catch {}
-      }
-    }
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : '{}')
+    } catch {}
 
     return NextResponse.json({
       success: true,

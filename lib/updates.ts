@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Citit: fix scanare copertă cu AI — folosea o cheie invalidă și dădea mereu eroare, acum funcționează', date: '2026-08-01' },
   { text: 'Task-uri: modul Citit extins — cărți multiple (fizic/digital), scanare copertă cu AI, tracking pagini pe bază de ritm, sesiune presetată, statistici per carte', date: '2026-08-01' },
   { text: 'Notificări: setări noi (⚙️ în clopoțel) pentru a alege categoriile primite — curățenie, eliberări, task-uri', date: '2026-08-01' },
   { text: 'Push: reparat bug de abonare (nu aștepta Service Worker-ul activ) + adăugat cheia lipsă din server', date: '2026-08-01' },
