@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Push: reparat bug de abonare (nu aștepta Service Worker-ul activ) + adăugat cheia lipsă din server', date: '2026-08-01' },
   { text: 'Notificări: clopoțel nou în aplicație + notificări push reparate (lipseau cheile VAPID)', date: '2026-08-01' },
   { text: 'Dashboard: banner automat pentru mesajele de confirmare check-in, la orice oră', date: '2026-07-31' },
   { text: 'Rapoarte: tab nou "Evoluție lunară" cu grafice ale totalurilor pe fiecare lună', date: '2026-07-31' },

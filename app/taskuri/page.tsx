@@ -861,7 +861,8 @@ export default function TaskuriPage() {
   async function registerPush() {
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.register('/sw.js')
+      const reg = await navigator.serviceWorker.ready
       const perm = await Notification.requestPermission()
       if (perm !== 'granted') return
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
