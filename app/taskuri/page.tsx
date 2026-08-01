@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { getNotifPrefs } from '@/lib/notifPrefs'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Trash2, Edit2, Loader2, Sparkles, X, ImagePlus, Camera, GripVertical } from 'lucide-react'
@@ -27,6 +28,17 @@ type Task = {
   data_urmatoare?: string | null
   created_at: string
   ordine?: number | null
+}
+
+type Carte = {
+  id: string
+  titlu: string
+  autor?: string
+  tip: 'fizic' | 'digital'
+  pagini_total?: number | null
+  pagini_citite: number
+  status: 'in_curs' | 'terminata'
+  created_at: string
 }
 
 const COLS: { key: Task['status']; label: string; color: string; icon: string }[] = [
@@ -753,7 +765,21 @@ export default function TaskuriPage() {
   const [citireElapsed, setCitireElapsed] = useState(0)
   const [citireStatsOpen, setCitireStatsOpen] = useState(false)
   const [citireIstoric, setCitireIstoric] = useState<{ data: string; total_min: number }[]>([])
+  const [carti, setCarti] = useState<Carte[]>([])
+  const [carteActivaId, setCarteActivaId] = useState<string | null>(null)
+  const [carteMinPerPagina, setCarteMinPerPagina] = useState(2)
+  const [citireDurataPresetata, setCitireDurataPresetata] = useState(20)
+  const [editRitmDraft, setEditRitmDraft] = useState('')
+  const [editRitmOpen, setEditRitmOpen] = useState(false)
+  const [editDurataDraft, setEditDurataDraft] = useState('')
+  const [editDurataOpen, setEditDurataOpen] = useState(false)
+  const [addCarteOpen, setAddCarteOpen] = useState(false)
+  const [addCarteForm, setAddCarteForm] = useState({ titlu: '', autor: '', tip: 'fizic' as 'fizic' | 'digital', pagini_total: '' })
+  const [scanCarteLoading, setScanCarteLoading] = useState(false)
+  const [confirmPagini, setConfirmPagini] = useState<{ sesiuneId: string; durataMin: number; pagini: string } | null>(null)
+  const carteScanInputRef = useRef<HTMLInputElement>(null)
   const CITIT_IDX = rutinaItems.findIndex(r => r[1] === 'Citit')
+  const carteActiva = carti.find(c => c.id === carteActivaId) || null
 
 
   useEffect(() => {
@@ -799,7 +825,7 @@ export default function TaskuriPage() {
     return () => clearInterval(interval)
   }, [])
 
-  useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadPubli24() }, [])
+  useEffect(() => { (async () => { const items = await loadRutinaItems(); loadRutina(items) })(); loadCitire(); loadPubli24(); loadCarti(); loadCitireSetari() }, [])
 
   async function loadPubli24() {
     const { data: conturi } = await supabase.from('publi24_conturi').select('*').order('created_at')
@@ -874,7 +900,7 @@ export default function TaskuriPage() {
       await fetch('/api/push-subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription: sub })
+        body: JSON.stringify({ subscription: sub, categorii: getNotifPrefs() })
       })
     } catch (e) { console.log('Push:', e) }
   }
@@ -918,7 +944,8 @@ export default function TaskuriPage() {
           title: '🔔 ' + task.titlu,
           body: task.descriere || 'Task recurent generat automat',
           url: '/taskuri',
-          tag: 'recurent-' + task.id
+          tag: 'recurent-' + task.id,
+          tip: 'task'
         })
       }).catch(() => {})
       supabase.from('notificari').insert({
@@ -1007,7 +1034,7 @@ export default function TaskuriPage() {
 
   async function startCitire() {
     const { data, error } = await supabase.from('citire_sesiuni')
-      .insert({ data: todayRutina, ora_start: new Date().toISOString() }).select().single()
+      .insert({ data: todayRutina, ora_start: new Date().toISOString(), carte_id: carteActivaId }).select().single()
     if (error) { console.error('[startCitire]', error); show('error', 'Nu s-a putut porni sesiunea de citit'); return }
     if (data) setCitireActiva({ id: data.id, ora_start: data.ora_start })
   }
@@ -1019,11 +1046,140 @@ export default function TaskuriPage() {
     const { error } = await supabase.from('citire_sesiuni').update({ ora_stop: new Date().toISOString(), durata_min: durataMin }).eq('id', citireActiva.id)
     if (error) { console.error('[stopCitire]', error); show('error', 'Nu s-a putut salva sesiunea de citit'); return }
     const eraPrimaAzi = citireNrSesiuni === 0
+    const sesiuneId = citireActiva.id
     setCitireActiva(null)
     setCitireElapsed(0)
     setCitireTotalMin(prev => prev + durataMin)
     setCitireNrSesiuni(prev => prev + 1)
     if (eraPrimaAzi && CITIT_IDX >= 0 && !rutinaBifata.has(CITIT_IDX)) await toggleRutina(CITIT_IDX)
+    if (carteActivaId) {
+      const estimat = Math.max(1, Math.round(durataMin / carteMinPerPagina))
+      setConfirmPagini({ sesiuneId, durataMin, pagini: String(estimat) })
+    }
+  }
+
+  async function sesiunePresetata() {
+    if (!carteActivaId) { show('error', 'Selectează o carte mai întâi'); return }
+    const now = new Date()
+    const start = new Date(now.getTime() - citireDurataPresetata * 60000)
+    const { data, error } = await supabase.from('citire_sesiuni').insert({
+      data: todayRutina, ora_start: start.toISOString(), ora_stop: now.toISOString(),
+      durata_min: citireDurataPresetata, carte_id: carteActivaId,
+    }).select().single()
+    if (error) { console.error('[sesiunePresetata]', error); show('error', 'Nu s-a putut adăuga sesiunea'); return }
+    const eraPrimaAzi = citireNrSesiuni === 0
+    setCitireTotalMin(prev => prev + citireDurataPresetata)
+    setCitireNrSesiuni(prev => prev + 1)
+    if (eraPrimaAzi && CITIT_IDX >= 0 && !rutinaBifata.has(CITIT_IDX)) await toggleRutina(CITIT_IDX)
+    const estimat = Math.max(1, Math.round(citireDurataPresetata / carteMinPerPagina))
+    setConfirmPagini({ sesiuneId: data.id, durataMin: citireDurataPresetata, pagini: String(estimat) })
+  }
+
+  async function loadCarti() {
+    const { data } = await supabase.from('carti').select('*').order('created_at', { ascending: false })
+    setCarti(data || [])
+  }
+
+  async function loadCitireSetari() {
+    const { data } = await supabase.from('setari').select('cheie,valoare')
+      .in('cheie', ['citire_min_per_pagina', 'citire_durata_presetata_min', 'carte_activa_id'])
+    for (const row of data || []) {
+      if (row.cheie === 'citire_min_per_pagina') setCarteMinPerPagina(Number(row.valoare) || 2)
+      if (row.cheie === 'citire_durata_presetata_min') setCitireDurataPresetata(Number(row.valoare) || 20)
+      if (row.cheie === 'carte_activa_id') setCarteActivaId(row.valoare || null)
+    }
+  }
+
+  async function setSetare(cheie: string, valoare: string) {
+    const { data: ex } = await supabase.from('setari').select('id').eq('cheie', cheie).maybeSingle()
+    if (ex?.id) await supabase.from('setari').update({ valoare }).eq('id', ex.id)
+    else await supabase.from('setari').insert({ cheie, valoare })
+  }
+
+  async function selectCarte(id: string) {
+    setCarteActivaId(id)
+    await setSetare('carte_activa_id', id)
+    const c = carti.find(c => c.id === id)
+    show('success', `Carte selectată: ${c?.titlu || ''}`)
+  }
+
+  async function addCarte() {
+    if (!addCarteForm.titlu.trim()) { show('error', 'Titlul e obligatoriu'); return }
+    const { data, error } = await supabase.from('carti').insert({
+      titlu: addCarteForm.titlu.trim(),
+      autor: addCarteForm.autor.trim() || null,
+      tip: addCarteForm.tip,
+      pagini_total: addCarteForm.pagini_total ? parseInt(addCarteForm.pagini_total) : null,
+      pagini_citite: 0, status: 'in_curs',
+    }).select().single()
+    if (error) { console.error('[addCarte]', error); show('error', 'Nu s-a putut adăuga cartea'); return }
+    setCarti(prev => [data as Carte, ...prev])
+    setAddCarteOpen(false)
+    setAddCarteForm({ titlu: '', autor: '', tip: 'fizic', pagini_total: '' })
+    await selectCarte(data.id)
+  }
+
+  async function scanCarteFoto(file: File) {
+    setScanCarteLoading(true)
+    try {
+      const base64Data = await new Promise<string>((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res((r.result as string).split(',')[1])
+        r.onerror = rej
+        r.readAsDataURL(file)
+      })
+      const resp = await fetch('/api/carte-scan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data, mimeType: file.type || 'image/jpeg' }),
+      })
+      const data = await resp.json()
+      if (data.titlu) setAddCarteForm(f => ({ ...f, titlu: data.titlu, autor: data.autor || f.autor }))
+      else show('error', 'Nu am putut citi coperta, completează manual')
+    } catch (e) {
+      console.error('[scanCarteFoto]', e)
+      show('error', 'Eroare la scanarea copertei')
+    } finally {
+      setScanCarteLoading(false)
+    }
+  }
+
+  async function confirmaPaginiCitite() {
+    if (!confirmPagini || !carteActivaId) { setConfirmPagini(null); return }
+    const pagini = parseInt(confirmPagini.pagini) || 0
+    if (pagini <= 0) { setConfirmPagini(null); return }
+    await supabase.from('citire_sesiuni').update({ pagini_citite: pagini }).eq('id', confirmPagini.sesiuneId)
+    const carte = carti.find(c => c.id === carteActivaId)
+    if (carte) {
+      const paginiCitite = carte.pagini_citite + pagini
+      const terminata = !!carte.pagini_total && paginiCitite >= carte.pagini_total
+      await supabase.from('carti').update({
+        pagini_citite: paginiCitite,
+        status: terminata ? 'terminata' : 'in_curs',
+        terminata_la: terminata ? new Date().toISOString() : null,
+      }).eq('id', carte.id)
+      setCarti(prev => prev.map(c => c.id === carte.id ? { ...c, pagini_citite: paginiCitite, status: terminata ? 'terminata' : 'in_curs' } : c))
+      if (terminata) show('success', `🎉 Ai terminat cartea „${carte.titlu}"!`)
+    }
+    const ritmNou = Math.max(0.2, confirmPagini.durataMin / pagini)
+    setCarteMinPerPagina(ritmNou)
+    await setSetare('citire_min_per_pagina', String(Math.round(ritmNou * 10) / 10))
+    setConfirmPagini(null)
+  }
+
+  async function saveMinPerPagina() {
+    const v = parseFloat(editRitmDraft.replace(',', '.'))
+    if (!v || v <= 0) { setEditRitmOpen(false); return }
+    setCarteMinPerPagina(v)
+    await setSetare('citire_min_per_pagina', String(v))
+    setEditRitmOpen(false)
+  }
+
+  async function saveDurataPresetata() {
+    const v = parseInt(editDurataDraft)
+    if (!v || v <= 0) { setEditDurataOpen(false); return }
+    setCitireDurataPresetata(v)
+    await setSetare('citire_durata_presetata_min', String(v))
+    setEditDurataOpen(false)
   }
 
   async function loadCitireIstoric() {
@@ -1245,7 +1401,7 @@ export default function TaskuriPage() {
             })}
           </div>
 
-          {/* CITIT - tracking sesiuni cu Start/Stop */}
+          {/* CITIT - tracking sesiuni cu Start/Stop + carti */}
           <div style={{ marginTop:10, padding:'10px 13px', borderRadius:8,
             background: citireActiva ? 'rgba(251,146,60,0.08)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.08)' : 'rgba(77,163,255,0.06)',
             border: `1px solid ${citireActiva ? 'rgba(251,146,60,0.3)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.25)' : 'rgba(77,163,255,0.15)'}` }}>
@@ -1270,10 +1426,17 @@ export default function TaskuriPage() {
                     </button>
                   </>
                 ) : (
-                  <button onClick={startCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.35)',
-                    background:'rgba(74,222,128,0.12)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                    ▶️ Început citit
-                  </button>
+                  <>
+                    <button onClick={startCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.35)',
+                      background:'rgba(74,222,128,0.12)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                      ▶️ Început citit
+                    </button>
+                    <button onClick={sesiunePresetata} title={`Loghează instant o sesiune de ${citireDurataPresetata} min, fără cronometru`}
+                      style={{ padding:'5px 10px', borderRadius:7, border:'1px solid rgba(77,163,255,0.3)',
+                        background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                      🎯 {citireDurataPresetata} min
+                    </button>
+                  </>
                 )}
                 <button onClick={() => { setCitireStatsOpen(o => !o); if (!citireStatsOpen) loadCitireIstoric() }}
                   style={{ padding:'5px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.15)',
@@ -1282,6 +1445,101 @@ export default function TaskuriPage() {
                 </button>
               </div>
             </div>
+
+            {/* Carusel carti */}
+            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
+                  Carte curentă {carteActiva ? '— dublu-click pe alta ca s-o schimbi' : '— dublu-click ca să selectezi'}
+                </span>
+                <button onClick={() => setAddCarteOpen(true)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)',
+                  background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' as const }}>
+                  ＋ Carte
+                </button>
+              </div>
+              {carti.length === 0 ? (
+                <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte adăugată încă.</div>
+              ) : (
+                <div style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
+                  {carti.map(c => {
+                    const activa = c.id === carteActivaId
+                    const progres = c.pagini_total ? Math.min(100, Math.round((c.pagini_citite / c.pagini_total) * 100)) : null
+                    return (
+                      <div key={c.id} onDoubleClick={() => selectCarte(c.id)}
+                        title="Dublu-click pentru a selecta cartea"
+                        style={{ minWidth:150, maxWidth:150, flexShrink:0, padding:'8px 10px', borderRadius:8, cursor:'pointer', userSelect:'none' as const,
+                          background: activa ? 'rgba(77,163,255,0.15)' : 'rgba(255,255,255,0.03)',
+                          border: `1px solid ${activa ? 'rgba(77,163,255,0.5)' : 'rgba(159,215,255,0.12)'}`,
+                          opacity: c.status === 'terminata' ? 0.55 : 1 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color: activa ? '#E8F4FF' : '#D6E4F4', lineHeight:1.3,
+                          overflow:'hidden', textOverflow:'ellipsis', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const }}>
+                          {c.status === 'terminata' ? '✅ ' : (c.tip === 'digital' ? '📱 ' : '📕 ')}{c.titlu}
+                        </div>
+                        {c.autor && <div style={{ fontSize:10, color:'rgba(159,215,255,0.5)', marginTop:2 }}>{c.autor}</div>}
+                        <div style={{ fontSize:10, color:'rgba(159,215,255,0.45)', marginTop:4 }}>
+                          {c.pagini_total ? `${c.pagini_citite}/${c.pagini_total} pag. (${progres}%)` : `${c.pagini_citite} pag. citite`}
+                        </div>
+                        {progres !== null && (
+                          <div style={{ marginTop:4, height:4, borderRadius:2, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
+                            <div style={{ width:`${progres}%`, height:'100%', background: c.status==='terminata' ? '#4ADE80' : '#4DA3FF' }} />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:8, fontSize:10, color:'rgba(159,215,255,0.4)' }}>
+                {editRitmOpen ? (
+                  <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    Ritm:
+                    <input autoFocus value={editRitmDraft} onChange={e=>setEditRitmDraft(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==='Enter') saveMinPerPagina(); if(e.key==='Escape') setEditRitmOpen(false) }}
+                      onBlur={saveMinPerPagina}
+                      style={{ width:40, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                    min/pag
+                  </span>
+                ) : (
+                  <span onClick={() => { setEditRitmDraft(String(carteMinPerPagina)); setEditRitmOpen(true) }} style={{ cursor:'pointer' }}>
+                    Ritm: ~{carteMinPerPagina} min/pagină ✏️
+                  </span>
+                )}
+                {editDurataOpen ? (
+                  <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                    Sesiune presetată:
+                    <input autoFocus value={editDurataDraft} onChange={e=>setEditDurataDraft(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==='Enter') saveDurataPresetata(); if(e.key==='Escape') setEditDurataOpen(false) }}
+                      onBlur={saveDurataPresetata}
+                      style={{ width:36, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                    min
+                  </span>
+                ) : (
+                  <span onClick={() => { setEditDurataDraft(String(citireDurataPresetata)); setEditDurataOpen(true) }} style={{ cursor:'pointer' }}>
+                    Sesiune presetată: {citireDurataPresetata} min ✏️
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Confirmare pagini citite dupa sesiune */}
+            {confirmPagini && (
+              <div style={{ marginTop:10, padding:'8px 10px', borderRadius:7, background:'rgba(251,146,60,0.1)', border:'1px solid rgba(251,146,60,0.3)',
+                display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' as const }}>
+                <span style={{ fontSize:12, color:'#FDBA74' }}>📄 Câte pagini ai citit în {confirmPagini.durataMin} min?</span>
+                <input autoFocus value={confirmPagini.pagini} onChange={e => setConfirmPagini(p => p && ({ ...p, pagini: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmaPaginiCitite() }}
+                  style={{ width:50, fontSize:12, padding:'3px 6px', borderRadius:5, border:'1px solid rgba(251,146,60,0.4)', background:'#0B1220', color:'#E8F4FF' }} />
+                <button onClick={confirmaPaginiCitite} style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(74,222,128,0.4)',
+                  background:'rgba(74,222,128,0.15)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                  ✓ Salvează
+                </button>
+                <button onClick={() => setConfirmPagini(null)} style={{ padding:'4px 8px', borderRadius:6, border:'none',
+                  background:'transparent', color:'rgba(159,215,255,0.4)', fontSize:11, cursor:'pointer' }}>
+                  Anulează
+                </button>
+              </div>
+            )}
+
             {citireStatsOpen && (
               <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
                 <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6, textTransform:'uppercase' as const, letterSpacing:'.05em' }}>Ultimele 7 zile</div>
@@ -1297,11 +1555,63 @@ export default function TaskuriPage() {
                     ))}
                   </div>
                 )}
+                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', margin:'12px 0 6px', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
+                  Cărți ({carti.filter(c=>c.status==='terminata').length} terminate din {carti.length})
+                </div>
+                {carti.length === 0 ? (
+                  <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte.</div>
+                ) : (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    {carti.map(c => (
+                      <div key={c.id} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
+                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{c.status==='terminata'?'✅':'📖'} {c.titlu}</span>
+                        <span style={{ color:'#7BC8FF', fontWeight:600 }}>{c.pagini_total ? `${c.pagini_citite}/${c.pagini_total}` : `${c.pagini_citite} pag.`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* ADAUGA CARTE */}
+      <Modal open={addCarteOpen} onClose={() => setAddCarteOpen(false)} title="Adaugă carte" width="420px">
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <input ref={carteScanInputRef} type="file" accept="image/*" capture="environment" style={{ display:'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) scanCarteFoto(f); e.target.value = '' }} />
+          <Button variant="secondary" onClick={() => carteScanInputRef.current?.click()} loading={scanCarteLoading} style={{ width:'100%' }}>
+            📷 Scanează coperta (AI)
+          </Button>
+          <FormGroup>
+            <label>Titlu</label>
+            <input value={addCarteForm.titlu} onChange={e => setAddCarteForm(f => ({ ...f, titlu: e.target.value }))}
+              style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.2)', background:'#0B1220', color:'#E8F4FF' }} />
+          </FormGroup>
+          <FormGroup>
+            <label>Autor</label>
+            <input value={addCarteForm.autor} onChange={e => setAddCarteForm(f => ({ ...f, autor: e.target.value }))}
+              style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.2)', background:'#0B1220', color:'#E8F4FF' }} />
+          </FormGroup>
+          <FormRow>
+            <FormGroup>
+              <label>Tip</label>
+              <select value={addCarteForm.tip} onChange={e => setAddCarteForm(f => ({ ...f, tip: e.target.value as 'fizic' | 'digital' }))}
+                style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.2)', background:'#0B1220', color:'#E8F4FF' }}>
+                <option value="fizic">📕 Fizic</option>
+                <option value="digital">📱 Digital</option>
+              </select>
+            </FormGroup>
+            <FormGroup>
+              <label>Nr. pagini (opțional)</label>
+              <input value={addCarteForm.pagini_total} onChange={e => setAddCarteForm(f => ({ ...f, pagini_total: e.target.value.replace(/\D/g,'') }))}
+                style={{ width:'100%', padding:'8px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.2)', background:'#0B1220', color:'#E8F4FF' }} />
+            </FormGroup>
+          </FormRow>
+          <Button variant="primary" onClick={addCarte} style={{ width:'100%' }}>Salvează</Button>
+        </div>
+      </Modal>
 
       {/* EDITARE RUTINA ZILEI */}
       <Modal open={rutinaEditOpen} onClose={() => setRutinaEditOpen(false)} title="Editează rutina zilei" width="480px">

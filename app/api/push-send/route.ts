@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sent: 0, reason: 'vapid-keys-missing' })
   }
 
-  const { title, body, url, tag } = await req.json()
+  const { title, body, url, tag, tip } = await req.json()
 
   const webpush = (await import('web-push')).default
   webpush.setVapidDetails(
@@ -23,11 +23,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sent: 0, reason: 'service-role-key-missing' })
   }
 
-  const { data: subs } = await supabase.from('push_subscriptions').select('endpoint,subscription')
+  const { data: subs } = await supabase.from('push_subscriptions').select('endpoint,subscription,categorii')
   if (!subs?.length) return NextResponse.json({ sent: 0 })
 
+  const targets = tip
+    ? subs.filter((row: any) => !row.categorii || row.categorii.length === 0 || row.categorii.includes(tip))
+    : subs
+
   let sent = 0
-  for (const row of subs) {
+  for (const row of targets) {
     try {
       await webpush.sendNotification(
         JSON.parse(row.subscription),

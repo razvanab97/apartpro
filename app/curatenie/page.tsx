@@ -285,7 +285,7 @@ export default function CuratenePage() {
       body: JSON.stringify({
         title: isEl ? `⏳ ${aptNota} — Oaspeții nu au plecat` : `🚪 ${aptNota} — Eliberat! Poți merge`,
         body: isEl ? 'Marcat ca neeliberat' : `Eliberat la ${ora}`,
-        url: '/staff', tag: 'eliberat-' + aptId
+        url: '/staff', tag: 'eliberat-' + aptId, tip: 'eliberat'
       })
     }).catch(()=>{})
     supabase.from('notificari').insert({

@@ -2,12 +2,29 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { CATEGORII_NOTIF, getNotifPrefs, setNotifPrefs } from '@/lib/notifPrefs'
 
 const TIP_ICON: Record<string, string> = {
   curatenie: '🧹',
   eliberat: '🚪',
   task: '🔔',
   default: '📣',
+}
+
+const CATEGORII_CUNOSCUTE = CATEGORII_NOTIF.map(c => c.key)
+
+async function syncPushPrefs(categorii: string[]) {
+  try {
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager.getSubscription()
+    if (!sub) return
+    await fetch('/api/push-prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sub.endpoint, categorii }),
+    })
+  } catch {}
 }
 
 function fmtRelativ(dataStr: string) {
@@ -24,7 +41,9 @@ function fmtRelativ(dataStr: string) {
 export default function NotificationBell() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [showSetari, setShowSetari] = useState(false)
   const [notif, setNotif] = useState<any[]>([])
+  const [prefs, setPrefs] = useState<string[]>(() => getNotifPrefs())
 
   async function load() {
     const { data } = await supabase.from('notificari').select('*').order('data', { ascending: false }).limit(30)
@@ -37,7 +56,18 @@ export default function NotificationBell() {
     return () => clearInterval(i)
   }, [])
 
-  const unread = notif.filter(n => !n.citit)
+  function toggleCategorie(key: string) {
+    setPrefs(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+      const safe = next.length > 0 ? next : prev
+      setNotifPrefs(safe)
+      syncPushPrefs(safe)
+      return safe
+    })
+  }
+
+  const notifVizibile = notif.filter(n => !CATEGORII_CUNOSCUTE.includes(n.tip) || prefs.includes(n.tip))
+  const unread = notifVizibile.filter(n => !n.citit)
 
   async function marcheazaCitit(id: string) {
     await supabase.from('notificari').update({ citit: true }).eq('id', id)
@@ -67,15 +97,33 @@ export default function NotificationBell() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'sticky', top: 0, background: '#0B1220' }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Notificări</span>
-            {unread.length > 0 && (
-              <button onClick={marcheazaToateCitite} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7BC8FF', fontSize: 11, fontWeight: 600 }}>
-                Marchează toate citite
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {unread.length > 0 && (
+                <button onClick={marcheazaToateCitite} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7BC8FF', fontSize: 11, fontWeight: 600 }}>
+                  Marchează toate citite
+                </button>
+              )}
+              <button onClick={() => setShowSetari(s => !s)} title="Alege categoriile de notificări"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: showSetari ? '#7BC8FF' : 'rgba(159,215,255,0.5)', fontSize: 15, padding: 0, lineHeight: 1 }}>
+                ⚙️
               </button>
-            )}
+            </div>
           </div>
-          {notif.length === 0 ? (
+          {showSetari && (
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', marginBottom: 8 }}>Primesc notificări (clopoțel + push) doar pentru:</div>
+              {CATEGORII_NOTIF.map(c => (
+                <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', cursor: 'pointer', fontSize: 12, color: '#D6E4F4' }}>
+                  <input type="checkbox" checked={prefs.includes(c.key)} onChange={() => toggleCategorie(c.key)}
+                    style={{ width: 15, height: 15, accentColor: '#4DA3FF', cursor: 'pointer' }} />
+                  <span>{c.icon} {c.label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {notifVizibile.length === 0 ? (
             <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: 'rgba(159,215,255,0.3)' }}>Nicio notificare</div>
-          ) : notif.map(n => (
+          ) : notifVizibile.map(n => (
             <div key={n.id} onClick={() => onClickNotif(n)}
               style={{ display: 'flex', gap: 10, padding: '11px 14px', cursor: n.url ? 'pointer' : 'default', borderBottom: '1px solid rgba(255,255,255,0.04)', background: n.citit ? 'transparent' : 'rgba(77,163,255,0.06)' }}>
               <span style={{ fontSize: 16, flexShrink: 0 }}>{TIP_ICON[n.tip] || TIP_ICON.default}</span>

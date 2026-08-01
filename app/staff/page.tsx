@@ -273,7 +273,7 @@ export default function StaffPage() {
     setTimeout(()=>setFlash(null), 2500)
     fetch('/api/push-send', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ title: msg, body: fmtFull(data), url:'/curatenie', tag:'staff-'+aptId })
+      body: JSON.stringify({ title: msg, body: fmtFull(data), url:'/curatenie', tag:'staff-'+aptId, tip:'curatenie' })
     }).catch(()=>{})
     supabase.from('notificari').insert({ mesaj: msg, tip: 'curatenie', citit: false, url: '/curatenie' }).then(()=>{})
   }

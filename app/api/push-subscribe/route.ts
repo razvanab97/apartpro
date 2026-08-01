@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
-  const { subscription } = await req.json()
+  const { subscription, categorii } = await req.json()
   if (!subscription) return NextResponse.json({ error: 'No subscription' }, { status: 400 })
 
   const supabase = createClient(
@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
   await supabase.from('push_subscriptions').upsert({
     endpoint: subscription.endpoint,
     subscription: JSON.stringify(subscription),
+    categorii: categorii && categorii.length > 0 ? categorii : ['curatenie', 'eliberat', 'task'],
     updated_at: new Date().toISOString(),
   }, { onConflict: 'endpoint' })
 
