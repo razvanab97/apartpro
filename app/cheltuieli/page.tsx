@@ -1025,10 +1025,10 @@ export default function CheltuieliPage(){
         {/* Header acordeon */}
         <button
           onClick={()=>toggleExpand(apt.id)}
-          style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'14px 18px',...glassCard,cursor:'pointer',textAlign:'left'}}
+          style={{width:'100%',display:'flex',alignItems:'center',gap:10,rowGap:6,flexWrap:'wrap',padding:'14px 18px',...glassCard,cursor:'pointer',textAlign:'left'}}
         >
           {/* cod + nume */}
-          <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flex:'1 1 140px',minWidth:140}}>
             {apt.nota&&<span style={{fontSize:11,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.15)',padding:'3px 8px',borderRadius:5,flexShrink:0}}>{apt.nota}</span>}
             <span style={{fontSize:14,fontWeight:500,color:'#E8F4FF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt.nume}</span>
           </div>

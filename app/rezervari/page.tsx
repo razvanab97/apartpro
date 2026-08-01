@@ -209,7 +209,7 @@ export default function RezervariPage() {
         } />
       <div className="p-6" style={{ overflowY:"auto" }}>
         {/* Filtre */}
-        <div className="flex gap-3 mb-5">
+        <div className="flex flex-wrap gap-3 mb-5">
           <input
             value={searchNume} onChange={e=>setSearchNume(e.target.value)}
             placeholder="🔍 Caută client sau telefon..."

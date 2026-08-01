@@ -506,19 +506,20 @@ export default function DashboardPage() {
           .guest-grid { grid-template-columns: 1fr !important; }
           .grafice-grid { display: none !important; }
           .prognoza-card { display: none !important; }
+          .dash-topbar-date { display: none !important; }
         }
       `}</style>
       {/* TOP BAR */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'9px 20px',background:'rgba(14,27,43,0.65)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(159,215,255,0.08)',flexShrink:0}}>
-        <div style={{display:'flex',alignItems:'center',gap:20}}>
-          <span style={{fontSize:12,fontWeight:600,color:'#FFFFFF',letterSpacing:-0.2}}>Dashboard</span>
-          <span style={{fontSize:11,color:'rgba(159,215,255,0.4)',fontFamily:'monospace'}}>{format(now,'EEE dd MMM yyyy · HH:mm',{locale:ro})}</span>
-          <div style={{display:'flex',alignItems:'center',gap:5}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,padding:'9px 20px',background:'rgba(14,27,43,0.65)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(159,215,255,0.08)',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:20,minWidth:0}}>
+          <span style={{fontSize:12,fontWeight:600,color:'#FFFFFF',letterSpacing:-0.2,flexShrink:0}}>Dashboard</span>
+          <span className="dash-topbar-date" style={{fontSize:11,color:'rgba(159,215,255,0.4)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{format(now,'EEE dd MMM yyyy · HH:mm',{locale:ro})}</span>
+          <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
             <div style={{width:6,height:6,borderRadius:'50%',background:'#22C55E',boxShadow:'0 0 6px rgba(34,197,94,0.8)'}}/>
             <span style={{fontSize:10,color:'#22C55E',fontFamily:'monospace'}}>LIVE</span>
           </div>
         </div>
-        <Link href="/rezervari" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.85)',border:'1px solid rgba(159,215,255,0.35)',color:'#FFFFFF',fontSize:12,fontWeight:500,textDecoration:'none'}}>+ Rezervare nouă</Link>
+        <Link href="/rezervari" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.85)',border:'1px solid rgba(159,215,255,0.35)',color:'#FFFFFF',fontSize:12,fontWeight:500,textDecoration:'none',flexShrink:0}}>+ Rezervare nouă</Link>
       </div>
 
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>

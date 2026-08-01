@@ -331,10 +331,10 @@ export default function ApartamentePage() {
         }
       />
 
-      <div style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', flex:1, minHeight:0 }}>
+      <div className={`apt-split${selected?' has-selected':''}`} style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', flex:1, minHeight:0 }}>
 
         {/* LEFT — list */}
-        <div style={{ overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
+        <div className="apt-list-col" style={{ overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
           {apartamente.length===0 ? (
             <EmptyState icon={<Building2 size={40}/>} title="Niciun apartament" action={<Button variant="primary" icon={<Plus size={13}/>} onClick={openNew}>Adaugă</Button>}/>
           ) : (
@@ -342,7 +342,7 @@ export default function ApartamentePage() {
               {myApts.length>0 && (
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>AB Homes · {myApts.length}</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
                     {myApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
                   </div>
                 </div>
@@ -350,7 +350,7 @@ export default function ApartamentePage() {
               {otherApts.length>0 && (
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>Alte locații · {otherApts.length}</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
                     {otherApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
                   </div>
                 </div>
@@ -619,6 +619,12 @@ export default function ApartamentePage() {
 
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={del} loading={deleting} title="Șterge apartament" message="Sigur vrei să ștergi?"/>
       <Toast toast={toast}/>
+      <style>{`
+        @media (max-width: 760px) {
+          .apt-split.has-selected { grid-template-columns: 1fr !important; }
+          .apt-split.has-selected .apt-list-col { display: none !important; }
+        }
+      `}</style>
     </>
   )
 }

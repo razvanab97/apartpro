@@ -784,6 +784,8 @@ export default function TaskuriPage() {
   const [editPaginiOpen, setEditPaginiOpen] = useState(false)
   const [editPaginiDraft, setEditPaginiDraft] = useState('')
   const [deleteCarteId, setDeleteCarteId] = useState<string | null>(null)
+  const [citireSetariPanelOpen, setCitireSetariPanelOpen] = useState(false)
+  const [deCititOpen, setDeCititOpen] = useState(false)
   const carteScanInputRef = useRef<HTMLInputElement>(null)
   const CITIT_IDX = rutinaItems.findIndex(r => r[1] === 'Citit')
   const cartiActive = carti.filter(c => c.status !== 'de_citit')
@@ -1480,63 +1482,65 @@ export default function TaskuriPage() {
           </div>
 
           {/* CITIT - tracking sesiuni cu Start/Stop + carti */}
-          <div style={{ marginTop:10, padding:'10px 13px', borderRadius:8,
-            background: citireActiva ? 'rgba(251,146,60,0.08)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.08)' : 'rgba(77,163,255,0.06)',
-            border: `1px solid ${citireActiva ? 'rgba(251,146,60,0.3)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.25)' : 'rgba(77,163,255,0.15)'}` }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap' as const, gap:8 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:14 }}>📖</span>
-                <span style={{ fontSize:11, fontWeight:600, color: rutinaBifata.has(CITIT_IDX) ? '#4ADE80' : 'rgba(159,215,255,0.7)' }}>
+          <div style={{ marginTop:8, padding:'8px 10px', borderRadius:8,
+            background: citireActiva ? 'rgba(251,146,60,0.05)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.05)' : 'rgba(77,163,255,0.04)',
+            border: `1px solid ${citireActiva ? 'rgba(251,146,60,0.2)' : rutinaBifata.has(CITIT_IDX) ? 'rgba(74,222,128,0.18)' : 'rgba(77,163,255,0.1)'}` }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap' as const, gap:6 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                <span style={{ fontSize:12 }}>📖</span>
+                <span style={{ fontSize:10.5, fontWeight:600, color: rutinaBifata.has(CITIT_IDX) ? '#4ADE80' : 'rgba(159,215,255,0.65)' }}>
                   {CITIT_IDX+1}. Citit
                 </span>
-                {rutinaBifata.has(CITIT_IDX) && <span style={{ fontSize:11, color:'#4ADE80' }}>✓</span>}
-                {citireNrSesiuni>0 && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>
-                  {citireTotalMin} min azi ({citireNrSesiuni} {citireNrSesiuni===1?'sesiune':'sesiuni'})
+                {rutinaBifata.has(CITIT_IDX) && <span style={{ fontSize:10.5, color:'#4ADE80' }}>✓</span>}
+                {citireNrSesiuni>0 && <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)' }}>
+                  · {citireTotalMin} min azi
                 </span>}
               </div>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
                 {citireActiva ? (
                   <>
-                    <span style={{ fontSize:12, fontWeight:700, color:'#FB923C', fontFamily:'monospace' }}>⏱ {fmtElapsed(citireElapsed)}</span>
-                    <button onClick={stopCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(248,113,113,0.35)',
-                      background:'rgba(248,113,113,0.12)', color:'#F87171', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                      ⏹ Stop citit
+                    <span style={{ fontSize:11, fontWeight:700, color:'#FB923C', fontFamily:'monospace' }}>⏱ {fmtElapsed(citireElapsed)}</span>
+                    <button onClick={stopCitire} style={{ padding:'4px 9px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)',
+                      background:'rgba(248,113,113,0.1)', color:'#F87171', fontSize:10.5, fontWeight:700, cursor:'pointer' }}>
+                      ⏹ Stop
                     </button>
                   </>
                 ) : (
                   <>
-                    <button onClick={startCitire} style={{ padding:'5px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.35)',
-                      background:'rgba(74,222,128,0.12)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                      ▶️ Început citit
+                    <button onClick={startCitire} style={{ padding:'4px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)',
+                      background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:10.5, fontWeight:700, cursor:'pointer' }}>
+                      ▶ Start
                     </button>
                     <button onClick={sesiunePresetata} title={`Loghează instant o sesiune de ${citireDurataPresetata} min, fără cronometru`}
-                      style={{ padding:'5px 10px', borderRadius:7, border:'1px solid rgba(77,163,255,0.3)',
-                        background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                      🎯 {citireDurataPresetata} min
+                      style={{ padding:'4px 8px', borderRadius:6, border:'1px solid rgba(77,163,255,0.25)',
+                        background:'rgba(77,163,255,0.08)', color:'#7BC8FF', fontSize:10.5, fontWeight:700, cursor:'pointer' }}>
+                      🎯 {citireDurataPresetata}′
                     </button>
                   </>
                 )}
-                <button onClick={() => { setCitireStatsOpen(o => !o); if (!citireStatsOpen) loadCitireIstoric() }}
-                  style={{ padding:'5px 10px', borderRadius:7, border:'1px solid rgba(159,215,255,0.15)',
-                    background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:11, cursor:'pointer' }}>
-                  📊 Statistici
+                <button onClick={() => { setCitireStatsOpen(o => !o); if (!citireStatsOpen) loadCitireIstoric() }} title="Statistici"
+                  style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(159,215,255,0.12)',
+                    background: citireStatsOpen ? 'rgba(77,163,255,0.1)' : 'transparent', color:'rgba(159,215,255,0.45)', fontSize:11, cursor:'pointer' }}>
+                  📊
+                </button>
+                <button onClick={() => setCitireSetariPanelOpen(o => !o)} title="Setări citit"
+                  style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(159,215,255,0.12)',
+                    background: citireSetariPanelOpen ? 'rgba(77,163,255,0.1)' : 'transparent', color:'rgba(159,215,255,0.45)', fontSize:11, cursor:'pointer' }}>
+                  ⚙
                 </button>
               </div>
             </div>
 
             {/* Carte curenta - navigator pe o linie */}
-            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
-                  Carte curentă {cartiActive.length > 1 ? `(${carteIndex+1}/${cartiActive.length})` : ''}
-                </span>
-                <button onClick={() => setAddCarteOpen(true)} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.3)',
-                  background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' as const }}>
-                  ＋ Carte
-                </button>
-              </div>
+            <div style={{ marginTop:7, paddingTop:7, borderTop:'1px solid rgba(159,215,255,0.07)' }}>
               {carti.length === 0 ? (
-                <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte adăugată încă.</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                  <span style={{ fontSize:11, color:'rgba(159,215,255,0.3)' }}>Nicio carte adăugată</span>
+                  <button onClick={() => setAddCarteOpen(true)} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid rgba(74,222,128,0.25)',
+                    background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:10.5, fontWeight:700, cursor:'pointer' }}>
+                    ＋ Carte
+                  </button>
+                </div>
               ) : carteActiva && (() => {
                 const progres = carteActiva.pagini_total ? Math.min(100, Math.round((carteActiva.pagini_citite / carteActiva.pagini_total) * 100)) : null
                 const totalMinIstoric = citireIstoric.reduce((s, z) => s + z.total_min, 0)
@@ -1545,159 +1549,177 @@ export default function TaskuriPage() {
                 const zilePanaTermin = carteActiva.status !== 'terminata' && paginiPeZi > 0 && paginiRamase > 0 ? Math.ceil(paginiRamase / paginiPeZi) : null
                 const dataEstimata = zilePanaTermin !== null ? new Date(Date.now() + zilePanaTermin * 86400000) : null
                 const arrowStyle = {
-                  width:26, height:26, flexShrink:0, borderRadius:7, border:'1px solid rgba(159,215,255,0.2)',
-                  background:'rgba(255,255,255,0.03)', color: cartiActive.length<2 ? 'rgba(159,215,255,0.2)' : '#7BC8FF',
-                  fontSize:15, cursor: cartiActive.length<2 ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                  width:22, height:22, flexShrink:0, borderRadius:6, border:'1px solid rgba(159,215,255,0.12)',
+                  background:'transparent', color: cartiActive.length<2 ? 'rgba(159,215,255,0.15)' : 'rgba(159,215,255,0.55)',
+                  fontSize:13, cursor: cartiActive.length<2 ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
                 } as const
                 return (
-                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <button onClick={goPrevCarte} disabled={cartiActive.length<2} style={arrowStyle} title="Cartea anterioară">‹</button>
-                    <div style={{ flex:1, minWidth:0, padding:'7px 10px', borderRadius:8,
-                      background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', opacity: carteActiva.status==='terminata' ? 0.6 : 1 }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', gap:5 }}>
+                    <button onClick={goPrevCarte} disabled={cartiActive.length<2} style={{...arrowStyle, marginTop:1}} title="Cartea anterioară">‹</button>
+                    <div style={{ flex:1, minWidth:0, opacity: carteActiva.status==='terminata' ? 0.55 : 1 }}>
                       <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:6, flexWrap:'wrap' as const }}>
-                        <span style={{ display:'flex', alignItems:'baseline', gap:6, flexWrap:'wrap' as const }}>
-                          <span style={{ fontSize:12, fontWeight:700, color:'#E8F4FF' }}>
+                        <span style={{ display:'flex', alignItems:'baseline', gap:5, minWidth:0, flexWrap:'wrap' as const }}>
+                          <span style={{ fontSize:11.5, fontWeight:700, color:'#E8F4FF' }}>
                             {carteActiva.status==='terminata' ? '✅' : (carteActiva.tip==='digital' ? '📱' : '📕')} {carteActiva.titlu}
                           </span>
-                          {carteActiva.autor && <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>— {carteActiva.autor}</span>}
+                          {carteActiva.autor && <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)' }}>— {carteActiva.autor}</span>}
                         </span>
-                        <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                        <span style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
                           {carteActiva.status !== 'terminata' && (
                             <span onClick={terminaCarte} title="Marchează cartea ca terminată"
-                              style={{ fontSize:10, color:'#4ADE80', cursor:'pointer', fontWeight:600 }}>✅ Am terminat</span>
+                              style={{ fontSize:12, color:'rgba(74,222,128,0.55)', cursor:'pointer' }}>✅</span>
                           )}
                           <span onClick={() => setDeleteCarteId(carteActiva.id)} title="Șterge cartea"
-                            style={{ fontSize:12, color:'rgba(248,113,113,0.6)', cursor:'pointer' }}>🗑</span>
+                            style={{ fontSize:11, color:'rgba(248,113,113,0.4)', cursor:'pointer' }}>🗑</span>
+                          <span onClick={() => setAddCarteOpen(true)} title="Adaugă carte"
+                            style={{ fontSize:12, color:'rgba(74,222,128,0.55)', cursor:'pointer' }}>＋</span>
                         </span>
                       </div>
                       {editPaginiOpen ? (
-                        <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:3 }}>
                           <input autoFocus type="text" inputMode="numeric" value={editPaginiDraft}
                             onChange={e=>setEditPaginiDraft(e.target.value.replace(/\D/g,''))}
                             onKeyDown={e=>{ if(e.key==='Enter') saveEditPagini(); if(e.key==='Escape') setEditPaginiOpen(false) }}
                             onBlur={saveEditPagini}
-                            style={{ width:48, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
-                          <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>/ {carteActiva.pagini_total ?? '—'} pag.</span>
+                            style={{ width:44, fontSize:10.5, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                          <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)' }}>/ {carteActiva.pagini_total ?? '—'} pag.</span>
                         </div>
                       ) : (
                         <div onClick={() => { setEditPaginiDraft(String(carteActiva.pagini_citite)); setEditPaginiOpen(true) }}
-                          style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginTop:4, cursor:'pointer' }}>
-                          {carteActiva.pagini_total ? `${carteActiva.pagini_citite}/${carteActiva.pagini_total} pag. (${progres}%)` : `${carteActiva.pagini_citite} pag. citite`} ✏️
+                          style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)', marginTop:3, cursor:'pointer' }}>
+                          {carteActiva.pagini_total ? `${carteActiva.pagini_citite}/${carteActiva.pagini_total} pag. · ${progres}%` : `${carteActiva.pagini_citite} pag. citite`} ✏️
                         </div>
                       )}
                       {progres !== null && (
-                        <div style={{ marginTop:4, height:4, borderRadius:2, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
+                        <div style={{ marginTop:4, height:3, borderRadius:2, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
                           <div style={{ width:`${progres}%`, height:'100%', background: carteActiva.status==='terminata' ? '#4ADE80' : '#4DA3FF' }} />
                         </div>
                       )}
                       {dataEstimata && (
-                        <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginTop:4 }}>
-                          📅 La ritmul tău din ultimele 7 zile, termini pe ~{fmtDataScurta(dataEstimata)}
+                        <div style={{ fontSize:9.5, color:'rgba(159,215,255,0.3)', marginTop:3 }}>
+                          📅 estimare: ~{fmtDataScurta(dataEstimata)}
                         </div>
                       )}
                     </div>
-                    <button onClick={goNextCarte} disabled={cartiActive.length<2} style={arrowStyle} title="Cartea următoare">›</button>
+                    {cartiActive.length > 1 && (
+                      <span style={{ fontSize:9.5, color:'rgba(159,215,255,0.3)', marginTop:3, flexShrink:0 }}>{carteIndex+1}/{cartiActive.length}</span>
+                    )}
+                    <button onClick={goNextCarte} disabled={cartiActive.length<2} style={{...arrowStyle, marginTop:1}} title="Cartea următoare">›</button>
                   </div>
                 )
               })()}
+
               {cartiDeCitit.length > 0 && (
-                <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4 }}>
-                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
-                    📥 De citit ({cartiDeCitit.length})
+                <div style={{ marginTop:6 }}>
+                  <span onClick={() => setDeCititOpen(o => !o)}
+                    style={{ fontSize:10, color:'rgba(159,215,255,0.35)', cursor:'pointer' }}>
+                    📥 De citit ({cartiDeCitit.length}) {deCititOpen ? '▾' : '▸'}
                   </span>
-                  {cartiDeCitit.map(c => (
-                    <div key={c.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
-                      padding:'5px 8px', borderRadius:6, background:'rgba(255,255,255,0.03)' }}>
-                      <span style={{ fontSize:11, color:'rgba(214,228,244,0.8)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
-                        {c.tip==='digital'?'📱':'📕'} {c.titlu}{c.autor ? ` — ${c.autor}` : ''}
-                      </span>
-                      <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                        <button onClick={() => incepeCarteDeCitit(c.id)} style={{ padding:'2px 8px', borderRadius:5, border:'1px solid rgba(74,222,128,0.3)',
-                          background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:10, fontWeight:700, cursor:'pointer' }}>
-                          ▶ Începe
-                        </button>
-                        <span onClick={() => setDeleteCarteId(c.id)} title="Șterge" style={{ fontSize:11, color:'rgba(248,113,113,0.6)', cursor:'pointer' }}>🗑</span>
-                      </span>
+                  {deCititOpen && (
+                    <div style={{ marginTop:4, display:'flex', flexDirection:'column', gap:3 }}>
+                      {cartiDeCitit.map(c => (
+                        <div key={c.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
+                          padding:'4px 7px', borderRadius:6, background:'rgba(255,255,255,0.02)' }}>
+                          <span style={{ fontSize:10.5, color:'rgba(214,228,244,0.7)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
+                            {c.tip==='digital'?'📱':'📕'} {c.titlu}{c.autor ? ` — ${c.autor}` : ''}
+                          </span>
+                          <span style={{ display:'flex', alignItems:'center', gap:7, flexShrink:0 }}>
+                            <span onClick={() => incepeCarteDeCitit(c.id)} style={{ fontSize:10, color:'#4ADE80', fontWeight:700, cursor:'pointer' }}>
+                              ▶ Începe
+                            </span>
+                            <span onClick={() => setDeleteCarteId(c.id)} title="Șterge" style={{ fontSize:10.5, color:'rgba(248,113,113,0.4)', cursor:'pointer' }}>🗑</span>
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
-              <div style={{ display:'flex', alignItems:'center', gap:14, marginTop:8, fontSize:10, color:'rgba(159,215,255,0.4)' }}>
-                {editRitmOpen ? (
-                  <span style={{ display:'flex', alignItems:'center', gap:4 }}>
-                    Ritm:
-                    <input autoFocus value={editRitmDraft} onChange={e=>setEditRitmDraft(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==='Enter') saveMinPerPagina(); if(e.key==='Escape') setEditRitmOpen(false) }}
-                      onBlur={saveMinPerPagina}
-                      style={{ width:40, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
-                    min/pag
-                  </span>
-                ) : (
-                  <span onClick={() => { setEditRitmDraft(String(carteMinPerPagina)); setEditRitmOpen(true) }} style={{ cursor:'pointer' }}>
-                    Ritm: ~{carteMinPerPagina} min/pagină ✏️
-                  </span>
-                )}
-                {editDurataOpen ? (
-                  <span style={{ display:'flex', alignItems:'center', gap:4 }}>
-                    Sesiune presetată:
-                    <input autoFocus value={editDurataDraft} onChange={e=>setEditDurataDraft(e.target.value)}
-                      onKeyDown={e=>{ if(e.key==='Enter') saveDurataPresetata(); if(e.key==='Escape') setEditDurataOpen(false) }}
-                      onBlur={saveDurataPresetata}
-                      style={{ width:36, fontSize:11, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
-                    min
-                  </span>
-                ) : (
-                  <span onClick={() => { setEditDurataDraft(String(citireDurataPresetata)); setEditDurataOpen(true) }} style={{ cursor:'pointer' }}>
-                    Sesiune presetată: {citireDurataPresetata} min ✏️
-                  </span>
-                )}
-              </div>
+
+              {citireSetariPanelOpen && (
+                <div style={{ marginTop:7, paddingTop:7, borderTop:'1px solid rgba(159,215,255,0.07)', display:'flex', flexDirection:'column', gap:6 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.45)' }}>Ritm citire</span>
+                    {editRitmOpen ? (
+                      <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <input autoFocus value={editRitmDraft} onChange={e=>setEditRitmDraft(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==='Enter') saveMinPerPagina(); if(e.key==='Escape') setEditRitmOpen(false) }}
+                          onBlur={saveMinPerPagina}
+                          style={{ width:40, fontSize:10.5, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                        <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)' }}>min/pag</span>
+                      </span>
+                    ) : (
+                      <span onClick={() => { setEditRitmDraft(String(carteMinPerPagina)); setEditRitmOpen(true) }}
+                        style={{ fontSize:10.5, color:'rgba(159,215,255,0.55)', cursor:'pointer' }}>
+                        ~{carteMinPerPagina} min/pagină ✏️
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.45)' }}>Sesiune presetată</span>
+                    {editDurataOpen ? (
+                      <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                        <input autoFocus value={editDurataDraft} onChange={e=>setEditDurataDraft(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==='Enter') saveDurataPresetata(); if(e.key==='Escape') setEditDurataOpen(false) }}
+                          onBlur={saveDurataPresetata}
+                          style={{ width:36, fontSize:10.5, padding:'2px 4px', borderRadius:4, border:'1px solid rgba(159,215,255,0.3)', background:'#0B1220', color:'#E8F4FF' }} />
+                        <span style={{ fontSize:10.5, color:'rgba(159,215,255,0.4)' }}>min</span>
+                      </span>
+                    ) : (
+                      <span onClick={() => { setEditDurataDraft(String(citireDurataPresetata)); setEditDurataOpen(true) }}
+                        style={{ fontSize:10.5, color:'rgba(159,215,255,0.55)', cursor:'pointer' }}>
+                        {citireDurataPresetata} min ✏️
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Confirmare pagini citite dupa sesiune */}
             {confirmPagini && (
-              <div style={{ marginTop:10, padding:'8px 10px', borderRadius:7, background:'rgba(251,146,60,0.1)', border:'1px solid rgba(251,146,60,0.3)',
-                display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' as const }}>
-                <span style={{ fontSize:12, color:'#FDBA74' }}>📄 Câte pagini ai citit în {confirmPagini.durataMin} min?</span>
+              <div style={{ marginTop:7, padding:'7px 9px', borderRadius:7, background:'rgba(251,146,60,0.08)', border:'1px solid rgba(251,146,60,0.25)',
+                display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' as const }}>
+                <span style={{ fontSize:11, color:'#FDBA74' }}>📄 Pagini citite în {confirmPagini.durataMin} min?</span>
                 <input autoFocus value={confirmPagini.pagini} onChange={e => setConfirmPagini(p => p && ({ ...p, pagini: e.target.value }))}
                   onKeyDown={e => { if (e.key === 'Enter') confirmaPaginiCitite() }}
-                  style={{ width:50, fontSize:12, padding:'3px 6px', borderRadius:5, border:'1px solid rgba(251,146,60,0.4)', background:'#0B1220', color:'#E8F4FF' }} />
-                <button onClick={confirmaPaginiCitite} style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(74,222,128,0.4)',
-                  background:'rgba(74,222,128,0.15)', color:'#4ADE80', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                  style={{ width:46, fontSize:11, padding:'3px 6px', borderRadius:5, border:'1px solid rgba(251,146,60,0.4)', background:'#0B1220', color:'#E8F4FF' }} />
+                <button onClick={confirmaPaginiCitite} style={{ padding:'3px 9px', borderRadius:6, border:'1px solid rgba(74,222,128,0.35)',
+                  background:'rgba(74,222,128,0.12)', color:'#4ADE80', fontSize:10.5, fontWeight:700, cursor:'pointer' }}>
                   ✓ Salvează
                 </button>
-                <button onClick={() => setConfirmPagini(null)} style={{ padding:'4px 8px', borderRadius:6, border:'none',
-                  background:'transparent', color:'rgba(159,215,255,0.4)', fontSize:11, cursor:'pointer' }}>
+                <button onClick={() => setConfirmPagini(null)} style={{ padding:'3px 7px', borderRadius:6, border:'none',
+                  background:'transparent', color:'rgba(159,215,255,0.4)', fontSize:10.5, cursor:'pointer' }}>
                   Anulează
                 </button>
               </div>
             )}
 
             {citireStatsOpen && (
-              <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid rgba(159,215,255,0.1)' }}>
-                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:6, textTransform:'uppercase' as const, letterSpacing:'.05em' }}>Ultimele 7 zile</div>
+              <div style={{ marginTop:7, paddingTop:7, borderTop:'1px solid rgba(159,215,255,0.07)' }}>
+                <div style={{ fontSize:9.5, color:'rgba(159,215,255,0.35)', marginBottom:5, textTransform:'uppercase' as const, letterSpacing:'.05em' }}>Ultimele 7 zile</div>
                 {citireIstoric.length===0 ? (
-                  <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Niciun minut citit înregistrat.</div>
+                  <div style={{ fontSize:11, color:'rgba(159,215,255,0.3)' }}>Niciun minut citit înregistrat.</div>
                 ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                     {citireIstoric.map(z => (
-                      <div key={z.data} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
-                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{fmtZiScurt(z.data)}{z.data===todayRutina?' (azi)':''}</span>
+                      <div key={z.data} style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>{fmtZiScurt(z.data)}{z.data===todayRutina?' (azi)':''}</span>
                         <span style={{ color:'#7BC8FF', fontWeight:600 }}>{z.total_min} min</span>
                       </div>
                     ))}
                   </div>
                 )}
-                <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', margin:'12px 0 6px', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
+                <div style={{ fontSize:9.5, color:'rgba(159,215,255,0.35)', margin:'10px 0 5px', textTransform:'uppercase' as const, letterSpacing:'.05em' }}>
                   Cărți ({carti.filter(c=>c.status==='terminata').length} terminate din {carti.length})
                 </div>
                 {carti.length === 0 ? (
-                  <div style={{ fontSize:12, color:'rgba(159,215,255,0.3)' }}>Nicio carte.</div>
+                  <div style={{ fontSize:11, color:'rgba(159,215,255,0.3)' }}>Nicio carte.</div>
                 ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
                     {carti.map(c => (
-                      <div key={c.id} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
-                        <span style={{ color:'rgba(159,215,255,0.55)' }}>{c.status==='terminata'?'✅':c.status==='de_citit'?'📥':'📖'} {c.titlu}</span>
+                      <div key={c.id} style={{ display:'flex', justifyContent:'space-between', fontSize:11 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>{c.status==='terminata'?'✅':c.status==='de_citit'?'📥':'📖'} {c.titlu}</span>
                         <span style={{ color:'#7BC8FF', fontWeight:600 }}>{c.status==='de_citit' ? 'de citit' : (c.pagini_total ? `${c.pagini_citite}/${c.pagini_total}` : `${c.pagini_citite} pag.`)}</span>
                       </div>
                     ))}

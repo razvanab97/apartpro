@@ -91,7 +91,7 @@ export default function SetariPage() {
             <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)', marginLeft:4 }}>Editează șabloanele trimise automat oaspeților</span>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'210px 1fr', gap:12 }}>
+          <div className="setari-msg-grid" style={{ display:'grid', gridTemplateColumns:'210px 1fr', gap:12 }}>
             {/* Tabs */}
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {Object.entries(MSG_META).map(([key, meta]) => {
@@ -183,7 +183,7 @@ export default function SetariPage() {
             <Settings size={15} color="var(--accent-blue)"/>
             <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>Sistem</span>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div className="setari-info-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <div style={glass}>
               <div style={{ padding:'16px' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}><Database size={14} color="var(--accent-blue)"/><span style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>Conexiuni</span></div>
@@ -224,6 +224,11 @@ export default function SetariPage() {
 
       </div>
       <Toast toast={toast}/>
+      <style>{`
+        @media (max-width: 760px) {
+          .setari-msg-grid, .setari-info-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </>
   )
 }

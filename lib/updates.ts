@@ -1,4 +1,6 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Mobil: fix apartamente (grid tăiat pe telefon), setări (panou inaccesibil), rezervări (filtre tăiate), cheltuieli (nume trunchiate), dashboard (antet aglomerat)', date: '2026-08-02' },
+  { text: 'Citit: card redesenat — mai mic, mai discret, setările (ritm/durată) ascunse sub ⚙', date: '2026-08-02' },
   { text: 'Citit: buton „Am terminat", ștergere carte, coadă „De citit" pentru cărțile viitoare, estimare dată de finalizare pe baza ritmului tău', date: '2026-08-01' },
   { text: 'Citit: cartea curentă apare acum pe o linie cu săgeți ‹ › pentru navigare, iar paginile citite se pot edita direct (click pe numărul de pagini)', date: '2026-08-01' },
   { text: 'Citit: fix scanare copertă cu AI — folosea o cheie invalidă și dădea mereu eroare, acum funcționează', date: '2026-08-01' },

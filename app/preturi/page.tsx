@@ -589,7 +589,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
         <div style={{...panel}}>
           <div style={{padding:'10px 16px 6px',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'center'}}>
             {QUICK.map(({label,val})=>(
-              <button key={val} onClick={()=>changeData(val)} style={{
+              <button key={label} onClick={()=>changeData(val)} style={{
                 padding:'5px 12px',borderRadius:7,fontSize:12,cursor:'pointer',
                 border:`1px solid ${dataSelectata===val?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,
                 background:dataSelectata===val?'rgba(77,163,255,0.15)':'transparent',
