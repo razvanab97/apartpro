@@ -79,6 +79,9 @@ export default function CuratenePage() {
   const [baniOpen, setBaniOpen] = useState<string|null>(null)
   const [baniForm, setBaniForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
   const [savingBani, setSavingBani] = useState(false)
+  const [casaGenOpen, setCasaGenOpen] = useState<'incasare'|'cheltuiala'|null>(null)
+  const [casaGenForm, setCasaGenForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
+  const [savingCasaGen, setSavingCasaGen] = useState(false)
   const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
   const [editingMesajZi, setEditingMesajZi] = useState(false)
   const [mesajZiDraft, setMesajZiDraft] = useState('')
@@ -157,7 +160,7 @@ export default function CuratenePage() {
     const primaZi = `${an}-${luna}-01`
     const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
     supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
-    supabase.from('staff_casa').select('*').gte('data',primaZi).lte('data',ultimaZi).order('created_at',{ascending:false}).then(({data:d})=>setCasaLuna(d||[]))
+    loadCasaLuna(rapoarteLuna)
     loadRapoarte(rapoarteLuna)
     if(!mesajGataLoaded){
       supabase.from('sabloane_mesaje').select('text').eq('tip','gata_curatenie').is('apartament_id',null).maybeSingle().then(({data:d})=>{
@@ -244,6 +247,39 @@ export default function CuratenePage() {
   async function deleteBani(id: string) {
     await supabase.from('staff_casa').delete().eq('id', id)
     loadBaniPending()
+  }
+
+  async function loadCasaLuna(lunaParam?: string) {
+    const luna = lunaParam || rapoarteLuna
+    const [an, lun] = luna.split('-')
+    const primaZi = `${an}-${lun}-01`
+    const ultimaZi = new Date(Number(an), Number(lun), 0).toISOString().slice(0, 10)
+    const { data } = await supabase.from('staff_casa').select('*').gte('data', primaZi).lte('data', ultimaZi).order('created_at', { ascending: false })
+    setCasaLuna(data || [])
+  }
+
+  async function addCasaGen(tip: 'incasare' | 'cheltuiala') {
+    const suma = parseFloat(casaGenForm.suma.replace(',', '.'))
+    if (!suma || suma <= 0) return
+    setSavingCasaGen(true)
+    const today = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.from('staff_casa').insert({
+      data: today, tip, suma, motiv: casaGenForm.motiv.trim() || (tip === 'incasare' ? 'Încasare' : 'Cheltuială'),
+    })
+    setSavingCasaGen(false)
+    if (!error) {
+      setCasaGenForm({ suma: '', motiv: '' })
+      setCasaGenOpen(null)
+      loadCasaLuna()
+      show('success', '✓ Înregistrat în Casă staff')
+    } else {
+      show('error', 'Nu s-a putut salva')
+    }
+  }
+
+  async function deleteCasaGen(id: string) {
+    await supabase.from('staff_casa').delete().eq('id', id)
+    loadCasaLuna()
   }
 
   async function loadProbleme() {
@@ -938,6 +974,44 @@ export default function CuratenePage() {
           return(
             <div style={{background:'rgba(252,211,77,0.04)',border:'1px solid rgba(252,211,77,0.2)',borderRadius:10,padding:'14px 16px',marginBottom:16}}>
               <div style={{fontSize:11,fontWeight:700,color:'#FCD34D',marginBottom:12,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>💰 Casă staff — {lunaLabel} {an}</div>
+
+              <div style={{display:'flex',gap:8,marginBottom:12}}>
+                <button onClick={()=>setCasaGenOpen(casaGenOpen==='incasare'?null:'incasare')}
+                  style={{flex:1,padding:'9px',borderRadius:9,border:'1px solid rgba(74,222,128,0.4)',background:casaGenOpen==='incasare'?'rgba(74,222,128,0.18)':'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  + Sumă încasată
+                </button>
+                <button onClick={()=>setCasaGenOpen(casaGenOpen==='cheltuiala'?null:'cheltuiala')}
+                  style={{flex:1,padding:'9px',borderRadius:9,border:'1px solid rgba(248,113,113,0.4)',background:casaGenOpen==='cheltuiala'?'rgba(248,113,113,0.18)':'rgba(248,113,113,0.08)',color:'#F87171',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  − Sumă cheltuită
+                </button>
+              </div>
+
+              {casaGenOpen&&(
+                <div style={{padding:'10px',borderRadius:10,marginBottom:12,
+                  background:casaGenOpen==='incasare'?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',
+                  border:'1px solid '+(casaGenOpen==='incasare'?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)')}}>
+                  <div style={{display:'flex',gap:8,marginBottom:8}}>
+                    <input type="text" inputMode="decimal" placeholder="Sumă RON" value={casaGenForm.suma}
+                      onChange={e=>setCasaGenForm(f=>({...f,suma:e.target.value}))}
+                      style={{width:90,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
+                    <input type="text" placeholder="Motiv (ex: consumabile, plată cash)" value={casaGenForm.motiv}
+                      onChange={e=>setCasaGenForm(f=>({...f,motiv:e.target.value}))}
+                      style={{flex:1,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
+                  </div>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={()=>addCasaGen(casaGenOpen)} disabled={savingCasaGen||!casaGenForm.suma}
+                      style={{flex:1,padding:'8px',borderRadius:8,border:'none',
+                        background:casaGenOpen==='incasare'?'#4ADE80':'#F87171',color:'#0E1B2B',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!casaGenForm.suma?0.5:1}}>
+                      {savingCasaGen?'Se salvează...':'Salvează'}
+                    </button>
+                    <button onClick={()=>{setCasaGenOpen(null);setCasaGenForm({suma:'',motiv:''})}}
+                      style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                      Anulează
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:casaLuna.filter((e:any)=>e.preluat!==false).length?12:0}}>
                 {[
                   {l:'Total încasat',v:totalIn,c:'#4ADE80'},
@@ -960,6 +1034,7 @@ export default function CuratenePage() {
                         <span style={{fontSize:11,fontWeight:700,color:isIn?'#4ADE80':'#F87171',fontFamily:'monospace',flexShrink:0}}>{isIn?'+':'-'}{Number(e.suma).toFixed(0)} RON</span>
                         <span style={{fontSize:11,color:'rgba(159,215,255,0.6)',flex:1}}>{e.motiv}</span>
                         <span style={{fontSize:10,color:'rgba(159,215,255,0.3)',flexShrink:0}}>{e.data} {new Date(e.created_at).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span>
+                        <button onClick={()=>deleteCasaGen(e.id)} style={{background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.3)',fontSize:14,padding:'0 2px',lineHeight:1,flexShrink:0}}>×</button>
                       </div>
                     )
                   })}
