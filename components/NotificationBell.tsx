@@ -88,7 +88,12 @@ export default function NotificationBell() {
   }
 
   return (
-    <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 150 }}>
+    <div className="notif-bell-wrap" style={{ position: 'fixed', top: 16, right: 16, zIndex: 150 }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .notif-bell-wrap { top: 8px !important; right: 58px !important; }
+        }
+      `}</style>
       {open && (
         <div style={{
           position: 'absolute', top: 44, right: 0, width: 320, maxHeight: 420, overflowY: 'auto',

@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Dashboard: fix clopoțel care bloca meniul mobil (☰) + eliminat proprietățile duplicate din listele de check-in/check-out de azi', date: '2026-08-07' },
   { text: 'Curățenie → Rapoarte: butoane „+ Sumă încasată" / „− Sumă cheltuită" înapoi în Casă staff, cu opțiune de ștergere pe fiecare intrare', date: '2026-08-06' },
   { text: 'Citit: istoricul din Statistici arată acum cartea, paginile și ora fiecărei sesiuni (când sunt mai multe într-o zi)', date: '2026-08-02' },
   { text: 'Mobil: fix apartamente (grid tăiat pe telefon), setări (panou inaccesibil), rezervări (filtre tăiate), cheltuieli (nume trunchiate), dashboard (antet aglomerat)', date: '2026-08-02' },

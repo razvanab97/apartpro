@@ -8,6 +8,18 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 
+// pastreaza o singura rezervare per apartament (evita duplicate din import/sync), preferand-o pe cea cu telefon
+function dedupeByApt(rows: any[]): any[] {
+  const byKey = new Map<string, any>()
+  const order: string[] = []
+  for (const r of rows) {
+    const key = r.apartament?.id || r.apartament_id || r.id
+    if (!byKey.has(key)) { byKey.set(key, r); order.push(key) }
+    else if (!byKey.get(key).telefon_client && r.telefon_client) { byKey.set(key, r) }
+  }
+  return order.map(key => byKey.get(key))
+}
+
 /* ── helpers grafice ─────────────────────────────────────────────────────── */
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data), min = Math.min(...data), range = max - min || 1
@@ -191,8 +203,8 @@ export default function DashboardPage() {
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0).neq('status_rezervare','anulata'),
     ])
-    setCoAziCur(coCur0||[])
-    setCiAziCur(ciCur0||[])
+    setCoAziCur(dedupeByApt(coCur0||[]))
+    setCiAziCur(dedupeByApt(ciCur0||[]))
     const primaZiLuna=format(new Date(an,luna-1,1),'yyyy-MM-dd')
     const ultimaZiLuna=format(new Date(an,luna,0),'yyyy-MM-dd')
     // VM07 si CG40 - singurele apartamente cu comision AB
@@ -281,8 +293,8 @@ export default function DashboardPage() {
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
-    setCheckinAzi(ciAzi||[])
-    setCheckoutAzi(coAzi||[])
+    setCheckinAzi(dedupeByApt(ciAzi||[]))
+    setCheckoutAzi(dedupeByApt(coAzi||[]))
     setRezervariRecente(recente||[])
     setApts(aptData||[])
     setCheltuieli(chData||[])
