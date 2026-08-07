@@ -5,6 +5,11 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 
+// formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'teal'
 
 const STATUS_COLOR: Record<string, BadgeColor> = { confirmata:'green', cerere:'amber', anulata:'red', finalizata:'blue' }
@@ -241,8 +246,8 @@ export default function RezervariPage() {
             {[
               {label:'Azi', fn:()=>{const t=new Date().toISOString().split('T')[0];setDateFrom(t);setDateTo(t)}},
               {label:'7 zile', fn:()=>{const t=new Date();const from=new Date(t);from.setDate(from.getDate()-7);setDateFrom(from.toISOString().split('T')[0]);setDateTo(t.toISOString().split('T')[0])}},
-              {label:'Luna', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth(),1);const to=new Date(t.getFullYear(),t.getMonth()+1,0);setDateFrom(from.toISOString().split('T')[0]);setDateTo(to.toISOString().split('T')[0])}},
-              {label:'Luna trecută', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth()-1,1);const to=new Date(t.getFullYear(),t.getMonth(),0);setDateFrom(from.toISOString().split('T')[0]);setDateTo(to.toISOString().split('T')[0])}},
+              {label:'Luna', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth(),1);const to=new Date(t.getFullYear(),t.getMonth()+1,0);setDateFrom(toYMD(from));setDateTo(toYMD(to))}},
+              {label:'Luna trecută', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth()-1,1);const to=new Date(t.getFullYear(),t.getMonth(),0);setDateFrom(toYMD(from));setDateTo(toYMD(to))}},
               {label:'An', fn:()=>{const y=new Date().getFullYear();setDateFrom(`${y}-01-01`);setDateTo(`${y}-12-31`)}},
             ].map(({label,fn})=>(
               <button key={label} onClick={fn} style={{fontSize:11,padding:'4px 9px',borderRadius:6,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(159,215,255,0.12)',color:'rgba(159,215,255,0.6)',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.12s'}}>

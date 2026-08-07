@@ -5,6 +5,11 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Badge, Card, CardHeader, CardTitle, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast } from '@/components/ui'
 import { Plus, TrendingUp, FileText, Check, DollarSign, Download } from 'lucide-react'
 
+// formateaza local (YYYY-MM-DD) - .toISOString() taie ultima zi a lunii pentru fuse est de UTC (ex: Romania)
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 type BadgeColor = 'green'|'amber'|'red'|'blue'|'gray'
 const STATUS_COLOR: Record<string, BadgeColor> = { draft:'gray', aprobat:'amber', platit:'green' }
 
@@ -43,8 +48,8 @@ export default function DeconturiPage() {
 
     const primaZi = new Date(selectedAn, selectedLuna - 1, 1)
     const ultimaZi = new Date(selectedAn, selectedLuna, 0)
-    const start = primaZi.toISOString().split('T')[0]
-    const end = ultimaZi.toISOString().split('T')[0]
+    const start = toYMD(primaZi)
+    const end = toYMD(ultimaZi)
     const zileLuna = ultimaZi.getDate()
 
     const [{ data: rez }, { data: ch }] = await Promise.all([

@@ -79,6 +79,11 @@ function getDef(apt:any){
 }
 
 const pad=(n:number)=>String(n).padStart(2,'0')
+// ultima zi a lunii in local time - .toISOString() taie ultima zi pentru fuse est de UTC (ex: Romania)
+function ultimaZiLunaStr(an:number, luna1:number): string {
+  const d = new Date(an, luna1, 0)
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+}
 function dueDanger(due:string,paid:boolean):{color:string;glow?:string}{
   if(paid)return{color:'rgba(74,222,128,0.45)'}
   // due format: "dd/mm"
@@ -185,7 +190,7 @@ export default function CheltuieliPage(){
     setSincLoading(true)
     setModalSinc(true)
     const pz=`${an}-${pad(luna)}-01`
-    const uz=new Date(an,luna,0).toISOString().slice(0,10)
+    const uz=ultimaZiLunaStr(an,luna)
     // Cauta cheltuieli din luna cu fisier_url dar fara apartament_id SAU cu status nevalidat
     const {data} = await supabase.from('cheltuieli')
       .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url')
@@ -219,7 +224,7 @@ export default function CheltuieliPage(){
 
   async function loadSalarii(l=luna,a=an) {
     const pad=(n:number)=>String(n).padStart(2,'0')
-    const pz=`${a}-${pad(l)}-01`, uz=new Date(a,l,0).toISOString().slice(0,10)
+    const pz=`${a}-${pad(l)}-01`, uz=ultimaZiLunaStr(a,l)
     const [{data:canta},{data:sal}]=await Promise.all([
       supabase.from('cheltuieli').select('id,descriere,valoare,data,status').ilike('descriere','%canta%').gte('data',pz).lte('data',uz),
       supabase.from('cheltuieli').select('id,descriere,valoare,data,status').eq('categorie','salariu_adrian').gte('data',pz).lte('data',uz),
@@ -253,9 +258,9 @@ export default function CheltuieliPage(){
     const prevLuna = luna===1?12:luna-1
     const prevAn   = luna===1?an-1:an
     // Data corecta: ultima zi a lunii (evita 31 pentru luni cu 30 zile)
-    const ultimaZiLuna = new Date(an, luna, 0).toISOString().slice(0,10)
+    const ultimaZiLuna = ultimaZiLunaStr(an, luna)
     ultimaZiRef.current = ultimaZiLuna
-    const ultimaZiPrevLuna = new Date(prevAn, prevLuna, 0).toISOString().slice(0,10)
+    const ultimaZiPrevLuna = ultimaZiLunaStr(prevAn, prevLuna)
     const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
       supabase.from('cheltuieli')

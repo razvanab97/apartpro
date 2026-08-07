@@ -49,8 +49,8 @@ function DeconturiContent() {
     if (!apt) { setGenerating(false); return }
     const primaZi = new Date(selectedAn, selectedLuna - 1, 1)
     const ultimaZi = new Date(selectedAn, selectedLuna, 0)
-    const start = primaZi.toISOString().split('T')[0]
-    const end = ultimaZi.toISOString().split('T')[0]
+    const start = toYMD(primaZi)
+    const end = toYMD(ultimaZi)
     const zileLuna = ultimaZi.getDate()
     const [{ data: rez }, { data: ch }] = await Promise.all([
       supabase.from('rezervari').select('*').eq('apartament_id', selectedApt)
@@ -250,6 +250,10 @@ function DeconturiContent() {
   )
 }
 const pad = (n:number) => String(n).padStart(2,'0')
+// formateaza local (YYYY-MM-DD) - .toISOString() taie ultima zi a lunii pentru fuse est de UTC (ex: Romania)
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+}
 
 async function getCursEUR(): Promise<number> {
   try {
@@ -311,7 +315,7 @@ export default function ProprietariPage() {
 
   async function loadLunar() {
     const pz = `${an}-${pad(luna)}-01`
-    const uz = new Date(an, luna, 0).toISOString().slice(0,10)
+    const uz = toYMD(new Date(an, luna, 0))
     const [{ data: chData }, { data: liniiData }] = await Promise.all([
       supabase.from('cheltuieli')
         .select('apartament_id,categorie,valoare,status')

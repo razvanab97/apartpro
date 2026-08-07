@@ -9,6 +9,13 @@ import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 
 // pastreaza o singura rezervare per apartament (evita duplicate din import/sync), preferand-o pe cea cu telefon
+// ultima zi a lunii, in local time (YYYY-MM-DD) - .toISOString() ar muta data cu o zi
+// in urma pentru fusele est de UTC (ex: Romania), taind ultima zi din intervalele gte/lte
+function ultimaZiLunaStr(an: number, luna1: number): string {
+  const d = new Date(an, luna1, 0)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function dedupeByApt(rows: any[]): any[] {
   const byKey = new Map<string, any>()
   const order: string[] = []
@@ -235,7 +242,7 @@ export default function DashboardPage() {
       // apartamente
       supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
       // cheltuieli luna curenta
-      supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data', new Date(an, luna, 0).toISOString().slice(0,10)),
+      supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data', ultimaZiLunaStr(an, luna)),
       // rezervari active acum cu detalii
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota)').in('status_rezervare',['confirmata','finalizata']).lte('data_checkin',todayStr).gt('data_checkout',todayStr).order('data_checkout'),
       // rezervari in luna curenta (count)
@@ -333,14 +340,14 @@ export default function DashboardPage() {
     const { data: chLP } = await supabase.from('cheltuieli')
       .select('valoare,status')
       .gte('data',`${prevY}-${prevPad}-01`)
-      .lte('data', new Date(prevY, Number(prevPad), 0).toISOString().slice(0,10))
+      .lte('data', ultimaZiLunaStr(prevY, Number(prevPad)))
     const totalLP = (chLP||[]).reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
     const platiteLP = (chLP||[]).filter((x:any)=>x.status==='validat').reduce((s:number,x:any)=>s+Number(x.valoare||0),0)
     setCheltuieliLP({total:Math.round(totalLP),platite:Math.round(platiteLP)})
 
     // Cheltuieli luna curenta (din tabelul cheltuieli)
     const { data: chLC } = await supabase.from('cheltuieli')
-      .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data', new Date(an, Number(pad(luna)), 0).toISOString().slice(0,10))
+      .select('valoare').gte('data',`${an}-${pad(luna)}-01`).lte('data', ultimaZiLunaStr(an, Number(pad(luna))))
     const chelLC = (chLC||[]).reduce((s:number,r:any)=>s+Number(r.valoare||0),0)
     setPrognoza({ incasariLV: Math.round(incLV), cheltuieliLC: Math.round(chelLC) })
     // Booking widget - perioada curenta (Vineri-Joi)

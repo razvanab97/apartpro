@@ -8,6 +8,11 @@ import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calc
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
 const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
 const pad = (n: number) => String(n).padStart(2,'0')
+// ultima zi a lunii in local time - .toISOString() taie ultima zi pentru fuse est de UTC (ex: Romania)
+function ultimaZiLunaStr(an: number, luna1: number): string {
+  const d = new Date(an, luna1, 0)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
 const fmtDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
 const tomorrow = (d: Date) => { const t = new Date(d); t.setDate(t.getDate()+1); return fmtDate(t) }
 
@@ -73,7 +78,7 @@ function Calc({ apt }: { apt: any }) {
     const an = now.getFullYear()
     const luna = now.getMonth() + 1
     const primaZi = an+'-'+pad(luna)+'-01'
-    const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+    const ultimaZi = ultimaZiLunaStr(an, luna)
 
     // Preia curs BNR
     let curs = 5.0

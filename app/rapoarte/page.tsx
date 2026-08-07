@@ -50,6 +50,12 @@ function fmt(n: number) {
   return n.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// formateaza data in local time (YYYY-MM-DD), fara conversie UTC - .toISOString() muta data
+// cu o zi in urma pentru fusele est de UTC (ex: Romania), taind ultima zi a lunii din raport
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function CanalBadge({ canal }: { canal: string }) {
   const s: Record<string, React.CSSProperties> = {
     booking: { background: 'rgba(77,163,255,0.14)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.2)' },
@@ -271,8 +277,8 @@ export default function RapoartePage() {
     setLoading(true)
     const primaZi = modSelectie === 'zile' && dataStart ? new Date(dataStart+'T00:00:00') : new Date(anStart, lunaStart - 1, 1)
     const ultimaZi = modSelectie === 'zile' && dataEnd ? new Date(dataEnd+'T23:59:59') : new Date(anEnd, lunaEnd, 0)
-    const start = primaZi.toISOString().split('T')[0]
-    const end = ultimaZi.toISOString().split('T')[0]
+    const start = toYMD(primaZi)
+    const end = toYMD(ultimaZi)
 
     // Rezervarile sunt atribuite lunii de CHECKOUT (ex: 29 mar - 3 apr => aprilie)
     let q = supabase.from('rezervari')

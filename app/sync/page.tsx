@@ -6,6 +6,11 @@ import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Us
 import { TabRezervari, TabClienti } from '../import/page'
 import { syncFivestar, fmt5star, type SyncResult } from '@/lib/syncFivestar'
 
+// formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 function ImportContent() {
   const [tab, setTab] = useState<'rezervari'|'clienti'>('rezervari')
   const tabStyle = (a: boolean): React.CSSProperties => ({
@@ -172,8 +177,8 @@ export default function SyncPage() {
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
             {[
-              { l:'Luna trecută', f:()=>{ const d=new Date(); setDateFrom(new Date(d.getFullYear(),d.getMonth()-1,1).toISOString().split('T')[0]); setDateTo(new Date(d.getFullYear(),d.getMonth(),0).toISOString().split('T')[0]) }},
-              { l:'Luna curentă', f:()=>{ const d=new Date(); setDateFrom(new Date(d.getFullYear(),d.getMonth(),1).toISOString().split('T')[0]); setDateTo(new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().split('T')[0]) }},
+              { l:'Luna trecută', f:()=>{ const d=new Date(); setDateFrom(toYMD(new Date(d.getFullYear(),d.getMonth()-1,1))); setDateTo(toYMD(new Date(d.getFullYear(),d.getMonth(),0))) }},
+              { l:'Luna curentă', f:()=>{ const d=new Date(); setDateFrom(toYMD(new Date(d.getFullYear(),d.getMonth(),1))); setDateTo(toYMD(new Date(d.getFullYear(),d.getMonth()+1,0))) }},
               { l:'Urmă 3 luni', f:()=>{ const d=new Date(); const t=new Date(d); t.setMonth(t.getMonth()+3); setDateFrom(d.toISOString().split('T')[0]); setDateTo(t.toISOString().split('T')[0]) }},
               { l:'Tot 2026', f:()=>{ setDateFrom('2026-01-01'); setDateTo('2026-12-31') }},
             ].map(p=>(

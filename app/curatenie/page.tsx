@@ -158,7 +158,7 @@ export default function CuratenePage() {
     if(activeTab!=='rapoarte') return
     const [an,luna] = rapoarteLuna.split('-')
     const primaZi = `${an}-${luna}-01`
-    const ultimaZi = new Date(Number(an), Number(luna), 0).toISOString().slice(0,10)
+    const ultimaZi = format(new Date(Number(an), Number(luna), 0), 'yyyy-MM-dd')
     supabase.from('deplasari_curatenie').select('*').gte('data',primaZi).lte('data',ultimaZi).order('data').then(({data:d})=>setDeplasari(d||[]))
     loadCasaLuna(rapoarteLuna)
     loadRapoarte(rapoarteLuna)
@@ -253,7 +253,7 @@ export default function CuratenePage() {
     const luna = lunaParam || rapoarteLuna
     const [an, lun] = luna.split('-')
     const primaZi = `${an}-${lun}-01`
-    const ultimaZi = new Date(Number(an), Number(lun), 0).toISOString().slice(0, 10)
+    const ultimaZi = format(new Date(Number(an), Number(lun), 0), 'yyyy-MM-dd')
     const { data } = await supabase.from('staff_casa').select('*').gte('data', primaZi).lte('data', ultimaZi).order('created_at', { ascending: false })
     setCasaLuna(data || [])
   }
@@ -368,7 +368,7 @@ export default function CuratenePage() {
   async function loadRapoarte(lunaParam?: string) {
     const [an, luna] = (lunaParam||rapoarteLuna).split('-').map(Number)
     const primaZi = `${an}-${String(luna).padStart(2,'0')}-01`
-    const ultimaZi = new Date(an, luna, 0).toISOString().slice(0,10)
+    const ultimaZi = format(new Date(an, luna, 0), 'yyyy-MM-dd')
     // Toate checkout-urile din luna = curatenii efectuate
     const { data: rezData } = await supabase.from('rezervari')
       .select('data_checkout,apartament_id,apartament:apartament_id(nota,nume)')
