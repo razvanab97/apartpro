@@ -86,8 +86,51 @@ export default function CuratenePage() {
   const [editingMesajZi, setEditingMesajZi] = useState(false)
   const [mesajZiDraft, setMesajZiDraft] = useState('')
   const [savingMesajZi, setSavingMesajZi] = useState(false)
+  const [lenjeriiStoc, setLenjeriiStoc] = useState(0)
+  const [lenjeriiIstoric, setLenjeriiIstoric] = useState<any[]>([])
+  const [lenjeriiPrag, setLenjeriiPrag] = useState(15)
+  const [lenjeriiHistOpen, setLenjeriiHistOpen] = useState(false)
+  const [addLenjeriiOpen, setAddLenjeriiOpen] = useState(false)
+  const [addLenjeriiForm, setAddLenjeriiForm] = useState({ cantitate: '', motiv: '' })
+  const [savingLenjerii, setSavingLenjerii] = useState(false)
 
   useEffect(()=>{ load(selectedDate) }, [selectedDate])
+
+  useEffect(()=>{
+    loadLenjerii()
+    const i = setInterval(loadLenjerii, 30000)
+    return ()=>clearInterval(i)
+  }, [])
+
+  async function loadLenjerii() {
+    const { data: rows } = await supabase.from('lenjerii_miscari').select('*').order('created_at', { ascending: false }).limit(200)
+    const list = rows || []
+    const stoc = list.reduce((s: number, m: any) => s + (m.tip === 'adaugare' ? m.cantitate : -m.cantitate), 0)
+    setLenjeriiStoc(stoc)
+    setLenjeriiIstoric(list.slice(0, 15))
+    const { data: pragRow } = await supabase.from('setari').select('valoare').eq('cheie', 'lenjerii_prag').maybeSingle()
+    if (pragRow?.valoare) setLenjeriiPrag(Number(pragRow.valoare) || 15)
+  }
+
+  async function addLenjerii() {
+    const cant = parseInt(addLenjeriiForm.cantitate)
+    if (!cant || cant <= 0) return
+    setSavingLenjerii(true)
+    const { error } = await supabase.from('lenjerii_miscari').insert({
+      tip: 'adaugare', cantitate: cant, motiv: addLenjeriiForm.motiv.trim() || 'Adăugate de admin',
+    })
+    setSavingLenjerii(false)
+    if (!error) {
+      setAddLenjeriiForm({ cantitate: '', motiv: '' })
+      setAddLenjeriiOpen(false)
+      loadLenjerii()
+    }
+  }
+
+  async function deleteLenjeriiMov(id: string) {
+    await supabase.from('lenjerii_miscari').delete().eq('id', id)
+    loadLenjerii()
+  }
 
   // Refresh staff status every 30 seconds
   useEffect(()=>{
@@ -586,6 +629,70 @@ export default function CuratenePage() {
       </div>
 
       {activeTab==='curatenie'&&<div style={{flex:1,overflowY:'auto',padding:'12px 14px 90px'}}>
+
+        {/* Stoc lenjerii */}
+        {(()=>{
+          const scazut = lenjeriiStoc <= lenjeriiPrag
+          return (
+            <div style={{padding:'7px 10px',borderRadius:10,marginBottom:10,background:scazut?'rgba(248,113,113,0.07)':'rgba(167,139,250,0.06)',border:'1px solid '+(scazut?'rgba(248,113,113,0.25)':'rgba(167,139,250,0.18)')}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:5,minWidth:0}}>
+                  <span style={{fontSize:13}}>🛏️</span>
+                  <span style={{fontSize:15,fontWeight:800,color:scazut?'#FCA5A5':'#C4B5FD'}}>{lenjeriiStoc}</span>
+                  <span style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.35)'}}>lenjerii{scazut?' · ⚠️ aduceți':''}</span>
+                </div>
+                <button onClick={()=>setAddLenjeriiOpen(o=>!o)}
+                  style={{padding:'4px 10px',borderRadius:8,border:'none',background:'#A78BFA',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                  + Adaugă
+                </button>
+              </div>
+              {addLenjeriiOpen&&(
+                <div style={{marginTop:7,paddingTop:7,borderTop:'1px solid rgba(159,215,255,0.08)'}}>
+                  <div style={{display:'flex',gap:6,marginBottom:6}}>
+                    <input type="text" inputMode="numeric" placeholder="Câte?" value={addLenjeriiForm.cantitate}
+                      onChange={e=>setAddLenjeriiForm(f=>({...f,cantitate:e.target.value.replace(/\D/g,'')}))}
+                      style={{width:56,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(14,27,43,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
+                    <input type="text" placeholder="De unde (opțional)" value={addLenjeriiForm.motiv}
+                      onChange={e=>setAddLenjeriiForm(f=>({...f,motiv:e.target.value}))}
+                      style={{flex:1,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(14,27,43,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
+                  </div>
+                  <div style={{display:'flex',gap:6}}>
+                    <button onClick={addLenjerii} disabled={savingLenjerii||!addLenjeriiForm.cantitate}
+                      style={{flex:1,padding:'7px',borderRadius:8,border:'none',background:'#22C55E',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!addLenjeriiForm.cantitate?0.5:1}}>
+                      {savingLenjerii?'Se salvează...':'✓ Salvează'}
+                    </button>
+                    <button onClick={()=>{setAddLenjeriiOpen(false);setAddLenjeriiForm({cantitate:'',motiv:''})}}
+                      style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:12,cursor:'pointer'}}>
+                      Anulează
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                <span onClick={()=>setLenjeriiHistOpen(o=>!o)} style={{fontSize:10,color:'rgba(159,215,255,0.4)',cursor:'pointer'}}>
+                  {lenjeriiHistOpen?'▾':'▸'} Istoric
+                </span>
+                <span style={{fontSize:10,color:'rgba(159,215,255,0.3)'}}>Prag: {lenjeriiPrag}</span>
+              </div>
+              {lenjeriiHistOpen&&(
+                <div style={{marginTop:5,display:'flex',flexDirection:'column',gap:3}}>
+                  {lenjeriiIstoric.length===0&&<div style={{fontSize:11,color:'rgba(159,215,255,0.3)'}}>Nicio mișcare încă.</div>}
+                  {lenjeriiIstoric.map((m:any)=>{
+                    const isAd=m.tip==='adaugare'
+                    return (
+                      <div key={m.id} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 7px',borderRadius:6,background:isAd?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)'}}>
+                        <span style={{fontSize:10,fontWeight:700,color:isAd?'#4ADE80':'#FCA5A5',flexShrink:0}}>{isAd?'+':'-'}{m.cantitate}</span>
+                        <span style={{fontSize:10,color:'rgba(159,215,255,0.5)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{m.motiv}</span>
+                        <span style={{fontSize:9,color:'rgba(159,215,255,0.3)',flexShrink:0}}>{fmtDate(m.data)}</span>
+                        <span onClick={()=>deleteLenjeriiMov(m.id)} style={{color:'rgba(159,215,255,0.3)',fontSize:13,padding:'0 2px',flexShrink:0,cursor:'pointer'}}>×</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Selector data */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14,background:'rgba(20,35,58,0.6)',border:'0.5px solid rgba(159,215,255,0.1)',borderRadius:10,padding:'10px 14px'}}>

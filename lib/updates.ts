@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Stoc lenjerii: widget mai compact + apare acum și în Curățenie (admin), sincronizat cu Staff', date: '2026-08-11' },
   { text: 'Staff → Curățenie: stoc lenjerii disponibile sus în pagină — se adaugă manual, scade automat la fiecare curățenie terminată, alertă la stoc scăzut', date: '2026-08-11' },
   { text: 'Statistici: ghid pas-cu-pas pentru upload Airbnb, comparație cu anunțuri similare, timp pregătire rezervare + oaspeți care revin, fix salvare (poze multiple nu se mai suprascriau)', date: '2026-08-10' },
   { text: 'Fix major: rezervările cu check-out/plată în ultima zi a lunii (31, sau 30/28/29) lipseau din rapoarte, cheltuieli, deconturi, casă staff — bug de fus orar, reparat în 9 locuri din aplicație', date: '2026-08-07' },

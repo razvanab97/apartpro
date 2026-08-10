@@ -511,72 +511,70 @@ export default function StaffPage() {
           {(()=>{
             const scazut = lenjeriiStoc <= lenjeriiPrag
             return (
-              <div style={{padding:'12px 14px',borderRadius:12,marginBottom:10,background:scazut?'rgba(248,113,113,0.08)':'rgba(167,139,250,0.08)',border:'1px solid '+(scazut?'rgba(248,113,113,0.3)':'rgba(167,139,250,0.25)')}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontSize:20}}>🛏️</span>
-                    <div>
-                      <div style={{fontSize:20,fontWeight:800,color:scazut?'#FCA5A5':'#C4B5FD'}}>{lenjeriiStoc}<span style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,0.4)'}}> lenjerii disponibile</span></div>
-                      {scazut&&<div style={{fontSize:11,color:'#FCA5A5',fontWeight:600,marginTop:1}}>⚠️ Stoc scăzut — trebuie aduse mai multe</div>}
-                    </div>
+              <div style={{padding:'7px 10px',borderRadius:10,marginBottom:8,background:scazut?'rgba(248,113,113,0.07)':'rgba(167,139,250,0.06)',border:'1px solid '+(scazut?'rgba(248,113,113,0.25)':'rgba(167,139,250,0.18)')}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+                  <div style={{display:'flex',alignItems:'baseline',gap:5,minWidth:0}}>
+                    <span style={{fontSize:13}}>🛏️</span>
+                    <span style={{fontSize:15,fontWeight:800,color:scazut?'#FCA5A5':'#C4B5FD'}}>{lenjeriiStoc}</span>
+                    <span style={{fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.35)'}}>lenjerii{scazut?' · ⚠️ aduceți':''}</span>
                   </div>
                   <button onClick={()=>setAddLenjeriiOpen(o=>!o)}
-                    style={{padding:'8px 14px',borderRadius:10,border:'none',background:'#A78BFA',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',flexShrink:0}}>
+                    style={{padding:'4px 10px',borderRadius:8,border:'none',background:'#A78BFA',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',flexShrink:0}}>
                     + Adaugă
                   </button>
                 </div>
                 {addLenjeriiOpen&&(
-                  <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(255,255,255,0.08)'}}>
-                    <div style={{display:'flex',gap:8,marginBottom:8}}>
+                  <div style={{marginTop:7,paddingTop:7,borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+                    <div style={{display:'flex',gap:6,marginBottom:6}}>
                       <input type="text" inputMode="numeric" placeholder="Câte?" value={addLenjeriiForm.cantitate}
                         onChange={e=>setAddLenjeriiForm(f=>({...f,cantitate:e.target.value.replace(/\D/g,'')}))}
-                        style={{width:70,padding:'10px 12px',borderRadius:10,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:15,outline:'none'}}/>
+                        style={{width:56,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
                       <input type="text" placeholder="De unde (opțional)" value={addLenjeriiForm.motiv}
                         onChange={e=>setAddLenjeriiForm(f=>({...f,motiv:e.target.value}))}
-                        style={{flex:1,padding:'10px 12px',borderRadius:10,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:14,outline:'none'}}/>
+                        style={{flex:1,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
                     </div>
-                    <div style={{display:'flex',gap:8}}>
+                    <div style={{display:'flex',gap:6}}>
                       <button onClick={addLenjerii} disabled={savingLenjerii||!addLenjeriiForm.cantitate}
-                        style={{flex:1,padding:'10px',borderRadius:10,border:'none',background:'#22C55E',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:!addLenjeriiForm.cantitate?0.5:1}}>
+                        style={{flex:1,padding:'7px',borderRadius:8,border:'none',background:'#22C55E',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!addLenjeriiForm.cantitate?0.5:1}}>
                         {savingLenjerii?'Se salvează...':'✓ Salvează'}
                       </button>
                       <button onClick={()=>{setAddLenjeriiOpen(false);setAddLenjeriiForm({cantitate:'',motiv:''})}}
-                        style={{padding:'10px 14px',borderRadius:10,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',color:'rgba(255,255,255,0.5)',fontSize:13,cursor:'pointer'}}>
+                        style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',color:'rgba(255,255,255,0.5)',fontSize:12,cursor:'pointer'}}>
                         Anulează
                       </button>
                     </div>
                   </div>
                 )}
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8}}>
-                  <span onClick={()=>setLenjeriiHistOpen(o=>!o)} style={{fontSize:11,color:'rgba(255,255,255,0.4)',cursor:'pointer'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:4}}>
+                  <span onClick={()=>setLenjeriiHistOpen(o=>!o)} style={{fontSize:10,color:'rgba(255,255,255,0.35)',cursor:'pointer'}}>
                     {lenjeriiHistOpen?'▾':'▸'} Istoric
                   </span>
                   {editPragOpen ? (
-                    <span style={{display:'flex',alignItems:'center',gap:4,fontSize:11}}>
-                      <span style={{color:'rgba(255,255,255,0.4)'}}>Prag alertă:</span>
+                    <span style={{display:'flex',alignItems:'center',gap:3,fontSize:10}}>
+                      <span style={{color:'rgba(255,255,255,0.35)'}}>Prag:</span>
                       <input autoFocus type="text" inputMode="numeric" value={editPragDraft}
                         onChange={e=>setEditPragDraft(e.target.value.replace(/\D/g,''))}
                         onKeyDown={e=>{if(e.key==='Enter')savePragLenjerii();if(e.key==='Escape')setEditPragOpen(false)}}
                         onBlur={savePragLenjerii}
-                        style={{width:36,fontSize:11,padding:'2px 4px',borderRadius:4,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff'}}/>
+                        style={{width:30,fontSize:10,padding:'1px 3px',borderRadius:4,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff'}}/>
                     </span>
                   ) : (
-                    <span onClick={()=>{setEditPragDraft(String(lenjeriiPrag));setEditPragOpen(true)}} style={{fontSize:11,color:'rgba(255,255,255,0.3)',cursor:'pointer'}}>
-                      Prag alertă: {lenjeriiPrag} ✏️
+                    <span onClick={()=>{setEditPragDraft(String(lenjeriiPrag));setEditPragOpen(true)}} style={{fontSize:10,color:'rgba(255,255,255,0.25)',cursor:'pointer'}}>
+                      Prag: {lenjeriiPrag} ✏️
                     </span>
                   )}
                 </div>
                 {lenjeriiHistOpen&&(
-                  <div style={{marginTop:8,display:'flex',flexDirection:'column',gap:4}}>
-                    {lenjeriiIstoric.length===0&&<div style={{fontSize:12,color:'rgba(255,255,255,0.3)'}}>Nicio mișcare încă.</div>}
+                  <div style={{marginTop:5,display:'flex',flexDirection:'column',gap:3}}>
+                    {lenjeriiIstoric.length===0&&<div style={{fontSize:11,color:'rgba(255,255,255,0.3)'}}>Nicio mișcare încă.</div>}
                     {lenjeriiIstoric.map((m:any)=>{
                       const isAd=m.tip==='adaugare'
                       return (
-                        <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 8px',borderRadius:7,background:isAd?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)'}}>
-                          <span style={{fontSize:11,fontWeight:700,color:isAd?'#4ADE80':'#FCA5A5',flexShrink:0}}>{isAd?'+':'-'}{m.cantitate}</span>
-                          <span style={{fontSize:11,color:'rgba(255,255,255,0.5)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{m.motiv}</span>
-                          <span style={{fontSize:10,color:'rgba(255,255,255,0.25)',flexShrink:0}}>{fmtDate(m.data)}</span>
-                          <span onClick={()=>deleteLenjeriiMov(m.id)} style={{color:'rgba(255,255,255,0.25)',fontSize:14,padding:'0 2px',flexShrink:0}}>×</span>
+                        <div key={m.id} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 7px',borderRadius:6,background:isAd?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)'}}>
+                          <span style={{fontSize:10,fontWeight:700,color:isAd?'#4ADE80':'#FCA5A5',flexShrink:0}}>{isAd?'+':'-'}{m.cantitate}</span>
+                          <span style={{fontSize:10,color:'rgba(255,255,255,0.5)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>{m.motiv}</span>
+                          <span style={{fontSize:9,color:'rgba(255,255,255,0.25)',flexShrink:0}}>{fmtDate(m.data)}</span>
+                          <span onClick={()=>deleteLenjeriiMov(m.id)} style={{color:'rgba(255,255,255,0.25)',fontSize:13,padding:'0 2px',flexShrink:0}}>×</span>
                         </div>
                       )
                     })}
