@@ -37,6 +37,13 @@ interface StatRow {
   wishlist_vs_similar?: number
   rata_ocupare_vs_similar?: number
   durata_sedere_vs_similar?: number
+  timp_pregatire_rezervare?: number
+  timp_pregatire_vs_similar?: number
+  rata_revenire_oaspeti?: number
+  rata_revenire_oaspeti_vs_similar?: number
+  rata_anulari_vs_similar?: number
+  rata_conversie_globala_vs_similar?: number
+  afisari_pagina_total_vs_similar?: number
   vizualizari_cautari?: number
   vizualizari_pagina?: number
   rezervari_confirmate?: number
@@ -104,6 +111,8 @@ const METRIC_OPTS: Record<Platforma, { key: string; label: string }[]> = {
     { key: 'wishlist_total', label: 'Wishlist' },
     { key: 'durata_medie_sedere', label: 'Durata ședere (zile)' },
     { key: 'rata_anulari', label: 'Rată anulări (%)' },
+    { key: 'timp_pregatire_rezervare', label: 'Timp pregătire rezervare (zile)' },
+    { key: 'rata_revenire_oaspeti', label: 'Oaspeți care revin (%)' },
   ],
   booking: [
     { key: 'vizualizari_cautari', label: 'Vizualizări căutări' },
@@ -433,6 +442,7 @@ export default function StatisticiPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [processing, setProcessing] = useState(false)
   const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [guideOpen, setGuideOpen] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast, show } = useToast()
 
@@ -1006,6 +1016,63 @@ export default function StatisticiPage() {
         {/* ── UPLOAD ── */}
         {tab === 'upload' && (
           <div>
+            <div style={{ ...S.card, background: 'rgba(255,90,95,0.04)', border: '1px solid rgba(255,90,95,0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setGuideOpen(o => !o)}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  ✈️ Ghid: ce iei din Airbnb, pas cu pas
+                </div>
+                <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>{guideOpen ? '▲ Ascunde' : '▼ Arată'}</span>
+              </div>
+              {guideOpen && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.6)', marginBottom: 12, lineHeight: 1.6 }}>
+                    În Airbnb: meniul din stânga <strong style={{ color: '#fff' }}>Rezultate</strong> → deschide fiecare pagină de mai jos din bara laterală și fă screenshot la fiecare (include și graficul cu „Anunțuri similare" de sub cifră, ca să prindem și comparația).
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    {[
+                      {
+                        titlu: '1. Rată de ocupare și tarife', culoare: '#4DA3FF',
+                        itemi: [
+                          ['Rată de ocupare', 'ocupare % + nopți rezervate/blocate/libere + check-in-uri'],
+                          ['Rata de anulare', '% anulări'],
+                          ['Durata șederii', 'durata medie a șederii'],
+                          ['Tarif pe noapte', 'tarif mediu pe noapte'],
+                        ],
+                      },
+                      {
+                        titlu: '2. Conversie', culoare: '#fca5a5',
+                        itemi: [
+                          ['Conversia în rezervări', '4 cifre deodată: conversie globală, afișări P1, căutări→vizite, vizite→rezervări'],
+                          ['Timpul de pregătire a rezervărilor', 'câte zile durează până se rezervă'],
+                          ['Oaspeți care revin', 'rata de revenire (poate fi 0% dacă nu ai încă date)'],
+                          ['Afișări', 'total afișări pagină + total afișări căutare P1'],
+                          ['Numărul de adăugări la lista de dorințe', 'wishlist'],
+                        ],
+                      },
+                    ].map(sec => (
+                      <div key={sec.titlu}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: sec.culoare, marginBottom: 8 }}>{sec.titlu}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {sec.itemi.map(([label, desc]) => (
+                            <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12 }}>
+                              <span style={{ color: sec.culoare, flexShrink: 0 }}>☐</span>
+                              <div>
+                                <span style={{ color: '#fff', fontWeight: 600 }}>{label}</span>
+                                <span style={{ color: 'rgba(159,215,255,0.4)' }}> — {desc}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 14, fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
+                    9 screenshot-uri în total per proprietate. Le încarci pe toate deodată mai jos — AI-ul detectează automat proprietatea, platforma și fiecare cifră (inclusiv comparația cu anunțuri similare).
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div style={S.card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const }}>
                 <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.7)' }}>Data statisticilor:</div>
@@ -1144,6 +1211,8 @@ function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: st
 
   const fmt = (n?: number, dec = 0) => n != null ? n.toLocaleString('ro-RO', { maximumFractionDigits: dec }) : null
   const pct = (n?: number) => n != null ? `${n}%` : null
+  // adauga delta vs. anunturi similare intre paranteze, ex: "27.3% (+13.7)"
+  const vs = (n?: number, suffix = '') => n != null ? ` (${n > 0 ? '+' : ''}${n}${suffix})` : ''
 
   // Rank bar pentru Booking
   const rankPct = stat.scor_pozitie_rank != null && stat.scor_pozitie_total
@@ -1168,8 +1237,8 @@ function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: st
         {/* KPI principale — 3 coloane */}
         {isAirbnb ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, background: 'rgba(255,255,255,0.02)', borderRadius: 10, padding: '10px 12px' }}>
-            <Stat label="Ocupare" value={pct(stat.rata_ocupare)} d={pctDelta(stat.rata_ocupare, prev?.rata_ocupare)} accent={stat.rata_ocupare != null && stat.rata_ocupare >= 80 ? '#4ade80' : undefined} />
-            <Stat label="Tarif/noapte" value={stat.tarif_mediu_noapte != null ? `${stat.tarif_mediu_noapte} RON` : null} d={pctDelta(stat.tarif_mediu_noapte, prev?.tarif_mediu_noapte)} />
+            <Stat label="Ocupare" value={stat.rata_ocupare != null ? `${pct(stat.rata_ocupare)}${vs(stat.rata_ocupare_vs_similar)}` : null} d={pctDelta(stat.rata_ocupare, prev?.rata_ocupare)} accent={stat.rata_ocupare != null && stat.rata_ocupare >= 80 ? '#4ade80' : undefined} />
+            <Stat label="Tarif/noapte" value={stat.tarif_mediu_noapte != null ? `${stat.tarif_mediu_noapte} RON${vs(stat.tarif_vs_similar, ' RON')}` : null} d={pctDelta(stat.tarif_mediu_noapte, prev?.tarif_mediu_noapte)} />
             <Stat label="Afișări P1" value={stat.afisari_p1_total != null ? fmt(stat.afisari_p1_total) : pct(stat.rata_afisari_p1)} d={pctDelta(stat.afisari_p1_total ?? stat.rata_afisari_p1, prev?.afisari_p1_total ?? prev?.rata_afisari_p1)} />
           </div>
         ) : (
@@ -1204,12 +1273,14 @@ function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: st
         {/* Metrici secundare */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {isAirbnb ? (<>
-            <MiniStat label="Conversie globală" value={pct(stat.rata_conversie_globala)} d={pctDelta(stat.rata_conversie_globala, prev?.rata_conversie_globala)} />
+            <MiniStat label="Conversie globală" value={stat.rata_conversie_globala != null ? `${pct(stat.rata_conversie_globala)}${vs(stat.rata_conversie_globala_vs_similar)}` : null} d={pctDelta(stat.rata_conversie_globala, prev?.rata_conversie_globala)} />
             <MiniStat label="Conv. vizite → rez." value={pct(stat.rata_conversie_vizite_rez)} d={pctDelta(stat.rata_conversie_vizite_rez, prev?.rata_conversie_vizite_rez)} />
-            <MiniStat label="Afișări pagină" value={fmt(stat.afisari_pagina_total)} d={pctDelta(stat.afisari_pagina_total, prev?.afisari_pagina_total)} />
-            <MiniStat label="Wishlist" value={stat.wishlist_total != null ? `${stat.wishlist_total}${stat.wishlist_vs_similar != null ? ` (${stat.wishlist_vs_similar > 0 ? '+' : ''}${stat.wishlist_vs_similar})` : ''}` : null} d={pctDelta(stat.wishlist_total, prev?.wishlist_total)} />
-            <MiniStat label="Durata ședere" value={stat.durata_medie_sedere != null ? `${stat.durata_medie_sedere} zile` : null} />
-            <MiniStat label="Rată anulări" value={pct(stat.rata_anulari)} inv />
+            <MiniStat label="Afișări pagină" value={stat.afisari_pagina_total != null ? `${fmt(stat.afisari_pagina_total)}${vs(stat.afisari_pagina_total_vs_similar)}` : null} d={pctDelta(stat.afisari_pagina_total, prev?.afisari_pagina_total)} />
+            <MiniStat label="Wishlist" value={stat.wishlist_total != null ? `${stat.wishlist_total}${vs(stat.wishlist_vs_similar)}` : null} d={pctDelta(stat.wishlist_total, prev?.wishlist_total)} />
+            <MiniStat label="Durata ședere" value={stat.durata_medie_sedere != null ? `${stat.durata_medie_sedere} zile${vs(stat.durata_sedere_vs_similar, ' zile')}` : null} />
+            <MiniStat label="Rată anulări" value={stat.rata_anulari != null ? `${pct(stat.rata_anulari)}${vs(stat.rata_anulari_vs_similar)}` : null} inv />
+            <MiniStat label="Timp pregătire rez." value={stat.timp_pregatire_rezervare != null ? `${stat.timp_pregatire_rezervare} zile${vs(stat.timp_pregatire_vs_similar, ' zile')}` : null} inv />
+            <MiniStat label="Oaspeți care revin" value={stat.rata_revenire_oaspeti != null ? `${pct(stat.rata_revenire_oaspeti)}${vs(stat.rata_revenire_oaspeti_vs_similar)}` : null} d={pctDelta(stat.rata_revenire_oaspeti, prev?.rata_revenire_oaspeti)} />
           </>) : (<>
             <MiniStat label="Viz. pagină (90z)" value={fmt(stat.vizualizari_pagina)} d={pctDelta(stat.vizualizari_pagina, prev?.vizualizari_pagina)} />
             <MiniStat label="Conv. căutări → viz." value={stat.rata_conversie_cautari != null ? `${stat.rata_conversie_cautari}%` : null} d={pctDelta(stat.rata_conversie_cautari, prev?.rata_conversie_cautari)} />

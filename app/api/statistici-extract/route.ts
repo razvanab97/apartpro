@@ -62,6 +62,30 @@ MAPARE EXACTĂ label Airbnb → câmp JSON:
 [SECȚIUNEA "Numărul de adăugări la lista de dorințe"]
   valoarea principală (ex: "3") → wishlist_total (număr întreg)
 
+[SECȚIUNEA "Timpul de pregătire a rezervărilor"]
+  "Timpul mediu de pregătire" (ex: "14.0 zile") → timp_pregatire_rezervare (număr, ex: 14.0) — ignoră "zile/zi"
+
+[SECȚIUNEA "Oaspeți care revin"]
+  "Rata de revenire a oaspeților" (ex: "0%") → rata_revenire_oaspeti (număr, ex: 0.0) — dacă textul spune că parametrul "va apărea în termen de 48 de ore" (încă nu există date), pune null
+
+═══════════════════════════════════════════
+COMPARAȚIE CU ANUNȚURI SIMILARE (doar Airbnb)
+═══════════════════════════════════════════
+Sub majoritatea metricilor Airbnb de mai sus apare o propoziție de forma:
+  "Parametrul „<nume metrică>" al anunțurilor selectate este cu <NUMĂR> <unitate opțională> mai mare/mai mic decât cel al anunțurilor similare din zonă."
+Extrage <NUMĂR> ca valoare POZITIVĂ dacă propoziția spune "mai mare", NEGATIVĂ dacă spune "mai mic", și scrie-l în câmpul "_vs_similar" corespunzător metricii la care se referă propoziția:
+  rata de ocupare              → rata_ocupare_vs_similar
+  rata de anulare               → rata_anulari_vs_similar
+  durata medie a șederii        → durata_sedere_vs_similar
+  tarif mediu pe noapte         → tarif_vs_similar
+  rata globală de conversie     → rata_conversie_globala_vs_similar
+  timpul mediu de pregătire     → timp_pregatire_vs_similar
+  rata de revenire a oaspeților → rata_revenire_oaspeti_vs_similar
+  numărul total de afișări ale paginii → afisari_pagina_total_vs_similar
+  numărul total de adăugări la lista de dorințe → wishlist_vs_similar
+Exemple: "cu 13.7% mai mare" → 13.7 | "cu 0.7 zile mai mic" → -0.7 | "cu 292 RON mai mare" → 292 | "cu 2 mai mare" → 2.
+Dacă nu apare nicio astfel de propoziție pentru o metrică (ex: date insuficiente), lasă câmpul "_vs_similar" null — nu inventa valori.
+
 ═══════════════════════════════════════════
 STRUCTURA DASHBOARD BOOKING.COM (interfață română)
 ═══════════════════════════════════════════
@@ -147,7 +171,7 @@ INSTRUCȚIUNI GENERALE
 4. Pentru procente: returnează NUMĂRUL simplu (ex: "46.5%" → 46.5, nu 0.465)
 5. Pentru valori cu unități: elimină unitatea (RON, zi, zile, %)
 6. Dacă o valoare nu e vizibilă în document, pune null — NU inventa valori.
-7. Ignoră graficele și valorile comparative cu "similare" — extrage doar valorile proprii ale proprietății.
+7. Ignoră liniile din grafice (seria punctată "Anunțuri similare") — dar EXTRAGE propozițiile text de comparație cu anunțuri similare conform secțiunii dedicate de mai sus (câmpurile "_vs_similar").
 
 Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
 {
@@ -172,6 +196,13 @@ Returnează DOAR JSON valid, fără text suplimentar, fără markdown:
   "wishlist_vs_similar": null,
   "rata_ocupare_vs_similar": null,
   "durata_sedere_vs_similar": null,
+  "timp_pregatire_rezervare": null,
+  "timp_pregatire_vs_similar": null,
+  "rata_revenire_oaspeti": null,
+  "rata_revenire_oaspeti_vs_similar": null,
+  "rata_anulari_vs_similar": null,
+  "rata_conversie_globala_vs_similar": null,
+  "afisari_pagina_total_vs_similar": null,
   "vizualizari_cautari": null,
   "vizualizari_pagina": null,
   "rezervari_confirmate": null,
@@ -239,6 +270,10 @@ const CSV_MAP: Record<string, string> = {
   'rata de anulare':                                              'rata_anulari',
   'durata medie a sederii':                                       'durata_medie_sedere',
   'durata medie a șederii':                                       'durata_medie_sedere',
+  'timpul mediu de pregatire':                                    'timp_pregatire_rezervare',
+  'timpul mediu de pregătire':                                    'timp_pregatire_rezervare',
+  'rata de revenire a oaspetilor':                                'rata_revenire_oaspeti',
+  'rata de revenire a oaspeților':                                'rata_revenire_oaspeti',
   // Tarif
   'tarif mediu pe noapte':                                        'tarif_mediu_noapte',
   // Conversie — format vechi (->)
