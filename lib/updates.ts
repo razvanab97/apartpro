@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Statistici: ghid pas-cu-pas pentru upload Airbnb, comparație cu anunțuri similare, timp pregătire rezervare + oaspeți care revin, fix salvare (poze multiple nu se mai suprascriau)', date: '2026-08-10' },
   { text: 'Fix major: rezervările cu check-out/plată în ultima zi a lunii (31, sau 30/28/29) lipseau din rapoarte, cheltuieli, deconturi, casă staff — bug de fus orar, reparat în 9 locuri din aplicație', date: '2026-08-07' },
   { text: 'Dashboard: fix clopoțel care bloca meniul mobil (☰) + eliminat proprietățile duplicate din listele de check-in/check-out de azi', date: '2026-08-07' },
   { text: 'Curățenie → Rapoarte: butoane „+ Sumă încasată" / „− Sumă cheltuită" înapoi în Casă staff, cu opțiune de ștergere pe fiecare intrare', date: '2026-08-06' },

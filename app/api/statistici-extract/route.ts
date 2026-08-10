@@ -66,7 +66,7 @@ MAPARE EXACTĂ label Airbnb → câmp JSON:
   "Timpul mediu de pregătire" (ex: "14.0 zile") → timp_pregatire_rezervare (număr, ex: 14.0) — ignoră "zile/zi"
 
 [SECȚIUNEA "Oaspeți care revin"]
-  "Rata de revenire a oaspeților" (ex: "0%") → rata_revenire_oaspeti (număr, ex: 0.0) — dacă textul spune că parametrul "va apărea în termen de 48 de ore" (încă nu există date), pune null
+  "Rata de revenire a oaspeților" (valoarea principală afișată, ex: "0%") → rata_revenire_oaspeti (număr, ex: 0.0) — extrage cifra principală chiar dacă sub grafic scrie că parametrul "va apărea în termen de 48 de ore" (acel text e despre graficul de comparație, nu despre cifra principală)
 
 ═══════════════════════════════════════════
 COMPARAȚIE CU ANUNȚURI SIMILARE (doar Airbnb)

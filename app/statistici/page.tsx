@@ -700,14 +700,25 @@ export default function StatisticiPage() {
   async function saveAll() {
     const done = uploads.filter(u => u.status === 'done' && u.extracted && u.aptId)
     if (!done.length) { show('error', 'Nu există date de salvat sau apartamentul nu e selectat'); return }
-    let saved = 0, errors = 0
+    // Grupeaza pe (apartament, platforma): mai multe poze ale aceleiasi proprietati/platforme/zi
+    // (ex. 9 screenshot-uri Airbnb diferite) se combina intr-un singur rand, nu se suprascriu una pe alta
+    const groups = new Map<string, { aptId: string; platforma: Platforma; metrics: Record<string, any> }>()
     for (const item of done) {
       const { detected_apt_id, detected_platforma, ...metrics } = item.extracted
-      // Șterge rândul existent pentru aceeași zi (dacă există) apoi inserează fresh
+      const key = `${item.aptId}|${item.platforma}`
+      if (!groups.has(key)) groups.set(key, { aptId: item.aptId, platforma: item.platforma, metrics: {} })
+      const g = groups.get(key)!
+      for (const [k, v] of Object.entries(metrics)) {
+        if (v != null) g.metrics[k] = v
+      }
+    }
+    let saved = 0, errors = 0
+    for (const g of groups.values()) {
+      // Șterge rândul existent pentru aceeași zi (dacă există) apoi inserează fresh, cu toate câmpurile combinate
       await supabase.from('statistici_platforme').delete()
-        .eq('apartament_id', item.aptId).eq('platforma', item.platforma).eq('data_inregistrare', uploadDate)
+        .eq('apartament_id', g.aptId).eq('platforma', g.platforma).eq('data_inregistrare', uploadDate)
       const { error } = await supabase.from('statistici_platforme').insert({
-        apartament_id: item.aptId, platforma: item.platforma, data_inregistrare: uploadDate, ...metrics
+        apartament_id: g.aptId, platforma: g.platforma, data_inregistrare: uploadDate, ...g.metrics
       })
       if (error) { console.error('save error', error.message); errors++ } else saved++
     }
@@ -716,6 +727,11 @@ export default function StatisticiPage() {
     setUploads([])
     await loadStats()
     setTab('dashboard')
+  }
+
+  function applyAptToAll(aptId: string) {
+    if (!aptId) return
+    setUploads(prev => prev.map(u => ({ ...u, aptId })))
   }
 
   // Styles
@@ -1067,7 +1083,10 @@ export default function StatisticiPage() {
                     ))}
                   </div>
                   <div style={{ marginTop: 14, fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
-                    9 screenshot-uri în total per proprietate. Le încarci pe toate deodată mai jos — AI-ul detectează automat proprietatea, platforma și fiecare cifră (inclusiv comparația cu anunțuri similare).
+                    9 screenshot-uri în total per proprietate. Le încarci pe toate deodată mai jos (drag&drop sau selecție multiplă) — AI-ul extrage fiecare cifră, inclusiv comparația cu anunțuri similare. Pe aceste pagini, Airbnb nu afișează numele anunțului pe ecran, deci selectează manual apartamentul din „Toate sunt pentru:" înainte de „Extrage cu AI" — se aplică la tot lotul deodată.
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
+                    Toate pozele unei proprietăți se combină automat într-o singură înregistrare pentru ziua respectivă — nu se suprascriu una pe alta.
                   </div>
                 </div>
               )}
@@ -1095,9 +1114,14 @@ export default function StatisticiPage() {
 
             {uploads.length > 0 && (
               <div style={S.card}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' as const, gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{uploads.length} fișiere</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                    <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Toate sunt pentru:</span>
+                    <select style={{ ...S.sel, fontSize: 12 }} defaultValue="" onChange={e => applyAptToAll(e.target.value)}>
+                      <option value="" disabled>— alege apartamentul —</option>
+                      {apts.map(a => <option key={a.id} value={a.id}>[{a.nota}] {a.nume}</option>)}
+                    </select>
                     <button style={S.btn('#4DA3FF')} onClick={processAll} disabled={processing}>
                       {processing ? '⏳ Procesez...' : '🤖 Extrage cu AI'}
                     </button>
