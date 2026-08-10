@@ -303,25 +303,21 @@ export default function StaffPage() {
     const apt = apts.find(a=>a.id===aptId)
     const aptNota = apt?.nota
 
-    // Consum automat de lenjerii: la "Am terminat" se scade din stoc, la "Reincepe" se readauga
-    if (status === 'gata' && prev.status !== 'gata') {
+    // Consum automat de lenjerii: la "Am terminat" se scade din stoc, la "Reincepe" se readauga.
+    // Verificam direct in baza de date daca exista deja o miscare de consum (idempotent), in loc
+    // sa ne bazam pe starea locala `prev` care poate fi neactualizata (race cu reincarcarea listei).
+    const { data: existingCons } = await supabase.from('lenjerii_miscari').select('id')
+      .eq('apartament_id', aptId).eq('data', data).eq('tip', 'consum').maybeSingle()
+    if (status === 'gata' && !existingCons) {
       const ciForLen = checkins.find((r:any) => r.apartament_id === aptId)
       const cant = prev.nr_lenjerii || (ciForLen ? nrLenSmart(ciForLen) : null)
       if (cant) {
-        const { data: existingCons } = await supabase.from('lenjerii_miscari').select('id')
-          .eq('apartament_id', aptId).eq('data', data).eq('tip', 'consum').maybeSingle()
-        if (!existingCons) {
-          await supabase.from('lenjerii_miscari').insert({ tip: 'consum', cantitate: cant, motiv: `Curățenie ${aptNota||''}`.trim(), apartament_id: aptId, data })
-          loadLenjerii()
-        }
-      }
-    } else if (status === 'inceput' && prev.status === 'gata') {
-      const { data: existingCons } = await supabase.from('lenjerii_miscari').select('id')
-        .eq('apartament_id', aptId).eq('data', data).eq('tip', 'consum').maybeSingle()
-      if (existingCons) {
-        await supabase.from('lenjerii_miscari').delete().eq('id', existingCons.id)
+        await supabase.from('lenjerii_miscari').insert({ tip: 'consum', cantitate: cant, motiv: `Curățenie ${aptNota||''}`.trim(), apartament_id: aptId, data })
         loadLenjerii()
       }
+    } else if (status === 'inceput' && existingCons) {
+      await supabase.from('lenjerii_miscari').delete().eq('id', existingCons.id)
+      loadLenjerii()
     }
 
     if (status==='inceput' && aptNota) {
