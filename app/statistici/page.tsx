@@ -438,11 +438,21 @@ export default function StatisticiPage() {
   const [evoMode, setEvoMode] = useState<'grafice' | 'tabel'>('grafice')
   const [evoMetrics, setEvoMetrics] = useState<string[]>(['rata_afisari_p1', 'rata_ocupare'])
 
+  function openApartmentDetail(apartamentId: string, platforma: Platforma) {
+    setEvoApts([apartamentId])
+    setEvoPlatforma(platforma)
+    setEvoMetrics(METRIC_OPTS[platforma].map(m => m.key))
+    setEvoMode('grafice')
+    setTab('evolutie')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // Upload
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [processing, setProcessing] = useState(false)
   const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().split('T')[0])
   const [guideOpen, setGuideOpen] = useState(true)
+  const [selectedAptForAll, setSelectedAptForAll] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast, show } = useToast()
 
@@ -596,7 +606,7 @@ export default function StatisticiPage() {
     if (!files) return
     const items: UploadItem[] = Array.from(files).map(f => ({
       id: Math.random().toString(36).slice(2),
-      file: f, aptId: '', platforma: 'airbnb',
+      file: f, aptId: selectedAptForAll, platforma: 'airbnb',
       status: 'pending', extracted: null,
       preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined
     }))
@@ -617,7 +627,9 @@ export default function StatisticiPage() {
         const result = await extractWithAI(item)
         updUpload(item.id, {
           status: 'done', extracted: result,
-          aptId: result.detected_apt_id || item.aptId,
+          // apartamentul selectat manual (sus sau per fisier) are prioritate; auto-detectia AI
+          // se foloseste doar cand nu a fost ales manual niciun apartament
+          aptId: item.aptId || result.detected_apt_id || '',
           platforma: (result.detected_platforma as Platforma) || item.platforma
         })
       } catch (e: any) {
@@ -731,6 +743,7 @@ export default function StatisticiPage() {
 
   function applyAptToAll(aptId: string) {
     if (!aptId) return
+    setSelectedAptForAll(aptId)
     setUploads(prev => prev.map(u => ({ ...u, aptId })))
   }
 
@@ -872,7 +885,8 @@ export default function StatisticiPage() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
                 {filteredCards.map(({ latest, prev }) => (
-                  <AptCard key={latest.id} stat={latest} prev={prev} name={aptName(latest.apartament_id)} />
+                  <AptCard key={latest.id} stat={latest} prev={prev} name={aptName(latest.apartament_id)}
+                    onOpen={() => openApartmentDetail(latest.apartament_id, latest.platforma)} />
                 ))}
               </div>
             )}
@@ -1083,7 +1097,7 @@ export default function StatisticiPage() {
                     ))}
                   </div>
                   <div style={{ marginTop: 14, fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
-                    9 screenshot-uri în total per proprietate. Le încarci pe toate deodată mai jos (drag&drop sau selecție multiplă) — AI-ul extrage fiecare cifră, inclusiv comparația cu anunțuri similare. Pe aceste pagini, Airbnb nu afișează numele anunțului pe ecran, deci selectează manual apartamentul din „Toate sunt pentru:" înainte de „Extrage cu AI" — se aplică la tot lotul deodată.
+                    9 screenshot-uri în total per proprietate. Pe aceste pagini, Airbnb nu afișează numele anunțului pe ecran — selectează apartamentul din „Apartament:" mai jos ÎNAINTE să încarci pozele, ca să se aplice automat la fiecare (fără auto-detectare AI). Apoi le încarci pe toate deodată (drag&drop sau selecție multiplă) — AI-ul extrage fiecare cifră, inclusiv comparația cu anunțuri similare.
                   </div>
                   <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
                     Toate pozele unei proprietăți se combină automat într-o singură înregistrare pentru ziua respectivă — nu se suprascriu una pe alta.
@@ -1093,12 +1107,22 @@ export default function StatisticiPage() {
             </div>
 
             <div style={S.card}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' as const }}>
                 <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.7)' }}>Data statisticilor:</div>
                 <input type="date" value={uploadDate} onChange={e => setUploadDate(e.target.value)}
                   style={{ ...S.sel, fontSize: 13, fontWeight: 600, color: '#fff' }} />
                 <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
                   Poți uploada date pentru orice zi — istoricul se păstrează complet
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' as const }}>
+                <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.7)' }}>Apartament:</div>
+                <select style={{ ...S.sel, fontSize: 13, fontWeight: 600, color: '#fff' }} value={selectedAptForAll} onChange={e => applyAptToAll(e.target.value)}>
+                  <option value="">— fără selecție (auto-detectat de AI) —</option>
+                  {apts.map(a => <option key={a.id} value={a.id}>[{a.nota}] {a.nume}</option>)}
+                </select>
+                <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.35)' }}>
+                  {selectedAptForAll ? 'Se aplică automat la toate pozele urcate' : 'Selectează dinainte ca să nu mai depinzi de auto-detectare'}
                 </div>
               </div>
               <div style={S.dropzone} onClick={() => fileInputRef.current?.click()}
@@ -1118,8 +1142,8 @@ export default function StatisticiPage() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{uploads.length} fișiere</span>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
                     <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Toate sunt pentru:</span>
-                    <select style={{ ...S.sel, fontSize: 12 }} defaultValue="" onChange={e => applyAptToAll(e.target.value)}>
-                      <option value="" disabled>— alege apartamentul —</option>
+                    <select style={{ ...S.sel, fontSize: 12 }} value={selectedAptForAll} onChange={e => applyAptToAll(e.target.value)}>
+                      <option value="">— auto-detectat de AI —</option>
                       {apts.map(a => <option key={a.id} value={a.id}>[{a.nota}] {a.nume}</option>)}
                     </select>
                     <button style={S.btn('#4DA3FF')} onClick={processAll} disabled={processing}>
@@ -1227,7 +1251,7 @@ function MiniStat({ label, value, d, inv }: { label: string; value: string | nul
   )
 }
 
-function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: string }) {
+function AptCard({ stat, prev, name, onOpen }: { stat: StatRow; prev?: StatRow; name: string; onOpen: () => void }) {
   const isAirbnb = stat.platforma === 'airbnb'
   const accent = isAirbnb ? '#FF5A5F' : '#3B82F6'
   const accentBg = isAirbnb ? 'rgba(255,90,95,0.08)' : 'rgba(59,130,246,0.08)'
@@ -1243,7 +1267,10 @@ function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: st
     ? Math.round((1 - stat.scor_pozitie_rank / stat.scor_pozitie_total) * 100) : null
 
   return (
-    <div style={{ background: 'rgba(15,20,35,0.8)', border: `1px solid ${accentBorder}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div onClick={onOpen} title="Click pentru evoluția în timp a acestei proprietăți"
+      style={{ background: 'rgba(15,20,35,0.8)', border: `1px solid ${accentBorder}`, borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'transform .12s, border-color .12s' }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.transform = 'translateY(-2px)' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = accentBorder; e.currentTarget.style.transform = 'translateY(0)' }}>
 
       {/* Header */}
       <div style={{ background: accentBg, borderBottom: `1px solid ${accentBorder}`, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1254,6 +1281,7 @@ function AptCard({ stat, prev, name }: { stat: StatRow; prev?: StatRow; name: st
         <span style={{ marginLeft: 8, padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: accent, color: '#fff', whiteSpace: 'nowrap' }}>
           {isAirbnb ? '✈ Airbnb' : '🔵 Booking'}
         </span>
+        <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>📊</span>
       </div>
 
       <div style={{ padding: '12px 14px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Statistici: selectezi apartamentul înainte de upload (nu mai depinde de auto-detectare AI) + click pe orice card deschide evoluția în timp a acelei proprietăți, cu toate metricile pe grafice', date: '2026-08-11' },
   { text: 'Stoc lenjerii: widget mai compact + apare acum și în Curățenie (admin), sincronizat cu Staff', date: '2026-08-11' },
   { text: 'Staff → Curățenie: stoc lenjerii disponibile sus în pagină — se adaugă manual, scade automat la fiecare curățenie terminată, alertă la stoc scăzut', date: '2026-08-11' },
   { text: 'Statistici: ghid pas-cu-pas pentru upload Airbnb, comparație cu anunțuri similare, timp pregătire rezervare + oaspeți care revin, fix salvare (poze multiple nu se mai suprascriau)', date: '2026-08-10' },
