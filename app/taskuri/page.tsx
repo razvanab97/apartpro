@@ -27,6 +27,7 @@ type Task = {
   interval_zile?: number | null
   data_urmatoare?: string | null
   zile_avans?: number | null
+  sablon_id?: string | null
   created_at: string
   ordine?: number | null
 }
@@ -499,6 +500,7 @@ function TaskCard({ task, onEdit, onDelete, onMove }: { task: Task; onEdit: (t: 
       {task.descriere && <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.45)', marginBottom: 5, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{task.descriere}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>
         <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: `${sc}18`, color: sc, border: `1px solid ${sc}25` }}>{PRIO_LABEL[task.prioritate]}</span>
+        {task.sablon_id && <span title="Generat automat dintr-un task recurent" style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(196,181,253,0.12)', color: '#C4B5FD', border: '1px solid rgba(196,181,253,0.25)' }}>🔁 recurent</span>}
         {task.business && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 4, background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', border: '1px solid rgba(77,163,255,0.15)' }}>{task.business}</span>}
         {task.data_limita && (() => {
           const today = new Date().toISOString().split('T')[0]
@@ -958,6 +960,12 @@ export default function TaskuriPage() {
       const avans = Number(task.zile_avans) || 0
       const apareDin = addDays(task.data_urmatoare, -avans)
       if (apareDin > today) continue  // inca nu a inceput fereastra de avans
+      // Evita duplicate daca checkRecurente() ruleaza de mai multe ori pentru aceeasi scadenta
+      // (ex: pagina deschisa in mai multe tab-uri) - dar permite generarea ciclului urmator
+      // chiar daca instanta anterioara inca n-a fost finalizata
+      const { data: existing } = await supabase.from('taskuri').select('id')
+        .eq('sablon_id', task.id).eq('data_limita', task.data_urmatoare).limit(1)
+      if (existing && existing.length > 0) continue
       // Creeaza task nou activ, cu data limita reala (scadenta), nu azi
       await supabase.from('taskuri').insert({
         titlu: task.titlu,
@@ -966,6 +974,7 @@ export default function TaskuriPage() {
         business: task.business,
         status: 'de_facut',
         data_limita: task.data_urmatoare,
+        sablon_id: task.id,
         recurent: false,
         interval_zile: null,
       })
