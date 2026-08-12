@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Modal, FormGroup, FormRow, Toast, useToast, ConnectionError } from '@/components/ui'
-import { Plus, Pencil, X, Check, Trash2, ChevronDown, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
+import { Plus, Pencil, X, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -855,6 +855,14 @@ export default function CheltuieliPage(){
     setApts(newFull as any)
     persistAptOrdine(newFull).catch(()=>{})
   }
+  function moveApt(group: any[], aptId: string, dir: -1|1){
+    const oldIndex = group.findIndex((a:any)=>a.id===aptId)
+    const newIndex = oldIndex + dir
+    if(oldIndex===-1 || newIndex<0 || newIndex>=group.length) return
+    const newFull = reorderAptsSubset(apts, group.map((a:any)=>a.id), oldIndex, newIndex)
+    setApts(newFull as any)
+    persistAptOrdine(newFull).catch(()=>{})
+  }
 
   function SortableAptRow({ a, children }: { a:any; children:(dragHandle:{ attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void })=>React.ReactNode }) {
     const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
@@ -1037,7 +1045,7 @@ export default function CheltuieliPage(){
   }
 
   /* ── Rand apartament (acordeon) ──────────────────────────────────────── */
-  function AptAccordion({apt,last,dragHandle}:{apt:any;last:boolean;dragHandle?:{ attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void }}){
+  function AptAccordion({apt,last,dragHandle,canMoveUp,canMoveDown,onMoveUp,onMoveDown}:{apt:any;last:boolean;dragHandle?:{ attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void };canMoveUp?:boolean;canMoveDown?:boolean;onMoveUp?:()=>void;onMoveDown?:()=>void}){
     const isOpen=!!expanded[apt.id]
     const total=aptTotal(apt.id)
     const paid=aptPaid(apt.id)
@@ -1055,6 +1063,18 @@ export default function CheltuieliPage(){
             style={{flexShrink:0,display:'flex',alignItems:'center',background:'none',border:'none',padding:'0 0 0 12px',cursor:'grab',color:'rgba(159,215,255,0.3)',touchAction:'none'}}>
             <GripVertical size={14}/>
           </button>
+        )}
+        {(onMoveUp||onMoveDown) && (
+          <div style={{display:'flex',flexDirection:'column' as const,gap:1,flexShrink:0,padding:'0 0 0 6px'}}>
+            <button onClick={onMoveUp} disabled={!canMoveUp} title="Mută mai sus"
+              style={{width:16,height:14,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',padding:0,cursor:canMoveUp?'pointer':'default',color:canMoveUp?'rgba(159,215,255,0.4)':'rgba(159,215,255,0.12)'}}>
+              <ChevronUp size={12}/>
+            </button>
+            <button onClick={onMoveDown} disabled={!canMoveDown} title="Mută mai jos"
+              style={{width:16,height:14,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',padding:0,cursor:canMoveDown?'pointer':'default',color:canMoveDown?'rgba(159,215,255,0.4)':'rgba(159,215,255,0.12)'}}>
+              <ChevronDown size={12}/>
+            </button>
+          </div>
         )}
         <button
           onClick={()=>toggleExpand(apt.id)}
@@ -1333,7 +1353,9 @@ export default function CheltuieliPage(){
               <SortableContext items={abApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
                 {abApts.map((apt,i)=>(
                   <SortableAptRow key={apt.id} a={apt}>
-                    {dragHandle=><AptAccordion apt={apt} last={i===abApts.length-1} dragHandle={dragHandle}/>}
+                    {dragHandle=><AptAccordion apt={apt} last={i===abApts.length-1} dragHandle={dragHandle}
+                      canMoveUp={i>0} canMoveDown={i<abApts.length-1}
+                      onMoveUp={()=>moveApt(abApts,apt.id,-1)} onMoveDown={()=>moveApt(abApts,apt.id,1)}/>}
                   </SortableAptRow>
                 ))}
               </SortableContext>
@@ -1347,7 +1369,9 @@ export default function CheltuieliPage(){
               <SortableContext items={abExtraApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
                 {abExtraApts.map((apt,i)=>(
                   <SortableAptRow key={apt.id} a={apt}>
-                    {dragHandle=><AptAccordion apt={apt} last={i===abExtraApts.length-1} dragHandle={dragHandle}/>}
+                    {dragHandle=><AptAccordion apt={apt} last={i===abExtraApts.length-1} dragHandle={dragHandle}
+                      canMoveUp={i>0} canMoveDown={i<abExtraApts.length-1}
+                      onMoveUp={()=>moveApt(abExtraApts,apt.id,-1)} onMoveDown={()=>moveApt(abExtraApts,apt.id,1)}/>}
                   </SortableAptRow>
                 ))}
               </SortableContext>
@@ -1361,7 +1385,9 @@ export default function CheltuieliPage(){
               <SortableContext items={extraApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
                 {extraApts.map((apt,i)=>(
                   <SortableAptRow key={apt.id} a={apt}>
-                    {dragHandle=><AptAccordion apt={apt} last={i===extraApts.length-1} dragHandle={dragHandle}/>}
+                    {dragHandle=><AptAccordion apt={apt} last={i===extraApts.length-1} dragHandle={dragHandle}
+                      canMoveUp={i>0} canMoveDown={i<extraApts.length-1}
+                      onMoveUp={()=>moveApt(extraApts,apt.id,-1)} onMoveDown={()=>moveApt(extraApts,apt.id,1)}/>}
                   </SortableAptRow>
                 ))}
               </SortableContext>

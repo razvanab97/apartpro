@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
-import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
+import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -856,6 +856,14 @@ export default function FacturiPage() {
             return ai - bi
           })
           const sortableGroupIds = groupedEntries.filter(([id])=>id!=='__fara__').map(([id])=>id)
+          function moveGroup(aptId: string, dir: -1|1){
+            const oldIndex = sortableGroupIds.indexOf(aptId)
+            const newIndex = oldIndex + dir
+            if(oldIndex===-1 || newIndex<0 || newIndex>=sortableGroupIds.length) return
+            const newFull = reorderAptsSubset(apts, sortableGroupIds, oldIndex, newIndex)
+            setApts(newFull as any)
+            persistAptOrdine(newFull).catch(()=>{})
+          }
           function handleGroupDragEnd(event: DragEndEvent){
             const { active, over } = event
             if(!over || active.id===over.id) return
@@ -893,6 +901,7 @@ export default function FacturiPage() {
                   const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
                   const total = items.reduce((s,i) => s + Number(i.valoare), 0)
                   const isFara = aptId === '__fara__'
+                  const groupIdx = sortableGroupIds.indexOf(aptId)
                   return (
                     <SortableAptGroup key={aptId} id={aptId} disabled={isFara}>
                     {dragHandle=>(
@@ -905,6 +914,18 @@ export default function FacturiPage() {
                               style={{ flexShrink:0, display:'flex', alignItems:'center', background:'none', border:'none', padding:0, cursor:'grab', color:'rgba(159,215,255,0.3)', touchAction:'none' }}>
                               <GripVertical size={14}/>
                             </button>
+                          )}
+                          {!isFara && (
+                            <div style={{ display:'flex', flexDirection:'column' as const, gap:1 }}>
+                              <button onClick={()=>moveGroup(aptId,-1)} disabled={groupIdx<=0} title="Mută mai sus"
+                                style={{ width:16, height:14, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'none', padding:0, cursor:groupIdx<=0?'default':'pointer', color: groupIdx<=0?'rgba(159,215,255,0.12)':'rgba(159,215,255,0.4)' }}>
+                                <ChevronUp size={12}/>
+                              </button>
+                              <button onClick={()=>moveGroup(aptId,1)} disabled={groupIdx>=sortableGroupIds.length-1} title="Mută mai jos"
+                                style={{ width:16, height:14, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'none', padding:0, cursor:groupIdx>=sortableGroupIds.length-1?'default':'pointer', color: groupIdx>=sortableGroupIds.length-1?'rgba(159,215,255,0.12)':'rgba(159,215,255,0.4)' }}>
+                                <ChevronDown size={12}/>
+                              </button>
+                            </div>
                           )}
                           {apt?.nota && <span style={{ fontSize:11, fontWeight:600, color:'var(--accent-blue)', background:'rgba(77,163,255,0.12)', padding:'2px 8px', borderRadius:5 }}>{apt.nota}</span>}
                           <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{aptLabel}</span>
