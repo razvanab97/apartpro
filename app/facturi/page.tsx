@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getStorageUrl } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw } from 'lucide-react'
@@ -357,8 +357,7 @@ export default function FacturiPage() {
         .from('Facturi')
         .upload(storagePath, file, { contentType: mimeType, upsert: true })
       if (!uploadError && uploadData) {
-        const { data: urlData } = supabase.storage.from('Facturi').getPublicUrl(storagePath)
-        fileUrl = urlData.publicUrl
+        fileUrl = getStorageUrl('Facturi', storagePath)
       }
     } catch {}
 

@@ -35,6 +35,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: { fetch: fetchWithRetry as typeof fetch },
 })
 
+// URL public STABIL pentru fisiere din storage - NU folosi supabase.storage.from(...).getPublicUrl()
+// in browser, pentru ca acela foloseste window.location.origin (prin proxy-ul /api/supa de mai sus),
+// deci link-ul salvat in baza de date ramane legat de domeniul de PE CARE s-a facut upload-ul
+// (ex: un URL de preview Vercel efemer). Cand acel deployment expira, link-ul da 404 permanent.
+// Aici mergem mereu direct la domeniul real Supabase, indiferent de unde se face upload-ul.
+export function getStorageUrl(bucket: string, path: string): string {
+  return `${DIRECT_URL}/storage/v1/object/public/${bucket}/${path}`
+}
+
 export type Proprietar = {
   id: string; nume: string; email?: string; telefon?: string; iban?: string
   banca?: string; adresa?: string; cnp_cui?: string; nota?: string; activ: boolean; created_at: string

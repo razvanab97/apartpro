@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getStorageUrl } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast, ConnectionError } from '@/components/ui'
 import { Upload, Search, Trash2, Download, FileText, X } from 'lucide-react'
@@ -55,8 +55,7 @@ export default function DocumentePage() {
       const path = `documente/${Date.now()}_${file.name}`
       const { error: upErr } = await supabase.storage.from('Facturi').upload(path, file, { upsert: true })
       if (upErr) { show('error', upErr.message); return }
-      const { data: urlData } = supabase.storage.from('Facturi').getPublicUrl(path)
-      const url = urlData.publicUrl
+      const url = getStorageUrl('Facturi', path)
 
       // Auto-detect category from filename
       const numeFisier = file.name.replace(/\.[^/.]+$/, '').toLowerCase()

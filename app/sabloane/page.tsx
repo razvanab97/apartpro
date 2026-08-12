@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, getStorageUrl } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { Upload, Trash2, Plus, Send } from 'lucide-react'
@@ -413,8 +413,8 @@ export default function SabloanePage() {
     const path = `sabloane/${selApt.id}/${Date.now()}_${file.name}`
     const { error } = await supabase.storage.from('Facturi').upload(path, file, { upsert: true })
     if (error) { show('error', error.message); setUploading(false); return }
-    const { data: urlData } = supabase.storage.from('Facturi').getPublicUrl(path)
-    setEditing((prev:any) => ({ ...prev, poze: [...(prev.poze||[]), urlData.publicUrl] }))
+    const url = getStorageUrl('Facturi', path)
+    setEditing((prev:any) => ({ ...prev, poze: [...(prev.poze||[]), url] }))
     setUploading(false)
   }
 
