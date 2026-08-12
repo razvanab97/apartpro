@@ -89,7 +89,7 @@ export default function FacturiPage() {
   }, [])
 
   async function loadApts() {
-    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa,status').order('nota,nume')
+    const { data } = await supabase.from('apartamente').select('id,nume,nota,adresa,status,ordine').order('ordine', { ascending: true, nullsFirst: false }).order('nota,nume')
     setApts(data || [])
   }
 
@@ -840,6 +840,17 @@ export default function FacturiPage() {
             if (!grouped[key]) grouped[key] = []
             grouped[key].push(f)
           }
+          // Grupele urmeaza ordinea apartamentelor (setata manual in Apartamente > drag&drop),
+          // iar facturile fara apartament asociat raman mereu la final
+          const aptOrderIndex: Record<string, number> = {}
+          apts.forEach((a:any, idx:number) => { aptOrderIndex[a.id] = idx })
+          const groupedEntries = Object.entries(grouped).sort(([aId], [bId]) => {
+            if (aId === '__fara__') return 1
+            if (bId === '__fara__') return -1
+            const ai = aptOrderIndex[aId] ?? Infinity
+            const bi = aptOrderIndex[bId] ?? Infinity
+            return ai - bi
+          })
           return (
             <div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:10, flexWrap:'wrap' as const }}>
@@ -860,7 +871,7 @@ export default function FacturiPage() {
                 </div>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                {Object.entries(grouped).map(([aptId, items]) => {
+                {groupedEntries.map(([aptId, items]) => {
                   const apt = apts.find(a => a.id === aptId)
                   const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
                   const total = items.reduce((s,i) => s + Number(i.valoare), 0)

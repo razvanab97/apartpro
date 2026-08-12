@@ -3,7 +3,10 @@ import { useEffect, useState } from 'react'
 import { supabase, Apartament, Proprietar } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
-import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calculator, ChevronDown, ChevronUp, X, ChevronRight } from 'lucide-react'
+import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calculator, ChevronDown, ChevronUp, X, ChevronRight, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
 const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
@@ -258,7 +261,7 @@ export default function ApartamentePage() {
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
       const [{ data:apt },{ data:prop }] = await Promise.all([
-        supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('nota').order('nume'),
+        supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').order('ordine', { ascending: true, nullsFirst: false }).order('nota').order('nume'),
         supabase.from('proprietari').select('id,nume').order('nume'),
       ])
       setApartamente((apt as Apartament[])||[])
@@ -280,6 +283,21 @@ export default function ApartamentePage() {
   async function toggleAptStatus(id:string, newStatus:string){
     await supabase.from('apartamente').update({status:newStatus}).eq('id',id)
     setApartamente((list:any[])=>list.map(a=>a.id===id?{...a,status:newStatus}:a))
+  }
+
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  function handleDragEnd(event: DragEndEvent, group: 'my'|'other'){
+    const { active, over } = event
+    if(!over || active.id===over.id) return
+    const list = group==='my' ? myApts : otherApts
+    const oldIndex = list.findIndex((a:any)=>a.id===active.id)
+    const newIndex = list.findIndex((a:any)=>a.id===over.id)
+    if(oldIndex===-1 || newIndex===-1) return
+    const reordered = arrayMove(list, oldIndex, newIndex)
+    const newFull = group==='my' ? [...reordered, ...otherApts] : [...myApts, ...reordered]
+    setApartamente(newFull as any)
+    Promise.all(newFull.map((a:any, idx:number)=>supabase.from('apartamente').update({ ordine: idx }).eq('id', a.id))).catch(()=>{})
   }
 
   async function save(){
@@ -347,17 +365,33 @@ export default function ApartamentePage() {
               {myApts.length>0 && (
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>AB Homes · {myApts.length}</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
-                    {myApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
-                  </div>
+                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'my')}>
+                    <SortableContext items={myApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
+                        {myApts.map((a:any)=>(
+                          <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
+                            {dragHandle=><MiniCard a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
+                          </SortableApt>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 </div>
               )}
               {otherApts.length>0 && (
                 <div>
                   <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>Alte locații · {otherApts.length}</div>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
-                    {otherApts.map(a=><MiniCard key={a.id} a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus}/>)}
-                  </div>
+                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'other')}>
+                    <SortableContext items={otherApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
+                        {otherApts.map((a:any)=>(
+                          <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
+                            {dragHandle=><MiniCard a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
+                          </SortableApt>
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 </div>
               )}
             </>
@@ -634,7 +668,22 @@ export default function ApartamentePage() {
   )
 }
 
-function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void }) {
+function SortableApt({ a, disabled, children }: { a:any; disabled?:boolean; children:(dragHandle?: { attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void })=>React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: a.id, disabled })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children(disabled ? undefined : { attributes, listeners, setActivatorNodeRef })}
+    </div>
+  )
+}
+
+function MiniCard({ a, selected, onClick, onToggle, dragHandle }: { a:any; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void; dragHandle?: { attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void } }) {
   const sc = SC[a.status]||'#94A3B8'
   const isActiv = a.status === 'activ'
   const cp = (e:React.MouseEvent, text:string) => { e.stopPropagation(); navigator.clipboard.writeText(text).catch(()=>{}) }
@@ -643,6 +692,11 @@ function MiniCard({ a, selected, onClick, onToggle }: { a:any; selected:boolean;
     <div style={{ padding:'10px 12px', background: selected?'rgba(77,163,255,0.12)':'rgba(214,228,244,0.04)', border: selected?'1px solid rgba(77,163,255,0.35)':'1px solid rgba(159,215,255,0.08)', borderRadius:9, transition:'all 0.12s', borderLeft:'3px solid '+(selected?'#4DA3FF':sc+'50'), opacity:isActiv?1:0.5 }}>
       {/* Header row */}
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+        {dragHandle && (
+          <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} onClick={e=>e.stopPropagation()} title="Trage pentru a reordona" style={{ flexShrink:0, display:'flex', alignItems:'center', background:'none', border:'none', padding:0, cursor:'grab', color:'rgba(159,215,255,0.3)', touchAction:'none' }}>
+            <GripVertical size={12}/>
+          </button>
+        )}
         <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:6, flex:1, cursor:'pointer', minWidth:0 }}>
           {a.nota && <span style={{ fontSize:10, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace', background:'rgba(77,163,255,0.12)', padding:'1px 6px', borderRadius:4, flexShrink:0 }}>{a.nota}</span>}
           <span style={{ fontSize:11, fontWeight:600, color:'#FFFFFF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</span>

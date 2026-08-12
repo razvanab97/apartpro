@@ -58,6 +58,7 @@ export type Apartament = {
   reguli?: string; dotari?: string[]; status: string; nota?: string; created_at: string
   utilitati_la_proprietar?: boolean
   cod_locker?: string
+  ordine?: number
 }
 export type Rezervare = {
   id: string; apartament_id: string; apartament?: Apartament; proprietar_id?: string; proprietar?: Proprietar
