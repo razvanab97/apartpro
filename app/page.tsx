@@ -103,15 +103,27 @@ function waLink(phone:string, msg:string){
   return `https://wa.me/${nr}?text=${encoded}`
 }
 
-function msgCheckin(r:any){
-  const apt = r.apartament?.nume || 'apartament'
-  const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
-  return `Bună ziua, ${firstName(r.nume_client)}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
+function fillVars(tmpl:string, vals:{nume?:string;apartament?:string;data_checkin?:string;data_checkout?:string}){
+  return tmpl
+    .replace(/\{nume\}/gi, vals.nume||'')
+    .replace(/\{apartament\}/gi, vals.apartament||'')
+    .replace(/\{data_checkin\}/gi, vals.data_checkin||'')
+    .replace(/\{data_checkout\}/gi, vals.data_checkout||'')
 }
 
-function msgAcces(r:any){
+function msgCheckin(r:any, tmpl?:string){
   const apt = r.apartament?.nume || 'apartament'
-  return `Bună ziua, ${firstName(r.nume_client)}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+  const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
+  const nume = firstName(r.nume_client)
+  if(tmpl) return fillVars(tmpl,{nume,apartament:apt,data_checkin:ci})
+  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
+}
+
+function msgAcces(r:any, tmpl?:string){
+  const apt = r.apartament?.nume || 'apartament'
+  const nume = firstName(r.nume_client)
+  if(tmpl) return fillVars(tmpl,{nume,apartament:apt})
+  return `Bună ziua, ${nume}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
 
 function applyVars(tmpl:string, nume:string, apt:string, co:string){
@@ -163,6 +175,7 @@ export default function DashboardPage() {
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [toggling,setToggling]=useState<string|null>(null)
   const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
+  const [sabloaneSetari,setSabloaneSetari]=useState<Record<string,string>>({})
   const [coWizardOpen,setCoWizardOpen]=useState(false)
   const [coWizardIdx,setCoWizardIdx]=useState(0)
   const [coBannerDismissed,setCoBannerDismissed]=useState(()=>{
@@ -307,6 +320,12 @@ export default function DashboardPage() {
     setCheltuieli(chData||[])
     setRezervariActive(actRez||[])
     setRezervariCurente(actRez||[])
+    // mesaje editate din Setari (confirmare check-in, date acces) — non-blocking
+    void supabase.from('setari').select('cheie,valoare').in('cheie',['checkin_confirmare','checkin_acces']).then(({data:stD})=>{
+      const stMap:Record<string,string>={}
+      ;(stD||[]).forEach((s:any)=>{ if(s.valoare) stMap[s.cheie]=s.valoare })
+      setSabloaneSetari(stMap)
+    })
     // sabloane checkout — non-blocking, dupa datele principale
     void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data:sD})=>{
       const coMap:Record<string,string>={}
@@ -494,11 +513,11 @@ export default function DashboardPage() {
         {/* butoane WA */}
         <div style={{display:'flex',gap:6,flexWrap:'wrap' as const}}>
           {isCI&&(<>
-            <a href={waLink(phone,msgCheckin(r))} target="_blank" rel="noreferrer"
+            <a href={waLink(phone,msgCheckin(r,sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer"
               style={waBtn('rgba(252,211,77,0.9)','rgba(252,211,77,0.08)')}>
               <MessageCircle size={12}/>Confirmare
             </a>
-            <a href={waLink(phone,msgAcces(r))} target="_blank" rel="noreferrer"
+            <a href={waLink(phone,msgAcces(r,sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer"
               style={waBtn('rgba(77,163,255,0.9)','rgba(77,163,255,0.08)')}>
               <Key size={12}/>Date acces
             </a>
@@ -1294,7 +1313,7 @@ export default function DashboardPage() {
         const r=ciList[ciWizardIdx]
         if(!r)return null
         const isLast=ciWizardIdx>=ciList.length-1
-        const msg=msgCheckin(r)
+        const msg=msgCheckin(r,sabloaneSetari.checkin_confirmare)
         const link=waLink(r.telefon_client,msg)
         return(
           <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCiWizardOpen(false)}>
