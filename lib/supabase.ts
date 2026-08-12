@@ -44,6 +44,28 @@ export function getStorageUrl(bucket: string, path: string): string {
   return `${DIRECT_URL}/storage/v1/object/public/${bucket}/${path}`
 }
 
+// Reordoneaza doar elementele din subsetIds (identificate prin id) in interiorul
+// listei complete fullApts, pastrand neatinsa pozitia oricarui element care nu
+// face parte din subset — necesar pentru ca Apartamente/Cheltuieli/Facturi grupeaza
+// apartamentele diferit (dupa nota, dupa cod AB, dupa cine are facturi), deci nu putem
+// presupune ca subsetul afisat pe o pagina corespunde unui bloc contiguu in lista completa.
+export function reorderAptsSubset<T extends { id: string }>(fullApts: T[], subsetIds: string[], oldIndex: number, newIndex: number): T[] {
+  const positions: number[] = []
+  fullApts.forEach((a, idx) => { if (subsetIds.includes(a.id)) positions.push(idx) })
+  const reorderedIds = [...subsetIds]
+  const [moved] = reorderedIds.splice(oldIndex, 1)
+  reorderedIds.splice(newIndex, 0, moved)
+  const byId = new Map(fullApts.map(a => [a.id, a]))
+  const newFull = [...fullApts]
+  positions.forEach((pos, k) => { newFull[pos] = byId.get(reorderedIds[k])! })
+  return newFull
+}
+
+// Salveaza ordinea curenta (indexul din array) ca valoare ordine pentru fiecare apartament
+export async function persistAptOrdine(orderedApts: { id: string }[]) {
+  await Promise.all(orderedApts.map((a, idx) => supabase.from('apartamente').update({ ordine: idx }).eq('id', a.id)))
+}
+
 export type Proprietar = {
   id: string; nume: string; email?: string; telefon?: string; iban?: string
   banca?: string; adresa?: string; cnp_cui?: string; nota?: string; activ: boolean; created_at: string

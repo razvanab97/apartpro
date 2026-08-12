@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase, Apartament, Proprietar } from '@/lib/supabase'
+import { supabase, Apartament, Proprietar, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calculator, ChevronDown, ChevronUp, X, ChevronRight, GripVertical } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
-import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
@@ -294,10 +294,9 @@ export default function ApartamentePage() {
     const oldIndex = list.findIndex((a:any)=>a.id===active.id)
     const newIndex = list.findIndex((a:any)=>a.id===over.id)
     if(oldIndex===-1 || newIndex===-1) return
-    const reordered = arrayMove(list, oldIndex, newIndex)
-    const newFull = group==='my' ? [...reordered, ...otherApts] : [...myApts, ...reordered]
+    const newFull = reorderAptsSubset(apartamente, list.map((a:any)=>a.id), oldIndex, newIndex)
     setApartamente(newFull as any)
-    Promise.all(newFull.map((a:any, idx:number)=>supabase.from('apartamente').update({ ordine: idx }).eq('id', a.id))).catch(()=>{})
+    persistAptOrdine(newFull).catch(()=>{})
   }
 
   async function save(){

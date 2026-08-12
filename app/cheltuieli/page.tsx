@@ -1,9 +1,12 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Modal, FormGroup, FormRow, Toast, useToast, ConnectionError } from '@/components/ui'
-import { Plus, Pencil, X, Check, Trash2, ChevronDown, AlertCircle, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, X, Check, Trash2, ChevronDown, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const UTIL_COLS = [
   { key:'chirie',      label:'Chirie',         due:1  },
@@ -841,6 +844,24 @@ export default function CheltuieliPage(){
   const abExtraApts=apts.filter(a=>isAbExtra(a))
   const extraApts  =apts.filter(a=>!AB_CODES.includes(a.nota)&&!isAbExtra(a))
 
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  function handleAptDragEnd(event: DragEndEvent, group: any[]){
+    const { active, over } = event
+    if(!over || active.id===over.id) return
+    const oldIndex = group.findIndex((a:any)=>a.id===active.id)
+    const newIndex = group.findIndex((a:any)=>a.id===over.id)
+    if(oldIndex===-1 || newIndex===-1) return
+    const newFull = reorderAptsSubset(apts, group.map((a:any)=>a.id), oldIndex, newIndex)
+    setApts(newFull as any)
+    persistAptOrdine(newFull).catch(()=>{})
+  }
+
+  function SortableAptRow({ a, children }: { a:any; children:(dragHandle:{ attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void })=>React.ReactNode }) {
+    const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
+    const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging?0.5:1, zIndex: isDragging?10:'auto' }
+    return <div ref={setNodeRef} style={style}>{children({ attributes, listeners, setActivatorNodeRef })}</div>
+  }
+
   /* ── Pill cheltuiala ─────────────────────────────────────────────────── */
   function CostPill({label,val,due,paid,dataPlata,onToggle,onEdit,onDelete,busy}:{
     label:string;val:number;due:string;paid:boolean;dataPlata?:string|null;
@@ -1016,7 +1037,7 @@ export default function CheltuieliPage(){
   }
 
   /* ── Rand apartament (acordeon) ──────────────────────────────────────── */
-  function AptAccordion({apt,last}:{apt:any;last:boolean}){
+  function AptAccordion({apt,last,dragHandle}:{apt:any;last:boolean;dragHandle?:{ attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void }}){
     const isOpen=!!expanded[apt.id]
     const total=aptTotal(apt.id)
     const paid=aptPaid(apt.id)
@@ -1028,9 +1049,16 @@ export default function CheltuieliPage(){
     return(
       <div style={{marginBottom:10}}>
         {/* Header acordeon */}
+        <div style={{display:'flex',alignItems:'center',gap:4,...glassCard,overflow:'hidden'}}>
+        {dragHandle && (
+          <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} title="Trage pentru a reordona"
+            style={{flexShrink:0,display:'flex',alignItems:'center',background:'none',border:'none',padding:'0 0 0 12px',cursor:'grab',color:'rgba(159,215,255,0.3)',touchAction:'none'}}>
+            <GripVertical size={14}/>
+          </button>
+        )}
         <button
           onClick={()=>toggleExpand(apt.id)}
-          style={{width:'100%',display:'flex',alignItems:'center',gap:10,rowGap:6,flexWrap:'wrap',padding:'14px 18px',...glassCard,cursor:'pointer',textAlign:'left'}}
+          style={{width:'100%',display:'flex',alignItems:'center',gap:10,rowGap:6,flexWrap:'wrap',padding:'14px 18px',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}
         >
           {/* cod + nume */}
           <div style={{display:'flex',alignItems:'center',gap:8,flex:'1 1 140px',minWidth:140}}>
@@ -1052,6 +1080,7 @@ export default function CheltuieliPage(){
             <ChevronDown size={15} style={{color:'rgba(159,215,255,0.4)',transform:isOpen?'rotate(180deg)':'rotate(0)',transition:'transform .2s'}}/>
           </div>
         </button>
+        </div>
 
         {/* Body acordeon */}
         {isOpen&&(
@@ -1300,19 +1329,43 @@ export default function CheltuieliPage(){
           {/* AB Homes */}
           {abApts.length>0&&<>
             <span style={secLbl}>AB Homes — apartamente proprii</span>
-            {abApts.map((apt,i)=><AptAccordion key={apt.id} apt={apt} last={i===abApts.length-1}/>)}
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleAptDragEnd(e,abApts)}>
+              <SortableContext items={abApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
+                {abApts.map((apt,i)=>(
+                  <SortableAptRow key={apt.id} a={apt}>
+                    {dragHandle=><AptAccordion apt={apt} last={i===abApts.length-1} dragHandle={dragHandle}/>}
+                  </SortableAptRow>
+                ))}
+              </SortableContext>
+            </DndContext>
           </>}
 
           {/* AB fara cod */}
           {abExtraApts.length>0&&<>
             <span style={{...secLbl,marginTop:8}}>AB Homes — în curs de autorizare</span>
-            {abExtraApts.map((apt,i)=><AptAccordion key={apt.id} apt={apt} last={i===abExtraApts.length-1}/>)}
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleAptDragEnd(e,abExtraApts)}>
+              <SortableContext items={abExtraApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
+                {abExtraApts.map((apt,i)=>(
+                  <SortableAptRow key={apt.id} a={apt}>
+                    {dragHandle=><AptAccordion apt={apt} last={i===abExtraApts.length-1} dragHandle={dragHandle}/>}
+                  </SortableAptRow>
+                ))}
+              </SortableContext>
+            </DndContext>
           </>}
 
           {/* Extra */}
           {extraApts.length>0&&<>
             <span style={{...secLbl,marginTop:8}}>Extra — alte locații</span>
-            {extraApts.map((apt,i)=><AptAccordion key={apt.id} apt={apt} last={i===extraApts.length-1}/>)}
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleAptDragEnd(e,extraApts)}>
+              <SortableContext items={extraApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
+                {extraApts.map((apt,i)=>(
+                  <SortableAptRow key={apt.id} a={apt}>
+                    {dragHandle=><AptAccordion apt={apt} last={i===extraApts.length-1} dragHandle={dragHandle}/>}
+                  </SortableAptRow>
+                ))}
+              </SortableContext>
+            </DndContext>
           </>}
 
           {/* separator */}

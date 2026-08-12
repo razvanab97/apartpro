@@ -1,9 +1,12 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { supabase, getStorageUrl } from '@/lib/supabase'
+import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
-import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw } from 'lucide-react'
+import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const FURNIZORI_LIST = [
   'E.ON Curent','E.ON Gaz','E.ON DUO','Urbica','TermoService','Salubris',
@@ -71,6 +74,7 @@ export default function FacturiPage() {
   const dropRef = useRef<HTMLDivElement>(null)
   const [facturi, setFacturi] = useState<Factura[]>([])
   const [apts, setApts] = useState<any[]>([])
+  const dndSensorsArh = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [savedFacturi, setSavedFacturi] = useState<any[]>([])
   const [loadingArchiva, setLoadingArchiva] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -851,6 +855,17 @@ export default function FacturiPage() {
             const bi = aptOrderIndex[bId] ?? Infinity
             return ai - bi
           })
+          const sortableGroupIds = groupedEntries.filter(([id])=>id!=='__fara__').map(([id])=>id)
+          function handleGroupDragEnd(event: DragEndEvent){
+            const { active, over } = event
+            if(!over || active.id===over.id) return
+            const oldIndex = sortableGroupIds.indexOf(active.id as string)
+            const newIndex = sortableGroupIds.indexOf(over.id as string)
+            if(oldIndex===-1 || newIndex===-1) return
+            const newFull = reorderAptsSubset(apts, sortableGroupIds, oldIndex, newIndex)
+            setApts(newFull as any)
+            persistAptOrdine(newFull).catch(()=>{})
+          }
           return (
             <div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:10, flexWrap:'wrap' as const }}>
@@ -871,15 +886,26 @@ export default function FacturiPage() {
                 </div>
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+                <DndContext sensors={dndSensorsArh} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+                <SortableContext items={sortableGroupIds} strategy={rectSortingStrategy}>
                 {groupedEntries.map(([aptId, items]) => {
                   const apt = apts.find(a => a.id === aptId)
                   const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
                   const total = items.reduce((s,i) => s + Number(i.valoare), 0)
+                  const isFara = aptId === '__fara__'
                   return (
-                    <div key={aptId} style={{ ...glassCard, overflow:'hidden' }}>
+                    <SortableAptGroup key={aptId} id={aptId} disabled={isFara}>
+                    {dragHandle=>(
+                    <div style={{ ...glassCard, overflow:'hidden' }}>
                       {/* Header apartament */}
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 16px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          {dragHandle && (
+                            <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} title="Trage pentru a reordona"
+                              style={{ flexShrink:0, display:'flex', alignItems:'center', background:'none', border:'none', padding:0, cursor:'grab', color:'rgba(159,215,255,0.3)', touchAction:'none' }}>
+                              <GripVertical size={14}/>
+                            </button>
+                          )}
                           {apt?.nota && <span style={{ fontSize:11, fontWeight:600, color:'var(--accent-blue)', background:'rgba(77,163,255,0.12)', padding:'2px 8px', borderRadius:5 }}>{apt.nota}</span>}
                           <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{aptLabel}</span>
                           <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>{items.length} facturi</span>
@@ -938,8 +964,12 @@ export default function FacturiPage() {
                         </div>
                       ))}
                     </div>
+                    )}
+                    </SortableAptGroup>
                   )
                 })}
+                </SortableContext>
+                </DndContext>
               </div>
             </div>
           )
@@ -1023,5 +1053,20 @@ export default function FacturiPage() {
       `}</style>
       <Toast toast={toast}/>
     </>
+  )
+}
+
+function SortableAptGroup({ id, disabled, children }: { id:string; disabled?:boolean; children:(dragHandle?: { attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void })=>React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id, disabled })
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children(disabled ? undefined : { attributes, listeners, setActivatorNodeRef })}
+    </div>
   )
 }

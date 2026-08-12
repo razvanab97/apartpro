@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Cheltuieli și Facturi: se pot reordona acum direct din aceste pagini (⠿), nu doar din Apartamente — toate trei rămân sincronizate pe aceeași ordine', date: '2026-08-12' },
   { text: 'Fix major: mesajele „Confirmare Check-in" și „Date acces" editate din Setări nu erau folosite niciodată la trimitere — Dashboard-ul afișa mereu textul generic din cod, indiferent ce salvai; acum se trimite exact textul salvat', date: '2026-08-12' },
   { text: 'Apartamente: reordonare prin tragere (⠿ în colțul cardului) — ordinea aleasă se păstrează și în Facturi + Cheltuieli', date: '2026-08-12' },
   { text: 'Fix major: link-urile facturilor/documentelor duceau la un deployment vechi dispărut (404) dacă erau urcate de pe alt domeniu decât apartpro.work — 23 de facturi reale reparate, link-urile noi sunt acum permanente indiferent de unde se face upload-ul', date: '2026-08-12' },
