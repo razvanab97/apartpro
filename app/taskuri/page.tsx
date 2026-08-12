@@ -1414,12 +1414,18 @@ export default function TaskuriPage() {
   const filtered = tasks.filter(t => {
     if (t.business === '__rutina__') return false  // rutina zilei e separata
     if (t.status === 'template') return false  // sablon recurent, generat automat de checkRecurente()
+    if (t.sablon_id && t.status !== 'finalizat') return false  // instanta recurenta activa - traieste doar in tab-ul Recurente, pana e finalizata
     if (filterBusiness && t.business !== filterBusiness) return false
     if (filterPrio && t.prioritate !== filterPrio) return false
     return true
   })
   const recurringTemplates = tasks.filter(t => t.status === 'template' && t.recurent)
     .sort((a,b) => (a.data_urmatoare||'').localeCompare(b.data_urmatoare||''))
+  const pendingRecurringInstances = tasks.filter(t => t.sablon_id && t.status !== 'finalizat' && t.status !== 'template')
+    .sort((a,b) => (a.data_limita||'').localeCompare(b.data_limita||''))
+  useEffect(() => {
+    if (viewMode === 'recurente' && recurringTemplates.length === 0 && !loading) setViewMode('coloane')
+  }, [viewMode, recurringTemplates.length, loading])
   const sortTasks = (list: Task[]) => [...list].sort((a,b) => {
     // 1. Urgente primul
     const prioOrder = { urgenta: 0, normala: 1, scazuta: 2 }
@@ -1495,7 +1501,11 @@ export default function TaskuriPage() {
               <button onClick={() => setViewMode('coloane')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'coloane' ? '#4DA3FF' : 'transparent', color: viewMode === 'coloane' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe coloane</button>
               <button onClick={() => setViewMode('date')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'date' ? '#4DA3FF' : 'transparent', color: viewMode === 'date' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe date</button>
               <button onClick={() => setViewMode('publi24')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'publi24' ? '#4DA3FF' : 'transparent', color: viewMode === 'publi24' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>📢 Publi24</button>
-              <button onClick={() => setViewMode('recurente')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'recurente' ? '#4DA3FF' : 'transparent', color: viewMode === 'recurente' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>🔁 Recurente</button>
+              {recurringTemplates.length > 0 && (
+                <button onClick={() => setViewMode('recurente')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'recurente' ? '#4DA3FF' : 'transparent', color: viewMode === 'recurente' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>
+                  🔁 Recurente{pendingRecurringInstances.length > 0 ? ` (${pendingRecurringInstances.length})` : ''}
+                </button>
+              )}
             </div>
             <select value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', width: 160 }}>
               <option value="">Toate businessurile</option>
@@ -2003,9 +2013,27 @@ export default function TaskuriPage() {
         ) : viewMode === 'recurente' ? (
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' as const }}>
-            <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Task-uri care se generează automat înainte de scadență, cu avansul setat mai jos — rămân active până le finalizezi manual din „De făcut".</div>
+            <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Task-urile recurente apar aici cu avans înainte de scadență și rămân până le finalizezi.</div>
             <Button variant="primary" icon={<Plus size={14}/>} onClick={() => { setEditing({ ...empty, recurent: true }); setShowAdvanced(true); setEditOpen(true) }}>Recurent nou</Button>
           </div>
+
+          {pendingRecurringInstances.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#FCD34D', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 8 }}>⏳ De finalizat acum · {pendingRecurringInstances.length}</div>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={() => {}}>
+                <SortableContext items={pendingRecurringInstances.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {pendingRecurringInstances.map(t => (
+                      <TaskCard key={t.id} task={t} onEdit={openEdit} onDelete={setDeleteId} onMove={moveTask}/>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.5)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 8 }}>Configurate · {recurringTemplates.length}</div>
           {recurringTemplates.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(159,215,255,0.3)', fontSize: 13 }}>Niciun task recurent încă</div>
           ) : recurringTemplates.map(t => {
@@ -2027,6 +2055,7 @@ export default function TaskuriPage() {
               </div>
             )
           })}
+          </div>
         </div>
         ) : viewMode === 'coloane' ? (
         <div className="kanban-grid" style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, overflowY: 'auto', flex: 1, alignContent: 'start' }}>

@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Task-uri: tab nou „🔁 Recurente" (apare doar când ai task-uri recurente configurate) — arată ce trebuie finalizat acum, cu avans înainte de scadență, plus lista completă de task-uri recurente cu editare/ștergere; până acum șabloanele recurente erau complet invizibile după creare', date: '2026-08-12' },
   { text: 'Cheltuieli și Facturi: pe lângă tragere (⠿), acum ai și săgeți ↑↓ lângă fiecare apartament pentru mutare rapidă, cu un singur click — mai simplu decât să tragi toată secțiunea', date: '2026-08-12' },
   { text: 'Cheltuieli și Facturi: se pot reordona acum direct din aceste pagini (⠿), nu doar din Apartamente — toate trei rămân sincronizate pe aceeași ordine', date: '2026-08-12' },
   { text: 'Fix major: mesajele „Confirmare Check-in" și „Date acces" editate din Setări nu erau folosite niciodată la trimitere — Dashboard-ul afișa mereu textul generic din cod, indiferent ce salvai; acum se trimite exact textul salvat', date: '2026-08-12' },
