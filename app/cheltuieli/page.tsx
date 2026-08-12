@@ -262,7 +262,7 @@ export default function CheltuieliPage(){
     ultimaZiRef.current = ultimaZiLuna
     const ultimaZiPrevLuna = ultimaZiLunaStr(prevAn, prevLuna)
     const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
-      supabase.from('apartamente').select('id,nume,nota,status,adresa').order('nota,nume'),
+      supabase.from('apartamente').select('id,nume,nota,status,adresa,ordine').order('ordine', { ascending: true, nullsFirst: false }).order('nota,nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .gte('data',`${an}-${pad(luna)}-01`)
