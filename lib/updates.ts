@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Fix facturi: eroare falsă „factura a mai fost încărcată" — verificarea de duplicat compara facturi din apartamente diferite (Urbica dă același nr. de referință la mai multe apartamente), plus AI-ul returna uneori "null" ca text — corectate 11 facturi reale afectate deja în arhivă', date: '2026-08-12' },
   { text: 'Statistici: selectezi apartamentul înainte de upload (nu mai depinde de auto-detectare AI) + click pe orice card deschide evoluția în timp a acelei proprietăți, cu toate metricile pe grafice', date: '2026-08-11' },
   { text: 'Stoc lenjerii: widget mai compact + apare acum și în Curățenie (admin), sincronizat cu Staff', date: '2026-08-11' },
   { text: 'Staff → Curățenie: stoc lenjerii disponibile sus în pagină — se adaugă manual, scade automat la fiecare curățenie terminată, alertă la stoc scăzut', date: '2026-08-11' },

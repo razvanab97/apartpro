@@ -50,12 +50,20 @@ type Factura = {
   adrese_matching?: string[]
   apartament_id: string | null
   _autoMatched?: boolean
+  errorMsg?: string
   status: 'procesat' | 'salvat' | 'eroare'
   processing?: boolean
   base64Preview?: string
   mimeType?: string
   cheltuiala_id?: string
   file_url?: string
+}
+
+// "null"/goale nu sunt numere de factura valide - AI-ul poate returna literal textul "null"
+// cand nu gaseste valoarea; fara filtrul asta, orice 2 facturi fara numar se marcau ca duplicat
+function validNr(nr?: string | null): string {
+  const s = (nr || '').trim()
+  return s && s.toLowerCase() !== 'null' ? s : ''
 }
 
 export default function FacturiPage() {
@@ -455,13 +463,16 @@ export default function FacturiPage() {
     const now = new Date()
     const pad = (n:number) => String(n).padStart(2,'0')
 
-    // Verifica duplicat dupa numarul facturii
-    if (f.nr_factura) {
+    // Verifica duplicat dupa numarul facturii, DOAR in cadrul aceluiasi apartament -
+    // Urbica (si altii) emit acelasi numar de referinta pentru mai multe apartamente din
+    // acelasi bloc, deci un match global (fara filtrare pe apartament) da fals-pozitive
+    const nrAuto = validNr(f.nr_factura)
+    if (nrAuto && f.apartament_id) {
       const { data: existing } = await supabase.from('cheltuieli')
-        .select('id,descriere').ilike('nota', `%${f.nr_factura}%`).limit(1)
+        .select('id,descriere').eq('apartament_id', f.apartament_id).ilike('nota', `%${nrAuto}%`).limit(1)
       if (existing && existing.length > 0) {
-        setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'eroare' as const, furnizor: `Duplicat — factura ${f.nr_factura} există deja` } : x))
-        show('error', `⚠ Factura ${f.nr_factura} a mai fost încărcată`)
+        setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'eroare' as const, errorMsg: `Duplicat — factura ${nrAuto} există deja` } : x))
+        show('error', `⚠ Factura ${nrAuto} a mai fost încărcată`)
         return
       }
     }
@@ -486,7 +497,7 @@ export default function FacturiPage() {
       status: 'nevalidat',
       suportat_de: 'administrator',
       tva: 0,
-      nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      nota: `Factură ${validNr(f.nr_factura) || f.filename} | ${f.perioada || ''}`.trim(),
       fisier_url: f.file_url || null,
     }).select().single()
     if (!error && data) {
@@ -523,7 +534,7 @@ export default function FacturiPage() {
       status: 'nevalidat',
       suportat_de: 'administrator',
       tva: 0,
-      nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      nota: `Factură ${validNr(f.nr_factura) || f.filename} | ${f.perioada || ''}`.trim(),
       fisier_url: f.file_url || null,
     }).select().single()
     if (error) { show('error', error.message) }
@@ -540,12 +551,13 @@ export default function FacturiPage() {
     if (!f.id) return
     setSaving(f.id)
 
-    // Verifica duplicat dupa numarul facturii
-    if (f.nr_factura) {
+    // Verifica duplicat dupa numarul facturii, DOAR in cadrul aceluiasi apartament (vezi autoSave)
+    const nrManual = validNr(f.nr_factura)
+    if (nrManual && f.apartament_id) {
       const { data: existing } = await supabase.from('cheltuieli')
-        .select('id').ilike('nota', `%${f.nr_factura}%`).limit(1)
+        .select('id').eq('apartament_id', f.apartament_id).ilike('nota', `%${nrManual}%`).limit(1)
       if (existing && existing.length > 0) {
-        show('error', `⚠ Factura ${f.nr_factura} a mai fost încărcată`)
+        show('error', `⚠ Factura ${nrManual} a mai fost încărcată`)
         setSaving(null)
         return
       }
@@ -582,7 +594,7 @@ export default function FacturiPage() {
       status: 'nevalidat',
       suportat_de: 'administrator',
       tva: 0,
-      nota: `Factură ${f.nr_factura || f.filename} | ${f.perioada || ''}`.trim(),
+      nota: `Factură ${validNr(f.nr_factura) || f.filename} | ${f.perioada || ''}`.trim(),
       fisier_url: f.file_url || null,
     }).select().single()
 
@@ -681,8 +693,11 @@ export default function FacturiPage() {
                                 ))}
                               </select>
                               <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{f.furnizor}</span>
-                              {f.nr_factura && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>#{f.nr_factura}</span>}
+                              {validNr(f.nr_factura) && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>#{validNr(f.nr_factura)}</span>}
                             </div>
+                            {f.status==='eroare' && f.errorMsg && (
+                              <div style={{ fontSize:12, color:'#F87171', marginBottom:4 }}>{f.errorMsg}</div>
+                            )}
                             <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
                               <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
                                 {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>

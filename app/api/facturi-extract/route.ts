@@ -108,6 +108,16 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
       parsed = { furnizor: 'Necunoscut', suma_totala: 0 }
     }
 
+    // AI-ul uneori returneaza string-ul literal "null" (sau "n/a"/"undefined") in loc de null JSON
+    // cand nu gaseste o valoare (ex: numarul facturii). Fara sanitizare, acel text ajunge folosit
+    // ca identificator real (ex: "#null" afisat, sau detectie falsa de duplicat intre facturi diferite).
+    for (const key of Object.keys(parsed)) {
+      const v = parsed[key]
+      if (typeof v === 'string' && ['null', 'n/a', 'undefined', ''].includes(v.trim().toLowerCase())) {
+        parsed[key] = null
+      }
+    }
+
     // Detectare categorie dupa furnizor + tip_serviciu + filename
     const textLower = ((parsed.furnizor || '') + ' ' + (parsed.tip_serviciu || '') + ' ' + (filename || '')).toLowerCase()
     let categorie = 'alta'
