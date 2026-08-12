@@ -26,6 +26,7 @@ type Task = {
   recurent?: boolean
   interval_zile?: number | null
   data_urmatoare?: string | null
+  zile_avans?: number | null
   created_at: string
   ordine?: number | null
 }
@@ -73,7 +74,7 @@ function Pills({ options, value, onChange }: { options: { value: string; label: 
     </div>
   )
 }
-const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '', recurent: false, interval_zile: 7 }
+const empty = { titlu: '', descriere: '', status: 'de_facut' as const, prioritate: 'normala' as const, business: '', persoana: '', data_limita: '', impact_score: 5, effort_score: 5, telefon_persoana: '', ora_limita: '', recurent: false, interval_zile: 7, zile_avans: 5 }
 
 /* ── BRAIN DUMP MODAL ── */
 function BrainDumpModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -742,7 +743,9 @@ export default function TaskuriPage() {
   const [deleting, setDeleting] = useState(false)
   const [filterBusiness, setFilterBusiness] = useState('')
   const [filterPrio, setFilterPrio] = useState('')
-  const [viewMode, setViewMode] = useState<'coloane' | 'date' | 'publi24'>('coloane')
+  const [viewMode, setViewMode] = useState<'coloane' | 'date' | 'publi24' | 'recurente'>('coloane')
+  const [templateEditing, setTemplateEditing] = useState<any>(null)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const { toast, show } = useToast()
   const [rutinaBifata, setRutinaBifata] = useState<Set<number>>(new Set())
   const [rutinaTaskIds, setRutinaTaskIds] = useState<Record<number,string>>({})
@@ -932,6 +935,17 @@ export default function TaskuriPage() {
     return d.toISOString().slice(0, 10)
   }
 
+  // Lunar = aceeasi zi din luna urmatoare (nu "+30 zile", care ar deriva treptat de pe data scadentei reale)
+  function addMonthsSameDay(dateStr: string, months: number): string {
+    const d = new Date(dateStr)
+    const day = d.getDate()
+    d.setDate(1)
+    d.setMonth(d.getMonth() + months)
+    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+    d.setDate(Math.min(day, daysInMonth))
+    return d.toISOString().slice(0, 10)
+  }
+
   async function checkRecurente() {
     const today = new Date().toISOString().slice(0, 10)
     const { data: recurente, error } = await supabase
@@ -940,20 +954,28 @@ export default function TaskuriPage() {
       .not('interval_zile', 'is', null)
     if (error) { console.error('[checkRecurente]', error.message); return }
     for (const task of (recurente || [])) {
-      if (!task.data_urmatoare || task.data_urmatoare > today) continue
-      // Creeaza task nou activ
+      if (!task.data_urmatoare) continue
+      const avans = Number(task.zile_avans) || 0
+      const apareDin = addDays(task.data_urmatoare, -avans)
+      if (apareDin > today) continue  // inca nu a inceput fereastra de avans
+      // Creeaza task nou activ, cu data limita reala (scadenta), nu azi
       await supabase.from('taskuri').insert({
         titlu: task.titlu,
         descriere: task.descriere,
         prioritate: task.prioritate || 'normala',
         business: task.business,
         status: 'de_facut',
+        data_limita: task.data_urmatoare,
         recurent: false,
         interval_zile: null,
       })
-      // Actualizeaza data urmatoare pe template
+      // Urmatoarea scadenta se calculeaza din scadenta curenta (nu din azi), ca sa pastreze cadenta fixa
+      // si sa nu regenereze imediat la urmatorul checkRecurente() daca avans-ul e mare
+      const nextDue = task.interval_zile === 30
+        ? addMonthsSameDay(task.data_urmatoare, 1)
+        : addDays(task.data_urmatoare, task.interval_zile)
       const { error: updErr } = await supabase.from('taskuri').update({
-        data_urmatoare: addDays(today, task.interval_zile),
+        data_urmatoare: nextDue,
         status: 'template'
       }).eq('id', task.id)
       if (updErr) console.error('[checkRecurente] update sablon', updErr.message)
@@ -1322,6 +1344,9 @@ export default function TaskuriPage() {
     // Recurenta se poate seta doar la creare - un task existent, vizibil in Kanban,
     // nu se transforma retroactiv in sablon ascuns
     const isRecurent = !editing.id && !!editing.recurent
+    const intervalZile = Number(editing.interval_zile) || 7
+    const intervalZileSigur = intervalZile === 30 ? 28 : intervalZile  // "Lunar" = luni cu 28 zile (februarie), ca sa nu permitem avans mai mare decat cadenta reala
+    const zileAvans = Math.max(0, Math.min(Number(editing.zile_avans) || 0, intervalZileSigur - 1))
     const payload: any = {
       titlu: editing.titlu, descriere: editing.descriere || null,
       status: isRecurent ? 'template' : editing.status, prioritate: editing.prioritate,
@@ -1331,8 +1356,9 @@ export default function TaskuriPage() {
       impact_score: imp, effort_score: eff,
       priority_score: Math.round((imp * 2 + (11 - eff)) / 3),
       recurent: isRecurent,
-      interval_zile: isRecurent ? (Number(editing.interval_zile) || 7) : null,
+      interval_zile: isRecurent ? intervalZile : null,
       data_urmatoare: isRecurent ? (editing.data_limita || new Date().toISOString().slice(0, 10)) : null,
+      zile_avans: isRecurent ? zileAvans : null,
     }
     const { error } = editing.id
       ? await supabase.from('taskuri').update(payload).eq('id', editing.id)
@@ -1340,6 +1366,27 @@ export default function TaskuriPage() {
     if (error) { show('error', error.message); setSaving(false); return }
     show('success', isRecurent ? 'Task recurent creat — va genera copii automat' : (editing.id ? 'Actualizat' : 'Task creat'))
     setEditOpen(false); setSaving(false); load()
+  }
+
+  function openTemplateEdit(t: Task) { setTemplateEditing({ ...t }) }
+
+  async function saveTemplate() {
+    if (!templateEditing?.titlu) { show('error', 'Adaugă un titlu'); return }
+    setSavingTemplate(true)
+    const intervalZile = Number(templateEditing.interval_zile) || 7
+    const intervalZileSigur = intervalZile === 30 ? 28 : intervalZile
+    const zileAvans = Math.max(0, Math.min(Number(templateEditing.zile_avans) || 0, intervalZileSigur - 1))
+    const { error } = await supabase.from('taskuri').update({
+      titlu: templateEditing.titlu,
+      business: templateEditing.business || null,
+      prioritate: templateEditing.prioritate,
+      interval_zile: intervalZile,
+      zile_avans: zileAvans,
+      data_urmatoare: templateEditing.data_urmatoare || new Date().toISOString().slice(0, 10),
+    }).eq('id', templateEditing.id)
+    if (error) { show('error', error.message); setSavingTemplate(false); return }
+    show('success', 'Task recurent actualizat')
+    setTemplateEditing(null); setSavingTemplate(false); load()
   }
 
   async function moveTask(id: string, status: Task['status']) {
@@ -1362,6 +1409,8 @@ export default function TaskuriPage() {
     if (filterPrio && t.prioritate !== filterPrio) return false
     return true
   })
+  const recurringTemplates = tasks.filter(t => t.status === 'template' && t.recurent)
+    .sort((a,b) => (a.data_urmatoare||'').localeCompare(b.data_urmatoare||''))
   const sortTasks = (list: Task[]) => [...list].sort((a,b) => {
     // 1. Urgente primul
     const prioOrder = { urgenta: 0, normala: 1, scazuta: 2 }
@@ -1437,6 +1486,7 @@ export default function TaskuriPage() {
               <button onClick={() => setViewMode('coloane')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'coloane' ? '#4DA3FF' : 'transparent', color: viewMode === 'coloane' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe coloane</button>
               <button onClick={() => setViewMode('date')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'date' ? '#4DA3FF' : 'transparent', color: viewMode === 'date' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>Pe date</button>
               <button onClick={() => setViewMode('publi24')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'publi24' ? '#4DA3FF' : 'transparent', color: viewMode === 'publi24' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>📢 Publi24</button>
+              <button onClick={() => setViewMode('recurente')} style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: viewMode === 'recurente' ? '#4DA3FF' : 'transparent', color: viewMode === 'recurente' ? '#0B1224' : 'rgba(159,215,255,0.6)' }}>🔁 Recurente</button>
             </div>
             <select value={filterBusiness} onChange={e => setFilterBusiness(e.target.value)} style={{ fontSize: 12, padding: '6px 10px', width: 160 }}>
               <option value="">Toate businessurile</option>
@@ -1941,6 +1991,34 @@ export default function TaskuriPage() {
             )}
           </div>
         </div>
+        ) : viewMode === 'recurente' ? (
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' as const }}>
+            <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Task-uri care se generează automat înainte de scadență, cu avansul setat mai jos — rămân active până le finalizezi manual din „De făcut".</div>
+            <Button variant="primary" icon={<Plus size={14}/>} onClick={() => { setEditing({ ...empty, recurent: true }); setShowAdvanced(true); setEditOpen(true) }}>Recurent nou</Button>
+          </div>
+          {recurringTemplates.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(159,215,255,0.3)', fontSize: 13 }}>Niciun task recurent încă</div>
+          ) : recurringTemplates.map(t => {
+            const intervalLabel = t.interval_zile === 1 ? 'Zilnic' : t.interval_zile === 7 ? 'Săptămânal' : t.interval_zile === 30 ? 'Lunar' : `La ${t.interval_zile} zile`
+            const avans = Number(t.zile_avans) || 0
+            return (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, background: 'rgba(20,38,65,0.5)', border: '1px solid rgba(77,163,255,0.12)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#E8F4FF' }}>{t.titlu}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
+                    <span>🔁 {intervalLabel}</span>
+                    {t.data_urmatoare && <span>📅 Următoarea scadență: {new Date(t.data_urmatoare + 'T00:00:00').toLocaleDateString('ro-RO')}</span>}
+                    <span>⏱ apare cu {avans} {avans === 1 ? 'zi' : 'zile'} înainte</span>
+                    {t.business && <span style={{ color: BIZ_COLOR[t.business] || 'rgba(159,215,255,0.45)' }}>{t.business}</span>}
+                  </div>
+                </div>
+                <button onClick={() => openTemplateEdit(t)} title="Editează" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(159,215,255,0.4)', display: 'flex', alignItems: 'center', padding: 6 }}><Edit2 size={15}/></button>
+                <button onClick={() => setDeleteId(t.id)} title="Șterge" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.5)', display: 'flex', alignItems: 'center', padding: 6 }}><Trash2 size={15}/></button>
+              </div>
+            )
+          })}
+        </div>
         ) : viewMode === 'coloane' ? (
         <div className="kanban-grid" style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, overflowY: 'auto', flex: 1, alignContent: 'start' }}>
           {COLS.map(col => {
@@ -2088,8 +2166,13 @@ export default function TaskuriPage() {
                         <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
                       </div>
                     )}
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Apare cu</span>
+                      <input type="number" min={0} value={editing.zile_avans ?? 5} onChange={e => setEditing({ ...editing, zile_avans: parseInt(e.target.value) || 0 })} style={{ width: 60 }}/>
+                      <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile înainte de scadență</span>
+                    </div>
                     <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>
-                      Începând cu data limită de mai jos (sau azi, dacă nu o setezi). Task-ul se salvează ca șablon ascuns — la fiecare interval se generează automat o copie activă.
+                      Prima scadență e data limită de mai jos (sau azi, dacă nu o setezi). Task-ul apare în „De făcut" cu {editing.zile_avans ?? 5} zile înainte și rămâne acolo până îl finalizezi — apoi se generează automat pentru scadența următoare.
                     </div>
                   </div>
                 )}
@@ -2124,6 +2207,48 @@ export default function TaskuriPage() {
           <Button variant="primary" onClick={save} loading={saving} style={{ flex: 1 }}>Salvează</Button>
           <Button variant="secondary" onClick={() => setEditOpen(false)} style={{ flex: 1 }}>Anulează</Button>
         </div>
+      </Modal>
+
+      {/* EDITARE TASK RECURENT (sablon) */}
+      <Modal open={!!templateEditing} onClose={() => setTemplateEditing(null)} title="Editează task recurent" width="420px">
+        {templateEditing && (
+          <>
+            <FormGroup><label>Titlu</label><input value={templateEditing.titlu} onChange={e => setTemplateEditing({ ...templateEditing, titlu: e.target.value })}/></FormGroup>
+            <FormGroup>
+              <label>Business</label>
+              <select value={templateEditing.business || ''} onChange={e => setTemplateEditing({ ...templateEditing, business: e.target.value })}>
+                <option value="">—</option>
+                {BIZ.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </FormGroup>
+            <div style={{ marginBottom: 16 }}>
+              <label>Se repetă</label>
+              <Pills value={[1,7,30].includes(Number(templateEditing.interval_zile)) ? String(templateEditing.interval_zile) : 'custom'}
+                onChange={v => setTemplateEditing({ ...templateEditing, interval_zile: v === 'custom' ? 14 : parseInt(v) })}
+                options={[
+                  { value: '1', label: 'Zilnic', color: '#4ADE80' },
+                  { value: '7', label: 'Săptămânal', color: '#4DA3FF' },
+                  { value: '30', label: 'Lunar', color: '#C4B5FD' },
+                  { value: 'custom', label: 'Personalizat', color: '#FCD34D' },
+                ]}/>
+              {![1,7,30].includes(Number(templateEditing.interval_zile)) && (
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
+                  <input type="number" min={1} value={templateEditing.interval_zile ?? 14} onChange={e => setTemplateEditing({ ...templateEditing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                  <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
+                </div>
+              )}
+            </div>
+            <FormRow>
+              <FormGroup><label>Apare cu (zile înainte)</label><input type="number" min={0} value={templateEditing.zile_avans ?? 0} onChange={e => setTemplateEditing({ ...templateEditing, zile_avans: parseInt(e.target.value) || 0 })}/></FormGroup>
+              <FormGroup><label>Următoarea scadență</label><input type="date" value={templateEditing.data_urmatoare || ''} onChange={e => setTemplateEditing({ ...templateEditing, data_urmatoare: e.target.value })}/></FormGroup>
+            </FormRow>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Button variant="primary" onClick={saveTemplate} loading={savingTemplate} style={{ flex: 1 }}>Salvează</Button>
+              <Button variant="secondary" onClick={() => setTemplateEditing(null)} style={{ flex: 1 }}>Anulează</Button>
+            </div>
+          </>
+        )}
       </Modal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={delTask} loading={deleting} title="Șterge task" message="Sigur vrei să ștergi acest task?"/>
