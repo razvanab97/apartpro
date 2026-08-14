@@ -8,16 +8,17 @@ import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 
 function nrLen(p:number){ if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
+// nr_persoane vine aproape mereu 1 din sincronizarea automata (Airbnb/Booking nu trimit
+// numarul real de oaspeti prin calendarul ICS) - cand pare nesigur (<=1), folosim capacitatea
+// maxima a apartamentului ca estimare, ca sa nu se aduca mereu o singura lenjerie
+function estimeazaPersoane(r:any){
+  let p = Number(r?.nr_persoane)||0
+  const capacitateMax = r?.apartament?.capacitate_max
+  if(p<=1 && capacitateMax) p = Number(capacitateMax)
+  return p||2
+}
 function nrLenSmart(r:any){
-  let p = Number(r.nr_persoane)||0
-  // daca nr_persoane e 0 sau 1 (default), estimeaza din valoare_bruta/nr_nopti
-  if(p<=1 && r.valoare_bruta && r.nr_nopti){
-    const pretNoapte = Number(r.valoare_bruta)/Number(r.nr_nopti)
-    // ~100 RON/persoana/noapte estimativ
-    p = Math.max(2, Math.round(pretNoapte/100))
-  }
-  if(p<=1) p=2 // minim 2 persoane ca default
-  return nrLen(p)
+  return nrLen(estimeazaPersoane(r))
 }
 
 function fmtDate(iso:string){
@@ -414,7 +415,7 @@ export default function CuratenePage() {
     const ultimaZi = format(new Date(an, luna, 0), 'yyyy-MM-dd')
     // Toate checkout-urile din luna = curatenii efectuate
     const { data: rezData } = await supabase.from('rezervari')
-      .select('data_checkout,apartament_id,apartament:apartament_id(nota,nume)')
+      .select('data_checkout,apartament_id,apartament:apartament_id(nota,nume,capacitate_max)')
       .gte('data_checkout', primaZi)
       .lte('data_checkout', ultimaZi)
       .neq('status_rezervare','anulata')
@@ -425,7 +426,7 @@ export default function CuratenePage() {
       .lte('data', ultimaZi)
     // Rezervari cu nr persoane pentru calcul lenjerii
     const { data: rezFull } = await supabase.from('rezervari')
-      .select('apartament_id,data_checkout,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(nota)')
+      .select('apartament_id,data_checkout,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(nota,capacitate_max)')
       .gte('data_checkout', primaZi)
       .lte('data_checkout', ultimaZi)
       .neq('status_rezervare','anulata')
@@ -504,12 +505,12 @@ export default function CuratenePage() {
     try{
       const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,data_checkout,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,data_checkout,apartament:apartamente!inner(id,nume,nota,adresa,status,capacitate_max)')
           .eq('data_checkout', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,apartament:apartamente!inner(id,nume,nota,adresa,status,capacitate_max)')
           .eq('data_checkin', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),
@@ -576,7 +577,7 @@ export default function CuratenePage() {
     const linii=locatii.map(({apt,ciRez})=>{
       const l=len[apt?.id]??(ciRez?nrLenSmart(ciRez):1)
       const aptStr=(apt?.nota?apt.nota+' - ':'')+apt?.nume
-      const ciStr=ciRez?` | CI: ${ciRez.nume_client} (${ciRez.nr_persoane||'?'} pers)`:''
+      const ciStr=ciRez?` | CI: ${ciRez.nume_client} (${estimeazaPersoane(ciRez)} pers)`:''
       return `${aptStr}${ciStr} → ${l} lenjerii`
     }).join('\n')
     const msg=`Curatenie ${fmtDate(selectedDate)}\n\n${linii}\n\nMultumesc!`
@@ -852,7 +853,7 @@ export default function CuratenePage() {
                 <div style={{margin:'0 14px 10px',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'rgba(252,211,77,0.07)',borderRadius:10}}>
                   <div style={{display:'flex',alignItems:'center',gap:6}}>
                     <BedDouble size={14} color="#FCD34D"/>
-                    <span style={{fontSize:12,color:'rgba(252,211,77,0.8)'}}>lenjerii · {Number(ciRez.nr_persoane)||2} pers.</span>
+                    <span style={{fontSize:12,color:'rgba(252,211,77,0.8)'}}>lenjerii · {estimeazaPersoane(ciRez)} pers.</span>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     <button onClick={()=>setLen(v=>{const n=Math.max(1,(v[aptId]??lenDef)-1);saveLenjerii(aptId,n);return{...v,[aptId]:n}})} style={s.lenBtn}><Minus size={14}/></button>

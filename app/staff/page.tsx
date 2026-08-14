@@ -9,7 +9,18 @@ const fmtDate = (d:string) => { try { const dt=new Date(d+'T12:00:00'); return `
 const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
 const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
 const todayStr = () => new Date().toISOString().slice(0,10)
-function nrLenSmart(r:any){ const p=Number(r.nr_persoane)||0; if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
+// nr_persoane vine aproape mereu 1 din sincronizarea automata (Airbnb/Booking nu trimit
+// numarul real de oaspeti prin calendarul ICS) - cand pare nesigur (<=1), folosim capacitatea
+// maxima a apartamentului ca estimare, ca sa nu se aduca mereu o singura lenjerie
+function estimeazaPersoane(r:any, capacitateMax?:number){
+  let p = Number(r.nr_persoane)||0
+  if(p<=1 && capacitateMax) p = Number(capacitateMax)
+  return p||2
+}
+function nrLenSmart(r:any, capacitateMax?:number){
+  const p = estimeazaPersoane(r, capacitateMax)
+  if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4
+}
 function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 
 type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar' | 'casa'
@@ -158,9 +169,9 @@ export default function StaffPage() {
     try{
       const past2 = addDays(data, -2)  // doar ieri + alaltaieri
       const [a, co, ci, ocp, st, coTrecut, stTrecut] = await Promise.all([
-        supabase.from('apartamente').select('id,nota,nume,cod_locker').eq('status','activ').order('nota'),
+        supabase.from('apartamente').select('id,nota,nume,cod_locker,capacitate_max').eq('status','activ').order('nota'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_nopti').eq('data_checkout',data).neq('status_rezervare','anulata'),
-        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').eq('data_checkin',data).neq('status_rezervare','anulata'),
+        supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout,nr_persoane').eq('data_checkin',data).neq('status_rezervare','anulata'),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata'),
         supabase.from('curatenie_status').select('*').eq('data',data),
         supabase.from('rezervari').select('id,apartament_id,nume_client,telefon_client,data_checkin,data_checkout').gte('data_checkout',past2).lt('data_checkout',data).neq('status_rezervare','anulata'),
@@ -310,7 +321,7 @@ export default function StaffPage() {
       .eq('apartament_id', aptId).eq('data', data).eq('tip', 'consum').maybeSingle()
     if (status === 'gata' && !existingCons) {
       const ciForLen = checkins.find((r:any) => r.apartament_id === aptId)
-      const cant = prev.nr_lenjerii || (ciForLen ? nrLenSmart(ciForLen) : null)
+      const cant = prev.nr_lenjerii || (ciForLen ? nrLenSmart(ciForLen, apt?.capacitate_max) : null)
       if (cant) {
         await supabase.from('lenjerii_miscari').insert({ tip: 'consum', cantitate: cant, motiv: `Curățenie ${aptNota||''}`.trim(), apartament_id: aptId, data })
         loadLenjerii()
@@ -656,12 +667,13 @@ export default function StaffPage() {
                     )}
                     {ci&&(()=>{
                       const stLen=statusuri[apt.id]?.nr_lenjerii
-                      const l=stLen||nrLenSmart(ci)
+                      const l=stLen||nrLenSmart(ci, apt.capacitate_max)
+                      const persEfectiv=estimeazaPersoane(ci, apt.capacitate_max)
                       return (
                         <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 12px',borderRadius:10,background:'rgba(167,139,250,0.08)'}}>
                           <span style={{fontSize:15}}>🛏</span>
                           <span style={{fontSize:13,fontWeight:700,color:'#C4B5FD'}}>{l+' '+(l===1?'lenjerie':'lenjerii')}</span>
-                          <span style={{fontSize:11,color:'rgba(196,181,253,0.6)'}}>{'('+( Number(ci.nr_persoane)||2)+' pers.)'}</span>
+                          <span style={{fontSize:11,color:'rgba(196,181,253,0.6)'}}>{'('+persEfectiv+' pers.)'}</span>
                         </div>
                       )
                     })()}

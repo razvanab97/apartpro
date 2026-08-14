@@ -1,4 +1,5 @@
 export const UPDATES: { text: string; date: string }[] = [
+  { text: 'Fix major: numărul de lenjerii din Staff arăta mereu „1" indiferent de apartament — Airbnb/Booking nu trimit numărul real de oaspeți prin sincronizare, iar acel câmp gol nu era tratat; acum se estimează din capacitatea maximă a apartamentului (2 oaspeți → 1 lenjerie, 4 → 2, 6 → 3, ca înainte), atât la afișare cât și la scăderea reală din stoc', date: '2026-08-12' },
   { text: 'Task-uri: tab nou „🔁 Recurente" (apare doar când ai task-uri recurente configurate) — arată ce trebuie finalizat acum, cu avans înainte de scadență, plus lista completă de task-uri recurente cu editare/ștergere; până acum șabloanele recurente erau complet invizibile după creare', date: '2026-08-12' },
   { text: 'Cheltuieli și Facturi: pe lângă tragere (⠿), acum ai și săgeți ↑↓ lângă fiecare apartament pentru mutare rapidă, cu un singur click — mai simplu decât să tragi toată secțiunea', date: '2026-08-12' },
   { text: 'Cheltuieli și Facturi: se pot reordona acum direct din aceste pagini (⠿), nu doar din Apartamente — toate trei rămân sincronizate pe aceeași ordine', date: '2026-08-12' },
