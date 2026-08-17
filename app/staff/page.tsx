@@ -60,6 +60,8 @@ export default function StaffPage() {
   const [lenjeriiHistOpen, setLenjeriiHistOpen] = useState(false)
   const [addLenjeriiOpen, setAddLenjeriiOpen] = useState(false)
   const [addLenjeriiForm, setAddLenjeriiForm] = useState({ cantitate: '', motiv: '' })
+  const [subLenjeriiOpen, setSubLenjeriiOpen] = useState(false)
+  const [subLenjeriiForm, setSubLenjeriiForm] = useState({ cantitate: '', motiv: '' })
   const [savingLenjerii, setSavingLenjerii] = useState(false)
   const [editPragOpen, setEditPragOpen] = useState(false)
   const [editPragDraft, setEditPragDraft] = useState('')
@@ -120,6 +122,21 @@ export default function StaffPage() {
     if (!error) {
       setAddLenjeriiForm({ cantitate: '', motiv: '' })
       setAddLenjeriiOpen(false)
+      loadLenjerii()
+    }
+  }
+
+  async function subLenjerii() {
+    const cant = parseInt(subLenjeriiForm.cantitate)
+    if (!cant || cant <= 0) return
+    setSavingLenjerii(true)
+    const { error } = await supabase.from('lenjerii_miscari').insert({
+      tip: 'consum', cantitate: cant, motiv: subLenjeriiForm.motiv.trim() || 'Scăzute manual de echipă',
+    })
+    setSavingLenjerii(false)
+    if (!error) {
+      setSubLenjeriiForm({ cantitate: '', motiv: '' })
+      setSubLenjeriiOpen(false)
       loadLenjerii()
     }
   }
@@ -529,10 +546,16 @@ export default function StaffPage() {
                     <span style={{fontSize:15,fontWeight:800,color:scazut?'#FCA5A5':'#C4B5FD'}}>{lenjeriiStoc}</span>
                     <span style={{fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.35)'}}>lenjerii{scazut?' · ⚠️ aduceți':''}</span>
                   </div>
-                  <button onClick={()=>setAddLenjeriiOpen(o=>!o)}
-                    style={{padding:'4px 10px',borderRadius:8,border:'none',background:'#A78BFA',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent',flexShrink:0}}>
-                    + Adaugă
-                  </button>
+                  <div style={{display:'flex',gap:6,flexShrink:0}}>
+                    <button onClick={()=>{setSubLenjeriiOpen(false);setAddLenjeriiOpen(o=>!o)}}
+                      style={{padding:'4px 10px',borderRadius:8,border:'none',background:'#A78BFA',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                      + Adaugă
+                    </button>
+                    <button onClick={()=>{setAddLenjeriiOpen(false);setSubLenjeriiOpen(o=>!o)}}
+                      style={{padding:'4px 10px',borderRadius:8,border:'none',background:'#F87171',color:'#fff',fontSize:11,fontWeight:700,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                      − Scade
+                    </button>
+                  </div>
                 </div>
                 {addLenjeriiOpen&&(
                   <div style={{marginTop:7,paddingTop:7,borderTop:'1px solid rgba(255,255,255,0.08)'}}>
@@ -550,6 +573,28 @@ export default function StaffPage() {
                         {savingLenjerii?'Se salvează...':'✓ Salvează'}
                       </button>
                       <button onClick={()=>{setAddLenjeriiOpen(false);setAddLenjeriiForm({cantitate:'',motiv:''})}}
+                        style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',color:'rgba(255,255,255,0.5)',fontSize:12,cursor:'pointer'}}>
+                        Anulează
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {subLenjeriiOpen&&(
+                  <div style={{marginTop:7,paddingTop:7,borderTop:'1px solid rgba(255,255,255,0.08)'}}>
+                    <div style={{display:'flex',gap:6,marginBottom:6}}>
+                      <input type="text" inputMode="numeric" placeholder="Câte?" value={subLenjeriiForm.cantitate}
+                        onChange={e=>setSubLenjeriiForm(f=>({...f,cantitate:e.target.value.replace(/\D/g,'')}))}
+                        style={{width:56,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
+                      <input type="text" placeholder="Motiv (opțional)" value={subLenjeriiForm.motiv}
+                        onChange={e=>setSubLenjeriiForm(f=>({...f,motiv:e.target.value}))}
+                        style={{flex:1,padding:'7px 9px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(6,13,26,0.8)',color:'#fff',fontSize:13,outline:'none'}}/>
+                    </div>
+                    <div style={{display:'flex',gap:6}}>
+                      <button onClick={subLenjerii} disabled={savingLenjerii||!subLenjeriiForm.cantitate}
+                        style={{flex:1,padding:'7px',borderRadius:8,border:'none',background:'#F87171',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!subLenjeriiForm.cantitate?0.5:1}}>
+                        {savingLenjerii?'Se salvează...':'✓ Scade'}
+                      </button>
+                      <button onClick={()=>{setSubLenjeriiOpen(false);setSubLenjeriiForm({cantitate:'',motiv:''})}}
                         style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'transparent',color:'rgba(255,255,255,0.5)',fontSize:12,cursor:'pointer'}}>
                         Anulează
                       </button>
