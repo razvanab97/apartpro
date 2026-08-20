@@ -8,7 +8,7 @@ import { ConnectionError } from '@/components/ui'
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
   data_checkin: string; data_checkout: string
-  canal: string; status_rezervare: string; nr_nopti?: number
+  canal: string; status_rezervare: string; nr_nopti?: number; nr_persoane?: number
   suma_incasata?: number; observatii?: string
   apartament?: any
 }
@@ -110,7 +110,7 @@ export default function CalendarPage() {
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
+          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
           .or('status_rezervare.neq.anulata,status_rezervare.is.null')
           .lte('data_checkin', end).gte('data_checkout', start)
           .order('data_checkin'),
@@ -524,7 +524,7 @@ export default function CalendarPage() {
                           <span style={{ fontSize:12,color:'rgba(214,228,244,0.8)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{apt.nume}</span>
                         </div>
                         <div style={{ fontSize:13,fontWeight:600,color:'#fff',marginBottom:3 }}>{r.nume_client}</div>
-                        <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:phone?7:0 }}>CI: {r.data_checkin?.slice(5)} · CO: {r.data_checkout?.slice(5)}</div>
+                        <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:phone?7:0 }}>CI: {r.data_checkin?.slice(5)} · CO: {r.data_checkout?.slice(5)}{r.nr_persoane?` · 👥 ${r.nr_persoane}`:''}</div>
                         {phone&&<a href={`https://wa.me/${phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer"
                           style={{ display:'inline-flex',alignItems:'center',gap:5,fontSize:11,fontWeight:600,color:'#4ADE80',textDecoration:'none',background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.25)',padding:'4px 9px',borderRadius:6 }}>
                           <MessageCircle size={11}/>{phone}
@@ -688,6 +688,7 @@ Echipa AB Homes Iași`)}
               <div style={{ width:10,height:10,borderRadius:3,background:cs(tooltip.rez.canal).bg }}/>
               <span style={{ fontSize:12,color:'rgba(214,228,244,0.6)',textTransform:'capitalize' }}>{tooltip.rez.canal}</span>
               {tooltip.rez.nr_nopti&&<span style={{ fontSize:11,color:'rgba(159,215,255,0.35)' }}>· {tooltip.rez.nr_nopti}n</span>}
+              {tooltip.rez.nr_persoane&&<span style={{ fontSize:11,color:'rgba(159,215,255,0.35)' }}>· 👥 {tooltip.rez.nr_persoane}</span>}
             </div>
             {tooltip.rez.telefon_client&&(
               <a href={`https://wa.me/${tooltip.rez.telefon_client.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener"
