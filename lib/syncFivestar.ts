@@ -118,6 +118,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
         const numeClient = b.nume || b.name || b.guest_name || '—'
         const canal = parseCanal(b.sursa || b.canal || b.source || '')
         const telefon = b.telefon || b.phone || null
+        const nrPersoane = (Number(b.adulti) || 0) + (Number(b.copii) || 0) || null
         const pret = parseFloat(b.pret_camera || b.price || b.total || '0') || 0
         const pretExtra = parseFloat(b.pret_extra || '0') || 0
         const totalPret = pret + pretExtra
@@ -168,11 +169,11 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
 
         const idExternValid = idExtern && idExtern.length > 2
         const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii').ilike('observatii', `%${idExtern}%`).limit(1)
+          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane').ilike('observatii', `%${idExtern}%`).limit(1)
           : { data: [] }
         const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii')
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane')
             .eq('apartament_id', aptId)
             .eq('data_checkin', checkin)
             .eq('data_checkout', checkout)
@@ -180,7 +181,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           : { data: [] }
         const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
           : { data: [] }
 
         const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
@@ -207,6 +208,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             }
           }
           if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
+          if (nrPersoane && Number(existing[0].nr_persoane) !== nrPersoane) updates.nr_persoane = nrPersoane
           // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma, mutare pe alt apartament
           if (aptId && existing[0].apartament_id !== aptId) updates.apartament_id = aptId
           if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
@@ -236,6 +238,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             valoare_bruta: totalPret,
             moneda: 'RON',
             telefon_client: telefon,
+            nr_persoane: nrPersoane,
             status_rezervare: statusNou,
             status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
             status_decont: 'nedecontat',

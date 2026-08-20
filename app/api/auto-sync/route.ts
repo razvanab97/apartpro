@@ -128,6 +128,7 @@ export async function GET(req: NextRequest) {
         const numeClient = b.nume || b.name || '—'
         const canal = parseCanal(b.sursa || '')
         const telefon = b.telefon ? String(b.telefon) : null
+        const nrPersoane = (Number(b.adulti) || 0) + (Number(b.copii) || 0) || null
         const totalPret = (parseFloat(b.pret_camera||'0')||0) + (parseFloat(b.pret_extra||'0')||0)
         const statusNou = (b.status_rezervare||'').toLowerCase().includes('anulat') ? 'anulata' : 'confirmata'
         const idValid = idExtern && idExtern.length > 2
@@ -139,16 +140,16 @@ export async function GET(req: NextRequest) {
 
         // Cauta existent dupa ID in observatii
         const { data: byId } = idValid
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client').ilike('observatii', `%${idExtern}%`).limit(1)
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').ilike('observatii', `%${idExtern}%`).limit(1)
           : { data: [] }
 
         // Cauta dupa apartament + date
         const { data: byApt } = !byId?.length
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client').eq('apartament_id', aptId).eq('data_checkin', checkin).eq('data_checkout', checkout).limit(1)
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('apartament_id', aptId).eq('data_checkin', checkin).eq('data_checkout', checkout).limit(1)
           : { data: [] }
 
         const { data: byName } = (!byId?.length && !byApt?.length)
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
           : { data: [] }
 
         const existing = byId?.length ? byId : byApt?.length ? byApt : byName
@@ -164,6 +165,7 @@ export async function GET(req: NextRequest) {
               upd.observatii = [b.tip_camera||b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ')
           }
           if (telefon && !e.telefon_client) upd.telefon_client = telefon
+          if (nrPersoane && Number(e.nr_persoane) !== nrPersoane) upd.nr_persoane = nrPersoane
           if (aptId && e.apartament_id !== aptId) upd.apartament_id = aptId
           if (e.status_rezervare !== statusNou) upd.status_rezervare = statusNou
           if (checkin && e.data_checkin !== checkin) upd.data_checkin = checkin
@@ -182,7 +184,7 @@ export async function GET(req: NextRequest) {
             apartament_id: aptId, canal, nume_client: numeClient,
             data_checkin: checkin, data_checkout: checkout,
             suma_incasata: totalPret, valoare_bruta: totalPret, moneda: 'RON',
-            telefon_client: telefon, status_rezervare: statusNou,
+            telefon_client: telefon, nr_persoane: nrPersoane, status_rezervare: statusNou,
             status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
             status_decont: 'nedecontat',
             observatii: [b.tip_camera||b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
