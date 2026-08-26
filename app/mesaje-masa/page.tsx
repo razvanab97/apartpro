@@ -18,7 +18,7 @@ const SABLOANE = [
 
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
-  const nr = clean.startsWith('40') ? clean : '4'+clean.replace(/^0/,'')
+  const nr = clean.startsWith('00') ? clean.slice(2) : clean.length===10 && clean.startsWith('0') ? '4'+clean : clean
   return `https://wa.me/${nr}?text=${encodeURIComponent(msg.normalize('NFC'))}`
 }
 

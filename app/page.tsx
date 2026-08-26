@@ -85,7 +85,9 @@ function dueColor(days:number,paid:boolean){
 function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
   const clean = phone.replace(/\D/g,'')
-  const nr = clean.startsWith('0') ? '4'+clean : clean
+  // doar un numar romanesc local (07xxxxxxxx, 10 cifre) primeste prefixul 40 -
+  // un numar strain care intampla sa inceapa cu 0 (ex. scris cu 00 in loc de +) nu trebuie confundat cu unul romanesc
+  const nr = clean.startsWith('00') ? clean.slice(2) : clean.length===10 && clean.startsWith('0') ? '4'+clean : clean
   // Normalizeaza emoji-urile pentru compatibilitate WhatsApp
   // Adauga variation selector \uFE0F la TOATE emoji-urile pentru compatibilitate WhatsApp iOS/Android
   const cleanMsg = msg

@@ -59,14 +59,14 @@ export default function RezervariPage() {
   
   function waLinkProprietar(r: any): string {
     const tel = (r.apartament?.proprietar?.telefon || '').replace(/\D/g,'')
-    const nr = tel.startsWith('0') ? '4'+tel : tel
+    const nr = tel.startsWith('00') ? tel.slice(2) : tel.length===10 && tel.startsWith('0') ? '4'+tel : tel
     const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}`
     return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
   }
 
   function trimiteWA(rez: any, s: any) {
     const phone = (rez.telefon_client||'').replace(/\D/g,'')
-    const nr = phone.startsWith('40') ? phone : '4' + phone.replace(/^0/,'')
+    const nr = phone.startsWith('00') ? phone.slice(2) : phone.length===10 && phone.startsWith('0') ? '4'+phone : phone
     const firstName = (rez.nume_client||'').split(' ')[0]
     let msg = (s.text||'').replace(/{nume}/g, firstName)
     if (s.poze?.length) msg += '\n\n' + s.poze.join('\n')

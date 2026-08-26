@@ -26,7 +26,7 @@ function fmtDate(iso:string){
   return d.toLocaleDateString('ro-RO',{weekday:'short',day:'numeric',month:'short'})
 }
 
-function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
+function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('00')?c.slice(2):c.length===10&&c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 function ultimele3(phone:string){ const c=phone.replace(/\D/g,''); return c.slice(-3) }
 function firstName(name:string){ return (name||'').split(' ')[0] }
 function applyVars(tmpl:string, nume:string, apt:string, co:string){

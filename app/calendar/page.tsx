@@ -34,7 +34,7 @@ function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)
 function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
   const clean=phone.replace(/\D/g,'')
-  const nr=clean.startsWith('0')?'4'+clean:clean
+  const nr=clean.startsWith('00')?clean.slice(2):clean.length===10&&clean.startsWith('0')?'4'+clean:clean
   const encoded = encodeURIComponent(msg)
   return `https://wa.me/${nr}?text=${encoded}`
 }

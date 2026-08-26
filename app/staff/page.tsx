@@ -21,7 +21,7 @@ function nrLenSmart(r:any, capacitateMax?:number){
   const p = estimeazaPersoane(r, capacitateMax)
   if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4
 }
-function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
+function waLink(phone:string, msg:string){ const c=phone.replace(/\D/g,''); const nr=c.startsWith('00')?c.slice(2):c.length===10&&c.startsWith('0')?'4'+c:c; return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}` }
 
 type Tab = 'curatenie' | 'disponibile' | 'ocupate' | 'probleme' | 'calendar' | 'casa'
 type TipCasa = 'incasare' | 'cheltuiala'
