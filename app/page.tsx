@@ -148,6 +148,12 @@ function msgGataAcces(r:any, sabloane:Record<string,string>){
   if(sablon) return applyVars(sablon,nume,apt,'')
   return `Bună ziua, ${nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *${apt}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
+function msgProprietar(r:any){
+  const apt = r.apartament?.nume || 'apartament'
+  const ci = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
+  const co = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
+  return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${ci} → ${co} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}`
+}
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 export default function DashboardPage() {
@@ -202,7 +208,25 @@ export default function DashboardPage() {
   const [ciMesajeTrimise,setCiMesajeTrimise]=useState(()=>{
     try{return localStorage.getItem('ci_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
+  const [propNotif,setPropNotif]=useState<any[]>([])
+  const [propWizardOpen,setPropWizardOpen]=useState(false)
+  const [propWizardIdx,setPropWizardIdx]=useState(0)
   useEffect(()=>{loadData()},[])
+  useEffect(()=>{loadPropNotif()},[])
+
+  async function loadPropNotif(){
+    try{
+      const {data}=await supabase.from('rezervari')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,nr_persoane,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .or('proprietar_notificat.is.null,proprietar_notificat.eq.false')
+        .neq('status_rezervare','anulata')
+      setPropNotif((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+    }catch{}
+  }
+  async function marcheazaNotificatProprietar(id:string){
+    await supabase.from('rezervari').update({proprietar_notificat:true}).eq('id',id)
+    setPropNotif(prev=>prev.filter(x=>x.id!==id))
+  }
 
 
   const now=new Date()
@@ -656,6 +680,27 @@ export default function DashboardPage() {
             </div>
           )
         })()}
+
+        {/* BANNER REZERVARI NOI — NOTIFICA PROPRIETARII */}
+        {propNotif.length>0 && (
+          <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+            <div style={{fontSize:20}}>🏠</div>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
+                {propNotif.length === 1 ? '1 rezervare nouă' : `${propNotif.length} rezervări noi`} — notifică proprietarii
+              </div>
+              <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                {propNotif.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+              <button onClick={()=>{setPropWizardIdx(0);setPropWizardOpen(true)}}
+                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                <MessageCircle size={13}/>Trimite mesaje ({propNotif.length})
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="kpi-grid">
@@ -1405,6 +1450,56 @@ export default function DashboardPage() {
               }}
                 style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* WIZARD NOTIFICA PROPRIETAR */}
+      {propWizardOpen&&(()=>{
+        const list=propNotif
+        const r=list[propWizardIdx]
+        if(!r) return null
+        const isLast=propWizardIdx>=list.length-1
+        const msg=msgProprietar(r)
+        const tel=r.apartament.proprietar.telefon
+        const link=waLink(tel,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setPropWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Notifică proprietarul</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{propWizardIdx+1} / {list.length}</div>
+                </div>
+                <button onClick={()=>setPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((propWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Client: {r.nume_client}</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer" onClick={()=>marcheazaNotificatProprietar(r.id)}
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={async ()=>{
+                await marcheazaNotificatProprietar(r.id)
+                if(isLast) setPropWizardOpen(false)
+              }}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Sări peste →'}
               </button>
             </div>
           </div>

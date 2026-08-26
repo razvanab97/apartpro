@@ -349,7 +349,7 @@ export default function RezervariPage() {
                               href={waLinkProprietar(r)}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={e=>e.stopPropagation()}
+                              onClick={e=>{e.stopPropagation();supabase.from('rezervari').update({proprietar_notificat:true}).eq('id',r.id).then(()=>{})}}
                               title={`Notifică proprietarul (${r.apartament.proprietar.telefon})`}
                               style={{
                                 display:'inline-flex',alignItems:'center',justifyContent:'center',
