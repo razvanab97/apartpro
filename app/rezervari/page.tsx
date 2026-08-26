@@ -57,6 +57,13 @@ export default function RezervariPage() {
     setSabloane(data||[])
   }
   
+  function waLinkProprietar(r: any): string {
+    const tel = (r.apartament?.proprietar?.telefon || '').replace(/\D/g,'')
+    const nr = tel.startsWith('0') ? '4'+tel : tel
+    const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}`
+    return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
+  }
+
   function trimiteWA(rez: any, s: any) {
     const phone = (rez.telefon_client||'').replace(/\D/g,'')
     const nr = phone.startsWith('40') ? phone : '4' + phone.replace(/^0/,'')
@@ -74,7 +81,7 @@ export default function RezervariPage() {
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
       const [{ data: rez }, { data: apt }] = await Promise.all([
-        supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix), proprietar:proprietari(id,nume)')
+        supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix,proprietar:proprietari(id,nume,telefon)), proprietar:proprietari(id,nume)')
           .order('data_checkin', { ascending: false }),
         supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').eq('status','activ').order('nume'),
       ])
@@ -336,6 +343,24 @@ export default function RezervariPage() {
                                 background:'rgba(77,163,255,0.1)',color:'#7BC8FF',cursor:'pointer'}}>
                               📋
                             </button>
+                          )}
+                          {r.apartament?.proprietar?.telefon && (
+                            <a
+                              href={waLinkProprietar(r)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e=>e.stopPropagation()}
+                              title={`Notifică proprietarul (${r.apartament.proprietar.telefon})`}
+                              style={{
+                                display:'inline-flex',alignItems:'center',justifyContent:'center',
+                                width:28,height:28,borderRadius:7,
+                                background:'rgba(167,139,250,0.12)',
+                                border:'1px solid rgba(167,139,250,0.3)',
+                                color:'#A78BFA',textDecoration:'none',
+                              }}
+                            >
+                              🏠
+                            </a>
                           )}
                           <Button variant="ghost" size="sm" icon={<Edit2 size={13}/>} onClick={()=>openEdit(r)}/>
                           <Button variant="ghost" size="sm" icon={<Trash2 size={13}/>} onClick={()=>setDeleteId(r.id)}/>
