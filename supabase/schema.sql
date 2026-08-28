@@ -248,6 +248,34 @@ create policy "Allow all reguli" on reguli_calcul for all using (true);
 create policy "Allow all taskuri" on taskuri for all using (true);
 
 -- =====================
+-- GENERATOR MARKETING (adăugat separat, vezi migrare_marketing.sql —
+-- acest fișier nu mai e sincronizat cu schema live de mult timp,
+-- blocul de mai jos e doar pentru documentare)
+-- =====================
+create table if not exists marketing_texte (
+  id uuid primary key default gen_random_uuid(),
+  apartament_id uuid references apartamente(id) on delete cascade,
+  extra_text text,
+  continut jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists marketing_texte_apartament_idx on marketing_texte(apartament_id, created_at desc);
+alter table marketing_texte enable row level security;
+create policy "Allow all marketing_texte" on marketing_texte for all using (true);
+
+create table if not exists marketing_imagini (
+  id uuid primary key default gen_random_uuid(),
+  apartament_id uuid references apartamente(id) on delete cascade,
+  prompt text not null,
+  imagine_sursa_url text,
+  imagine_rezultat_url text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists marketing_imagini_apartament_idx on marketing_imagini(apartament_id, created_at desc);
+alter table marketing_imagini enable row level security;
+create policy "Allow all marketing_imagini" on marketing_imagini for all using (true);
+
+-- =====================
 -- DATE DEMO
 -- =====================
 insert into reguli_calcul (nume, descriere, comision_tip, comision_procent, scade_comision_platforma, scade_tva_platforma)

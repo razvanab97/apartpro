@@ -108,9 +108,35 @@ export async function POST(req: NextRequest) {
   }
 
   const raw = data.choices?.[0]?.message?.content || '{}'
+  let parsed: Record<string,string>
   try {
-    return NextResponse.json({ result: JSON.parse(raw) })
+    parsed = JSON.parse(raw)
   } catch {
     return NextResponse.json({ error: 'Răspuns invalid de la model' }, { status: 500 })
   }
+
+  // Salvare istoric — best-effort, nu blocam raspunsul catre utilizator daca esueaza
+  let savedId: string | null = null
+  try {
+    const { data: saved } = await supabase.from('marketing_texte')
+      .insert({ apartament_id: apartamentId, extra_text: extra || null, continut: parsed })
+      .select('id').single()
+    savedId = saved?.id || null
+  } catch (e) {
+    console.error('marketing-generator: eroare salvare istoric', e)
+  }
+
+  return NextResponse.json({ result: parsed, savedId })
+}
+
+export async function GET(req: NextRequest) {
+  const apartamentId = req.nextUrl.searchParams.get('apartamentId')
+  if (!apartamentId) return NextResponse.json({ error: 'apartamentId lipsă' }, { status: 400 })
+  const { data, error } = await supabase.from('marketing_texte')
+    .select('id,extra_text,continut,created_at')
+    .eq('apartament_id', apartamentId)
+    .order('created_at', { ascending: false })
+    .limit(20)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ istoric: data })
 }
