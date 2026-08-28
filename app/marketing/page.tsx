@@ -252,6 +252,7 @@ function TabTexte({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t:'
 
 /* ══════════════════════════ TAB IMAGINI ══════════════════════════ */
 function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t:'success'|'error',m:string)=>void }) {
+  const [mode, setMode] = useState<'editare'|'script'>('editare')
   const [source, setSource] = useState<string|null>(null)
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
@@ -264,6 +265,10 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
     if (aptId) loadIstoric()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aptId])
+
+  function schimbaMod(m: 'editare'|'script') {
+    setMode(m); setSource(null); setResult(null); setPrompt('')
+  }
 
   async function loadIstoric() {
     try {
@@ -280,15 +285,16 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  async function editeaza() {
-    if (!aptId || !source || !prompt.trim()) return
+  async function ruleaza() {
+    if (!aptId || !source) return
+    if (mode==='editare' && !prompt.trim()) return
     setLoading(true)
     setResult(null)
     try {
       const res = await fetch('/api/marketing-imagine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apartamentId: aptId, prompt: prompt.trim(), sourceImage: source }),
+        body: JSON.stringify({ apartamentId: aptId, mode, prompt: prompt.trim() || undefined, sourceImage: source }),
       })
       const data = await res.json()
       if (data.error) { show('error', data.error); setLoading(false); return }
@@ -300,13 +306,38 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
     setLoading(false)
   }
 
+  async function copiazaScript(text: string) {
+    try { await navigator.clipboard.writeText(text || ''); show('success', 'Copiat!') }
+    catch { show('error', 'Nu s-a putut copia') }
+  }
+
+  const gata = mode==='editare' ? (!aptId||!source||!prompt.trim()||loading) : (!aptId||!source||loading)
+
   return (
     <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
 
-      {/* Panou stânga — sursă + prompt */}
+      {/* Panou stânga — sursă + comandă */}
       <div style={{...S.card, width:340, flexShrink:0, padding:16, display:'flex', flexDirection:'column', gap:12}}>
+
+        <div style={{display:'flex', borderRadius:8, overflow:'hidden', border:'1px solid rgba(100,160,255,0.2)'}}>
+          {(['editare','script'] as const).map(m => (
+            <button key={m} onClick={()=>schimbaMod(m)}
+              style={{flex:1, padding:'7px 8px', fontSize:11, fontWeight:600, border:'none', cursor:'pointer',
+                background: mode===m ? 'rgba(77,163,255,0.3)' : 'transparent',
+                color: mode===m ? '#7BC8FF' : 'rgba(159,215,255,0.45)'}}>
+              {m==='editare' ? '✏️ Editează poză' : '📋 Script din referință'}
+            </button>
+          ))}
+        </div>
+
+        {mode==='script' && (
+          <div style={{fontSize:11, color:'rgba(159,215,255,0.4)', lineHeight:1.5, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:8, padding:'8px 10px'}}>
+            Încarci o poză cu stilul/aspectul pe care vrei să-l obții (a ta sau găsită oriunde) — AI-ul o analizează și îți scrie un ghid tehnic (unghi, lumină, culoare, recuzită) pe care îl folosești ca să faci tu poza, cu telefonul/camera.
+          </div>
+        )}
+
         <div>
-          <div style={S.lbl}>Poză de editat</div>
+          <div style={S.lbl}>{mode==='editare' ? 'Poză de editat' : 'Poză de referință (stilul dorit)'}</div>
           <input ref={fileRef} type="file" accept="image/*" onChange={e=>onFile(e.target.files?.[0])}
             style={{...S.inp, width:'100%', boxSizing:'border-box'}}/>
           {source && (
@@ -314,26 +345,30 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
           )}
         </div>
 
-        <div>
-          <div style={S.lbl}>Ce vrei să modifici — descrie în cuvinte</div>
-          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
-            placeholder="ex. Fă lumina mai caldă, adaugă text «Disponibil acum» în colț..."
-            style={{...S.inp, width:'100%', resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.5}}/>
-          <div style={{display:'flex', flexWrap:'wrap', gap:5, marginTop:7}}>
-            {PROMPT_SUGESTII.map(s => (
-              <button key={s} onClick={()=>setPrompt(s)}
-                style={{padding:'4px 9px', borderRadius:6, border:'1px solid rgba(159,215,255,0.12)', background:'transparent', color:'rgba(159,215,255,0.4)', fontSize:10, cursor:'pointer'}}>
-                {s}
-              </button>
-            ))}
+        {mode==='editare' && (
+          <div>
+            <div style={S.lbl}>Ce vrei să modifici — descrie în cuvinte</div>
+            <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
+              placeholder="ex. Fă lumina mai caldă, adaugă text «Disponibil acum» în colț..."
+              style={{...S.inp, width:'100%', resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.5}}/>
+            <div style={{display:'flex', flexWrap:'wrap', gap:5, marginTop:7}}>
+              {PROMPT_SUGESTII.map(s => (
+                <button key={s} onClick={()=>setPrompt(s)}
+                  style={{padding:'4px 9px', borderRadius:6, border:'1px solid rgba(159,215,255,0.12)', background:'transparent', color:'rgba(159,215,255,0.4)', fontSize:10, cursor:'pointer'}}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <button onClick={editeaza} disabled={!aptId||!source||!prompt.trim()||loading}
-          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:(!aptId||!source||!prompt.trim()||loading)?'not-allowed':'pointer',
-            background:(!aptId||!source||!prompt.trim()||loading)?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
-            color:(!aptId||!source||!prompt.trim()||loading)?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
-          {loading ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se editează... (poate dura ~30s)</> : <><Wand2 size={15}/>Editează</>}
+        <button onClick={ruleaza} disabled={gata}
+          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:gata?'not-allowed':'pointer',
+            background:gata?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
+            color:gata?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+          {loading
+            ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>{mode==='editare' ? 'Se editează... (poate dura ~30s)' : 'Se analizează...'}</>
+            : mode==='editare' ? <><Wand2 size={15}/>Editează</> : <><Sparkles size={15}/>Analizează</>}
         </button>
 
         {istoric.length>0 && (
@@ -341,9 +376,10 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
             <div style={{...S.lbl, display:'flex', alignItems:'center', gap:5}}><Clock size={11}/>Istoric ({istoric.length})</div>
             <div style={{display:'flex', gap:6, flexWrap:'wrap', maxHeight:180, overflowY:'auto'}}>
               {istoric.map(h => (
-                <button key={h.id} onClick={()=>setResult(h)} title={h.prompt}
-                  style={{width:52, height:52, borderRadius:7, overflow:'hidden', border:'1px solid rgba(100,160,255,0.2)', padding:0, cursor:'pointer'}}>
-                  <img src={h.imagine_rezultat_url} alt="" style={{width:'100%', height:'100%', objectFit:'cover', display:'block'}}/>
+                <button key={h.id} onClick={()=>{setMode(h.tip); setResult(h)}} title={h.tip==='script' ? 'Script din referință' : h.prompt}
+                  style={{position:'relative', width:52, height:52, borderRadius:7, overflow:'hidden', border:'1px solid rgba(100,160,255,0.2)', padding:0, cursor:'pointer'}}>
+                  <img src={h.tip==='script' ? h.imagine_sursa_url : h.imagine_rezultat_url} alt="" style={{width:'100%', height:'100%', objectFit:'cover', display:'block'}}/>
+                  {h.tip==='script' && <span style={{position:'absolute', bottom:1, right:1, fontSize:8, background:'rgba(0,0,0,0.7)', color:'#fff', padding:'1px 3px', borderRadius:3}}>📋</span>}
                 </button>
               ))}
             </div>
@@ -355,8 +391,23 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
       <div style={{...S.card, flex:'1 1 420px', minWidth:0, padding:16}}>
         {!result ? (
           <div style={{padding:'60px 20px', textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13}}>
-            {aptSel ? `Încarcă o poză, scrie ce vrei modificat și apasă „Editează" pentru ${aptSel.nume}` : 'Alege un apartament'}
+            {!aptSel ? 'Alege un apartament' : mode==='editare'
+              ? `Încarcă o poză, scrie ce vrei modificat și apasă „Editează" pentru ${aptSel.nume}`
+              : `Încarcă o poză de referință și apasă „Analizează" pentru ${aptSel.nume}`}
           </div>
+        ) : result.tip==='script' ? (
+          <>
+            <div style={{display:'grid', gridTemplateColumns:'140px 1fr', gap:14}}>
+              {result.imagine_sursa_url && <img src={result.imagine_sursa_url} alt="" style={{width:'100%', borderRadius:8, border:'1px solid rgba(100,160,255,0.15)'}}/>}
+              <div style={{fontSize:13, color:'rgba(214,228,244,0.85)', whiteSpace:'pre-wrap', lineHeight:1.7}}>
+                {result.script_text}
+              </div>
+            </div>
+            <button onClick={()=>copiazaScript(result.script_text)}
+              style={{marginTop:14, padding:'9px 16px', borderRadius:8, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:7}}>
+              <Copy size={13}/>Copiază scriptul
+            </button>
+          </>
         ) : (
           <>
             <div style={{fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12}}>{result.prompt}</div>

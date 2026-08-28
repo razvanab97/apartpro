@@ -263,12 +263,16 @@ create index if not exists marketing_texte_apartament_idx on marketing_texte(apa
 alter table marketing_texte enable row level security;
 create policy "Allow all marketing_texte" on marketing_texte for all using (true);
 
+-- `tip`: 'editare' (poza sursă editată de AI, rezultat în imagine_rezultat_url) sau
+-- 'script' (poza sursă e o referință de stil, analizată de AI, rezultat text în script_text)
 create table if not exists marketing_imagini (
   id uuid primary key default gen_random_uuid(),
   apartament_id uuid references apartamente(id) on delete cascade,
-  prompt text not null,
+  tip text not null default 'editare' check (tip in ('editare','script')),
+  prompt text,
   imagine_sursa_url text,
-  imagine_rezultat_url text not null,
+  imagine_rezultat_url text,
+  script_text text,
   created_at timestamptz not null default now()
 );
 create index if not exists marketing_imagini_apartament_idx on marketing_imagini(apartament_id, created_at desc);
