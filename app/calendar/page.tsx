@@ -2,8 +2,10 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText } from 'lucide-react'
 import { ConnectionError } from '@/components/ui'
+import { format } from 'date-fns'
+import { ro } from 'date-fns/locale'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
@@ -40,6 +42,49 @@ function waLink(phone:string, msg:string){
 }
 
 function nightsBetween(a:string,b:string){ return Math.round((new Date(b).getTime()-new Date(a).getTime())/(1000*60*60*24)) }
+
+/* ── mesaje WhatsApp — aceleasi sabloane ca pe Dashboard/Rezervari, ca sa poti trimite
+   confirmarea/datele de acces si direct din Calendar, fara sa mai treci prin alt tab ── */
+function fillVars(tmpl:string, vals:{nume?:string;apartament?:string;data_checkin?:string;data_checkout?:string}){
+  return tmpl
+    .replace(/\{nume\}/gi, vals.nume||'')
+    .replace(/\{apartament\}/gi, vals.apartament||'')
+    .replace(/\{data_checkin\}/gi, vals.data_checkin||'')
+    .replace(/\{data_checkout\}/gi, vals.data_checkout||'')
+}
+function msgCheckin(r:any, tmpl?:string){
+  const apt = r.apartament?.nume || 'apartament'
+  const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
+  const nume = firstName(r.nume_client)
+  if(tmpl) return fillVars(tmpl,{nume,apartament:apt,data_checkin:ci})
+  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
+}
+function msgAcces(r:any, tmpl?:string){
+  const apt = r.apartament?.nume || 'apartament'
+  const nume = firstName(r.nume_client)
+  if(tmpl) return fillVars(tmpl,{nume,apartament:apt})
+  return `Bună ziua, ${nume}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+}
+function applyVars(tmpl:string, nume:string, apt:string, co:string){
+  return tmpl.replace(/\{nume\}/gi,nume).replace(/\{apartament\}/gi,apt).replace(/\{data_checkout\}/gi,co).replace(/\{data\}/gi,co)
+}
+function msgCheckoutGen(r:any, sabloane:Record<string,string>){
+  const apt = r.apartament?.nume || 'apartament'
+  const aptId = r.apartament?.id || ''
+  const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
+  const nume = firstName(r.nume_client)
+  const sablon = sabloane[aptId]
+  if(sablon) return applyVars(sablon,nume,apt,co)
+  return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
+}
+function msgGataAcces(r:any, sabloane:Record<string,string>){
+  const apt = r.apartament?.nume || 'apartament'
+  const aptId = r.apartament?.id || ''
+  const nume = firstName(r.nume_client)
+  const sablon = sabloane[aptId] || sabloane['__global__']
+  if(sablon) return applyVars(sablon,nume,apt,'')
+  return `Bună ziua, ${nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *${apt}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
+}
 
 const PLATFORME_CU_COMISION = ['airbnb','booking']
 const COMISION_PLATFORMA = 0.15
@@ -95,12 +140,47 @@ export default function CalendarPage() {
   const [ciScanError, setCiScanError] = useState<string|null>(null)
   const ciRef = useRef<HTMLInputElement>(null)
 
+  // sabloane mesaje — aceleasi surse ca pe Dashboard (setari globale + sabloane_mesaje per apartament)
+  const [sabloaneSetari, setSabloaneSetari] = useState<Record<string,string>>({})
+  const [sabloaneCO, setSabloaneCO] = useState<Record<string,string>>({})
+  const [sabloaneGata, setSabloaneGata] = useState<Record<string,string>>({})
+  const [sabloanePop, setSabloanePop] = useState<any>(null)
+  const [sabloaneApt, setSabloaneApt] = useState<any[]>([])
+
   const today     = new Date().toISOString().split('T')[0]
   const todayDay  = new Date().getDate()
   const todayMon  = new Date().getMonth()
   const todayYear = new Date().getFullYear()
 
   useEffect(() => { load() }, [year, month])
+  useEffect(() => {
+    void supabase.from('setari').select('cheie,valoare').in('cheie',['checkin_confirmare','checkin_acces']).then(({data})=>{
+      const m:Record<string,string>={}
+      for(const s of data||[]) m[s.cheie]=s.valoare
+      setSabloaneSetari(m)
+    })
+    void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','checkout').then(({data})=>{
+      const m:Record<string,string>={}
+      for(const s of data||[]) if(s.apartament_id) m[s.apartament_id]=s.text
+      setSabloaneCO(m)
+    })
+    void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','gata_curatenie').then(({data})=>{
+      const m:Record<string,string>={}
+      for(const s of data||[]) m[s.apartament_id||'__global__']=s.text
+      setSabloaneGata(m)
+    })
+  }, [])
+
+  async function deschideSabloane(aptId:string){
+    setSabloanePop({aptId})
+    const {data} = await supabase.from('sabloane_mesaje').select('*').eq('apartament_id',aptId).order('tip')
+    setSabloaneApt(data||[])
+  }
+  function trimiteSablonWA(r:any, s:any){
+    const nume = firstName(r.nume_client)
+    const msg = (s.text||'').replace(/{nume}/gi, nume)
+    window.open(waLink(r.telefon_client, msg), '_blank')
+  }
 
   async function load() {
     setLoading(true)
@@ -765,6 +845,41 @@ Echipa AB Homes Iași`)}
               <input value={editForm.observatii} onChange={e=>setEditForm(f=>({...f,observatii:e.target.value}))}
                 style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
             </div>
+
+            {editForm.telefon && (()=>{
+              const liveR = {...editRez, nume_client:editForm.nume, telefon_client:editForm.telefon, data_checkin:editForm.checkin, data_checkout:editForm.checkout}
+              const btn = (bg:string,color:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:7,border:`1px solid ${color}`,background:bg,color,fontSize:11,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const}) as React.CSSProperties
+              return (
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Trimite mesaj</div>
+                  <div style={{ display:'flex',gap:6,flexWrap:'wrap' as const }}>
+                    <a href={waLink(editForm.telefon, msgCheckin(liveR, sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer"
+                      style={btn('rgba(252,211,77,0.08)','rgba(252,211,77,0.9)')}>
+                      <MessageCircle size={12}/>Confirmare
+                    </a>
+                    <a href={waLink(editForm.telefon, msgAcces(liveR, sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer"
+                      style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}>
+                      <Key size={12}/>Date acces
+                    </a>
+                    <a href={waLink(editForm.telefon, msgGataAcces(liveR, sabloaneGata))} target="_blank" rel="noreferrer"
+                      style={btn('rgba(74,222,128,0.08)','rgba(74,222,128,0.9)')}>
+                      <CheckCircle2 size={12}/>Gata locația
+                    </a>
+                    <a href={waLink(editForm.telefon, msgCheckoutGen(liveR, sabloaneCO))} target="_blank" rel="noreferrer"
+                      style={btn('rgba(192,132,252,0.08)','rgba(192,132,252,0.9)')}>
+                      <LogOut size={12}/>Check-out
+                    </a>
+                    {editRez?.apartament?.id && (
+                      <button onClick={()=>deschideSabloane(editRez.apartament.id)}
+                        style={btn('rgba(159,215,255,0.06)','rgba(159,215,255,0.5)')}>
+                        <FileText size={12}/>Alte șabloane
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
             <div style={{ display:'flex',gap:8 }}>
               <button onClick={saveEdit} disabled={editSaving}
                 style={{ flex:1,padding:'10px',borderRadius:9,border:'none',background:'rgba(77,163,255,0.8)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6 }}>
@@ -817,6 +932,45 @@ Echipa AB Homes Iași`)}
           </div>
         )
       })()}
+
+      {/* Popup alte sabloane — mesajele custom per apartament, ca in Rezervari */}
+      {sabloanePop && (
+        <div onClick={()=>setSabloanePop(null)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{width:'100%',maxWidth:420,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:16,padding:20,maxHeight:'80vh',overflowY:'auto' as const}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Alte șabloane</div>
+              <button onClick={()=>setSabloanePop(null)} style={{background:'none',border:'none',color:'rgba(159,215,255,0.4)',fontSize:20,cursor:'pointer'}}>✕</button>
+            </div>
+            {sabloaneApt.length===0 && (
+              <div style={{textAlign:'center' as const,padding:'24px 0',color:'rgba(159,215,255,0.3)',fontSize:13}}>
+                Niciun șablon pentru acest apartament.<br/>
+                <a href="/sabloane" target="_blank" style={{color:'#7BC8FF',fontSize:12}}>→ Adaugă din pagina Șabloane</a>
+              </div>
+            )}
+            {sabloaneApt.map((s:any) => {
+              const liveR = {...editRez, nume_client:editForm.nume, telefon_client:editForm.telefon}
+              const preview = (s.text||'').replace(/{nume}/gi, firstName(editForm.nume))
+              return (
+                <div key={s.id} style={{background:'rgba(11,22,42,0.7)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:12,padding:14,marginBottom:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                    <span style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{s.titlu}</span>
+                    <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(77,163,255,0.12)',color:'#7BC8FF',border:'1px solid rgba(77,163,255,0.2)'}}>{s.tip}</span>
+                  </div>
+                  <div style={{fontSize:12,color:'rgba(159,215,255,0.6)',whiteSpace:'pre-wrap' as const,lineHeight:1.5,marginBottom:8,maxHeight:100,overflow:'hidden'}}>
+                    {preview}
+                  </div>
+                  <button onClick={()=>trimiteSablonWA(liveR, s)} disabled={!editForm.telefon}
+                    style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#22C55E,#16A34A)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:editForm.telefon?1:0.5}}>
+                    💬 Trimite pe WhatsApp
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
