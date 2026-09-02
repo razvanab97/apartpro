@@ -77,6 +77,16 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   if(sablon) return applyVars(sablon,nume,apt,co)
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
+// Confirmare completa a rezervarii (apartament + perioada + pret) — distinct de msgCheckin,
+// care e un reminder de sosire ("aveti ASTAZI o rezervare"), nu o confirmare de rezervare in sine
+function msgConfirmareRezervare(r:any){
+  const apt = r.apartament?.nume || 'apartament'
+  const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
+  const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
+  const nopti = r.data_checkin && r.data_checkout ? nightsBetween(r.data_checkin, r.data_checkout) : null
+  const nume = firstName(r.nume_client)
+  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}*.\n\n📅 *Check-in:* ${ci}\n📅 *Check-out:* ${co}${nopti?`\n🌙 *Nopți:* ${nopti}`:''}${r.suma_incasata?`\n💰 *Total:* ${r.suma_incasata} RON`:''}\n\nVă vom trimite detaliile de acces în ziua sosirii.\n\nEchipa AB Homes Iași`
+}
 function msgGataAcces(r:any, sabloane:Record<string,string>){
   const apt = r.apartament?.nume || 'apartament'
   const aptId = r.apartament?.id || ''
@@ -853,9 +863,13 @@ Echipa AB Homes Iași`)}
                 <div style={{ marginBottom:14 }}>
                   <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Trimite mesaj</div>
                   <div style={{ display:'flex',gap:6,flexWrap:'wrap' as const }}>
+                    <a href={waLink(editForm.telefon, msgConfirmareRezervare(liveR))} target="_blank" rel="noreferrer"
+                      style={btn('rgba(74,222,128,0.1)','#4ADE80')}>
+                      <Check size={12}/>Confirmare rezervare
+                    </a>
                     <a href={waLink(editForm.telefon, msgCheckin(liveR, sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer"
                       style={btn('rgba(252,211,77,0.08)','rgba(252,211,77,0.9)')}>
-                      <MessageCircle size={12}/>Confirmare
+                      <MessageCircle size={12}/>Reminder sosire
                     </a>
                     <a href={waLink(editForm.telefon, msgAcces(liveR, sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer"
                       style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}>
