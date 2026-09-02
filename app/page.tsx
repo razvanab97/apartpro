@@ -213,8 +213,64 @@ export default function DashboardPage() {
   const [propNotif,setPropNotif]=useState<any[]>([])
   const [propWizardOpen,setPropWizardOpen]=useState(false)
   const [propWizardIdx,setPropWizardIdx]=useState(0)
+  // notificare proprietar in ziua de check-in ("astazi ajunge oaspetele X") — spre deosebire
+  // de propNotif (rezervari noi, persistat), asta e legat de ZIUA curenta, deci resetare
+  // zilnica prin localStorage, la fel ca celelalte bannere de azi (CI/CO/GATA)
+  const [ciProprietarAzi,setCiProprietarAzi]=useState<any[]>([])
+  const [ciPropBannerDismissed,setCiPropBannerDismissed]=useState(()=>{
+    try{return localStorage.getItem('ci_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [ciPropMesajeTrimise,setCiPropMesajeTrimise]=useState(()=>{
+    try{return localStorage.getItem('ci_prop_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [ciPropWizardOpen,setCiPropWizardOpen]=useState(false)
+  const [ciPropWizardIdx,setCiPropWizardIdx]=useState(0)
+  // aceeasi idee, pentru check-out azi ("astazi pleaca oaspetele X")
+  const [coProprietarAzi,setCoProprietarAzi]=useState<any[]>([])
+  const [coPropBannerDismissed,setCoPropBannerDismissed]=useState(()=>{
+    try{return localStorage.getItem('co_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [coPropMesajeTrimise,setCoPropMesajeTrimise]=useState(()=>{
+    try{return localStorage.getItem('co_prop_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  })
+  const [coPropWizardOpen,setCoPropWizardOpen]=useState(false)
+  const [coPropWizardIdx,setCoPropWizardIdx]=useState(0)
   useEffect(()=>{loadData()},[])
   useEffect(()=>{loadPropNotif()},[])
+  useEffect(()=>{loadCiProprietarAzi()},[])
+  useEffect(()=>{loadCoProprietarAzi()},[])
+
+  async function loadCiProprietarAzi(){
+    try{
+      const today0=new Date().toISOString().split('T')[0]
+      const {data}=await supabase.from('rezervari')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .eq('data_checkin',today0)
+        .neq('status_rezervare','anulata')
+      setCiProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+    }catch{}
+  }
+  function msgCheckinProprietar(r:any){
+    const apt = r.apartament?.nume || 'apartament'
+    const propNume = firstName(r.apartament?.proprietar?.nume || '')
+    const nopti = r.nr_nopti
+    return `Bună ziua${propNume?', '+propNume:''}! 👋\n\nAstăzi ajunge oaspetele *${r.nume_client}* la *${apt}*, pentru *${nopti||'?'}* ${nopti===1?'noapte':'nopți'}.\n\nVă rugăm să ne anunțați când locația e pregătită pentru check-in!\n\nEchipa AB Homes Iași`
+  }
+  async function loadCoProprietarAzi(){
+    try{
+      const today0=new Date().toISOString().split('T')[0]
+      const {data}=await supabase.from('rezervari')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .eq('data_checkout',today0)
+        .neq('status_rezervare','anulata')
+      setCoProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+    }catch{}
+  }
+  function msgCheckoutProprietar(r:any){
+    const apt = r.apartament?.nume || 'apartament'
+    const propNume = firstName(r.apartament?.proprietar?.nume || '')
+    return `Bună ziua${propNume?', '+propNume:''}! 👋\n\nAstăzi pleacă oaspetele *${r.nume_client}* de la *${apt}*.\n\nVă mulțumim!\nEchipa AB Homes Iași`
+  }
 
   async function loadPropNotif(){
     try{
@@ -713,6 +769,62 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* BANNER CHECK-IN AZI — ANUNTA PROPRIETARII */}
+        {(()=>{
+          if(ciProprietarAzi.length===0||ciPropBannerDismissed||ciPropMesajeTrimise)return null
+          return(
+            <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+              <div style={{fontSize:20}}>🔑</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
+                  {ciProprietarAzi.length === 1 ? '1 oaspete ajunge azi' : `${ciProprietarAzi.length} oaspeți ajung azi`} — anunță proprietarii
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                  {ciProprietarAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+                <button onClick={()=>{setCiPropWizardIdx(0);setCiPropWizardOpen(true)}}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <MessageCircle size={13}/>Trimite mesaje ({ciProprietarAzi.length})
+                </button>
+                <button onClick={()=>{setCiPropBannerDismissed(true);try{localStorage.setItem('ci_prop_banner_'+todayStr,'1')}catch{}}}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Ignoră
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* BANNER CHECK-OUT AZI — ANUNTA PROPRIETARII */}
+        {(()=>{
+          if(coProprietarAzi.length===0||coPropBannerDismissed||coPropMesajeTrimise)return null
+          return(
+            <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
+              <div style={{fontSize:20}}>🚪</div>
+              <div style={{flex:1,minWidth:200}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
+                  {coProprietarAzi.length === 1 ? '1 oaspete pleacă azi' : `${coProprietarAzi.length} oaspeți pleacă azi`} — anunță proprietarii
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                  {coProprietarAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
+                <button onClick={()=>{setCoPropWizardIdx(0);setCoPropWizardOpen(true)}}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <MessageCircle size={13}/>Trimite mesaje ({coProprietarAzi.length})
+                </button>
+                <button onClick={()=>{setCoPropBannerDismissed(true);try{localStorage.setItem('co_prop_banner_'+todayStr,'1')}catch{}}}
+                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                  Ignoră
+                </button>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="kpi-grid">
@@ -1512,6 +1624,112 @@ export default function DashboardPage() {
               }}
                 style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 {isLast?'✓ Gata — toate mesajele trimise':'Sări peste →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* WIZARD CHECK-IN AZI — ANUNTA PROPRIETAR */}
+      {ciPropWizardOpen&&(()=>{
+        const list=ciProprietarAzi
+        const r=list[ciPropWizardIdx]
+        if(!r) return null
+        const isLast=ciPropWizardIdx>=list.length-1
+        const msg=msgCheckinProprietar(r)
+        const tel=r.apartament.proprietar.telefon
+        const link=waLink(tel,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCiPropWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Anunță proprietarul — check-in azi</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{ciPropWizardIdx+1} / {list.length}</div>
+                </div>
+                <button onClick={()=>setCiPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((ciPropWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Oaspete: {r.nume_client} · {r.nr_nopti||'?'} nopți</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={()=>{
+                if(isLast){
+                  setCiPropWizardOpen(false)
+                  setCiPropMesajeTrimise(true)
+                  try{localStorage.setItem('ci_prop_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
+                }else{setCiPropWizardIdx(i=>i+1)}
+              }}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* WIZARD CHECK-OUT AZI — ANUNTA PROPRIETAR */}
+      {coPropWizardOpen&&(()=>{
+        const list=coProprietarAzi
+        const r=list[coPropWizardIdx]
+        if(!r) return null
+        const isLast=coPropWizardIdx>=list.length-1
+        const msg=msgCheckoutProprietar(r)
+        const tel=r.apartament.proprietar.telefon
+        const link=waLink(tel,msg)
+        return(
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCoPropWizardOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Anunță proprietarul — check-out azi</div>
+                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{coPropWizardIdx+1} / {list.length}</div>
+                </div>
+                <button onClick={()=>setCoPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+              </div>
+              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
+                <div style={{height:'100%',width:`${((coPropWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
+              </div>
+              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
+                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
+                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
+                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Oaspete: {r.nume_client}</span>
+                </div>
+                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
+              </div>
+              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
+                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
+                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
+              </div>
+              <a href={link} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                <MessageCircle size={16}/>Trimite pe WhatsApp
+              </a>
+              <button onClick={()=>{
+                if(isLast){
+                  setCoPropWizardOpen(false)
+                  setCoPropMesajeTrimise(true)
+                  try{localStorage.setItem('co_prop_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
+                }else{setCoPropWizardIdx(i=>i+1)}
+              }}
+                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
               </button>
             </div>
           </div>
