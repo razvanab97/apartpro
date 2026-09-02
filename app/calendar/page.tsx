@@ -91,6 +91,8 @@ export default function CalendarPage() {
   const [editForm, setEditForm] = useState({nume:'',telefon:'',checkin:'',checkout:'',pret:'',observatii:''})
   const [editSaving, setEditSaving] = useState(false)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
+  const [scanningCI, setScanningCI] = useState(false)
+  const [ciScanError, setCiScanError] = useState<string|null>(null)
   const ciRef = useRef<HTMLInputElement>(null)
 
   const today     = new Date().toISOString().split('T')[0]
@@ -213,9 +215,37 @@ export default function CalendarPage() {
     else alert('Eroare: '+error.message)
   }
 
-  // Doar preview foto buletin
-  function scanCI(file: File) {
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Preview + scanare AI a buletinului (nume + CNP), completeaza formularul automat
+  async function scanCI(file: File) {
     setCiPreview(URL.createObjectURL(file))
+    setCiScanError(null)
+    setScanningCI(true)
+    try {
+      const base64Data = await fileToBase64(file)
+      const res = await fetch('/api/scan-ci', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data, mimeType: file.type || 'image/jpeg' }),
+      })
+      const data = await res.json()
+      if (data.success && (data.nume || data.cnp)) {
+        setNewRez(prev => ({ ...prev, nume: prev.nume || data.nume || prev.nume, cnp: data.cnp || prev.cnp }))
+      } else {
+        setCiScanError('Nu am putut citi datele din poză — completează manual')
+      }
+    } catch {
+      setCiScanError('Eroare la scanare — completează manual')
+    }
+    setScanningCI(false)
   }
 
   // panel info zi
@@ -585,13 +615,20 @@ export default function CalendarPage() {
                   {ciPreview
                     ? <div style={{ position:'relative',borderRadius:8,overflow:'hidden',border:'1px solid rgba(124,58,237,0.3)' }}>
                         <img src={ciPreview} alt="CI" style={{ width:'100%',maxHeight:120,objectFit:'contain',background:'rgba(0,0,0,0.4)',display:'block' }}/>
-                        <button onClick={()=>{setCiPreview(null)}} style={{ position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.6)',border:'none',borderRadius:4,color:'#fff',cursor:'pointer',padding:'2px 6px',fontSize:10 }}>✕</button>
+                        {scanningCI && (
+                          <div style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',gap:7,color:'#fff',fontSize:12,fontWeight:600 }}>
+                            <Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se scanează...
+                          </div>
+                        )}
+                        <button onClick={()=>{setCiPreview(null);setCiScanError(null)}} style={{ position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.6)',border:'none',borderRadius:4,color:'#fff',cursor:'pointer',padding:'2px 6px',fontSize:10 }}>✕</button>
                       </div>
                     : <button onClick={()=>ciRef.current?.click()}
                         style={{ width:'100%',padding:'9px',borderRadius:8,border:'1px dashed rgba(124,58,237,0.3)',background:'rgba(124,58,237,0.05)',color:'rgba(167,139,250,0.6)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:7 }}>
                         📷 Fotografiază buletin
                       </button>
                   }
+                  {ciScanError && <div style={{ fontSize:11,color:'#F87171',marginTop:5 }}>{ciScanError}</div>}
+                  {!scanningCI && !ciScanError && newRez.cnp && ciPreview && <div style={{ fontSize:11,color:'#4ADE80',marginTop:5 }}>✓ Date citite din poză — verifică mai jos</div>}
                 </div>
 
                 {/* Nume */}

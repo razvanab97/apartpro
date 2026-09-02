@@ -1,64 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GEMINI_KEY = 'AQ.Ab8RN6KgNm7MmHqZADCAmCP0bJTgoFFRvJ3RaL8pL4WNZFq9Aw'
+const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
+// Folosea Gemini cu o cheie hardcodata care a expirat/a devenit invalida (401
+// "invalid authentication credentials") - trecut pe OpenAI, aceeasi cheie deja
+// folosita si functionala pentru restul rutelor AI din aplicatie (/api/ai etc.)
 export async function POST(req: NextRequest) {
   try {
     const { base64Data, mimeType } = await req.json()
-    if (!base64Data) return NextResponse.json({ error: 'No image' }, { status: 400 })
+    if (!base64Data) return NextResponse.json({ success: false, error: 'No image' }, { status: 400 })
 
-    const prompt = `Esti expert in citirea actelor de identitate. Din aceasta imagine extrage:
-- Numele complet (Prenume Nume)
-- CNP-ul (13 cifre)
-Raspunde STRICT doar cu JSON, fara nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123"}`
+    const prompt = 'Ești expert în citirea actelor de identitate românești. Din această imagine extrage:\n' +
+      '- Numele complet (Prenume Nume)\n' +
+      '- CNP-ul (13 cifre)\n' +
+      'Răspunde STRICT doar cu JSON, fără nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123"}. ' +
+      'Dacă nu poți citi clar un câmp, pune string gol pentru el. Nu inventa date.'
 
-    const geminiResp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64Data } }
-            ]
-          }],
-          generationConfig: { temperature: 0, maxOutputTokens: 256 }
-        })
-      }
-    )
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_KEY}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 200,
+        response_format: { type: 'json_object' },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Data}` } },
+          ],
+        }],
+      }),
+    })
 
-    const geminiData = await geminiResp.json()
-
-    // Returnam tot raspunsul pentru debug
-    if (!geminiResp.ok) {
-      return NextResponse.json({
-        success: false,
-        error: geminiData?.error?.message || 'Gemini API error',
-        status: geminiResp.status,
-        geminiData
-      }, { status: 200 })
+    const data = await res.json()
+    if (data.error) {
+      console.error('scan-ci OpenAI error:', res.status, JSON.stringify(data.error))
+      return NextResponse.json({ success: false, error: data.error.message || 'Eroare la scanare' }, { status: 200 })
     }
 
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-    // Curata si parseaza
-    const cleaned = rawText.replace(/```json/gi,'').replace(/```/g,'').trim()
+    const rawText = data.choices?.[0]?.message?.content || '{}'
     let parsed: any = {}
+    try { parsed = JSON.parse(rawText) } catch {}
 
-    try {
-      parsed = JSON.parse(cleaned)
-    } catch {
-      const match = cleaned.match(/\{[^}]+\}/)
-      if (match) {
-        try { parsed = JSON.parse(match[0]) } catch {}
-      }
-    }
-
-    // Normalizeaza numele
     if (parsed.nume) {
-      parsed.nume = parsed.nume
+      parsed.nume = String(parsed.nume)
         .split(' ')
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ')
@@ -69,9 +56,8 @@ Raspunde STRICT doar cu JSON, fara nimic altceva: {"nume":"Ion Popescu","cnp":"1
       success: true,
       nume: parsed.nume || '',
       cnp: parsed.cnp || '',
-      raw: rawText
+      raw: rawText,
     })
-
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e.message }, { status: 200 })
   }
