@@ -229,6 +229,12 @@ export default function DashboardPage() {
     await supabase.from('rezervari').update({proprietar_notificat:true}).eq('id',id)
     setPropNotif(prev=>prev.filter(x=>x.id!==id))
   }
+  async function ignoraToateNotificarileProprietar(){
+    const ids=propNotif.map((r:any)=>r.id)
+    if(!ids.length) return
+    await supabase.from('rezervari').update({proprietar_notificat:true}).in('id',ids)
+    setPropNotif([])
+  }
 
 
   const now=new Date()
@@ -699,6 +705,10 @@ export default function DashboardPage() {
               <button onClick={()=>{setPropWizardIdx(0);setPropWizardOpen(true)}}
                 style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 <MessageCircle size={13}/>Trimite mesaje ({propNotif.length})
+              </button>
+              <button onClick={ignoraToateNotificarileProprietar}
+                style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
+                Ignoră
               </button>
             </div>
           </div>
