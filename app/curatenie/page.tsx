@@ -81,7 +81,7 @@ export default function CuratenePage() {
   const [baniForm, setBaniForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
   const [savingBani, setSavingBani] = useState(false)
   const [casaGenOpen, setCasaGenOpen] = useState<'incasare'|'cheltuiala'|null>(null)
-  const [casaGenForm, setCasaGenForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
+  const [casaGenForm, setCasaGenForm] = useState<{suma:string,motiv:string,data:string}>({suma:'',motiv:'',data:new Date().toISOString().split('T')[0]})
   const [savingCasaGen, setSavingCasaGen] = useState(false)
   const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
   const [editingMesajZi, setEditingMesajZi] = useState(false)
@@ -323,13 +323,13 @@ export default function CuratenePage() {
     const suma = parseFloat(casaGenForm.suma.replace(',', '.'))
     if (!suma || suma <= 0) return
     setSavingCasaGen(true)
-    const today = new Date().toISOString().split('T')[0]
     const { error } = await supabase.from('staff_casa').insert({
-      data: today, tip, suma, motiv: casaGenForm.motiv.trim() || (tip === 'incasare' ? 'Încasare' : 'Cheltuială'),
+      data: casaGenForm.data || new Date().toISOString().split('T')[0], tip, suma,
+      motiv: casaGenForm.motiv.trim() || (tip === 'incasare' ? 'Încasare' : 'Cheltuială'),
     })
     setSavingCasaGen(false)
     if (!error) {
-      setCasaGenForm({ suma: '', motiv: '' })
+      setCasaGenForm({ suma: '', motiv: '', data: new Date().toISOString().split('T')[0] })
       setCasaGenOpen(null)
       loadCasaLuna()
       show('success', '✓ Înregistrat în Casă staff')
@@ -1151,13 +1151,19 @@ export default function CuratenePage() {
                       onChange={e=>setCasaGenForm(f=>({...f,motiv:e.target.value}))}
                       style={{flex:1,boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
                   </div>
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4}}>Data (implicit azi — schimbă pentru o înregistrare din trecut)</div>
+                    <input type="date" value={casaGenForm.data}
+                      onChange={e=>setCasaGenForm(f=>({...f,data:e.target.value}))}
+                      style={{width:'100%',boxSizing:'border-box' as const,background:'rgba(14,27,43,0.8)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:8,padding:'7px 9px',color:'#E8F4FF',fontSize:13,outline:'none'}}/>
+                  </div>
                   <div style={{display:'flex',gap:8}}>
                     <button onClick={()=>addCasaGen(casaGenOpen)} disabled={savingCasaGen||!casaGenForm.suma}
                       style={{flex:1,padding:'8px',borderRadius:8,border:'none',
                         background:casaGenOpen==='incasare'?'#4ADE80':'#F87171',color:'#0E1B2B',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!casaGenForm.suma?0.5:1}}>
                       {savingCasaGen?'Se salvează...':'Salvează'}
                     </button>
-                    <button onClick={()=>{setCasaGenOpen(null);setCasaGenForm({suma:'',motiv:''})}}
+                    <button onClick={()=>{setCasaGenOpen(null);setCasaGenForm({suma:'',motiv:'',data:new Date().toISOString().split('T')[0]})}}
                       style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                       Anulează
                     </button>
