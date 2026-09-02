@@ -435,7 +435,7 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
 }
 
 /* ══════════════════════════ TAB STIRI ══════════════════════════ */
-const CATEGORIE_LABEL: Record<string,string> = { eveniment:'Eveniment', turism:'Turism', transport:'Transport', infrastructura:'Infrastructură', cultura:'Cultură', sport:'Sport', meteo:'Meteo', economie:'Economie', altele:'Altele' }
+const CATEGORIE_LABEL: Record<string,string> = { eveniment:'Eveniment', turism:'Turism', transport:'Transport', infrastructura:'Infrastructură', cultura:'Cultură', sport:'Sport', meteo:'Meteo', economie:'Economie', horeca:'HORECA / regim hotelier', altele:'Altele' }
 const CONTINUT_LABEL: Record<string,string> = { instagram_story:'Instagram Story', instagram_post:'Instagram Post', facebook_post:'Facebook Post', niciunul:'Niciunul' }
 const IMPACT_STYLE: Record<string,{label:string;color:string}> = {
   none:   { label:'Fără impact', color:'rgba(159,215,255,0.4)' },

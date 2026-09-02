@@ -319,7 +319,13 @@ create policy "Allow all marketing_stiri_feed" on marketing_stiri_feed for all u
 
 insert into marketing_stiri_surse (nume, url_feed) values
   ('Ziarul de Iași', 'https://www.ziaruldeiasi.ro/rss'),
-  ('BZI.ro', 'https://www.bzi.ro/feed')
+  ('BZI.ro', 'https://www.bzi.ro/feed'),
+  ('Google Știri: Iași eveniment', 'https://news.google.com/rss/search?q=Ia%C8%99i+eveniment&hl=ro&gl=RO&ceid=RO:ro'),
+  ('Google Știri: Iași turism', 'https://news.google.com/rss/search?q=Ia%C8%99i+turism&hl=ro&gl=RO&ceid=RO:ro'),
+  ('Google Știri: Iași aeroport', 'https://news.google.com/rss/search?q=Ia%C8%99i+aeroport&hl=ro&gl=RO&ceid=RO:ro'),
+  ('Google Știri: regim hotelier România', 'https://news.google.com/rss/search?q=regim+hotelier+Rom%C3%A2nia&hl=ro&gl=RO&ceid=RO:ro'),
+  ('Google Știri: HORECA România', 'https://news.google.com/rss/search?q=HORECA+Rom%C3%A2nia&hl=ro&gl=RO&ceid=RO:ro'),
+  ('Google Știri: Airbnb Booking România reguli', 'https://news.google.com/rss/search?q=Airbnb+Booking+Rom%C3%A2nia+reguli&hl=ro&gl=RO&ceid=RO:ro')
 on conflict (url_feed) do nothing;
 
 -- =====================
