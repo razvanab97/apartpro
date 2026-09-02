@@ -305,6 +305,16 @@ export default function CalendarPage() {
     else alert('Eroare: '+error.message)
   }
 
+  async function cancelRez(){
+    if(!editRez) return
+    if(!confirm(`Anulezi rezervarea lui ${editRez.nume_client}? Se eliberează perioada în calendar.`)) return
+    setEditSaving(true)
+    const { error } = await supabase.from('rezervari').update({ status_rezervare:'anulata' }).eq('id', editRez.id)
+    setEditSaving(false)
+    if(!error){ setEditRez(null); setTooltip(null); await load() }
+    else alert('Eroare: '+error.message)
+  }
+
   function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -901,9 +911,13 @@ Echipa AB Homes Iași`)}
               </button>
               <button onClick={()=>setEditRez(null)}
                 style={{ padding:'10px 16px',borderRadius:9,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:13,cursor:'pointer' }}>
-                Anulează
+                Închide
               </button>
             </div>
+            <button onClick={cancelRez} disabled={editSaving}
+              style={{ width:'100%',marginTop:8,padding:'8px',borderRadius:9,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.7)',fontSize:12,fontWeight:600,cursor:'pointer' }}>
+              🗑 Anulează rezervarea
+            </button>
           </div>
         </div>
       )}
