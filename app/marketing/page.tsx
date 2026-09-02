@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
-import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock } from 'lucide-react'
+import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock, Newspaper } from 'lucide-react'
 
 const CANALE = [
   { key: 'facebook_post',    label: 'Facebook' },
@@ -41,7 +41,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 export default function MarketingPage() {
-  const [tabMain, setTabMain] = useState<'texte'|'imagini'>('texte')
+  const [tabMain, setTabMain] = useState<'texte'|'imagini'|'stiri'>('texte')
   const [apts, setApts] = useState<any[]>([])
   const [aptId, setAptId] = useState('')
   const { toast, show } = useToast()
@@ -60,25 +60,27 @@ export default function MarketingPage() {
 
         <div style={{display:'flex', gap:12, alignItems:'center', marginBottom:14, flexWrap:'wrap'}}>
           <div style={{display:'flex', borderRadius:8, overflow:'hidden', border:'1px solid rgba(77,163,255,0.25)'}}>
-            {(['texte','imagini'] as const).map(t => (
+            {(['texte','imagini','stiri'] as const).map(t => (
               <button key={t} onClick={()=>setTabMain(t)}
                 style={{padding:'8px 16px', fontSize:12, fontWeight:600, border:'none', cursor:'pointer',
                   background: tabMain===t ? 'rgba(77,163,255,0.35)' : 'transparent',
                   color: tabMain===t ? '#7BC8FF' : 'rgba(159,215,255,0.45)'}}>
-                {t==='texte' ? '✍️ Texte' : '🖼️ Imagini'}
+                {t==='texte' ? '✍️ Texte' : t==='imagini' ? '🖼️ Imagini' : '📰 Știri'}
               </button>
             ))}
           </div>
-          <div style={{flex:1, minWidth:200}}>
-            <select value={aptId} onChange={e=>setAptId(e.target.value)} style={{...S.inp, width:'100%', maxWidth:340}}>
-              {apts.map(a => <option key={a.id} value={a.id}>{a.nota ? `${a.nota} — ` : ''}{a.nume}</option>)}
-            </select>
-          </div>
+          {tabMain!=='stiri' && (
+            <div style={{flex:1, minWidth:200}}>
+              <select value={aptId} onChange={e=>setAptId(e.target.value)} style={{...S.inp, width:'100%', maxWidth:340}}>
+                {apts.map(a => <option key={a.id} value={a.id}>{a.nota ? `${a.nota} — ` : ''}{a.nume}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
-        {tabMain==='texte'
-          ? <TabTexte aptId={aptId} aptSel={aptSel} show={show}/>
-          : <TabImagini aptId={aptId} aptSel={aptSel} show={show}/>}
+        {tabMain==='texte' && <TabTexte aptId={aptId} aptSel={aptSel} show={show}/>}
+        {tabMain==='imagini' && <TabImagini aptId={aptId} aptSel={aptSel} show={show}/>}
+        {tabMain==='stiri' && <TabStiri show={show}/>}
       </div>
       <Toast toast={toast}/>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -425,6 +427,170 @@ function TabImagini({ aptId, aptSel, show }: { aptId:string; aptSel:any; show:(t
               style={{marginTop:14, padding:'9px 16px', borderRadius:8, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:12, fontWeight:600, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:7, textDecoration:'none'}}>
               <Download size={13}/>Descarcă rezultatul
             </a>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════ TAB STIRI ══════════════════════════ */
+const CATEGORIE_LABEL: Record<string,string> = { eveniment:'Eveniment', turism:'Turism', transport:'Transport', infrastructura:'Infrastructură', cultura:'Cultură', sport:'Sport', meteo:'Meteo', economie:'Economie', altele:'Altele' }
+const CONTINUT_LABEL: Record<string,string> = { instagram_story:'Instagram Story', instagram_post:'Instagram Post', facebook_post:'Facebook Post', niciunul:'Niciunul' }
+const IMPACT_STYLE: Record<string,{label:string;color:string}> = {
+  none:   { label:'Fără impact', color:'rgba(159,215,255,0.4)' },
+  low:    { label:'Impact redus', color:'#7BC8FF' },
+  medium: { label:'Impact mediu', color:'#FCD34D' },
+  high:   { label:'Impact mare', color:'#4ADE80' },
+}
+
+function TabStiri({ show }: { show:(t:'success'|'error',m:string)=>void }) {
+  const [text, setText] = useState('')
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [istoric, setIstoric] = useState<any[]>([])
+
+  useEffect(() => { loadIstoric() }, [])
+
+  async function loadIstoric() {
+    try {
+      const res = await fetch('/api/marketing-stiri')
+      const data = await res.json()
+      setIstoric(data.istoric || [])
+    } catch { /* istoricul e un bonus, nu blocam pagina daca esueaza */ }
+  }
+
+  async function analizeaza() {
+    if (!text.trim()) return
+    setLoading(true)
+    setResult(null)
+    try {
+      const res = await fetch('/api/marketing-stiri', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim(), url: url.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (data.error) { show('error', data.error); setLoading(false); return }
+      setResult(data.result)
+      loadIstoric()
+    } catch {
+      show('error', 'Conexiune întreruptă - încearcă din nou')
+    }
+    setLoading(false)
+  }
+
+  async function copiaza(val: string) {
+    try { await navigator.clipboard.writeText(val || ''); show('success', 'Copiat!') }
+    catch { show('error', 'Nu s-a putut copia') }
+  }
+
+  const impact = result ? IMPACT_STYLE[result.businessImpact] || IMPACT_STYLE.none : null
+  const areContinut = result && result.businessImpact !== 'none'
+
+  return (
+    <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
+
+      {/* Panou stânga — sursă */}
+      <div style={{...S.card, width:340, flexShrink:0, padding:16, display:'flex', flexDirection:'column', gap:12}}>
+        <div style={{fontSize:11, color:'rgba(159,215,255,0.4)', lineHeight:1.5, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:8, padding:'8px 10px'}}>
+          Lipește textul unei știri/anunț/eveniment din Iași — AI-ul evaluează dacă merită conținut de social media pentru AB Homes, și dacă da, îl generează.
+        </div>
+
+        <div>
+          <div style={S.lbl}>Link sursă (opțional)</div>
+          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."
+            style={{...S.inp, width:'100%', boxSizing:'border-box'}}/>
+        </div>
+
+        <div>
+          <div style={S.lbl}>Textul știrii</div>
+          <textarea value={text} onChange={e=>setText(e.target.value)} rows={10}
+            placeholder="Lipește aici textul articolului/anunțului..."
+            style={{...S.inp, width:'100%', resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', lineHeight:1.5}}/>
+        </div>
+
+        <button onClick={analizeaza} disabled={!text.trim()||loading}
+          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:(!text.trim()||loading)?'not-allowed':'pointer',
+            background:(!text.trim()||loading)?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
+            color:(!text.trim()||loading)?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+          {loading ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se analizează...</> : <><Newspaper size={15}/>Analizează</>}
+        </button>
+
+        {istoric.length>0 && (
+          <div>
+            <div style={{...S.lbl, display:'flex', alignItems:'center', gap:5}}><Clock size={11}/>Istoric ({istoric.length})</div>
+            <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:220, overflowY:'auto'}}>
+              {istoric.map(h => {
+                const st = IMPACT_STYLE[h.rezultat?.businessImpact] || IMPACT_STYLE.none
+                return (
+                  <button key={h.id} onClick={()=>setResult(h.rezultat)}
+                    style={{textAlign:'left', padding:'7px 9px', borderRadius:7, border:'1px solid rgba(159,215,255,0.08)', background:'transparent', cursor:'pointer'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:6}}>
+                      <span style={{width:6, height:6, borderRadius:'50%', background:st.color, flexShrink:0}}/>
+                      <span style={{fontSize:10, color:'rgba(159,215,255,0.35)'}}>{fmtData(h.created_at)}</span>
+                    </div>
+                    <div style={{fontSize:11, color:'rgba(214,228,244,0.6)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                      {h.rezultat?.summary || h.sursa_text?.slice(0,60)}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Panou dreapta — rezultat */}
+      <div style={{...S.card, flex:'1 1 420px', minWidth:0, padding:16}}>
+        {!result ? (
+          <div style={{padding:'60px 20px', textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13}}>
+            Lipește o știre și apasă „Analizează"
+          </div>
+        ) : (
+          <>
+            <div style={{display:'flex', gap:8, flexWrap:'wrap' as const, marginBottom:12}}>
+              <span style={{fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:20, background:`${impact!.color}22`, color:impact!.color, border:`1px solid ${impact!.color}44`}}>
+                {impact!.label}
+              </span>
+              <span style={{fontSize:11, padding:'4px 10px', borderRadius:20, background:'rgba(159,215,255,0.08)', color:'rgba(159,215,255,0.55)'}}>
+                {CATEGORIE_LABEL[result.category] || result.category}
+              </span>
+              <span style={{fontSize:11, padding:'4px 10px', borderRadius:20, background:'rgba(159,215,255,0.08)', color:'rgba(159,215,255,0.55)'}}>
+                {CONTINUT_LABEL[result.contentType] || result.contentType}
+              </span>
+              {!result.relevant && <span style={{fontSize:11, padding:'4px 10px', borderRadius:20, background:'rgba(248,113,113,0.1)', color:'#F87171'}}>Neconcludent</span>}
+              {result.relevant && !result.localRelevant && <span style={{fontSize:11, padding:'4px 10px', borderRadius:20, background:'rgba(248,113,113,0.1)', color:'#F87171'}}>Nu e local</span>}
+            </div>
+
+            <div style={{fontSize:13, color:'rgba(214,228,244,0.85)', lineHeight:1.6, marginBottom:8}}>{result.summary}</div>
+            <div style={{fontSize:12, color:'rgba(159,215,255,0.45)', fontStyle:'italic', marginBottom:16}}>{result.businessImpactReason}</div>
+
+            {!areContinut ? (
+              <div style={{fontSize:12, color:'rgba(159,215,255,0.35)', padding:'14px', textAlign:'center', background:'rgba(255,255,255,0.02)', borderRadius:8}}>
+                Nu are impact suficient pentru a genera conținut de postat.
+              </div>
+            ) : (
+              <div style={{display:'flex', flexDirection:'column', gap:14}}>
+                {[
+                  {lbl:'Text overlay (Story)', val:result.overlayText},
+                  {lbl:'Caption postare', val:result.postCaption},
+                  {lbl:'Prompt imagine (EN)', val:result.imagePrompt},
+                ].map(f => f.val && (
+                  <div key={f.lbl}>
+                    <div style={{...S.lbl, marginBottom:6}}>{f.lbl}</div>
+                    <div style={{fontSize:13, color:'rgba(214,228,244,0.85)', whiteSpace:'pre-wrap', lineHeight:1.6, background:'rgba(255,255,255,0.02)', borderRadius:8, padding:'10px 12px', marginBottom:6}}>
+                      {f.val}
+                    </div>
+                    <button onClick={()=>copiaza(f.val)}
+                      style={{padding:'6px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:11, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6}}>
+                      <Copy size={12}/>Copiază
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

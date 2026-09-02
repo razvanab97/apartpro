@@ -279,6 +279,19 @@ create index if not exists marketing_imagini_apartament_idx on marketing_imagini
 alter table marketing_imagini enable row level security;
 create policy "Allow all marketing_imagini" on marketing_imagini for all using (true);
 
+-- Analiza stiri locale -> continut social (tab Stiri din Generator Marketing) - nu e legat
+-- de un apartament anume, e la nivel de business (Iasi in general)
+create table if not exists marketing_stiri (
+  id uuid primary key default gen_random_uuid(),
+  sursa_text text,
+  sursa_url text,
+  rezultat jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists marketing_stiri_created_idx on marketing_stiri(created_at desc);
+alter table marketing_stiri enable row level security;
+create policy "Allow all marketing_stiri" on marketing_stiri for all using (true);
+
 -- =====================
 -- DATE DEMO
 -- =====================
