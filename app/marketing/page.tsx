@@ -451,7 +451,74 @@ function TabStiri({ show }: { show:(t:'success'|'error',m:string)=>void }) {
   const [result, setResult] = useState<any>(null)
   const [istoric, setIstoric] = useState<any[]>([])
 
-  useEffect(() => { loadIstoric() }, [])
+  // surse monitorizate + stiri descoperite automat din ele
+  const [surse, setSurse] = useState<any[]>([])
+  const [feedItems, setFeedItems] = useState<any[]>([])
+  const [showSurse, setShowSurse] = useState(false)
+  const [newSursaNume, setNewSursaNume] = useState('')
+  const [newSursaUrl, setNewSursaUrl] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [analizandId, setAnalizandId] = useState<string|null>(null)
+
+  useEffect(() => { loadIstoric(); loadSurse(); loadFeed() }, [])
+
+  async function loadSurse() {
+    const { data } = await supabase.from('marketing_stiri_surse').select('*').order('created_at')
+    setSurse(data || [])
+  }
+  async function loadFeed() {
+    const { data } = await supabase.from('marketing_stiri_feed')
+      .select('id,titlu,link,descriere,data_publicare,created_at,sursa:marketing_stiri_surse(nume)')
+      .order('created_at', { ascending:false }).limit(30)
+    setFeedItems(data || [])
+  }
+  async function adaugaSursa() {
+    if (!newSursaNume.trim() || !newSursaUrl.trim()) return
+    const { error } = await supabase.from('marketing_stiri_surse').insert({ nume:newSursaNume.trim(), url_feed:newSursaUrl.trim() })
+    if (error) { show('error', error.message); return }
+    setNewSursaNume(''); setNewSursaUrl(''); loadSurse()
+  }
+  async function toggleSursa(s:any) {
+    await supabase.from('marketing_stiri_surse').update({ activ: !s.activ }).eq('id', s.id)
+    loadSurse()
+  }
+  async function stergeSursa(id:string) {
+    if (!confirm('Ștergi sursa? Știrile deja descoperite din ea rămân în listă.')) return
+    await supabase.from('marketing_stiri_surse').delete().eq('id', id)
+    loadSurse()
+  }
+  async function verificaAcum() {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/cron-stiri', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: 'apartpro-cron-2026' }),
+      })
+      const data = await res.json()
+      if (data.error) { show('error', data.error); setSyncing(false); return }
+      show('success', `✓ ${data.totalNoi} știri noi găsite`)
+      loadFeed()
+    } catch {
+      show('error', 'Conexiune întreruptă - încearcă din nou')
+    }
+    setSyncing(false)
+  }
+  async function analizeazaDinFeed(item:any) {
+    setAnalizandId(item.id)
+    try {
+      const res = await fetch('/api/marketing-stiri', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `${item.titlu}\n\n${item.descriere||''}`, url: item.link }),
+      })
+      const data = await res.json()
+      if (data.error) { show('error', data.error); setAnalizandId(null); return }
+      setResult(data.result)
+      loadIstoric()
+    } catch {
+      show('error', 'Conexiune întreruptă - încearcă din nou')
+    }
+    setAnalizandId(null)
+  }
 
   async function loadIstoric() {
     try {
@@ -488,8 +555,81 @@ function TabStiri({ show }: { show:(t:'success'|'error',m:string)=>void }) {
 
   const impact = result ? IMPACT_STYLE[result.businessImpact] || IMPACT_STYLE.none : null
   const areContinut = result && result.businessImpact !== 'none'
+  const surseActive = surse.filter(s=>s.activ).length
 
   return (
+    <div>
+      {/* Surse monitorizate */}
+      <div style={{...S.card, padding:16, marginBottom:12}}>
+        <div style={{display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' as const}}>
+          <div style={{flex:1, minWidth:200}}>
+            <div style={{fontSize:13, fontWeight:700, color:'#E8F4FF'}}>📡 Surse monitorizate ({surseActive} active)</div>
+            <div style={{fontSize:11, color:'rgba(159,215,255,0.4)', marginTop:2}}>Verificate automat zilnic — poți verifica și manual oricând</div>
+          </div>
+          <button onClick={verificaAcum} disabled={syncing}
+            style={{display:'flex', alignItems:'center', gap:6, padding:'8px 14px', borderRadius:8, border:'1px solid rgba(74,222,128,0.4)', background:'rgba(74,222,128,0.1)', color:'#4ADE80', fontSize:12, fontWeight:600, cursor:syncing?'not-allowed':'pointer'}}>
+            {syncing ? <Loader2 size={13} style={{animation:'spin 1s linear infinite'}}/> : <Newspaper size={13}/>}
+            {syncing ? 'Verific...' : 'Verifică acum'}
+          </button>
+          <button onClick={()=>setShowSurse(v=>!v)}
+            style={{padding:'8px 14px', borderRadius:8, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:12, cursor:'pointer'}}>
+            {showSurse ? 'Ascunde surse' : 'Gestionează surse'}
+          </button>
+        </div>
+
+        {showSurse && (
+          <div style={{marginTop:14, paddingTop:14, borderTop:'1px solid rgba(159,215,255,0.08)', display:'flex', flexDirection:'column', gap:8}}>
+            {surse.map(s => (
+              <div key={s.id} style={{display:'flex', alignItems:'center', gap:8, padding:'7px 10px', borderRadius:8, background:'rgba(255,255,255,0.02)'}}>
+                <button onClick={()=>toggleSursa(s)} title={s.activ?'Dezactivează':'Activează'}
+                  style={{width:32, height:18, borderRadius:10, border:'none', cursor:'pointer', position:'relative', background:s.activ?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.15)', flexShrink:0}}>
+                  <span style={{position:'absolute', top:2, left:s.activ?16:2, width:14, height:14, borderRadius:'50%', background:'#fff', transition:'left .15s'}}/>
+                </button>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontSize:12, fontWeight:600, color:'rgba(214,228,244,0.85)'}}>{s.nume}</div>
+                  <div style={{fontSize:10, color:'rgba(159,215,255,0.35)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{s.url_feed}</div>
+                </div>
+                <button onClick={()=>stergeSursa(s.id)}
+                  style={{background:'none', border:'none', cursor:'pointer', color:'rgba(248,113,113,0.5)', fontSize:14, padding:'0 4px'}}>✕</button>
+              </div>
+            ))}
+            <div style={{display:'flex', gap:6, marginTop:4}}>
+              <input value={newSursaNume} onChange={e=>setNewSursaNume(e.target.value)} placeholder="Nume (ex. Ziarul de Iași)"
+                style={{...S.inp, width:160}}/>
+              <input value={newSursaUrl} onChange={e=>setNewSursaUrl(e.target.value)} placeholder="URL feed RSS (https://.../rss)"
+                style={{...S.inp, flex:1}}/>
+              <button onClick={adaugaSursa} disabled={!newSursaNume.trim()||!newSursaUrl.trim()}
+                style={{padding:'0 12px', borderRadius:7, border:'1px solid rgba(100,160,255,0.25)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                + Adaugă
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stiri descoperite */}
+      {feedItems.length>0 && (
+        <div style={{...S.card, padding:16, marginBottom:12}}>
+          <div style={{...S.lbl, marginBottom:8}}>Descoperite recent — click „Analizează" pentru oricare</div>
+          <div style={{display:'flex', flexDirection:'column', gap:6, maxHeight:280, overflowY:'auto'}}>
+            {feedItems.map(item => (
+              <div key={item.id} style={{display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:8, background:'rgba(255,255,255,0.02)'}}>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontSize:12, color:'rgba(214,228,244,0.8)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{item.titlu}</div>
+                  <div style={{fontSize:10, color:'rgba(159,215,255,0.35)'}}>{item.sursa?.nume} · {fmtData(item.created_at)}</div>
+                </div>
+                <a href={item.link} target="_blank" rel="noreferrer" title="Deschide sursa"
+                  style={{color:'rgba(159,215,255,0.4)', flexShrink:0, display:'flex'}}><Link2 size={13}/></a>
+                <button onClick={()=>analizeazaDinFeed(item)} disabled={analizandId===item.id}
+                  style={{padding:'5px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:11, fontWeight:600, cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' as const}}>
+                  {analizandId===item.id ? '...' : 'Analizează'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
 
       {/* Panou stânga — sursă */}
@@ -594,6 +734,7 @@ function TabStiri({ show }: { show:(t:'success'|'error',m:string)=>void }) {
           </>
         )}
       </div>
+    </div>
     </div>
   )
 }

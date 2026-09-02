@@ -292,6 +292,36 @@ create index if not exists marketing_stiri_created_idx on marketing_stiri(create
 alter table marketing_stiri enable row level security;
 create policy "Allow all marketing_stiri" on marketing_stiri for all using (true);
 
+-- Surse de stiri monitorizate (feed RSS) + stirile descoperite automat din ele,
+-- inainte de analiza AI (cron /api/cron-stiri, zilnic la 06:00, vezi vercel.json)
+create table if not exists marketing_stiri_surse (
+  id uuid primary key default gen_random_uuid(),
+  nume text not null,
+  url_feed text not null unique,
+  activ boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table marketing_stiri_surse enable row level security;
+create policy "Allow all marketing_stiri_surse" on marketing_stiri_surse for all using (true);
+
+create table if not exists marketing_stiri_feed (
+  id uuid primary key default gen_random_uuid(),
+  sursa_id uuid references marketing_stiri_surse(id) on delete cascade,
+  titlu text not null,
+  link text not null unique,
+  descriere text,
+  data_publicare timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists marketing_stiri_feed_created_idx on marketing_stiri_feed(created_at desc);
+alter table marketing_stiri_feed enable row level security;
+create policy "Allow all marketing_stiri_feed" on marketing_stiri_feed for all using (true);
+
+insert into marketing_stiri_surse (nume, url_feed) values
+  ('Ziarul de Iași', 'https://www.ziaruldeiasi.ro/rss'),
+  ('BZI.ro', 'https://www.bzi.ro/feed')
+on conflict (url_feed) do nothing;
+
 -- =====================
 -- DATE DEMO
 -- =====================
