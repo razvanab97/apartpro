@@ -9,6 +9,9 @@ function extractTag(block: string, tag: string): string {
 }
 function cleanText(s: string): string {
   let t = s.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
+  // Google Stiri (si altele) scriu tagurile HTML din descriere ca &lt;...&gt; escapate,
+  // nu ca <...> direct - trebuie decodate INAINTE de a strip-ui tagurile, altfel raman vizibile
+  t = t.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
   t = t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   t = t.replace(/&amp;/g, '&').replace(/&#8211;/g, '–').replace(/&#8217;/g, "'")
     .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&nbsp;/g, ' ')
