@@ -202,7 +202,7 @@ export default function CalendarPage() {
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,apartament:apartamente!inner(id,nume,nota)')
+          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,observatii,apartament:apartamente!inner(id,nume,nota)')
           .or('status_rezervare.neq.anulata,status_rezervare.is.null')
           .lte('data_checkin', end).gte('data_checkout', start)
           .order('data_checkin'),
@@ -814,33 +814,61 @@ Echipa AB Homes Iași`)}
         )}
       </div>
 
-      {/* Tooltip */}
+      {/* Tooltip — card informativ despre rezervare (nu editarea, aia e alt buton mai jos) */}
       {tooltip && (
-        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-250), top:Math.min(tooltip.y-10,window.innerHeight-210), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${cs(tooltip.rez.canal).bg}`, borderRadius:12, padding:'16px 18px', minWidth:230, boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
-          <div style={{ fontSize:15,fontWeight:700,color:'#fff',marginBottom:3 }}>{tooltip.rez.nume_client}</div>
-          <div style={{ fontSize:12,color:'rgba(159,215,255,0.5)',marginBottom:10 }}>{tooltip.rez.apartament?.nume||'—'}</div>
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12 }}>
+        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.min(tooltip.y-10,window.innerHeight-420), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${cs(tooltip.rez.canal).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
+          <div style={{ fontSize:17,fontWeight:700,color:'#fff',marginBottom:6 }}>{tooltip.rez.nume_client}</div>
+          <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:14 }}>
+            {tooltip.rez.apartament?.nota&&<span style={{ fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.15)',padding:'2px 7px',borderRadius:5,fontFamily:'monospace' }}>{tooltip.rez.apartament.nota}</span>}
+            <span style={{ fontSize:13,color:'rgba(159,215,255,0.6)' }}>{tooltip.rez.apartament?.nume||'—'}</span>
+          </div>
+
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10 }}>
             {[['Check-in',tooltip.rez.data_checkin],['Check-out',tooltip.rez.data_checkout]].map(([lbl,val])=>(
-              <div key={lbl} style={{ background:'rgba(255,255,255,0.04)',borderRadius:7,padding:'7px 10px' }}>
+              <div key={lbl} style={{ background:'rgba(255,255,255,0.04)',borderRadius:7,padding:'8px 10px' }}>
                 <div style={{ fontSize:9,color:'rgba(159,215,255,0.35)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.06em' }}>{lbl}</div>
-                <div style={{ fontSize:12,color:'#fff',fontFamily:'monospace',fontWeight:600 }}>{val}</div>
+                <div style={{ fontSize:13,color:'#fff',fontFamily:'monospace',fontWeight:600 }}>{val}</div>
               </div>
             ))}
           </div>
-          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
-            <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-              <div style={{ width:10,height:10,borderRadius:3,background:cs(tooltip.rez.canal).bg }}/>
-              <span style={{ fontSize:12,color:'rgba(214,228,244,0.6)',textTransform:'capitalize' }}>{tooltip.rez.canal}</span>
-              {tooltip.rez.nr_nopti&&<span style={{ fontSize:11,color:'rgba(159,215,255,0.35)' }}>· {tooltip.rez.nr_nopti}n</span>}
-              {tooltip.rez.nr_persoane&&<span style={{ fontSize:11,color:'rgba(159,215,255,0.35)' }}>· 👥 {tooltip.rez.nr_persoane}</span>}
+
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12 }}>
+            <div style={{ textAlign:'center',background:'rgba(255,255,255,0.03)',borderRadius:7,padding:'8px 4px' }}>
+              <div style={{ fontSize:14,fontWeight:700,color:'#fff' }}>{tooltip.rez.nr_nopti||'?'}</div>
+              <div style={{ fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.04em' }}>nopți</div>
             </div>
-            {tooltip.rez.telefon_client&&(
-              <a href={`https://wa.me/${tooltip.rez.telefon_client.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener"
-                style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 8px',borderRadius:7,background:'rgba(37,211,102,0.15)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',textDecoration:'none',fontSize:12,fontWeight:600 }}>
-                <MessageCircle size={13}/> WA
-              </a>
-            )}
+            <div style={{ textAlign:'center',background:'rgba(255,255,255,0.03)',borderRadius:7,padding:'8px 4px' }}>
+              <div style={{ fontSize:14,fontWeight:700,color:'#fff' }}>{tooltip.rez.nr_persoane||'?'}</div>
+              <div style={{ fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.04em' }}>oaspeți</div>
+            </div>
+            <div style={{ textAlign:'center',background:'rgba(74,222,128,0.06)',borderRadius:7,padding:'8px 4px' }}>
+              <div style={{ fontSize:14,fontWeight:700,color:'#4ADE80' }}>{tooltip.rez.suma_incasata?Number(tooltip.rez.suma_incasata).toLocaleString('ro-RO'):'?'}</div>
+              <div style={{ fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.04em' }}>RON</div>
+            </div>
           </div>
+
+          <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:10 }}>
+            <div style={{ width:10,height:10,borderRadius:3,background:cs(tooltip.rez.canal).bg,flexShrink:0 }}/>
+            <span style={{ fontSize:12,color:'rgba(214,228,244,0.6)',textTransform:'capitalize' }}>{tooltip.rez.canal}</span>
+          </div>
+
+          {tooltip.rez.telefon_client&&(
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:7 }}>
+              <span style={{ fontSize:12,color:'rgba(214,228,244,0.8)',fontFamily:'monospace' }}>{tooltip.rez.telefon_client}</span>
+              <a href={`https://wa.me/${tooltip.rez.telefon_client.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener"
+                style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 8px',borderRadius:7,background:'rgba(37,211,102,0.15)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',textDecoration:'none',fontSize:11,fontWeight:600,flexShrink:0 }}>
+                <MessageCircle size={12}/> WA
+              </a>
+            </div>
+          )}
+
+          {tooltip.rez.observatii&&(
+            <div style={{ marginBottom:14,padding:'8px 10px',background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.15)',borderRadius:7 }}>
+              <div style={{ fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.06em' }}>Observații</div>
+              <div style={{ fontSize:12,color:'rgba(214,228,244,0.8)',whiteSpace:'pre-wrap' as const,lineHeight:1.4 }}>{tooltip.rez.observatii}</div>
+            </div>
+          )}
+
           <button onClick={()=>{
             setEditRez(tooltip.rez)
             setEditForm({nume:tooltip.rez.nume_client||'',telefon:tooltip.rez.telefon_client||'',checkin:tooltip.rez.data_checkin||'',checkout:tooltip.rez.data_checkout||'',pret:String(tooltip.rez.suma_incasata||''),observatii:tooltip.rez.observatii||''})
@@ -869,8 +897,9 @@ Echipa AB Homes Iași`)}
             ))}
             <div style={{ marginBottom:14 }}>
               <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.06em' }}>Observații</div>
-              <input value={editForm.observatii} onChange={e=>setEditForm(f=>({...f,observatii:e.target.value}))}
-                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+              <textarea value={editForm.observatii} onChange={e=>setEditForm(f=>({...f,observatii:e.target.value}))} rows={4}
+                placeholder="ex. plată cash la sosire, alocă parcare..."
+                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
             </div>
 
             {editForm.telefon && (()=>{
