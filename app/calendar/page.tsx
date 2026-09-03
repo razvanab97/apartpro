@@ -136,7 +136,7 @@ export default function CalendarPage() {
   // panel lateral
   const [panel, setPanel] = useState<'info'|'new'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
-  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'' })
+  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'', notite:'' })
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
   const [lastNrRez, setLastNrRez] = useState<string|null>(null)
@@ -248,7 +248,7 @@ export default function CalendarPage() {
   function openNewRez(aptId:string, from:number, to:number){
     const ci = isoDate(year,month,from)
     const co = isoDate(year,month,to+1)
-    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'' })
+    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'', notite:'' })
     setCiPreview(null)
     setPanel('new')
   }
@@ -274,7 +274,7 @@ export default function CalendarPage() {
       status_rezervare: 'confirmata',
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
-      observatii: `${nrRez}${newRez.cnp?' | CNP: '+newRez.cnp:''}`,
+      observatii: [`${nrRez}${newRez.cnp?' | CNP: '+newRez.cnp:''}`, newRez.notite.trim()].filter(Boolean).join(' | '),
     }).select().single()
 
     setSaving(false)
@@ -755,10 +755,17 @@ export default function CalendarPage() {
                 </div>
 
                 {/* Pret */}
-                <div style={{ marginBottom:20 }}>
+                <div style={{ marginBottom:10 }}>
                   <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Preț total (RON)</div>
                   <input type="number" value={newRez.pret} onChange={e=>setNewRez({...newRez,pret:e.target.value})} placeholder="0" min={0}
                     style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+                </div>
+
+                {/* Notite */}
+                <div style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Notițe (opțional)</div>
+                  <textarea value={newRez.notite} onChange={e=>setNewRez({...newRez,notite:e.target.value})} placeholder="ex. plată cash la sosire, alocă parcare..." rows={3}
+                    style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
                 </div>
 
                 <button onClick={saveRez} disabled={saving || !newRez.aptId || !newRez.nume || !newRez.checkin || !newRez.checkout}
