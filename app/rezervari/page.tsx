@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL } from '@/lib/supabase'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
@@ -15,6 +15,7 @@ type BadgeColor = 'green'|'amber'|'red'|'blue'|'purple'|'gray'|'teal'
 const STATUS_COLOR: Record<string, BadgeColor> = { confirmata:'green', cerere:'amber', anulata:'red', finalizata:'blue' }
 const PLATA_COLOR: Record<string, BadgeColor> = { achitat:'green', avans:'amber', neplatit:'red' }
 const DECONT_COLOR: Record<string, BadgeColor> = { decontat:'green', inclus:'amber', nedecontat:'gray' }
+const FACTURARE_COLOR: Record<string, BadgeColor> = { facturata:'green', de_facturat:'amber', nefacturat:'gray' }
 
 const emptyRez = {
   canal:'direct', nume_client:'', email_client:'', telefon_client:'',
@@ -24,7 +25,7 @@ const emptyRez = {
   moneda:'RON', status_plata:'neplatit', status_rezervare:'confirmata',
   comision_platforma_procent:0, comision_platforma_valoare:0, tva_comision_platforma:0,
   cost_curatenie:0, cost_spalatorie:0, cost_consumabile:0, cost_mentenanta:0, alte_costuri:0,
-  status_decont:'nedecontat', observatii:'', apartament_id:'', proprietar_id:'',
+  status_decont:'nedecontat', status_facturare:'nefacturat', observatii:'', apartament_id:'', proprietar_id:'',
 }
 
 export default function RezervariPage() {
@@ -39,6 +40,11 @@ export default function RezervariPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [showBulkConfirm, setShowBulkConfirm] = useState(false)
+  const [bulkMarking, setBulkMarking] = useState(false)
+  const [expandedLuni, setExpandedLuni] = useState<Set<string>>(() => {
+    const t = new Date()
+    return new Set([`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`])
+  })
   const [filterCanal, setFilterCanal] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterApt, setFilterApt] = useState('')
@@ -198,6 +204,40 @@ export default function RezervariPage() {
     setBulkDeleting(false); setShowBulkConfirm(false)
   }
 
+  async function bulkMarkFacturat() {
+    setBulkMarking(true)
+    const ids = Array.from(selected)
+    const { error } = await supabase.from('rezervari').update({ status_facturare: 'de_facturat' }).in('id', ids)
+    if (error) { show('error', error.message) }
+    else { show('success', `${ids.length} rezervări marcate „de facturat"`); setSelected(new Set()); load() }
+    setBulkMarking(false)
+  }
+
+  async function marcheazaFacturat(ids: string[]) {
+    const { error } = await supabase.from('rezervari').update({ status_facturare: 'facturata' }).in('id', ids)
+    if (error) { show('error', error.message) }
+    else { show('success', ids.length > 1 ? `${ids.length} rezervări marcate facturate` : 'Marcată ca facturată'); load() }
+  }
+
+  function toggleLuna(luna: string) {
+    setExpandedLuni(prev => {
+      const next = new Set(prev)
+      next.has(luna) ? next.delete(luna) : next.add(luna)
+      return next
+    })
+  }
+
+  const deFacturat = rezervari.filter(r => r.status_facturare === 'de_facturat')
+  const facturareGrupat = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const r of deFacturat) {
+      const key = r.data_checkin?.slice(0,7) || '—'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(r)
+    }
+    return Array.from(map.entries()).sort((a,b) => b[0].localeCompare(a[0]))
+  }, [rezervari])
+
   return (
     <>
       <PageHeader title="Rezervări" subtitle={`${rezervari.length} rezervări totale`}
@@ -210,6 +250,9 @@ export default function RezervariPage() {
                 </span>
                 <button onClick={()=>setSelected(new Set())} style={{fontSize:11,padding:'5px 10px',borderRadius:7,background:'transparent',border:'1px solid rgba(159,215,255,0.15)',color:'rgba(159,215,255,0.5)',cursor:'pointer'}}>
                   Deselectează
+                </button>
+                <button onClick={bulkMarkFacturat} disabled={bulkMarking} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,background:'rgba(251,191,36,0.15)',border:'1px solid rgba(251,191,36,0.35)',color:'#FBBF24',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  📄 De facturat {selected.size}
                 </button>
                 <button onClick={()=>setShowBulkConfirm(true)} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.35)',color:'#F87171',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                   <Trash2 size={13}/> Șterge {selected.size}
@@ -267,6 +310,55 @@ export default function RezervariPage() {
           )}
         </div>
 
+        {/* De facturat, grupate pe lună */}
+        {deFacturat.length > 0 && (
+          <div className="bg-[#161b27] border border-[#2a3350] rounded-[14px] overflow-hidden mb-5">
+            <div style={{padding:'14px 18px',borderBottom:'1px solid #2a3350',display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:14,fontWeight:700,color:'#E8F4FF'}}>📄 De facturat</span>
+              <span style={{fontSize:11,padding:'2px 8px',borderRadius:6,background:'rgba(251,191,36,0.12)',color:'#FBBF24',border:'1px solid rgba(251,191,36,0.25)',fontWeight:600}}>{deFacturat.length}</span>
+            </div>
+            <div style={{padding:'12px 18px 16px'}}>
+              {facturareGrupat.map(([luna, list]) => {
+                const [y,m] = luna.split('-')
+                const total = list.reduce((s,r)=>s+Number(r.suma_incasata||0),0)
+                const expanded = expandedLuni.has(luna)
+                return (
+                  <div key={luna} style={{marginBottom:10,border:'1px solid rgba(159,215,255,0.1)',borderRadius:10,overflow:'hidden'}}>
+                    <button onClick={()=>toggleLuna(luna)} style={{width:'100%',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 14px',background:'rgba(20,38,65,0.5)',border:'none',cursor:'pointer'}}>
+                      <span style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>
+                        {LUNI[parseInt(m)]||luna} {y}
+                        <span style={{color:'rgba(159,215,255,0.5)',fontWeight:400,marginLeft:8}}>({list.length} rezervări · {total.toLocaleString('ro-RO')} RON)</span>
+                      </span>
+                      {expanded ? <ChevronUp size={14} color="#7BC8FF"/> : <ChevronDown size={14} color="#7BC8FF"/>}
+                    </button>
+                    {expanded && (
+                      <div style={{padding:'6px 14px 12px'}}>
+                        {list.map((r:any) => (
+                          <div key={r.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid rgba(159,215,255,0.06)',gap:10,flexWrap:'wrap'}}>
+                            <div>
+                              <span style={{fontSize:13,color:'var(--text)',fontWeight:500}}>{r.nume_client}</span>
+                              <span style={{fontSize:11,color:'var(--text3)',marginLeft:8}}>{r.apartament?.nume||'—'} · {r.data_checkin} → {r.data_checkout}</span>
+                            </div>
+                            <div style={{display:'flex',alignItems:'center',gap:10}}>
+                              <span style={{fontFamily:'monospace',fontSize:13,color:'var(--green)',fontWeight:600}}>{Number(r.suma_incasata).toLocaleString('ro-RO')} {r.moneda}</span>
+                              <button onClick={()=>marcheazaFacturat([r.id])} style={{fontSize:11,padding:'5px 10px',borderRadius:7,background:'rgba(34,197,94,0.12)',border:'1px solid rgba(34,197,94,0.3)',color:'#4ADE80',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}>
+                                ✓ Facturat
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        <button onClick={()=>marcheazaFacturat(list.map((r:any)=>r.id))} style={{marginTop:10,fontSize:11,padding:'6px 12px',borderRadius:7,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.2)',color:'#7BC8FF',cursor:'pointer',fontWeight:600}}>
+                          ✓ Marchează toată luna ca facturată
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="bg-[#161b27] border border-[#2a3350] rounded-[14px] overflow-hidden">
           {filtered.length === 0 ? (
             <EmptyState icon={<CalendarCheck size={48}/>} title="Nicio rezervare" desc="Adaugă prima rezervare" action={<Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Adaugă rezervare</Button>}/>
@@ -284,7 +376,7 @@ export default function RezervariPage() {
                   </th>
                   <th>Client</th><th>Apartament</th><th>Canal</th>
                   <th>Check-in</th><th>Check-out</th><th>Nopți</th>
-                  <th>Sumă</th><th>Proprietar</th><th>Status</th><th>Plată</th><th>Decont</th><th></th>
+                  <th>Sumă</th><th>Proprietar</th><th>Status</th><th>Plată</th><th>Decont</th><th>Facturare</th><th></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map(r => (
@@ -314,6 +406,7 @@ export default function RezervariPage() {
                       <td><Badge color={STATUS_COLOR[r.status_rezervare]||'gray'}>{STATUS_REZERVARE_LABEL[r.status_rezervare]||r.status_rezervare}</Badge></td>
                       <td><Badge color={PLATA_COLOR[r.status_plata]||'gray'}>{STATUS_PLATA_LABEL[r.status_plata]||r.status_plata}</Badge></td>
                       <td><Badge color={DECONT_COLOR[r.status_decont]||'gray'}>{r.status_decont}</Badge></td>
+                      <td><Badge color={FACTURARE_COLOR[r.status_facturare]||'gray'}>{STATUS_FACTURARE_LABEL[r.status_facturare]||'Nefacturat'}</Badge></td>
                       <td onClick={e=>e.stopPropagation()}>
                         <div style={{display:'flex',gap:4,alignItems:'center'}}>
                           {r.telefon_client && (
@@ -473,7 +566,7 @@ export default function RezervariPage() {
           </div>
         )}
 
-        <FormRow cols={3}>
+        <FormRow cols={4}>
           <FormGroup>
             <label>Status rezervare</label>
             <select value={editing.status_rezervare} onChange={e=>setEditing({...editing,status_rezervare:e.target.value})}>
@@ -492,6 +585,12 @@ export default function RezervariPage() {
               <option value="nedecontat">Nedecontat</option>
               <option value="inclus">Inclus în decont</option>
               <option value="decontat">Decontat</option>
+            </select>
+          </FormGroup>
+          <FormGroup>
+            <label>Facturare</label>
+            <select value={editing.status_facturare||'nefacturat'} onChange={e=>setEditing({...editing,status_facturare:e.target.value})}>
+              {Object.entries(STATUS_FACTURARE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
             </select>
           </FormGroup>
         </FormRow>

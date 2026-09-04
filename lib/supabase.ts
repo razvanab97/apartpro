@@ -91,7 +91,7 @@ export type Rezervare = {
   comision_platforma_valoare: number; tva_comision_platforma: number; cost_curatenie: number
   cost_spalatorie: number; cost_consumabile: number; cost_mentenanta: number; alte_costuri: number
   baza_calcul_comision: number; comision_administrator: number; suma_proprietar: number
-  status_decont: string; observatii?: string; mesaj_checkin?: string; mesaj_checkout?: string; created_at: string
+  status_decont: string; status_facturare?: string; observatii?: string; mesaj_checkin?: string; mesaj_checkout?: string; created_at: string
 }
 export type Cheltuiala = {
   id: string; apartament_id: string; apartament?: Apartament; proprietar_id?: string; rezervare_id?: string
@@ -142,6 +142,7 @@ export const CANALE_LABEL: Record<string, string> = { booking:'Booking.com', air
 export const STATUS_REZERVARE_LABEL: Record<string, string> = { cerere:'Cerere', confirmata:'Confirmată', anulata:'Anulată', finalizata:'Finalizată' }
 export const STATUS_PLATA_LABEL: Record<string, string> = { neplatit:'Neplatit', avans:'Avans', achitat:'Achitat' }
 export const STATUS_DECONT_LABEL: Record<string, string> = { nedecontat:'Nedecontat', inclus:'Inclus în decont', decontat:'Decontat' }
+export const STATUS_FACTURARE_LABEL: Record<string, string> = { nefacturat:'Nefacturat', de_facturat:'De facturat', facturata:'Facturată' }
 export const CATEGORII_CHELTUIELI = ['curatenie','spalatorie','consumabile','mentenanta','reparatii','comision_booking','comision_airbnb','tva_platforma','contabilitate','fotografii','alte']
 export const CATEGORII_LABEL: Record<string, string> = { curatenie:'Curățenie', spalatorie:'Spălătorie / Lenjerii', consumabile:'Consumabile', mentenanta:'Mentenanță', reparatii:'Reparații', comision_booking:'Comision Booking', comision_airbnb:'Comision Airbnb', tva_platforma:'TVA / Taxă platformă', contabilitate:'Contabilitate', fotografii:'Fotografii / Promovare', alte:'Alte cheltuieli' }
 export const LUNI = ['','Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
