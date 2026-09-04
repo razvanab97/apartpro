@@ -136,7 +136,12 @@ export default function CalendarPage() {
   // panel lateral
   const [panel, setPanel] = useState<'info'|'new'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
-  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'', notite:'' })
+  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'', notite:'', persoane:'' })
+  const [rezScanPreview, setRezScanPreview] = useState<string|null>(null)
+  const [scanningRez, setScanningRez] = useState(false)
+  const [rezScanError, setRezScanError] = useState<string|null>(null)
+  const [rezScanApt, setRezScanApt] = useState<string|null>(null)
+  const rezScanRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [saveOk, setSaveOk] = useState(false)
   const [lastNrRez, setLastNrRez] = useState<string|null>(null)
@@ -248,8 +253,9 @@ export default function CalendarPage() {
   function openNewRez(aptId:string, from:number, to:number){
     const ci = isoDate(year,month,from)
     const co = isoDate(year,month,to+1)
-    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'', notite:'' })
+    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'', notite:'', persoane:'' })
     setCiPreview(null)
+    setRezScanPreview(null); setRezScanError(null); setRezScanApt(null)
     setPanel('new')
   }
 
@@ -270,6 +276,7 @@ export default function CalendarPage() {
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
       suma_incasata: parseFloat(newRez.pret) || 0,
+      nr_persoane: parseInt(newRez.persoane) || null,
       canal: 'intern',
       status_rezervare: 'confirmata',
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
@@ -346,6 +353,62 @@ export default function CalendarPage() {
       setCiScanError('Eroare la scanare — completează manual')
     }
     setScanningCI(false)
+  }
+
+  // Cauta un apartament existent al carui nume/cod se regaseste in textul citit din screenshot
+  // (nu e o potrivire perfecta - platformele externe scriu numele proprietatii diferit de codul intern)
+  function matchApartament(text: string|null): string|null {
+    if (!text) return null
+    const norm = (s:string) => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim()
+    const t = norm(text)
+    const found = apts.find(a => {
+      const n = norm(a.nume||''), nota = norm(a.nota||'')
+      return (n.length>2 && (t.includes(n) || n.includes(t))) || (nota.length>1 && t.includes(nota))
+    })
+    return found?.id || null
+  }
+
+  // Importa o rezervare (Airbnb/Booking, de regula) dintr-un screenshot - completeaza formularul
+  // automat, dar salvarea ramane manuala (buton Salveaza), ca sa poti verifica inainte
+  async function scanRezervare(file: File) {
+    setRezScanPreview(URL.createObjectURL(file))
+    setRezScanError(null)
+    setRezScanApt(null)
+    setScanningRez(true)
+    try {
+      const base64Data = await fileToBase64(file)
+      const res = await fetch('/api/scan-rezervare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Data, mimeType: file.type || 'image/jpeg' }),
+      })
+      const data = await res.json()
+      if (data.error || !data.result) {
+        setRezScanError(data.error || 'Nu am putut citi datele din poză — completează manual')
+        setScanningRez(false)
+        return
+      }
+      const r = data.result
+      const persoane = (Number(r.adulti)||0) + (Number(r.copii)||0)
+      const matchedAptId = matchApartament(r.apartament_text)
+      setNewRez(prev => ({
+        ...prev,
+        nume: r.nume_client || prev.nume,
+        checkin: r.data_checkin || prev.checkin,
+        checkout: r.data_checkout || prev.checkout,
+        pret: r.pret_total ? String(r.pret_total) : prev.pret,
+        persoane: persoane ? String(persoane) : prev.persoane,
+        aptId: matchedAptId || prev.aptId,
+      }))
+      if (r.apartament_text) {
+        setRezScanApt(matchedAptId
+          ? `✓ Apartament recunoscut: ${apts.find(a=>a.id===matchedAptId)?.nume}`
+          : `⚠ Nu am recunoscut apartamentul „${r.apartament_text}" — alege-l manual mai sus`)
+      }
+    } catch {
+      setRezScanError('Eroare la scanare — completează manual')
+    }
+    setScanningRez(false)
   }
 
   // panel info zi
@@ -677,6 +740,29 @@ export default function CalendarPage() {
                   <button onClick={()=>{ setPanel(null); clearSel() }} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',display:'flex' }}><X size={15}/></button>
                 </div>
 
+                {/* Import din screenshot (Airbnb/Booking) */}
+                <div style={{ marginBottom:14,padding:'10px',borderRadius:9,border:'1px dashed rgba(167,139,250,0.35)',background:'rgba(167,139,250,0.05)' }}>
+                  <input ref={rezScanRef} type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&scanRezervare(e.target.files[0])} style={{ display:'none' }}/>
+                  {rezScanPreview
+                    ? <div style={{ position:'relative',borderRadius:8,overflow:'hidden',border:'1px solid rgba(167,139,250,0.3)' }}>
+                        <img src={rezScanPreview} alt="" style={{ width:'100%',maxHeight:140,objectFit:'contain',background:'rgba(0,0,0,0.4)',display:'block' }}/>
+                        {scanningRez && (
+                          <div style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',gap:7,color:'#fff',fontSize:12,fontWeight:600 }}>
+                            <Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se citește...
+                          </div>
+                        )}
+                        <button onClick={()=>{setRezScanPreview(null);setRezScanError(null);setRezScanApt(null)}} style={{ position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.6)',border:'none',borderRadius:4,color:'#fff',cursor:'pointer',padding:'2px 6px',fontSize:10 }}>✕</button>
+                      </div>
+                    : <button onClick={()=>rezScanRef.current?.click()}
+                        style={{ width:'100%',padding:'9px',borderRadius:7,border:'none',background:'transparent',color:'rgba(167,139,250,0.75)',fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:7 }}>
+                        📸 Importă din screenshot (Airbnb/Booking)
+                      </button>
+                  }
+                  {rezScanError && <div style={{ fontSize:11,color:'#F87171',marginTop:6 }}>{rezScanError}</div>}
+                  {rezScanApt && <div style={{ fontSize:11,color:rezScanApt.startsWith('✓')?'#4ADE80':'#FCD34D',marginTop:6 }}>{rezScanApt}</div>}
+                  {!rezScanPreview && <div style={{ fontSize:10,color:'rgba(159,215,255,0.3)',marginTop:5,textAlign:'center' }}>Completează automat câmpurile de mai jos — verifică înainte de salvare</div>}
+                </div>
+
                 {/* Apartament */}
                 <div style={{ marginBottom:10 }}>
                   <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Apartament</div>
@@ -754,11 +840,18 @@ export default function CalendarPage() {
                     style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
                 </div>
 
-                {/* Pret */}
-                <div style={{ marginBottom:10 }}>
-                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Preț total (RON)</div>
-                  <input type="number" value={newRez.pret} onChange={e=>setNewRez({...newRez,pret:e.target.value})} placeholder="0" min={0}
-                    style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+                {/* Pret + Persoane */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Preț total (RON)</div>
+                    <input type="number" value={newRez.pret} onChange={e=>setNewRez({...newRez,pret:e.target.value})} placeholder="0" min={0}
+                      style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',boxSizing:'border-box' }}/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Persoane</div>
+                    <input type="number" value={newRez.persoane} onChange={e=>setNewRez({...newRez,persoane:e.target.value})} placeholder="2" min={1}
+                      style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',boxSizing:'border-box' }}/>
+                  </div>
                 </div>
 
                 {/* Notite */}
