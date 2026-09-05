@@ -176,6 +176,17 @@ export default function RezervariPage() {
 
   const c = calcul()
 
+  const deFacturat = rezervari.filter(r => r.status_facturare === 'de_facturat')
+  const facturareGrupat = useMemo(() => {
+    const map = new Map<string, any[]>()
+    for (const r of deFacturat) {
+      const key = r.data_checkin?.slice(0,7) || '—'
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(r)
+    }
+    return Array.from(map.entries()).sort((a,b) => b[0].localeCompare(a[0]))
+  }, [rezervari])
+
   if (loading) return (<><PageHeader title="Rezervări" /><PageLoading /></>)
   if (loadError) return (<><PageHeader title="Rezervări" /><ConnectionError onRetry={()=>load()}/></>)
 
@@ -226,17 +237,6 @@ export default function RezervariPage() {
       return next
     })
   }
-
-  const deFacturat = rezervari.filter(r => r.status_facturare === 'de_facturat')
-  const facturareGrupat = useMemo(() => {
-    const map = new Map<string, any[]>()
-    for (const r of deFacturat) {
-      const key = r.data_checkin?.slice(0,7) || '—'
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(r)
-    }
-    return Array.from(map.entries()).sort((a,b) => b[0].localeCompare(a[0]))
-  }, [rezervari])
 
   return (
     <>
