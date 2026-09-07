@@ -146,3 +146,12 @@ export const STATUS_FACTURARE_LABEL: Record<string, string> = { nefacturat:'Nefa
 export const CATEGORII_CHELTUIELI = ['curatenie','spalatorie','consumabile','mentenanta','reparatii','comision_booking','comision_airbnb','tva_platforma','contabilitate','fotografii','alte']
 export const CATEGORII_LABEL: Record<string, string> = { curatenie:'Curățenie', spalatorie:'Spălătorie / Lenjerii', consumabile:'Consumabile', mentenanta:'Mentenanță', reparatii:'Reparații', comision_booking:'Comision Booking', comision_airbnb:'Comision Airbnb', tva_platforma:'TVA / Taxă platformă', contabilitate:'Contabilitate', fotografii:'Fotografii / Promovare', alte:'Alte cheltuieli' }
 export const LUNI = ['','Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
+
+// prefixul 40 se adauga DOAR la numere mobile romanesti reale (07xxxxxxxx, 10 cifre) -
+// orice alt numar de 10 cifre care incepe cu 0 (ex. mobil strain scris local) ramane neatins
+export function normalizeWaPhone(phone: string): string {
+  const clean = (phone || '').replace(/\D/g, '')
+  if (clean.startsWith('00')) return clean.slice(2)
+  if (clean.length === 10 && clean.startsWith('07')) return '4' + clean
+  return clean
+}

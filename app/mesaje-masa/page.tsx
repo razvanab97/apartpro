@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 
@@ -17,9 +17,7 @@ const SABLOANE = [
 ]
 
 function waLink(phone:string, msg:string){
-  const clean = phone.replace(/\D/g,'')
-  const nr = clean.startsWith('00') ? clean.slice(2) : clean.length===10 && clean.startsWith('0') ? '4'+clean : clean
-  return `https://wa.me/${nr}?text=${encodeURIComponent(msg.normalize('NFC'))}`
+  return `https://wa.me/${normalizeWaPhone(phone)}?text=${encodeURIComponent(msg.normalize('NFC'))}`
 }
 
 function apply(text:string, r:any){

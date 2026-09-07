@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText } from 'lucide-react'
 import { ConnectionError } from '@/components/ui'
@@ -35,8 +35,7 @@ function isoDate(y:number,m:number,d:number){ return `${y}-${String(m+1).padStar
 function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7 }
 function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
-  const clean=phone.replace(/\D/g,'')
-  const nr=clean.startsWith('00')?clean.slice(2):clean.length===10&&clean.startsWith('0')?'4'+clean:clean
+  const nr=normalizeWaPhone(phone)
   const encoded = encodeURIComponent(msg)
   return `https://wa.me/${nr}?text=${encoded}`
 }

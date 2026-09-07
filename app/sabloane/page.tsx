@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { supabase, getStorageUrl } from '@/lib/supabase'
+import { supabase, getStorageUrl, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { Upload, Trash2, Plus, Send } from 'lucide-react'
@@ -17,9 +17,7 @@ const WA_SABLOANE = [
   { key:'custom',     label:'✏️ Personalizat',         text:'' },
 ]
 function _waLink(phone:string, msg:string){
-  const clean = phone.replace(/\D/g,'')
-  const nr = clean.startsWith('00') ? clean.slice(2) : clean.length===10 && clean.startsWith('0') ? '4'+clean : clean
-  return `https://wa.me/${nr}?text=${encodeURIComponent(msg.normalize('NFC'))}`
+  return `https://wa.me/${normalizeWaPhone(phone)}?text=${encodeURIComponent(msg.normalize('NFC'))}`
 }
 function _apply(text:string, r:any){
   return text
