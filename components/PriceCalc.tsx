@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Modal, FormGroup, FormRow } from '@/components/ui'
-import { Calculator, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calculator, X, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react'
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
   addMonths, subMonths, format, isSameMonth, isSameDay, isToday,
@@ -92,11 +92,20 @@ export default function PriceCalc() {
   const [open, setOpen] = useState(false)
   const [checkin, setCheckin] = useState('')
   const [checkout, setCheckout] = useState('')
-  const [pretNoapte, setPretNoapte] = useState('')
+  const [noptiInput, setNoptiInput] = useState('')
+  const [mode, setMode] = useState<'perNoapte' | 'total'>('perNoapte')
+  const [pretInput, setPretInput] = useState('')
   const [moneda, setMoneda] = useState<'RON' | 'EUR'>('RON')
 
-  const nopti = nightsBetween(checkin, checkout)
-  const total = nopti * (Number(pretNoapte) || 0)
+  function onPickRange(a: string, b: string) {
+    setCheckin(a); setCheckout(b)
+    if (a && b) setNoptiInput(String(nightsBetween(a, b)))
+  }
+
+  const nopti = Number(noptiInput) || 0
+  const pretVal = Number(pretInput) || 0
+  const pretPerNoapte = mode === 'perNoapte' ? pretVal : (nopti > 0 ? pretVal / nopti : 0)
+  const total = mode === 'perNoapte' ? pretVal * nopti : pretVal
 
   return (
     <>
@@ -136,20 +145,38 @@ export default function PriceCalc() {
           </div>
         </div>
 
-        <RangeCalendar checkin={checkin} checkout={checkout} onPick={(a, b) => { setCheckin(a); setCheckout(b) }} />
+        <RangeCalendar checkin={checkin} checkout={checkout} onPick={onPickRange} />
 
         <div style={{
           textAlign: 'center', padding: '14px 0', margin: '16px 0 18px',
           borderTop: '1px solid rgba(159,215,255,0.1)', borderBottom: '1px solid rgba(159,215,255,0.1)',
         }}>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#FFFFFF' }}>{nopti}</div>
-          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)' }}>{nopti === 1 ? 'noapte' : 'nopți'}</div>
+          <input
+            type="number" inputMode="numeric" placeholder="0" value={noptiInput}
+            onChange={e => setNoptiInput(e.target.value)}
+            style={{ width: 90, margin: '0 auto', textAlign: 'center', fontSize: 22, fontWeight: 700, color: '#FFFFFF' }}
+          />
+          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginTop: 6 }}>
+            {nopti === 1 ? 'noapte' : 'nopți'} <span style={{ opacity: 0.6 }}>· poți edita manual</span>
+          </div>
         </div>
 
         <FormRow cols={2}>
           <FormGroup>
-            <label>Preț / noapte</label>
-            <input type="number" inputMode="decimal" placeholder="0" value={pretNoapte} onChange={e => setPretNoapte(e.target.value)} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={{ margin: 0 }}>{mode === 'perNoapte' ? 'Preț / noapte' : 'Preț total'}</label>
+              <button
+                type="button" title="Inversează calculul"
+                onClick={() => { setMode(m => m === 'perNoapte' ? 'total' : 'perNoapte'); setPretInput('') }}
+                style={{
+                  width: 22, height: 22, borderRadius: 6, background: 'rgba(159,215,255,0.08)',
+                  border: '1px solid rgba(159,215,255,0.15)', color: 'rgba(159,215,255,0.7)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                  marginBottom: 5,
+                }}
+              ><ArrowLeftRight size={11} /></button>
+            </div>
+            <input type="number" inputMode="decimal" placeholder="0" value={pretInput} onChange={e => setPretInput(e.target.value)} />
           </FormGroup>
           <FormGroup>
             <label>Monedă</label>
@@ -165,9 +192,13 @@ export default function PriceCalc() {
           background: 'rgba(77,163,255,0.1)', border: '1px solid rgba(77,163,255,0.25)',
           textAlign: 'center',
         }}>
-          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 4 }}>Preț final</div>
+          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: 4 }}>
+            {mode === 'perNoapte' ? 'Preț final' : 'Preț / noapte'}
+          </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: '#4ADE80', fontFamily: 'monospace' }}>
-            {total.toLocaleString('ro-RO')} {moneda}
+            {mode === 'perNoapte'
+              ? total.toLocaleString('ro-RO')
+              : pretPerNoapte.toLocaleString('ro-RO', { maximumFractionDigits: 2 })} {moneda}
           </div>
         </div>
       </Modal>
