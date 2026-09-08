@@ -100,12 +100,12 @@ export default function PriceCalc() {
 
   return (
     <>
-      <div style={{ position: 'fixed', bottom: 24, right: 90, zIndex: 998 }}>
+      <div style={{ position: 'fixed', bottom: 88, right: 24, zIndex: 998 }}>
         <button
           onClick={() => setOpen(o => !o)}
           title="Calculator preț"
           style={{
-            width: 54, height: 54, borderRadius: '50%',
+            width: 40, height: 40, borderRadius: '50%',
             background: open ? 'rgba(14,27,43,0.9)' : 'rgba(77,163,255,0.9)',
             border: '2px solid rgba(159,215,255,0.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -114,7 +114,7 @@ export default function PriceCalc() {
             transition: 'all 0.2s',
           }}
         >
-          {open ? <X size={22} /> : <Calculator size={22} />}
+          {open ? <X size={16} /> : <Calculator size={16} />}
         </button>
       </div>
 
