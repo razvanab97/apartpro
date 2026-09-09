@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
-import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock, Newspaper, Clapperboard } from 'lucide-react'
+import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock, Newspaper, Clapperboard, Upload } from 'lucide-react'
+import { upload } from '@vercel/blob/client'
 
 const CANALE = [
   { key: 'facebook_post',    label: 'Facebook' },
@@ -751,12 +752,17 @@ const REELS_CAMPURI: { key: string; lbl: string }[] = [
   { key: 'ideeFilmare',       lbl: 'Idee de filmare' },
 ]
 
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024 // limita Whisper (transcriere audio)
+
 function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
   const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [file, setFile] = useState<File|null>(null)
+  const [stage, setStage] = useState<'idle'|'uploading'|'transcriind'>('idle')
   const [sursa, setSursa] = useState<any>(null)
   const [result, setResult] = useState<any>(null)
   const [istoric, setIstoric] = useState<any[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
+  const loading = stage !== 'idle'
 
   useEffect(() => { loadIstoric() }, [])
 
@@ -768,24 +774,41 @@ function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
     } catch { /* istoricul e un bonus, nu blocam pagina daca esueaza */ }
   }
 
+  function onFile(f: File | undefined) {
+    if (!f) return
+    if (f.size > MAX_VIDEO_BYTES) { show('error', `Fișierul are ${(f.size/1024/1024).toFixed(1)}MB — limita e 25MB (cerință a serviciului de transcriere audio)`); return }
+    setFile(f)
+  }
+  function clearFile() {
+    setFile(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   async function analizeaza() {
-    if (!url.trim()) return
-    setLoading(true)
+    if (!url.trim() && !file) return
     setResult(null); setSursa(null)
     try {
+      let videoBlobUrl: string | undefined
+      if (file) {
+        setStage('uploading')
+        const blob = await upload(file.name, file, { access: 'public', handleUploadUrl: '/api/marketing-reels/upload' })
+        videoBlobUrl = blob.url
+        setStage('transcriind')
+      }
       const res = await fetch('/api/marketing-reels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim() || undefined, videoBlobUrl }),
       })
       const data = await res.json()
-      if (data.error) { show('error', data.error); setLoading(false); return }
+      if (data.error) { show('error', data.error); setStage('idle'); return }
       setSursa(data.sursa); setResult(data.result)
+      clearFile()
       loadIstoric()
     } catch {
       show('error', 'Conexiune întreruptă - încearcă din nou')
     }
-    setLoading(false)
+    setStage('idle')
   }
 
   async function copiaza(val: string) {
@@ -799,21 +822,41 @@ function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
       {/* Panou stânga — sursă */}
       <div style={{...S.card, width:340, flexShrink:0, padding:16, display:'flex', flexDirection:'column', gap:12}}>
         <div style={{fontSize:11, color:'rgba(159,215,255,0.4)', lineHeight:1.5, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:8, padding:'8px 10px'}}>
-          Lipești linkul unui Reel de Instagram (de la alt cont) — luăm caption-ul public (nu și video-ul, Instagram nu-l mai expune public) și AI-ul analizează formula hook-ului, apoi generează o variantă ORIGINALĂ, adaptată pentru AB Homes, nu o copie.
+          <b style={{color:'rgba(159,215,255,0.6)'}}>Recomandat:</b> încarcă video-ul salvat de tine (din Instagram/TikTok, cu „Save") — transcriem audio-ul real, deci analiza e exactă, nu ghicită. Doar link-ul funcționează și el, dar folosește doar caption-ul public (text scris de autor), fără ce se vorbește în video. AI-ul analizează formula hook-ului și generează o variantă ORIGINALĂ pentru AB Homes, nu o copie.
         </div>
 
         <div>
-          <div style={S.lbl}>Link Reel Instagram</div>
-          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..."
+          <div style={S.lbl}>Video salvat de tine (transcriere reală, max 25MB)</div>
+          <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v" disabled={loading}
+            onChange={e=>onFile(e.target.files?.[0])} style={{...S.inp, width:'100%', boxSizing:'border-box'}}/>
+          {file && (
+            <div style={{display:'flex', alignItems:'center', gap:8, marginTop:6, fontSize:11, color:'rgba(159,215,255,0.55)'}}>
+              <Clapperboard size={12}/>{file.name} ({(file.size/1024/1024).toFixed(1)}MB)
+              <button onClick={clearFile} disabled={loading} style={{marginLeft:'auto', background:'none', border:'none', color:'rgba(248,113,113,0.6)', cursor:'pointer', fontSize:13, padding:0}}>✕</button>
+            </div>
+          )}
+        </div>
+
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{flex:1, height:1, background:'rgba(159,215,255,0.1)'}}/>
+          <span style={{fontSize:10, color:'rgba(159,215,255,0.3)'}}>ȘI/SAU</span>
+          <div style={{flex:1, height:1, background:'rgba(159,215,255,0.1)'}}/>
+        </div>
+
+        <div>
+          <div style={S.lbl}>Link Reel Instagram sau TikTok {file && '(pentru autor + poză)'}</div>
+          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/... sau https://www.tiktok.com/@.../video/..."
             onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();analizeaza()}}}
             style={{...S.inp, width:'100%', boxSizing:'border-box'}}/>
         </div>
 
-        <button onClick={analizeaza} disabled={!url.trim()||loading}
-          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:(!url.trim()||loading)?'not-allowed':'pointer',
-            background:(!url.trim()||loading)?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
-            color:(!url.trim()||loading)?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
-          {loading ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se analizează...</> : <><Clapperboard size={15}/>Analizează</>}
+        <button onClick={analizeaza} disabled={(!url.trim()&&!file)||loading}
+          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:((!url.trim()&&!file)||loading)?'not-allowed':'pointer',
+            background:((!url.trim()&&!file)||loading)?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
+            color:((!url.trim()&&!file)||loading)?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+          {stage==='uploading' ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se încarcă video-ul...</>
+            : stage==='transcriind' ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se transcrie și analizează...</>
+            : <><Clapperboard size={15}/>Analizează</>}
         </button>
 
         {istoric.length>0 && (
@@ -821,11 +864,11 @@ function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
             <div style={{...S.lbl, display:'flex', alignItems:'center', gap:5}}><Clock size={11}/>Istoric ({istoric.length})</div>
             <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:260, overflowY:'auto'}}>
               {istoric.map(h => (
-                <button key={h.id} onClick={()=>{setSursa({autor:h.autor, caption:h.caption_original, thumbnail:h.thumbnail_url}); setResult(h.rezultat)}}
+                <button key={h.id} onClick={()=>{setSursa({tip:h.sursa_tip, platforma:h.platforma, autor:h.autor, caption:h.caption_original, thumbnail:h.thumbnail_url}); setResult(h.rezultat)}}
                   style={{display:'flex', alignItems:'center', gap:8, textAlign:'left', padding:'7px 9px', borderRadius:7, border:'1px solid rgba(159,215,255,0.08)', background:'transparent', cursor:'pointer'}}>
                   {h.thumbnail_url && <img src={h.thumbnail_url} alt="" style={{width:32, height:32, borderRadius:6, objectFit:'cover', flexShrink:0}}/>}
                   <div style={{minWidth:0, flex:1}}>
-                    <div style={{fontSize:10, color:'rgba(159,215,255,0.35)'}}>{h.autor ? `@${h.autor}` : ''} · {fmtData(h.created_at)}</div>
+                    <div style={{fontSize:10, color:'rgba(159,215,255,0.35)'}}>{h.sursa_tip==='video' ? '🎬 video' : (h.platforma==='tiktok'?'TikTok':'Instagram')}{h.autor ? ` · @${h.autor}` : ''} · {fmtData(h.created_at)}</div>
                     <div style={{fontSize:11, color:'rgba(214,228,244,0.6)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                       {h.rezultat?.titluSugestie || h.caption_original?.slice(0,60)}
                     </div>
@@ -841,7 +884,7 @@ function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
       <div style={{...S.card, flex:'1 1 420px', minWidth:0, padding:16}}>
         {!result ? (
           <div style={{padding:'60px 20px', textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13}}>
-            Lipește linkul unui Reel și apasă „Analizează"
+            Încarcă un video sau lipește un link și apasă „Analizează"
           </div>
         ) : (
           <>
@@ -849,8 +892,11 @@ function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
               <div style={{display:'flex', gap:10, alignItems:'flex-start', marginBottom:16, paddingBottom:14, borderBottom:'1px solid rgba(100,160,255,0.1)'}}>
                 {sursa.thumbnail && <img src={sursa.thumbnail} alt="" style={{width:56, height:56, borderRadius:8, objectFit:'cover', flexShrink:0, border:'1px solid rgba(100,160,255,0.2)'}}/>}
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:11, color:'rgba(159,215,255,0.4)'}}>Sursă{sursa.autor ? ` — @${sursa.autor}` : ''}</div>
-                  <div style={{fontSize:12, color:'rgba(214,228,244,0.55)', fontStyle:'italic'}}>„{sursa.caption}"</div>
+                  <div style={{fontSize:11, color:'rgba(159,215,255,0.4)'}}>
+                    Sursă — {sursa.tip==='video' ? '🎬 transcriere video (audio real)' : (sursa.platforma==='tiktok'?'TikTok':'Instagram')}
+                    {sursa.autor ? ` · @${sursa.autor}` : ''}
+                  </div>
+                  {sursa.caption && <div style={{fontSize:12, color:'rgba(214,228,244,0.55)', fontStyle:'italic'}}>„{sursa.caption}"</div>}
                 </div>
               </div>
             )}
