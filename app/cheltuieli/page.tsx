@@ -1448,22 +1448,25 @@ export default function CheltuieliPage(){
 
         {/* ── cat platim la fiecare institutie, pe toate apartamentele ── */}
         <div style={{...glassCard,padding:'16px 20px',marginBottom:24}}>
-          <div style={{fontSize:13,fontWeight:500,color:'#E8F4FF',marginBottom:14}}>Cât plătim la fiecare — {LUNI[luna]} {an}</div>
+          <div style={{fontSize:13,fontWeight:500,color:'#E8F4FF',marginBottom:14}}>Statistici de plăți — {LUNI[luna]} {an}</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10}}>
             {[...categorieTotals,{key:'alte',label:'Cost extra',total:extraTotal,paid:extraPaid}].map(c=>{
               const pctC=c.total>0?Math.round(c.paid/c.total*100):0
+              const restC=c.total-c.paid
               return(
                 <div key={c.key} style={{padding:'12px 14px',borderRadius:10,background:'rgba(100,160,255,0.05)',border:'1px solid rgba(100,160,255,0.1)'}}>
                   <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.5)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.label}</div>
-                  <div style={{fontSize:18,fontWeight:700,color:'#E8F4FF',letterSpacing:'-.3px',lineHeight:1}}>
-                    {c.total>0?c.total.toLocaleString('ro-RO'):'—'}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span>
+                  <div style={{fontSize:18,fontWeight:700,color:'#4ADE80',letterSpacing:'-.3px',lineHeight:1}}>
+                    {c.total>0?c.paid.toLocaleString('ro-RO'):'—'}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(74,222,128,0.5)'}}>RON plătit</span>
                   </div>
                   {c.total>0&&(
                     <div style={{marginTop:8}}>
                       <div style={{height:4,background:'rgba(100,160,255,0.1)',borderRadius:999,overflow:'hidden'}}>
                         <div style={{height:'100%',width:`${pctC}%`,borderRadius:999,background:pctC===100?'#4ADE80':'var(--accent-blue)'}}/>
                       </div>
-                      <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginTop:4}}>{c.paid.toLocaleString('ro-RO')} plătit</div>
+                      <div style={{fontSize:12,fontWeight:600,marginTop:6,color:restC>0?'#F87171':'#4ADE80'}}>
+                        {restC>0?`${restC.toLocaleString('ro-RO')} RON rest`:'✓ achitat'}
+                      </div>
                     </div>
                   )}
                 </div>
