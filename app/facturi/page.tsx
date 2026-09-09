@@ -437,11 +437,13 @@ export default function FacturiPage() {
       }
       setFacturi(f => f.map(x => x.id === id ? facturaFinala : x))
 
-      // Auto-save daca apartamentul a fost identificat automat
+      // Nu mai salvam automat, nici cand apartamentul e identificat automat - categoria
+      // (ex. E.ON Gaz vs E.ON Energie) trebuie verificata manual inainte de salvare,
+      // AI-ul mai greseste intre ele. Ramane doar apartamentul pre-completat, ca sa nu
+      // mai trebuiasca cautat manual.
       if (autoAptId) {
         const aptNume = apts.find((a:any) => a.id === autoAptId)?.nume || ''
-        show('info', `Asociat automat cu ${aptNume} — se salvează...`)
-        await autoSave(facturaFinala, apts)
+        show('info', `Asociat automat cu ${aptNume} — verifică categoria și apasă Salvează`)
       }
     } catch (e: any) {
       setFacturi(f => f.map(x => x.id === id ? { ...x, processing: false, status: 'eroare' as const, furnizor: 'Eroare extragere' } : x))
@@ -460,55 +462,6 @@ export default function FacturiPage() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault(); setDragging(false)
     handleFiles(e.dataTransfer.files)
-  }
-
-  async function autoSave(f: any, aptList: any[]) {
-    const now = new Date()
-    const pad = (n:number) => String(n).padStart(2,'0')
-
-    // Verifica duplicat dupa numarul facturii, DOAR in cadrul aceluiasi apartament -
-    // Urbica (si altii) emit acelasi numar de referinta pentru mai multe apartamente din
-    // acelasi bloc, deci un match global (fara filtrare pe apartament) da fals-pozitive
-    const nrAuto = validNr(f.nr_factura)
-    if (nrAuto && f.apartament_id) {
-      const { data: existing } = await supabase.from('cheltuieli')
-        .select('id,descriere').eq('apartament_id', f.apartament_id).ilike('nota', `%${nrAuto}%`).limit(1)
-      if (existing && existing.length > 0) {
-        setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'eroare' as const, errorMsg: `Duplicat — factura ${nrAuto} există deja` } : x))
-        show('error', `⚠ Factura ${nrAuto} a mai fost încărcată`)
-        return
-      }
-    }
-
-    // Data = prima zi a lunii de emitere (nu scadenta)
-    const dataEmitereAuto = f.data_emitere
-      ? f.data_emitere.slice(0,7)+'-01'
-      : `${now.getFullYear()}-${pad(now.getMonth()+1)}-01`
-    const dataScadenta = f.data_scadenta || null
-    const categorieToColKey: Record<string,string> = {
-      'E.ON Gaz':'eon_gaz','E.ON Curent':'eon_curent','E.ON Energie':'eon_curent','E.ON DUO':'eon_curent','eon_energie':'eon_curent',
-      'Urbica':'asociatie','TermoService':'asociatie','Royal':'asociatie',
-      'Salubris':'salubris','Internet':'internet','Asociatie':'asociatie',
-    }
-    const colKey = categorieToColKey[f.categorieLabel||''] || categorieToColKey[f.categorie||''] || 'alte'
-    const { data, error } = await supabase.from('cheltuieli').insert({
-      apartament_id: f.apartament_id,
-      categorie: colKey || f.categorie || 'alta',
-      descriere: `${f.categorieLabel} — ${f.furnizor}`,
-      valoare: f.suma_totala,
-      data: dataEmitereAuto,
-      status: 'nevalidat',
-      suportat_de: 'administrator',
-      tva: 0,
-      nota: `Factură ${validNr(f.nr_factura) || f.filename} | ${f.perioada || ''}`.trim(),
-      fisier_url: f.file_url || null,
-    }).select().single()
-    if (!error && data) {
-      setFacturi(list => list.map(x => x.id === f.id ? { ...x, status: 'salvat' as const, cheltuiala_id: data.id } : x))
-      const aptNume = aptList.find((a:any) => a.id === f.apartament_id)?.nota || aptList.find((a:any) => a.id === f.apartament_id)?.nume || ''
-      show('success', `✓ ${f.categorieLabel} ${f.suma_totala} RON salvat automat → ${aptNume}`)
-      loadSaved()
-    }
   }
 
   async function saveForcedToSupabase(f: Factura) {

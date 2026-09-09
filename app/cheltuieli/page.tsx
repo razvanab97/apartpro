@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { supabase, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
+import { supabase, reorderAptsSubset, persistAptOrdine, getStorageUrl } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Modal, FormGroup, FormRow, Toast, useToast, ConnectionError } from '@/components/ui'
-import { Plus, Pencil, X, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, GripVertical } from 'lucide-react'
+import { Plus, Pencil, X, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, GripVertical, Paperclip, Link2, Loader2 } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, rectSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -30,6 +30,15 @@ function getDueForApt(aptNota: string|null, colKey: string, defaultDue: number):
     }
   }
   return defaultDue
+}
+
+// Upload manual de factura/chitanta atasata unui cost din aceasta pagina - acelasi bucket
+// folosit de /facturi (import automat AI), ca sa apara la fel (badge 📄, link "Deschide")
+async function uploadFacturaManual(file: File): Promise<string|null> {
+  const path = `facturi/manual/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
+  const { error } = await supabase.storage.from('Facturi').upload(path, file, { contentType: file.type||'application/pdf', upsert:true })
+  if (error) return null
+  return getStorageUrl('Facturi', path)
 }
 const UTIL_KEYS = UTIL_COLS.map(c=>c.key)
 
@@ -172,7 +181,10 @@ export default function CheltuieliPage(){
 
   // modal adauga cost extra pe apt
   const [modalExtra,setModalExtra]=useState<any>(null)
-  const [fExtra,setFExtra]=useState({descriere:'',valoare:'',data:''})
+  const [fExtra,setFExtra]=useState({descriere:'',valoare:'',data:'',fisier_url:''})
+  const [fExtraLink,setFExtraLink]=useState('')
+  const [fExtraUploading,setFExtraUploading]=useState(false)
+  const fExtraFileRef=useRef<HTMLInputElement>(null)
 
   // modal consumabile / contab
   const [modalCons,setModalCons]=useState(false)
@@ -638,7 +650,7 @@ export default function CheltuieliPage(){
     setSaving(null)
   }
 
-  async function commitCell(valOverride?:string){
+  async function commitCell(valOverride?:string, fisierUrlOverride?:string){
     if(!editCell)return
     const {aptId,col}=editCell
     const targetCol = editCol || col  // categoria selectata (poate fi schimbata)
@@ -649,14 +661,15 @@ export default function CheltuieliPage(){
     const dateStr=`${an}-${pad(luna)}-${pad(dueDayC)}`
     const entry=util[aptId]?.[col]
     const existing=entry?.current||entry
+    const fisierUrl = fisierUrlOverride!==undefined ? (fisierUrlOverride||null) : (existing?.fisier_url||null)
     setSaving('cell')
     if(existing?.id){
-      const updatePayload: any = {valoare:val,data:dateStr}
+      const updatePayload: any = {valoare:val,data:dateStr,fisier_url:fisierUrl}
       if(targetCol !== col) updatePayload.categorie = targetCol
       const {error:updErr}=await supabase.from('cheltuieli').update(updatePayload).eq('id',existing.id)
       if(updErr){show('error','Eroare salvare: '+updErr.message);setSaving(null);setEditCell(null);return}
       // Daca s-a schimbat categoria, muta in noul col
-      const newEntry = {...existing,valoare:val,categorie:targetCol}
+      const newEntry = {...existing,valoare:val,categorie:targetCol,fisier_url:fisierUrl}
       if(targetCol !== col){
         setUtil(u=>{
           const nu={...u}
@@ -667,18 +680,34 @@ export default function CheltuieliPage(){
           return nu
         })
       } else {
-        setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:{...existing,valoare:val}}}}))
+        setUtil(u=>({...u,[aptId]:{...u[aptId],[col]:{...entry,current:newEntry}}}))
       }
     } else {
       const {data,error}=await supabase.from('cheltuieli').insert({
         apartament_id:aptId,categorie:targetCol,descriere:colDef.label,valoare:val,
         data:dateStr,status:'nevalidat',suportat_de:'proprietar',tva:0,
+        fisier_url:fisierUrl,
       }).select().single()
       if(!error&&data)setUtil(u=>({...u,[aptId]:{...(u[aptId]||{}),[col]:data}}))
       if(error)show('error',error.message)
     }
     setSaving(null);setEditCell(null);setEditVal('')
     show('success','Salvat ✓')
+  }
+
+  function resetFExtra(){
+    setFExtra({descriere:'',valoare:'',data:'',fisier_url:''})
+    setFExtraLink('')
+  }
+
+  async function onFExtraFile(f?:File){
+    if(!f)return
+    setFExtraUploading(true)
+    const url=await uploadFacturaManual(f)
+    setFExtraUploading(false)
+    if(url)setFExtra(x=>({...x,fisier_url:url}))
+    else show('error','Eroare la încărcarea fișierului')
+    if(fExtraFileRef.current)fExtraFileRef.current.value=''
   }
 
   async function saveExtra(){
@@ -689,12 +718,13 @@ export default function CheltuieliPage(){
       valoare:parseFloat(fExtra.valoare)||0,
       data:fExtra.data||`${an}-${pad(luna)}-${pad(25)}`,
       status:'nevalidat',suportat_de:'proprietar',tva:0,
+      fisier_url:fExtra.fisier_url||null,
     }).select().single()
     if(error){show('error',error.message)}
     else{
       setExtras(e=>({...e,[modalExtra.id]:[...(e[modalExtra.id]||[]),data]}))
       show('success','Cost adăugat')
-      setModalExtra(null);setFExtra({descriere:'',valoare:'',data:''})
+      setModalExtra(null);resetFExtra()
     }
     setSaving(null)
   }
@@ -871,12 +901,18 @@ export default function CheltuieliPage(){
   }
 
   /* ── Pill cheltuiala ─────────────────────────────────────────────────── */
-  function CostPill({label,val,due,paid,dataPlata,onToggle,onEdit,onDelete,busy}:{
-    label:string;val:number;due:string;paid:boolean;dataPlata?:string|null;
+  function CostPill({label,val,due,paid,dataPlata,fisierUrl,onToggle,onEdit,onDelete,busy}:{
+    label:string;val:number;due:string;paid:boolean;dataPlata?:string|null;fisierUrl?:string|null;
     onToggle:()=>void;onEdit?:()=>void;onDelete?:()=>void;busy?:boolean
   }){
     return(
       <div style={{...pillBase(paid),position:'relative'}}>
+        {fisierUrl && (
+          <a href={fisierUrl} target="_blank" rel="noopener" title="Deschide factura"
+            style={{position:'absolute',top:6,right:6,fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(77,163,255,0.2)',border:'1px solid rgba(77,163,255,0.4)',color:'#7BC8FF',textDecoration:'none',fontWeight:700,letterSpacing:'.03em'}}>
+            📄
+          </a>
+        )}
         <div>
           <div style={{fontSize:11,fontWeight:500,color:paid?'rgba(74,222,128,0.65)':'rgba(100,160,255,0.6)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{label}</div>
           <div style={{fontSize:18,fontWeight:600,color:paid?'#4ADE80':'#E8F4FF',letterSpacing:'-.3px',lineHeight:1}}>
@@ -1013,13 +1049,31 @@ export default function CheltuieliPage(){
   }
 
   /* ── Inline edit pill ────────────────────────────────────────────────── */
-  function EditPill({label,due,onSave,onCancel,initialVal}:{label:string;due:string;onSave:(v:string)=>void;onCancel:()=>void;initialVal?:string}){
+  function EditPill({label,due,onSave,onCancel,initialVal,initialFileUrl}:{label:string;due:string;onSave:(v:string,fisierUrl?:string)=>void;onCancel:()=>void;initialVal?:string;initialFileUrl?:string|null}){
     const [v,setV]=useState(initialVal||'')
+    const [fileUrl,setFileUrl]=useState(initialFileUrl||'')
+    const [linkInput,setLinkInput]=useState('')
+    const [uploading,setUploading]=useState(false)
     const ref=useRef<HTMLInputElement>(null)
+    const fileRef=useRef<HTMLInputElement>(null)
     useEffect(()=>{setTimeout(()=>{ref.current?.focus();ref.current?.select()},30)},[])
     function handleSave(){
       if(!v||parseFloat(v)<=0){return}
-      onSave(v)
+      onSave(v,fileUrl||undefined)
+    }
+    async function onFile(f?:File){
+      if(!f)return
+      setUploading(true)
+      const url=await uploadFacturaManual(f)
+      setUploading(false)
+      if(url)setFileUrl(url)
+      else show('error','Eroare la încărcarea fișierului')
+      if(fileRef.current)fileRef.current.value=''
+    }
+    function addLink(){
+      if(!linkInput.trim())return
+      setFileUrl(linkInput.trim())
+      setLinkInput('')
     }
     return(
       <div style={{...pillBase(false),minWidth:130,flex:'1 1 130px'}}>
@@ -1031,7 +1085,34 @@ export default function CheltuieliPage(){
         <input ref={ref} type="number" value={v} onChange={e=>setV(e.target.value)}
           onKeyDown={e=>{if(e.key==='Enter')handleSave();if(e.key==='Escape')onCancel()}}
           placeholder="ex: 1850" style={{...inpStyle,marginBottom:8,fontSize:15,fontWeight:500}} min={0}/>
-        <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginBottom:10}}>scad. {due}</div>
+        <div style={{fontSize:10,color:'rgba(100,160,255,0.35)',marginBottom:8}}>scad. {due}</div>
+
+        {/* Atasare factura: link sau fisier de pe computer */}
+        {fileUrl ? (
+          <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:8,fontSize:9,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.25)',borderRadius:5,padding:'4px 6px'}}>
+            <Paperclip size={10}/><span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Factură atașată</span>
+            <button onClick={()=>setFileUrl('')} title="Elimină" style={{background:'none',border:'none',color:'rgba(248,113,113,0.7)',cursor:'pointer',padding:0,display:'flex'}}><X size={10}/></button>
+          </div>
+        ) : (
+          <div style={{marginBottom:8}}>
+            <div style={{display:'flex',gap:4,marginBottom:4}}>
+              <input value={linkInput} onChange={e=>setLinkInput(e.target.value)} placeholder="link factură"
+                onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addLink()}}}
+                style={{flex:1,minWidth:0,background:'rgba(11,18,36,0.9)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:5,color:'rgba(159,215,255,0.7)',fontSize:10,padding:'4px 6px',outline:'none'}}/>
+              <button onClick={addLink} disabled={!linkInput.trim()} title="Adaugă link"
+                style={{background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.25)',borderRadius:5,color:'#7BC8FF',cursor:linkInput.trim()?'pointer':'default',padding:'0 6px',display:'flex',alignItems:'center',flexShrink:0}}>
+                <Link2 size={10}/>
+              </button>
+            </div>
+            <button onClick={()=>fileRef.current?.click()} disabled={uploading}
+              style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'rgba(159,215,255,0.05)',border:'1px dashed rgba(159,215,255,0.2)',borderRadius:5,color:'rgba(159,215,255,0.5)',fontSize:10,padding:'5px',cursor:uploading?'default':'pointer'}}>
+              {uploading?<Loader2 size={11} style={{animation:'spin 1s linear infinite'}}/>:<Paperclip size={11}/>}
+              {uploading?'Se încarcă...':'Încarcă fișier'}
+            </button>
+            <input ref={fileRef} type="file" accept=".pdf,image/*" style={{display:'none'}} onChange={e=>onFile(e.target.files?.[0])}/>
+          </div>
+        )}
+
         <div style={{display:'flex',gap:6}}>
           <button onClick={handleSave} style={{flex:1,background:'rgba(77,163,255,0.25)',border:'1px solid rgba(77,163,255,0.5)',borderRadius:7,color:'#7BC8FF',fontSize:12,padding:'7px',cursor:'pointer',fontWeight:600}}>
             ✓ Salvează
@@ -1121,9 +1202,10 @@ export default function CheltuieliPage(){
                     {/* Pill luna curenta */}
                     {isEdit ? (
                       <EditPill label={col.label} due={due}
-                        onSave={v=>commitCell(v)}
+                        onSave={(v,fisierUrl)=>commitCell(v,fisierUrl)}
                         onCancel={()=>{setEditCell(null);setEditVal('');setEditCol('')}}
                         initialVal={val>0?String(val):''}
+                        initialFileUrl={item?.fisier_url}
                       />
                     ) : val === 0 && !item ? (
                       // Pill gol - buton + pentru adaugare manuala rapida
@@ -1225,6 +1307,7 @@ export default function CheltuieliPage(){
                   <CostPill key={item.id}
                     label={item.descriere} val={Number(item.valoare)}
                     due={item.data?.slice(8,10)+'/'+item.data?.slice(5,7)} paid={isPaid} dataPlata={item.data_plata}
+                    fisierUrl={item.fisier_url}
                     onToggle={()=>toggleExtra(apt.id,item)}
                     onDelete={()=>deleteExtra(apt.id,item)}
                   />
@@ -1462,7 +1545,7 @@ export default function CheltuieliPage(){
       </div>
 
       {/* Modal cost extra pe apartament */}
-      <Modal open={!!modalExtra} onClose={()=>{setModalExtra(null);setFExtra({descriere:'',valoare:'',data:''})}}
+      <Modal open={!!modalExtra} onClose={()=>{setModalExtra(null);resetFExtra()}}
         title={`Cost extra — ${modalExtra?.nume||''}`} width="max-w-sm">
         <FormGroup><label>Descriere *</label>
           <input value={fExtra.descriere} onChange={e=>setFExtra({...fExtra,descriere:e.target.value})} placeholder="ex. Reparație, Curățenie extra..."/>
@@ -1475,11 +1558,39 @@ export default function CheltuieliPage(){
             <input type="date" value={fExtra.data} onChange={e=>setFExtra({...fExtra,data:e.target.value})}/>
           </FormGroup>
         </FormRow>
+        <FormGroup>
+          <label>Factură / chitanță (opțional)</label>
+          {fExtra.fisier_url ? (
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',border:'1px solid rgba(77,163,255,0.25)',borderRadius:7,padding:'7px 10px'}}>
+              <Paperclip size={12}/><span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Factură atașată</span>
+              <a href={fExtra.fisier_url} target="_blank" rel="noopener" style={{color:'#7BC8FF',fontSize:11,textDecoration:'none'}}>Deschide</a>
+              <button onClick={()=>setFExtra({...fExtra,fisier_url:''})} title="Elimină" style={{background:'none',border:'none',color:'rgba(248,113,113,0.7)',cursor:'pointer',padding:0,display:'flex'}}><X size={12}/></button>
+            </div>
+          ) : (
+            <>
+              <div style={{display:'flex',gap:6,marginBottom:6}}>
+                <input value={fExtraLink} onChange={e=>setFExtraLink(e.target.value)} placeholder="...sau lipește un link către factură"
+                  onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();if(fExtraLink.trim()){setFExtra(x=>({...x,fisier_url:fExtraLink.trim()}));setFExtraLink('')}}}}
+                  style={{flex:1,minWidth:0}}/>
+                <button onClick={()=>{if(fExtraLink.trim()){setFExtra(x=>({...x,fisier_url:fExtraLink.trim()}));setFExtraLink('')}}} disabled={!fExtraLink.trim()}
+                  style={{padding:'0 12px',borderRadius:7,border:'1px solid rgba(100,160,255,0.25)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:fExtraLink.trim()?'pointer':'default',display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
+                  <Link2 size={12}/>Adaugă
+                </button>
+              </div>
+              <button onClick={()=>fExtraFileRef.current?.click()} disabled={fExtraUploading}
+                style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'9px',borderRadius:7,border:'1px dashed rgba(159,215,255,0.25)',background:'rgba(159,215,255,0.04)',color:'rgba(159,215,255,0.55)',fontSize:12,cursor:fExtraUploading?'default':'pointer'}}>
+                {fExtraUploading?<Loader2 size={13} style={{animation:'spin 1s linear infinite'}}/>:<Paperclip size={13}/>}
+                {fExtraUploading?'Se încarcă...':'Încarcă din calculator'}
+              </button>
+              <input ref={fExtraFileRef} type="file" accept=".pdf,image/*" style={{display:'none'}} onChange={e=>onFExtraFile(e.target.files?.[0])}/>
+            </>
+          )}
+        </FormGroup>
         <div style={{display:'flex',gap:10,marginTop:8}}>
           <button onClick={saveExtra} disabled={saving==='extra'} style={{flex:1,padding:'9px',borderRadius:8,border:'none',background:'var(--accent-blue)',color:'#fff',fontWeight:500,fontSize:13,cursor:'pointer'}}>
             {saving==='extra'?'Se salvează...':'Adaugă'}
           </button>
-          <button onClick={()=>{setModalExtra(null);setFExtra({descriere:'',valoare:'',data:''})}} style={{padding:'9px 16px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>Anulează</button>
+          <button onClick={()=>{setModalExtra(null);resetFExtra()}} style={{padding:'9px 16px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:'pointer'}}>Anulează</button>
         </div>
       </Modal>
 
