@@ -304,6 +304,22 @@ create table if not exists marketing_stiri_surse (
 alter table marketing_stiri_surse enable row level security;
 create policy "Allow all marketing_stiri_surse" on marketing_stiri_surse for all using (true);
 
+-- Analiza reel-uri Instagram de la alte conturi (tab Reels din Generator Marketing) - preia
+-- caption-ul public (nu si video-ul, Instagram nu-l mai expune public), AI-ul analizeaza
+-- formula hook-ului si genereaza o varianta adaptata pentru AB Homes, nu o copie
+create table if not exists marketing_reels (
+  id uuid primary key default gen_random_uuid(),
+  sursa_url text not null,
+  autor text,
+  caption_original text,
+  thumbnail_url text,
+  rezultat jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists marketing_reels_created_idx on marketing_reels(created_at desc);
+alter table marketing_reels enable row level security;
+create policy "Allow all marketing_reels" on marketing_reels for all using (true);
+
 create table if not exists marketing_stiri_feed (
   id uuid primary key default gen_random_uuid(),
   sursa_id uuid references marketing_stiri_surse(id) on delete cascade,

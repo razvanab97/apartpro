@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
-import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock, Newspaper } from 'lucide-react'
+import { Sparkles, X, Copy, Loader2, Link2, Wand2, Download, Clock, Newspaper, Clapperboard } from 'lucide-react'
 
 const CANALE = [
   { key: 'facebook_post',    label: 'Facebook' },
@@ -41,7 +41,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 export default function MarketingPage() {
-  const [tabMain, setTabMain] = useState<'texte'|'imagini'|'stiri'>('texte')
+  const [tabMain, setTabMain] = useState<'texte'|'imagini'|'stiri'|'reels'>('texte')
   const [apts, setApts] = useState<any[]>([])
   const [aptId, setAptId] = useState('')
   const { toast, show } = useToast()
@@ -60,16 +60,16 @@ export default function MarketingPage() {
 
         <div style={{display:'flex', gap:12, alignItems:'center', marginBottom:14, flexWrap:'wrap'}}>
           <div style={{display:'flex', borderRadius:8, overflow:'hidden', border:'1px solid rgba(77,163,255,0.25)'}}>
-            {(['texte','imagini','stiri'] as const).map(t => (
+            {(['texte','imagini','stiri','reels'] as const).map(t => (
               <button key={t} onClick={()=>setTabMain(t)}
                 style={{padding:'8px 16px', fontSize:12, fontWeight:600, border:'none', cursor:'pointer',
                   background: tabMain===t ? 'rgba(77,163,255,0.35)' : 'transparent',
                   color: tabMain===t ? '#7BC8FF' : 'rgba(159,215,255,0.45)'}}>
-                {t==='texte' ? '✍️ Texte' : t==='imagini' ? '🖼️ Imagini' : '📰 Știri'}
+                {t==='texte' ? '✍️ Texte' : t==='imagini' ? '🖼️ Imagini' : t==='stiri' ? '📰 Știri' : '🎬 Reels'}
               </button>
             ))}
           </div>
-          {tabMain!=='stiri' && (
+          {tabMain!=='stiri' && tabMain!=='reels' && (
             <div style={{flex:1, minWidth:200}}>
               <select value={aptId} onChange={e=>setAptId(e.target.value)} style={{...S.inp, width:'100%', maxWidth:340}}>
                 {apts.map(a => <option key={a.id} value={a.id}>{a.nota ? `${a.nota} — ` : ''}{a.nume}</option>)}
@@ -81,6 +81,7 @@ export default function MarketingPage() {
         {tabMain==='texte' && <TabTexte aptId={aptId} aptSel={aptSel} show={show}/>}
         {tabMain==='imagini' && <TabImagini aptId={aptId} aptSel={aptSel} show={show}/>}
         {tabMain==='stiri' && <TabStiri show={show}/>}
+        {tabMain==='reels' && <TabReels show={show}/>}
       </div>
       <Toast toast={toast}/>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -735,6 +736,141 @@ function TabStiri({ show }: { show:(t:'success'|'error',m:string)=>void }) {
         )}
       </div>
     </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════ TAB REELS ══════════════════════════ */
+const REELS_CAMPURI: { key: string; lbl: string }[] = [
+  { key: 'formulaHook',       lbl: 'Formula hook-ului (analiză)' },
+  { key: 'unghiContinut',     lbl: 'Unghi de conținut' },
+  { key: 'hookAdaptat',       lbl: 'Hook adaptat — AB Homes' },
+  { key: 'scriptAdaptat',     lbl: 'Script adaptat (Hook → Corp → CTA)' },
+  { key: 'titluSugestie',     lbl: 'Titlu sugerat' },
+  { key: 'descriereSugestie', lbl: 'Descriere / caption sugerat' },
+  { key: 'ideeFilmare',       lbl: 'Idee de filmare' },
+]
+
+function TabReels({ show }: { show:(t:'success'|'error',m:string)=>void }) {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sursa, setSursa] = useState<any>(null)
+  const [result, setResult] = useState<any>(null)
+  const [istoric, setIstoric] = useState<any[]>([])
+
+  useEffect(() => { loadIstoric() }, [])
+
+  async function loadIstoric() {
+    try {
+      const res = await fetch('/api/marketing-reels')
+      const data = await res.json()
+      setIstoric(data.istoric || [])
+    } catch { /* istoricul e un bonus, nu blocam pagina daca esueaza */ }
+  }
+
+  async function analizeaza() {
+    if (!url.trim()) return
+    setLoading(true)
+    setResult(null); setSursa(null)
+    try {
+      const res = await fetch('/api/marketing-reels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+      const data = await res.json()
+      if (data.error) { show('error', data.error); setLoading(false); return }
+      setSursa(data.sursa); setResult(data.result)
+      loadIstoric()
+    } catch {
+      show('error', 'Conexiune întreruptă - încearcă din nou')
+    }
+    setLoading(false)
+  }
+
+  async function copiaza(val: string) {
+    try { await navigator.clipboard.writeText(val || ''); show('success', 'Copiat!') }
+    catch { show('error', 'Nu s-a putut copia') }
+  }
+
+  return (
+    <div style={{display:'flex', gap:12, alignItems:'flex-start', flexWrap:'wrap'}}>
+
+      {/* Panou stânga — sursă */}
+      <div style={{...S.card, width:340, flexShrink:0, padding:16, display:'flex', flexDirection:'column', gap:12}}>
+        <div style={{fontSize:11, color:'rgba(159,215,255,0.4)', lineHeight:1.5, background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:8, padding:'8px 10px'}}>
+          Lipești linkul unui Reel de Instagram (de la alt cont) — luăm caption-ul public (nu și video-ul, Instagram nu-l mai expune public) și AI-ul analizează formula hook-ului, apoi generează o variantă ORIGINALĂ, adaptată pentru AB Homes, nu o copie.
+        </div>
+
+        <div>
+          <div style={S.lbl}>Link Reel Instagram</div>
+          <input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://www.instagram.com/reel/..."
+            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();analizeaza()}}}
+            style={{...S.inp, width:'100%', boxSizing:'border-box'}}/>
+        </div>
+
+        <button onClick={analizeaza} disabled={!url.trim()||loading}
+          style={{padding:'12px', borderRadius:10, border:'none', width:'100%', fontSize:13, fontWeight:700, cursor:(!url.trim()||loading)?'not-allowed':'pointer',
+            background:(!url.trim()||loading)?'rgba(159,215,255,0.08)':'linear-gradient(135deg,#4DA3FF,#7C3AED)',
+            color:(!url.trim()||loading)?'rgba(159,215,255,0.25)':'#fff', display:'flex', alignItems:'center', justifyContent:'center', gap:8}}>
+          {loading ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/>Se analizează...</> : <><Clapperboard size={15}/>Analizează</>}
+        </button>
+
+        {istoric.length>0 && (
+          <div>
+            <div style={{...S.lbl, display:'flex', alignItems:'center', gap:5}}><Clock size={11}/>Istoric ({istoric.length})</div>
+            <div style={{display:'flex', flexDirection:'column', gap:4, maxHeight:260, overflowY:'auto'}}>
+              {istoric.map(h => (
+                <button key={h.id} onClick={()=>{setSursa({autor:h.autor, caption:h.caption_original, thumbnail:h.thumbnail_url}); setResult(h.rezultat)}}
+                  style={{display:'flex', alignItems:'center', gap:8, textAlign:'left', padding:'7px 9px', borderRadius:7, border:'1px solid rgba(159,215,255,0.08)', background:'transparent', cursor:'pointer'}}>
+                  {h.thumbnail_url && <img src={h.thumbnail_url} alt="" style={{width:32, height:32, borderRadius:6, objectFit:'cover', flexShrink:0}}/>}
+                  <div style={{minWidth:0, flex:1}}>
+                    <div style={{fontSize:10, color:'rgba(159,215,255,0.35)'}}>{h.autor ? `@${h.autor}` : ''} · {fmtData(h.created_at)}</div>
+                    <div style={{fontSize:11, color:'rgba(214,228,244,0.6)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                      {h.rezultat?.titluSugestie || h.caption_original?.slice(0,60)}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Panou dreapta — rezultat */}
+      <div style={{...S.card, flex:'1 1 420px', minWidth:0, padding:16}}>
+        {!result ? (
+          <div style={{padding:'60px 20px', textAlign:'center', color:'rgba(159,215,255,0.3)', fontSize:13}}>
+            Lipește linkul unui Reel și apasă „Analizează"
+          </div>
+        ) : (
+          <>
+            {sursa && (
+              <div style={{display:'flex', gap:10, alignItems:'flex-start', marginBottom:16, paddingBottom:14, borderBottom:'1px solid rgba(100,160,255,0.1)'}}>
+                {sursa.thumbnail && <img src={sursa.thumbnail} alt="" style={{width:56, height:56, borderRadius:8, objectFit:'cover', flexShrink:0, border:'1px solid rgba(100,160,255,0.2)'}}/>}
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:11, color:'rgba(159,215,255,0.4)'}}>Sursă{sursa.autor ? ` — @${sursa.autor}` : ''}</div>
+                  <div style={{fontSize:12, color:'rgba(214,228,244,0.55)', fontStyle:'italic'}}>„{sursa.caption}"</div>
+                </div>
+              </div>
+            )}
+            <div style={{display:'flex', flexDirection:'column', gap:14}}>
+              {REELS_CAMPURI.map(f => result[f.key] && (
+                <div key={f.key}>
+                  <div style={{...S.lbl, marginBottom:6}}>{f.lbl}</div>
+                  <div style={{fontSize:13, color:'rgba(214,228,244,0.85)', whiteSpace:'pre-wrap', lineHeight:1.6, background:'rgba(255,255,255,0.02)', borderRadius:8, padding:'10px 12px', marginBottom:6}}>
+                    {result[f.key]}
+                  </div>
+                  <button onClick={()=>copiaza(result[f.key])}
+                    style={{padding:'6px 12px', borderRadius:7, border:'1px solid rgba(74,222,128,0.3)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', fontSize:11, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6}}>
+                    <Copy size={12}/>Copiază
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
