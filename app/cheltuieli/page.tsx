@@ -861,6 +861,25 @@ export default function CheltuieliPage(){
   const paidVal=allCheltuieli.filter(i=>i.status==='validat').reduce((s,i)=>s+Number(i.valoare),0)
   const pct=totalVal>0?Math.round(paidVal/totalVal*100):0
 
+  // Cat platim la fiecare institutie/categorie, sumat pe toate apartamentele - aceeasi
+  // logica ca aptTotal/aptPaid, doar agregata pe categorie in loc de pe apartament
+  const categorieTotals=UTIL_COLS.map(c=>{
+    const total=apts.reduce((s,a)=>{
+      const it=getUtilItem(a.id,c.key)
+      const rest=getUtilRestante(a.id,c.key)
+      return s+Number(it?.valoare||0)+rest.reduce((rs:number,r:any)=>rs+Number(r.valoare||0),0)
+    },0)
+    const paid=apts.reduce((s,a)=>{
+      const it=getUtilItem(a.id,c.key)
+      const rest=getUtilRestante(a.id,c.key)
+      const paidRest=rest.filter((r:any)=>r.status==='validat').reduce((rs:number,r:any)=>rs+Number(r.valoare||0),0)
+      return s+(it?.status==='validat'?Number(it?.valoare||0):0)+paidRest
+    },0)
+    return {key:c.key,label:c.label,total,paid}
+  })
+  const extraTotal=apts.reduce((s,a)=>s+(extras[a.id]||[]).reduce((ss,i)=>ss+Number(i.valoare),0),0)
+  const extraPaid=apts.reduce((s,a)=>s+(extras[a.id]||[]).filter(i=>i.status==='validat').reduce((ss,i)=>ss+Number(i.valoare),0),0)
+
   const abApts     =apts.filter(a=>AB_CODES.includes(a.nota))
   function isAbExtra(a:any){
     if(AB_CODES.includes(a.nota)) return false
@@ -1424,6 +1443,32 @@ export default function CheltuieliPage(){
             <span style={{fontSize:11,color:'#4ADE80'}}>{paidVal.toLocaleString('ro-RO')} RON plătit</span>
             <span style={{fontSize:11,color:'rgba(159,215,255,0.5)'}}>{totalVal.toLocaleString('ro-RO')} RON total</span>
             <span style={{fontSize:11,color:'#F87171'}}>{(totalVal-paidVal).toLocaleString('ro-RO')} RON rest</span>
+          </div>
+        </div>
+
+        {/* ── cat platim la fiecare institutie, pe toate apartamentele ── */}
+        <div style={{...glassCard,padding:'16px 20px',marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:500,color:'#E8F4FF',marginBottom:14}}>Cât plătim la fiecare — {LUNI[luna]} {an}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10}}>
+            {[...categorieTotals,{key:'alte',label:'Cost extra',total:extraTotal,paid:extraPaid}].map(c=>{
+              const pctC=c.total>0?Math.round(c.paid/c.total*100):0
+              return(
+                <div key={c.key} style={{padding:'12px 14px',borderRadius:10,background:'rgba(100,160,255,0.05)',border:'1px solid rgba(100,160,255,0.1)'}}>
+                  <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.5)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.label}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:'#E8F4FF',letterSpacing:'-.3px',lineHeight:1}}>
+                    {c.total>0?c.total.toLocaleString('ro-RO'):'—'}<span style={{fontSize:11,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span>
+                  </div>
+                  {c.total>0&&(
+                    <div style={{marginTop:8}}>
+                      <div style={{height:4,background:'rgba(100,160,255,0.1)',borderRadius:999,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${pctC}%`,borderRadius:999,background:pctC===100?'#4ADE80':'var(--accent-blue)'}}/>
+                      </div>
+                      <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginTop:4}}>{c.paid.toLocaleString('ro-RO')} plătit</div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
