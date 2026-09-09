@@ -374,76 +374,93 @@ export default function FacturiPage() {
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
 
-      // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
-      const nrDinCodUrbica = data.cod_locatie_urbica ? URBICA_COD_MAP[data.cod_locatie_urbica] || null : null
-      const nrAptExplicit = nrDinCodUrbica || data.nr_apartament || null
-      if (nrDinCodUrbica) {
-        show('info', `Urbica cod ${data.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
-      }
-      // Declaram autoAptId inainte de orice utilizare
-      let autoAptId: string | null = null
-      // Matching direct dupa nota (pentru NT9 si alte cazuri speciale cu cod Urbica)
-      const notaDirecta = data.cod_locatie_urbica ? URBICA_COD_NOTA_MAP[data.cod_locatie_urbica] || null : null
-      if (notaDirecta) {
-        const aptDirect = apts.find((a:any) => a.nota === notaDirecta)
-        if (aptDirect) {
-          show('info', `Urbica cod ${data.cod_locatie_urbica} → ${notaDirecta}`)
-          autoAptId = aptDirect.id
+      // Potriveste apartamentul pentru o intrare (poate fi factura principala sau o luna
+      // individuala din facturi_multiple - vezi Royal cu mai multe luni intr-un screenshot)
+      // si construieste obiectul final de card. entryId separat, ca sa poata genera mai
+      // multe carduri distincte din un singur fisier incarcat.
+      function buildFactura(entryId: string, entryData: any, silent: boolean) {
+        // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
+        const nrDinCodUrbica = entryData.cod_locatie_urbica ? URBICA_COD_MAP[entryData.cod_locatie_urbica] || null : null
+        const nrAptExplicit = nrDinCodUrbica || entryData.nr_apartament || null
+        if (nrDinCodUrbica && !silent) {
+          show('info', `Urbica cod ${entryData.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
+        }
+        let autoAptId: string | null = null
+        // Matching direct dupa nota (pentru NT9 si alte cazuri speciale cu cod Urbica)
+        const notaDirecta = entryData.cod_locatie_urbica ? URBICA_COD_NOTA_MAP[entryData.cod_locatie_urbica] || null : null
+        if (notaDirecta) {
+          const aptDirect = apts.find((a:any) => a.nota === notaDirecta)
+          if (aptDirect) {
+            if (!silent) show('info', `Urbica cod ${entryData.cod_locatie_urbica} → ${notaDirecta}`)
+            autoAptId = aptDirect.id
+          }
+        }
+        // PRIORITATE 1: Royal (inainte de matching general - altfel 'ap 99' e confundat cu L99)
+        const isRoyal = (entryData.furnizor||'').toLowerCase().includes('royal') ||
+          (entryData.adresa_consum||'').toLowerCase().includes('bl. r7') ||
+          (entryData.adresa_consum||'').toLowerCase().includes('bl r7')
+        if (!autoAptId && isRoyal) {
+          autoAptId = matchByRoyal(entryData.adresa_consum, nrAptExplicit, apts)
+          if (autoAptId && !silent) show('info', `Royal → R99 ✓`)
+        }
+
+        // PRIORITATE 2: TermoService
+        if (!autoAptId && (entryData.furnizor||'').toLowerCase().includes('termo')) {
+          autoAptId = matchByTermoService(entryData.adresa_consum, apts)
+        }
+
+        // PRIORITATE 3: Ebloc
+        if (!autoAptId) {
+          const isEbloc = (entryData.furnizor||'').toLowerCase().includes('ebloc') ||
+            (entryData.furnizor||'').toLowerCase().includes('e-bloc') ||
+            (entryData.furnizor||'').toLowerCase().includes('kondo') ||
+            (entryData.detalii||'').toLowerCase().includes('e-bloc')
+          if (isEbloc) autoAptId = matchByEbloc(entryData.adresa_consum, apts)
+        }
+
+        // PRIORITATE 4: Matching general dupa adresa (Urbica, EON, etc)
+        // Excludem Royal din matching general ca sa nu prinda 'ap 99' → L99
+        if (!autoAptId && !isRoyal) {
+          const adreseToTry = [entryData.adresa_consum, ...(entryData.adrese_matching || []), entryData.adresa_titular].filter(Boolean)
+          for (const addr of adreseToTry) {
+            autoAptId = matchApartament(addr, apts, nrAptExplicit)
+            if (autoAptId) break
+          }
+        }
+
+        // PRIORITATE 5: Matching dupa titular
+        if (!autoAptId && entryData.titular) {
+          autoAptId = matchByTitular(entryData.titular, apts)
+        }
+        return {
+          ...entryData, id: entryId, processing: false,
+          base64Preview: previewUrl, mimeType, status: 'procesat' as const,
+          apartament_id: autoAptId,
+          _autoMatched: !!autoAptId,
+          file_url: fileUrl || undefined,
         }
       }
-      // PRIORITATE 1: Royal (inainte de matching general - altfel 'ap 99' e confundat cu L99)
-      const isRoyal = (data.furnizor||'').toLowerCase().includes('royal') ||
-        (data.adresa_consum||'').toLowerCase().includes('bl. r7') ||
-        (data.adresa_consum||'').toLowerCase().includes('bl r7')
-      if (!autoAptId && isRoyal) {
-        autoAptId = matchByRoyal(data.adresa_consum, nrAptExplicit, apts)
-        if (autoAptId) show('info', `Royal → R99 ✓`)
-      }
 
-      // PRIORITATE 2: TermoService
-      if (!autoAptId && (data.furnizor||'').toLowerCase().includes('termo')) {
-        autoAptId = matchByTermoService(data.adresa_consum, apts)
-      }
+      // Royal cu mai multe luni intr-un singur screenshot - cate o factura per luna detectata
+      const luni = Array.isArray(data.facturi_multiple) ? data.facturi_multiple : []
+      if (luni.length > 1) {
+        const built = luni.map((luna: any, i: number) =>
+          buildFactura(i === 0 ? id : Math.random().toString(36).slice(2), { ...data, ...luna }, i > 0)
+        )
+        setFacturi(f => [...f.filter(x => x.id !== id), ...built])
+        show('info', `${built.length} luni detectate în screenshot — verifică fiecare și apasă Salvează`)
+      } else {
+        const facturaFinala = buildFactura(id, data, false)
+        setFacturi(f => f.map(x => x.id === id ? facturaFinala : x))
 
-      // PRIORITATE 3: Ebloc
-      if (!autoAptId) {
-        const isEbloc = (data.furnizor||'').toLowerCase().includes('ebloc') ||
-          (data.furnizor||'').toLowerCase().includes('e-bloc') ||
-          (data.furnizor||'').toLowerCase().includes('kondo') ||
-          (data.detalii||'').toLowerCase().includes('e-bloc')
-        if (isEbloc) autoAptId = matchByEbloc(data.adresa_consum, apts)
-      }
-
-      // PRIORITATE 4: Matching general dupa adresa (Urbica, EON, etc)
-      // Excludem Royal din matching general ca sa nu prinda 'ap 99' → L99
-      if (!autoAptId && !isRoyal) {
-        const adreseToTry = [data.adresa_consum, ...(data.adrese_matching || []), data.adresa_titular].filter(Boolean)
-        for (const addr of adreseToTry) {
-          autoAptId = matchApartament(addr, apts, nrAptExplicit)
-          if (autoAptId) break
+        // Nu mai salvam automat, nici cand apartamentul e identificat automat - categoria
+        // (ex. E.ON Gaz vs E.ON Energie) trebuie verificata manual inainte de salvare,
+        // AI-ul mai greseste intre ele. Ramane doar apartamentul pre-completat, ca sa nu
+        // mai trebuiasca cautat manual.
+        if (facturaFinala.apartament_id) {
+          const aptNume = apts.find((a:any) => a.id === facturaFinala.apartament_id)?.nume || ''
+          show('info', `Asociat automat cu ${aptNume} — verifică categoria și apasă Salvează`)
         }
-      }
-
-      // PRIORITATE 5: Matching dupa titular
-      if (!autoAptId && data.titular) {
-        autoAptId = matchByTitular(data.titular, apts)
-      }
-      const facturaFinala = {
-        ...data, id, processing: false,
-        base64Preview: previewUrl, mimeType, status: 'procesat' as const,
-        apartament_id: autoAptId,
-        _autoMatched: !!autoAptId,
-        file_url: fileUrl || undefined,
-      }
-      setFacturi(f => f.map(x => x.id === id ? facturaFinala : x))
-
-      // Nu mai salvam automat, nici cand apartamentul e identificat automat - categoria
-      // (ex. E.ON Gaz vs E.ON Energie) trebuie verificata manual inainte de salvare,
-      // AI-ul mai greseste intre ele. Ramane doar apartamentul pre-completat, ca sa nu
-      // mai trebuiasca cautat manual.
-      if (autoAptId) {
-        const aptNume = apts.find((a:any) => a.id === autoAptId)?.nume || ''
-        show('info', `Asociat automat cu ${aptNume} — verifică categoria și apasă Salvează`)
       }
     } catch (e: any) {
       setFacturi(f => f.map(x => x.id === id ? { ...x, processing: false, status: 'eroare' as const, furnizor: 'Eroare extragere' } : x))

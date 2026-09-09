@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
    - Pentru facturi normale: cauta 'Total valoare factura curenta' sau 'Suma factura curenta'
    - Pentru TermoService (tsiasi.ro): cauta EXACT 'Total luna [LUNA] [AN]:' - aceasta e suma lunii curente. NU folosi 'Rest de plata' sau 'Restanta' care includ datorii vechi
    - Pentru E-BLOC (e-bloc.ro, Kondo Plus): cauta EXACT 'TOTAL LUNA CURENTĂ:' - aceasta e suma corecta. NU folosi 'TOTAL DE PLATĂ' care include restante
-   - Pentru Royal (aplicatie mobila, Bl. R7): e un screenshot cu lista de cheltuieli individuale grupate pe luna (Salubris, ApaVital, Administratie, Cheltuieli statie de pompare etc), fiecare cu status 'Neachitata' si o suma. Screenshot-ul poate arata MAI MULTE luni deodata (grupate sub un titlu de luna, ex. 'Iunie 2026', 'Mai 2026') - foloseste DOAR prima luna care apare (cea mai de sus/recenta), ignora complet liniile din lunile urmatoare afisate mai jos in aceeasi imagine. Suma_totala = suma valorilor mari (NU sumele mici rosii de 'restanta' de sub fiecare, alea sunt penalizari separate deja incluse in valoarea mare) ale TUTUROR liniilor din acea prima luna. Furnizor = 'Royal'. Adresa = apartamentul din header (ex: 'Bl. R7, sc. A, ap. 99'). nr_apartament = numarul din header. perioada = numele lunii folosite (ex: 'Iunie 2026'). In campul "detalii" scrie OBLIGATORIU calculul exact, verificat, cu fiecare linie si suma ei si rezultatul final, ca sa poata fi verificat manual, ex: "Salubris 38.1 + ApaVital 146.78 + Administratie 156.15 + Cheltuieli statie de pompare 10.49 = 351.52 RON (Iunie 2026)".
+   - Pentru Royal (aplicatie mobila, Bl. R7): e un screenshot cu lista de cheltuieli individuale grupate pe luna (Salubris, ApaVital, Administratie, Cheltuieli statie de pompare etc), fiecare cu status 'Neachitata' si o suma. Screenshot-ul poate arata MAI MULTE luni deodata (grupate sub un titlu de luna, ex. 'Iunie 2026', 'Mai 2026') - CITESTE TOATE lunile vizibile in imagine, nu doar prima de sus. Pentru FIECARE luna: suma_totala = suma valorilor mari (NU sumele mici rosii de 'restanta' de sub fiecare, alea sunt penalizari separate deja incluse in valoarea mare) ale TUTUROR liniilor din acea luna. Furnizor = 'Royal'. Adresa = apartamentul din header (ex: 'Bl. R7, sc. A, ap. 99'). nr_apartament = numarul din header. Populeaza campul "facturi_multiple" cu CATE UN OBIECT PENTRU FIECARE LUNA vizibila in imagine (chiar daca e doar una), cu perioada/suma_totala/detalii proprii fiecarei luni; campurile perioada/suma_totala/detalii de la nivelul principal al JSON-ului trebuie sa fie identice cu prima luna din facturi_multiple (compatibilitate). In "detalii" (atat la nivel principal cat si in fiecare intrare din facturi_multiple) scrie OBLIGATORIU calculul exact, verificat, cu fiecare linie si suma ei si rezultatul final, ca sa poata fi verificat manual, ex: "Salubris 38.1 + ApaVital 146.78 + Administratie 156.15 + Cheltuieli statie de pompare 10.49 = 351.52 RON (Iunie 2026)".
    - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD) - cauta 'Data scadenta', 'Termen plata', 'Data limita'
 4. Data emiterii facturii (format YYYY-MM-DD) - cauta 'Data emitere', 'Data facturii', 'Emisa la'
@@ -65,8 +65,12 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
   "cod_locatie_urbica": "codul locatie din factura Urbica (ex: is1c3zgu) sau null",
   "adresa_titular": "adresa titularului daca e diferita",
   "titular": "numele titularului",
-  "detalii": "orice info relevant"
-}`
+  "detalii": "orice info relevant",
+  "facturi_multiple": [
+    { "perioada": "ex: Iunie 2026", "suma_totala": 123.45, "detalii": "calculul exact linie cu linie" }
+  ]
+}
+Campul "facturi_multiple" e relevant DOAR pentru Royal cu mai multe luni intr-un screenshot (vezi punctul 2) - pentru orice alta factura normala (o singura suma), lasa-l ca array gol [].`
 
     const filePart = isImage
       ? { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64Data}` } }
