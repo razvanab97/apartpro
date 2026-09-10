@@ -209,8 +209,14 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           }
           if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
           if (nrPersoane && Number(existing[0].nr_persoane) !== nrPersoane) updates.nr_persoane = nrPersoane
-          // Propaga schimbari reale din 5starDesk: anulare, mutare date, suma, mutare pe alt apartament
-          if (aptId && existing[0].apartament_id !== aptId) updates.apartament_id = aptId
+          // NU realocam automat apartamentul la potrivire prin ID extern - 5starDesk poate
+          // redenumi/reatribui o camera (ex: L94 -> M08 dupa inchiderea unui apartament),
+          // caz in care rezervari vechi, deja corect asociate, ar aparea brusc cu alt cod de
+          // camera si ar fi mutate gresit. O nepotrivire de apartament aici e semnal de
+          // verificat manual, nu de aplicat automat.
+          if (aptId && existing[0].apartament_id !== aptId) {
+            res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — camera indica alt apartament decat cel existent, NU s-a realocat automat (verifica manual)` })
+          }
           if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
           if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
           if (checkout && existing[0].data_checkout !== checkout) updates.data_checkout = checkout
