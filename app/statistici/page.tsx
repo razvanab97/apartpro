@@ -617,6 +617,31 @@ export default function StatisticiPage() {
     setUploads(prev => prev.map(u => u.id === id ? { ...u, ...ch } : u))
   }
 
+  // Lipeste (Ctrl+V) capturi de ecran direct din clipboard, oriunde pe pagina - fara sa mai
+  // fie nevoie sa le salvezi ca fisier separat inainte. Doar le adauga in lista (ca la drag&drop),
+  // scanarea tot cu butonul "Scaneaza" se face, nu automat la fiecare lipire.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      const files: File[] = []
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const f = item.getAsFile()
+          if (f) files.push(f)
+        }
+      }
+      if (!files.length) return
+      e.preventDefault()
+      const dt = new DataTransfer()
+      files.forEach(f => dt.items.add(f))
+      handleFiles(dt.files)
+      show('success', `${files.length} ${files.length === 1 ? 'imagine adăugată' : 'imagini adăugate'} din clipboard`)
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [selectedAptForAll])
+
   async function processAll() {
     const pending = uploads.filter(u => u.status === 'pending')
     if (!pending.length) { show('error', 'Nu există fișiere de procesat'); return }
@@ -1129,7 +1154,7 @@ export default function StatisticiPage() {
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
-                <div style={{ fontSize: 14, color: 'rgba(159,215,255,0.7)' }}>Click sau trage fișierele aici</div>
+                <div style={{ fontSize: 14, color: 'rgba(159,215,255,0.7)' }}>Click, trage fișierele, sau lipește cu Ctrl+V</div>
                 <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.4)', marginTop: 4 }}>PNG, JPG, PDF, CSV — toate deodată</div>
               </div>
               <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.csv" style={{ display: 'none' }}
