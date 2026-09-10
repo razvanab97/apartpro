@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight, Check } from 'lucide-react'
 
 type Platforma = 'airbnb' | 'booking'
 type Tab = 'dashboard' | 'evolutie' | 'upload' | 'booking'
-type SortBy = 'vizualizari' | 'ocupare' | 'pozitie' | 'tarif' | 'delta'
+type SortBy = 'vizualizari' | 'ocupare' | 'pozitie' | 'tarif' | 'delta' | 'recent'
 type ShowFilter = 'toate' | 'scaderi' | 'cresteri'
 
 interface Apt { id: string; nume: string; nota: string }
@@ -59,6 +59,7 @@ interface StatRow {
   scor_comentarii?: number
   completare_pagina_pct?: number
   raw_extras?: any
+  created_at?: string
 }
 
 interface UploadItem {
@@ -576,6 +577,9 @@ export default function StatisticiPage() {
         const db = Math.abs(pctDelta(b.latest.vizualizari_cautari ?? b.latest.afisari_p1_total, b.prev?.vizualizari_cautari ?? b.prev?.afisari_p1_total) || 0)
         return db - da
       }
+      if (sortBy === 'recent') {
+        return new Date(b.latest.created_at || 0).getTime() - new Date(a.latest.created_at || 0).getTime()
+      }
       return Math.max(b.latest.vizualizari_cautari || 0, b.latest.afisari_p1_total || 0) - Math.max(a.latest.vizualizari_cautari || 0, a.latest.afisari_p1_total || 0)
     })
   }, [cards, filterPlatforma, showFilter, sortBy, cardOrder, hiddenCards])
@@ -835,6 +839,7 @@ export default function StatisticiPage() {
                 <option value="pozitie">↕ Poziție clasament</option>
                 <option value="tarif">↕ Tarif/noapte</option>
                 <option value="delta">↕ Delta maxim</option>
+                <option value="recent">🕓 Recent adăugate</option>
               </select>
               <div style={S.div} />
               {(['toate','scaderi','cresteri'] as ShowFilter[]).map(f => (
