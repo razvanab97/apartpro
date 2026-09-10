@@ -427,6 +427,7 @@ export default function StatisticiPage() {
   const [sortBy, setSortBy] = useState<SortBy>('vizualizari')
   const [showFilter, setShowFilter] = useState<ShowFilter>('toate')
   const [thresholds] = useState<AlertThresholds>(DEFAULT_THRESH)
+  const [viewMode, setViewMode] = useState<'tabel' | 'carduri'>('tabel')
 
   // Edit mode
   const [editMode, setEditMode] = useState(false)
@@ -583,6 +584,43 @@ export default function StatisticiPage() {
       return Math.max(b.latest.vizualizari_cautari || 0, b.latest.afisari_p1_total || 0) - Math.max(a.latest.vizualizari_cautari || 0, a.latest.afisari_p1_total || 0)
     })
   }, [cards, filterPlatforma, showFilter, sortBy, cardOrder, hiddenCards])
+
+  // Concluzii in limbaj simplu, generate din datele curente - scopul e sa raspunda direct la
+  // "ce ar trebui sa fac cu informatia asta", nu doar sa arate cifre brute
+  const insights = useMemo(() => {
+    if (!filteredCards.length) return [] as string[]
+    const list: string[] = []
+    const vizOf = (s: StatRow) => s.platforma === 'airbnb' ? (s.afisari_p1_total ?? s.rata_afisari_p1) : s.vizualizari_cautari
+    const withDelta = filteredCards
+      .map(({ latest, prev }) => ({ latest, d: prev ? pctDelta(vizOf(latest), vizOf(prev)) : null }))
+      .filter((x): x is { latest: StatRow; d: number } => x.d != null)
+    if (withDelta.length) {
+      const worst = withDelta.reduce((a, b) => (a.d < b.d ? a : b))
+      if (worst.d < -10) list.push(`📉 ${aptName(worst.latest.apartament_id)} (${worst.latest.platforma}) a pierdut cel mai mult teren la vizibilitate: ${worst.d.toFixed(0)}% față de înregistrarea anterioară — verifică prețul și pozele.`)
+      const best = withDelta.reduce((a, b) => (a.d > b.d ? a : b))
+      if (best.d > 10) list.push(`📈 ${aptName(best.latest.apartament_id)} (${best.latest.platforma}) crește constant: +${best.d.toFixed(0)}% vizibilitate — vezi ce a schimbat și aplică și la celelalte.`)
+    }
+    const tarife = filteredCards
+      .map(({ latest }) => ({ latest, t: latest.platforma === 'airbnb' ? latest.tarif_mediu_noapte : latest.adr }))
+      .filter((x): x is { latest: StatRow; t: number } => x.t != null)
+    if (tarife.length >= 2) {
+      const top = tarife.reduce((a, b) => (a.t > b.t ? a : b))
+      const low = tarife.reduce((a, b) => (a.t < b.t ? a : b))
+      if (top.t > low.t * 1.3) list.push(`💰 Diferență mare de tarif: ${aptName(top.latest.apartament_id)} ia ${top.t} RON/noapte, iar ${aptName(low.latest.apartament_id)} doar ${low.t} RON — dacă au poziționare similară, merită să apropii prețurile.`)
+    }
+    const pozitii = filteredCards
+      .map(({ latest }) => ({ latest, r: latest.scor_pozitie_rank, t: latest.scor_pozitie_total }))
+      .filter((x): x is { latest: StatRow; r: number; t: number } => x.r != null && !!x.t)
+    if (pozitii.length) {
+      const worst = pozitii.reduce((a, b) => (a.r / a.t > b.r / b.t ? a : b))
+      if (worst.r / worst.t > 0.5) list.push(`⚠️ ${aptName(worst.latest.apartament_id)} e pe poziția ${worst.r}/${worst.t} în clasamentul Booking (jumătatea inferioară) — cel mai probabil are nevoie de preț mai bun sau poze noi ca să urce.`)
+    }
+    const anulariMari = filteredCards.filter(({ latest }) => (latest.rata_anulari ?? 0) > 15)
+    if (anulariMari.length) {
+      list.push(`🚫 ${anulariMari.length === 1 ? `${aptName(anulariMari[0].latest.apartament_id)} are` : `${anulariMari.length} apartamente au`} rată de anulări peste 15% — verifică descrierea/pozele, poate creează așteptări greșite.`)
+    }
+    return list.slice(0, 5)
+  }, [filteredCards, apts])
 
   const evoDataMap = useMemo(() => {
     const map: Record<string, StatRow[]> = {}
@@ -825,6 +863,16 @@ export default function StatisticiPage() {
               </div>
             )}
 
+            {/* Concluzii */}
+            {insights.length > 0 && (
+              <div style={{ background: 'rgba(77,163,255,0.06)', border: '1px solid rgba(77,163,255,0.2)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#7BC8FF', textTransform: 'uppercase', letterSpacing: '0.5px' }}>💡 Ce înseamnă cifrele astea</div>
+                {insights.map((txt, i) => (
+                  <div key={i} style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{txt}</div>
+                ))}
+              </div>
+            )}
+
             {/* Filters */}
             <div style={S.filterBar}>
               {(['','airbnb','booking'] as (Platforma|'')[]).map(p => (
@@ -848,6 +896,10 @@ export default function StatisticiPage() {
                 </button>
               ))}
               <div style={{ display:'flex', gap:8, marginLeft:'auto' }}>
+                <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <button style={{ ...S.tog(viewMode==='tabel'), borderRadius: 0, border: 'none' }} onClick={() => setViewMode('tabel')}>📊 Tabel</button>
+                  <button style={{ ...S.tog(viewMode==='carduri'), borderRadius: 0, border: 'none' }} onClick={() => setViewMode('carduri')}>🗂 Carduri</button>
+                </div>
                 <button style={S.btn('rgba(77,163,255,0.15)')} onClick={loadStats}>🔄</button>
                 <button style={S.btn(editMode ? '#4DA3FF' : 'rgba(255,255,255,0.08)')} onClick={() => setEditMode(e => !e)}>
                   ✏️ Editează
@@ -911,6 +963,11 @@ export default function StatisticiPage() {
                 <button style={{ background: 'none', border: 'none', color: '#4DA3FF', cursor: 'pointer', fontSize: 14 }} onClick={() => setTab('upload')}>
                   📤 Adaugă statistici
                 </button>
+              </div>
+            ) : viewMode === 'tabel' ? (
+              <div>
+                <PlatformTable items={filteredCards.filter(c => c.latest.platforma === 'booking')} platforma="booking" aptName={aptName} onOpen={openApartmentDetail} />
+                <PlatformTable items={filteredCards.filter(c => c.latest.platforma === 'airbnb')} platforma="airbnb" aptName={aptName} onOpen={openApartmentDetail} />
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
@@ -1276,6 +1333,91 @@ function MiniStat({ label, value, d, inv }: { label: string; value: string | nul
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         {d != null && <Delta d={d} inv={inv} size={10} />}
         <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{value}</span>
+      </div>
+    </div>
+  )
+}
+
+// Tabel comparativ - toate apartamentele unei platforme, una langa alta, ca sa se vada
+// dintr-o privire cine sta bine si cine sta prost pe fiecare metrica, nu doar cifre izolate
+// per card. Coloanele difera intre Airbnb si Booking, fiindca platformele raporteaza metrici
+// diferite (nu exista un "vizualizari" comun intre ele).
+function TableCell({ value, d, inv, align = 'right' }: { value: string | null; d?: number | null; inv?: boolean; align?: 'left' | 'right' }) {
+  if (value == null) return <td style={{ padding: '10px 12px', textAlign: align, color: 'rgba(159,215,255,0.25)' }}>—</td>
+  return (
+    <td style={{ padding: '10px 12px', textAlign: align, whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{value}</span>
+        {d != null && <Delta d={d} inv={inv} size={10} />}
+      </div>
+    </td>
+  )
+}
+
+function PlatformTable({ items, platforma, onOpen, aptName }: { items: { latest: StatRow; prev?: StatRow }[]; platforma: Platforma; onOpen: (aptId: string, platforma: Platforma) => void; aptName: (id: string) => string }) {
+  if (!items.length) return null
+  const isAirbnb = platforma === 'airbnb'
+  const accent = isAirbnb ? '#FF5A5F' : '#3B82F6'
+  const th: React.CSSProperties = { padding: '8px 12px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: 'rgba(159,215,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.4px', whiteSpace: 'nowrap' }
+
+  return (
+    <div style={{ background: 'rgba(15,20,35,0.8)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '10px 14px', background: isAirbnb ? 'rgba(255,90,95,0.08)' : 'rgba(59,130,246,0.08)', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ padding: '3px 8px', borderRadius: 20, fontSize: 10, fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: accent, color: '#fff' }}>
+          {isAirbnb ? '✈ Airbnb' : '🔵 Booking'}
+        </span>
+        <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>{items.length} {items.length === 1 ? 'anunț' : 'anunțuri'}</span>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <th style={{ ...th, textAlign: 'left' }}>Apartament</th>
+              {isAirbnb ? (<>
+                <th style={th}>Ocupare</th>
+                <th style={th}>Tarif/noapte</th>
+                <th style={th}>Afișări P1</th>
+                <th style={th}>Conv. globală</th>
+                <th style={th}>Conv. viz→rez</th>
+                <th style={th}>Anulări</th>
+              </>) : (<>
+                <th style={th}>Viz. căutări</th>
+                <th style={th}>Rezervări</th>
+                <th style={th}>ADR</th>
+                <th style={th}>Poziție</th>
+                <th style={th}>Conv. viz→rez</th>
+                <th style={th}>Scor com.</th>
+                <th style={th}>Anulări</th>
+              </>)}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(({ latest: s, prev: p }) => (
+              <tr key={s.id} onClick={() => onOpen(s.apartament_id, s.platforma)}
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <td style={{ padding: '10px 12px', fontSize: 13, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>{aptName(s.apartament_id)}</td>
+                {isAirbnb ? (<>
+                  <TableCell value={s.rata_ocupare != null ? `${s.rata_ocupare}%` : null} d={pctDelta(s.rata_ocupare, p?.rata_ocupare)} />
+                  <TableCell value={s.tarif_mediu_noapte != null ? `${s.tarif_mediu_noapte} RON` : null} d={pctDelta(s.tarif_mediu_noapte, p?.tarif_mediu_noapte)} />
+                  <TableCell value={s.afisari_p1_total != null ? s.afisari_p1_total.toLocaleString('ro-RO') : (s.rata_afisari_p1 != null ? `${s.rata_afisari_p1}%` : null)} d={pctDelta(s.afisari_p1_total ?? s.rata_afisari_p1, p?.afisari_p1_total ?? p?.rata_afisari_p1)} />
+                  <TableCell value={s.rata_conversie_globala != null ? `${s.rata_conversie_globala}%` : null} d={pctDelta(s.rata_conversie_globala, p?.rata_conversie_globala)} />
+                  <TableCell value={s.rata_conversie_vizite_rez != null ? `${s.rata_conversie_vizite_rez}%` : null} d={pctDelta(s.rata_conversie_vizite_rez, p?.rata_conversie_vizite_rez)} />
+                  <TableCell value={s.rata_anulari != null ? `${s.rata_anulari}%` : null} d={pctDelta(s.rata_anulari, p?.rata_anulari)} inv />
+                </>) : (<>
+                  <TableCell value={s.vizualizari_cautari != null ? s.vizualizari_cautari.toLocaleString('ro-RO') : null} d={pctDelta(s.vizualizari_cautari, p?.vizualizari_cautari)} />
+                  <TableCell value={s.rezervari_confirmate != null ? String(s.rezervari_confirmate) : null} d={pctDelta(s.rezervari_confirmate, p?.rezervari_confirmate)} />
+                  <TableCell value={s.adr != null ? `${s.adr} RON` : null} d={pctDelta(s.adr, p?.adr)} />
+                  <TableCell value={s.scor_pozitie_rank != null ? `${s.scor_pozitie_rank}/${s.scor_pozitie_total}` : null} d={s.scor_pozitie_rank != null && p?.scor_pozitie_rank != null ? -(pctDelta(s.scor_pozitie_rank, p.scor_pozitie_rank) ?? 0) : null} />
+                  <TableCell value={s.rata_conversie_pagina != null ? `${s.rata_conversie_pagina}%` : null} d={pctDelta(s.rata_conversie_pagina, p?.rata_conversie_pagina)} />
+                  <TableCell value={s.scor_comentarii != null ? `${s.scor_comentarii}/10` : null} d={pctDelta(s.scor_comentarii, p?.scor_comentarii)} />
+                  <TableCell value={s.rata_anulari != null ? `${s.rata_anulari}%` : null} d={pctDelta(s.rata_anulari, p?.rata_anulari)} inv />
+                </>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
