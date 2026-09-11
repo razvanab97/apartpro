@@ -196,6 +196,9 @@ export default function PreturiPage() {
   const [compareData, setCompareData] = useState<Record<string,Record<string,{booking?:number|null,airbnb?:number|null}>>>({})
   const [comparePolling, setComparePolling] = useState(false)
   const comparePollRef = useRef<any>(null)
+  // Disponibilitate REALĂ (rezervările noastre, nu ce arată Booking/Airbnb la scanare) — cerut
+  // direct, ca să recomande ce apartamente sunt chiar libere pentru perioada aleasă.
+  const [occupancyRez, setOccupancyRez] = useState<{apartament_id:string,data_checkin:string,data_checkout:string}[]>([])
   const calSource: 'apt'|'extra' = calApt.startsWith('extra:') ? 'extra' : 'apt'
   const calId = calApt.includes(':') ? calApt.split(':')[1] : calApt
 
@@ -381,6 +384,19 @@ export default function PreturiPage() {
     }catch(err){console.error('[preturi loadCompareData]',err)}
   }
 
+  async function loadOccupancyRange(start:string, end:string) {
+    if(!start||!end||!apts.length) return
+    try{
+      const {data} = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout')
+        .lte('data_checkin',end).gt('data_checkout',start).neq('status_rezervare','anulata')
+        .in('apartament_id',apts.map(a=>a.id))
+      setOccupancyRez(data||[])
+    }catch(err){console.error('[preturi loadOccupancyRange]',err)}
+  }
+  function isOccupiedOn(aptId:string, day:string){
+    return occupancyRez.some(r=>r.apartament_id===aptId&&r.data_checkin<=day&&r.data_checkout>day)
+  }
+
   function startComparePolling(start:string, end:string) {
     stopComparePolling()
     setComparePolling(true)
@@ -499,7 +515,7 @@ export default function PreturiPage() {
   }, [apts])
   useEffect(()=>{
     stopComparePolling()
-    if(calCompareMode) loadCompareData(calStart,calEnd)
+    if(calCompareMode){ loadCompareData(calStart,calEnd); loadOccupancyRange(calStart,calEnd) }
   }, [calCompareMode, calStart, calEnd, apts])
   useEffect(()=>()=>stopComparePolling(), []) // curatenie la parasirea paginii
   useEffect(()=>{ loadExtraLocations() }, [])
@@ -978,22 +994,31 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               </div>
             )}
 
-            {calCompareMode ? (
+            {calCompareMode ? (()=>{
+              // Disponibilitate REALĂ (rezervările noastre) — cerut direct, ca să recomande ce
+              // apartamente sunt chiar libere pentru perioada aleasă, nu doar ce preț au. Sortate
+              // libere primele, ca recomandarea să sară în ochi, nu doar ca simplă coloană.
+              const withOcc = apts.map(a=>({a,occ:compareDays.filter(d=>isOccupiedOn(a.id,d)).length}))
+              const aptsSorted = [...withOcc].sort((x,y)=>x.occ-y.occ)
+              const freeCount = withOcc.filter(x=>x.occ===0).length
+              return(
               <div style={{padding:'12px 16px',overflowX:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:10,display:'flex',gap:14}}>
+                <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:10,display:'flex',gap:14,flexWrap:'wrap' as const}}>
                   <span><span style={{color:'#7BC8FF'}}>🏨</span> Booking</span>
                   <span><span style={{color:'#F87171'}}>🏠</span> Airbnb</span>
                   <span>· {apts.length} apartamente</span>
+                  {apts.length>0&&<span style={{color:'#4ADE80',fontWeight:700}}>· 🟢 {freeCount} libere toată perioada — recomandate primele</span>}
                 </div>
                 {!apts.length ? (
                   <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
                     Niciun apartament cu link de Booking sau Airbnb.
                   </div>
                 ) : (
-                <table style={{borderCollapse:'collapse' as const,width:'100%',minWidth:compareDays.length>1?700:320}}>
+                <table style={{borderCollapse:'collapse' as const,width:'100%',minWidth:compareDays.length>1?820:420}}>
                   <thead>
                     <tr>
                       <th style={{textAlign:'left' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)'}}>Apartament</th>
+                      <th style={{textAlign:'center' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)',whiteSpace:'nowrap' as const}}>Disponibil</th>
                       {compareDays.map(d=>(
                         <th key={d} style={{textAlign:'center' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)',whiteSpace:'nowrap' as const}}>
                           {new Date(d+'T12:00:00').toLocaleDateString('ro-RO',{weekday:'short',day:'2-digit',month:'2-digit'})}
@@ -1002,17 +1027,26 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                     </tr>
                   </thead>
                   <tbody>
-                    {apts.map((a,i)=>(
+                    {aptsSorted.map(({a,occ},i)=>(
                       <tr key={a.id} style={{background:i%2?'rgba(255,255,255,0.015)':'transparent'}}>
                         <td style={{padding:'8px 10px',fontSize:13,fontWeight:700,color:'#E8F4FF',borderBottom:'1px solid rgba(159,215,255,0.05)'}}>
                           {a.nota}
                           {!a._bk&&<span style={{marginLeft:6,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Booking">🏨✕</span>}
                           {!a._ab&&<span style={{marginLeft:4,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Airbnb">🏠✕</span>}
                         </td>
+                        <td style={{padding:'8px 10px',textAlign:'center' as const,borderBottom:'1px solid rgba(159,215,255,0.05)',whiteSpace:'nowrap' as const}}>
+                          {occ===0
+                            ?<span style={{color:'#4ADE80',fontWeight:700,fontSize:12}}>🟢 Liber</span>
+                            :occ===compareDays.length
+                              ?<span style={{color:'#F87171',fontWeight:700,fontSize:12}}>🔴 Ocupat</span>
+                              :<span style={{color:'#FCD34D',fontWeight:700,fontSize:12}}>🟡 {compareDays.length-occ}/{compareDays.length} libere</span>}
+                        </td>
                         {compareDays.map(d=>{
                           const entry = compareData[a.id]?.[d]
+                          const occupiedDay = isOccupiedOn(a.id,d)
                           return(
-                            <td key={d} style={{padding:'8px 10px',textAlign:'center' as const,borderBottom:'1px solid rgba(159,215,255,0.05)'}}>
+                            <td key={d} title={occupiedDay?'Ocupat (rezervare existentă)':'Liber'} style={{padding:'8px 10px',textAlign:'center' as const,
+                              borderBottom:'1px solid rgba(159,215,255,0.05)',background:occupiedDay?'rgba(248,113,113,0.06)':'transparent'}}>
                               <div style={{fontSize:12,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking}`:'—'}</div>
                               <div style={{fontSize:12,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb}`:'—'}</div>
                             </td>
@@ -1024,7 +1058,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 </table>
                 )}
               </div>
-            ) : !apts.length&&!extraLocations.length ? (
+              )})() : !apts.length&&!extraLocations.length ? (
               <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
                 Niciun apartament cu link de Booking sau Airbnb.
               </div>
