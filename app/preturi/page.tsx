@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell } from 'recharts'
-import { supabase } from '@/lib/supabase'
+import { supabase, LUNI } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
 
@@ -137,7 +137,7 @@ export default function PreturiPage() {
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
-  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'|'strategie'>('preturi')
+  const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'|'strategie'|'calendar'>('preturi')
   const [evolutieData, setEvolutieData] = useState<any[]>([])
   const [loadingEvolutie, setLoadingEvolutie] = useState(false)
   const [compareDate1, setCompareDate1] = useState('')
@@ -170,6 +170,17 @@ export default function PreturiPage() {
   const [stratEvolCheckout, setStratEvolCheckout] = useState('')
   const [stratPatternZi, setStratPatternZi] = useState('')
   const [stratPatternLuna, setStratPatternLuna] = useState('')
+
+  // ── Calendar preturi (tab nou) — un apartament, o luna intreaga, Booking + Airbnb per zi.
+  // Scanarea propriu-zisa NU se face din server (Booking/Airbnb blocheaza fetch simplu, la fel ca
+  // restul sistemului de preturi) — se face din Terminal, cu script Playwright (~/Desktop/
+  // apartment_price_scan.py), acelasi mecanism ca la Monitor. Aici doar citim/afisam ce a scris
+  // deja scriptul in preturi_live.
+  const [calApt, setCalApt] = useState('')
+  const [calMonth, setCalMonth] = useState('')
+  const [calData, setCalData] = useState<Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>({})
+  const [loadingCal, setLoadingCal] = useState(false)
+  const [calCommandCopied, setCalCommandCopied] = useState(false)
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
@@ -318,6 +329,70 @@ export default function PreturiPage() {
         setPreturi(pm)
       })
   }
+
+  async function loadCalendarData(aptId:string, month:string) {
+    if(!aptId||!month) { setCalData({}); return }
+    setLoadingCal(true)
+    try{
+      const [y,m] = month.split('-').map(Number)
+      const start = `${month}-01`
+      const end = fmt(new Date(y, m, 1)) // prima zi a lunii URMATOARE (exclusiv)
+      const {data} = await supabase.from('preturi_live')
+        .select('data_checkin,pret_booking,pret_airbnb,pret_booking_original,updated_at')
+        .eq('apartament_id',aptId).gte('data_checkin',start).lt('data_checkin',end)
+      const map:Record<string,any> = {}
+      ;(data||[]).forEach((r:any)=>{map[r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb,bookingOrig:r.pret_booking_original,updatedAt:r.updated_at}})
+      setCalData(map)
+    }catch(err){console.error('[preturi loadCalendarData]',err)}
+    setLoadingCal(false)
+  }
+
+  function shiftCalMonth(delta:number){
+    const [y,m] = calMonth.split('-').map(Number)
+    const d = new Date(y, m-1+delta, 1)
+    setCalMonth(`${d.getFullYear()}-${pad(d.getMonth()+1)}`)
+  }
+
+  function buildCalendarGrid(month:string) {
+    const [y,m] = month.split('-').map(Number)
+    const daysInMonth = new Date(y, m, 0).getDate()
+    const firstDow = (new Date(y, m-1, 1).getDay()+6)%7 // Luni=0 ... Duminica=6
+    const cells:(number|null)[] = []
+    for(let i=0;i<firstDow;i++) cells.push(null)
+    for(let d=1;d<=daysInMonth;d++) cells.push(d)
+    while(cells.length%7!==0) cells.push(null)
+    return cells
+  }
+
+  async function copyCalCommand() {
+    const command = `python3 ~/Desktop/apartment_price_scan.py ${calApt} ${calMonth}`
+    try {
+      if(navigator.clipboard?.writeText){
+        await navigator.clipboard.writeText(command)
+      }else{
+        throw new Error('Clipboard API indisponibil')
+      }
+    } catch {
+      const textarea=document.createElement('textarea')
+      textarea.value=command
+      textarea.style.position='fixed'
+      textarea.style.opacity='0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const copied=document.execCommand('copy')
+      textarea.remove()
+      if(!copied){show('error','Nu s-a putut copia comanda');return}
+    }
+    setCalCommandCopied(true)
+    show('success','Comanda a fost copiată')
+    setTimeout(()=>setCalCommandCopied(false),1600)
+  }
+
+  useEffect(()=>{ if(calApt&&calMonth) loadCalendarData(calApt, calMonth) }, [calApt, calMonth])
+  useEffect(()=>{
+    if(!calMonth) setCalMonth(today.slice(0,7))
+    if(!calApt&&apts.length) setCalApt(apts[0].id)
+  }, [apts])
 
   // Polling pe jobId pana vine raspunsul
   function startPolling(jobId: string, checkin: string, checkout: string) {
@@ -572,8 +647,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     <>
       <PageHeader title="💰 Prețuri live" subtitle="Booking.com & Airbnb"/>
       <div style={{display:'flex',gap:0,borderBottom:'1px solid rgba(159,215,255,0.1)',background:'rgba(10,20,40,0.5)'}}>
-        {(['preturi','monitor','decizii','evolutie','strategie'] as const).map((tab)=>{
-          const labels:Record<string,string> = {preturi:'💰 Prețuri',monitor:'🔍 Monitor',decizii:'🧠 Decizii',evolutie:'📈 Evoluție',strategie:'📊 Strategie'}
+        {(['preturi','calendar','monitor','decizii','evolutie','strategie'] as const).map((tab)=>{
+          const labels:Record<string,string> = {preturi:'💰 Prețuri',calendar:'📅 Calendar',monitor:'🔍 Monitor',decizii:'🧠 Decizii',evolutie:'📈 Evoluție',strategie:'📊 Strategie'}
           return(
             <button key={tab} onClick={()=>setMainTab(tab)} style={{
               padding:'10px 18px',fontSize:12,fontWeight:600,cursor:'pointer',
@@ -672,6 +747,96 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
         </div>
 
         </>) /* end preturi */}
+        {mainTab==='calendar'&&(()=>{
+          const [calY,calM] = (calMonth||today.slice(0,7)).split('-').map(Number)
+          const cells = calMonth?buildCalendarGrid(calMonth):[]
+          const zileSapt = ['lun.','mar.','mie.','joi','vin.','sâm.','dum.']
+          const selApt = apts.find(a=>a.id===calApt)
+          return(
+          <div style={{...panel}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',
+              display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+              <span style={{fontSize:16}}>📅</span>
+              <select value={calApt} onChange={e=>setCalApt(e.target.value)} style={{
+                padding:'6px 10px',borderRadius:7,fontSize:13,fontWeight:600,
+                border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',
+                color:'#E8F4FF',outline:'none'}}>
+                {apts.map(a=><option key={a.id} value={a.id}>{a.nota}</option>)}
+              </select>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <button onClick={()=>shiftCalMonth(-1)} style={{
+                  padding:'5px 10px',borderRadius:6,fontSize:13,cursor:'pointer',fontWeight:700,
+                  border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)'}}>◀</button>
+                <span style={{fontSize:13,fontWeight:700,color:'#E8F4FF',minWidth:130,textAlign:'center' as const}}>
+                  {LUNI[calM]} {calY}
+                </span>
+                <button onClick={()=>shiftCalMonth(1)} style={{
+                  padding:'5px 10px',borderRadius:6,fontSize:13,cursor:'pointer',fontWeight:700,
+                  border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)'}}>▶</button>
+              </div>
+              <button onClick={()=>loadCalendarData(calApt,calMonth)} disabled={loadingCal||!calApt} style={{
+                padding:'5px 12px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
+                border:'1px solid rgba(99,179,237,0.25)',background:'rgba(99,179,237,0.08)',color:'#93C5FD',
+                opacity:loadingCal||!calApt?0.5:1,
+              }}>{loadingCal?'...':'↺ Reîmprospătează'}</button>
+              <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:4,fontSize:11,color:'rgba(147,197,253,0.4)'}}>
+                <span>💻</span>
+                <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10,maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                  python3 ~/Desktop/apartment_price_scan.py {calApt} {calMonth}
+                </code>
+                <button onClick={copyCalCommand} disabled={!calApt} style={{
+                  padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:600,
+                  border:`1px solid ${calCommandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.25)'}`,
+                  background:calCommandCopied?'rgba(74,222,128,0.1)':'rgba(99,179,237,0.08)',
+                  color:calCommandCopied?'#4ADE80':'#93C5FD',
+                  opacity:!calApt?0.45:1,
+                }}>{calCommandCopied?'✓ Copiat!':'📋 Copiază comanda'}</button>
+              </div>
+            </div>
+
+            {!apts.length ? (
+              <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
+                Niciun apartament cu link de Booking sau Airbnb.
+              </div>
+            ) : (
+            <div style={{padding:'12px 16px'}}>
+              <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:8,display:'flex',gap:14}}>
+                <span><span style={{color:'#7BC8FF'}}>🏨</span> Booking</span>
+                <span><span style={{color:'#F87171'}}>🏠</span> Airbnb</span>
+                {selApt&&!selApt._bk&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Booking</span>}
+                {selApt&&!selApt._ab&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Airbnb</span>}
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:6}}>
+                {zileSapt.map(z=>(
+                  <div key={z} style={{textAlign:'center' as const,fontSize:10,color:'rgba(147,197,253,0.4)',
+                    textTransform:'uppercase' as const,letterSpacing:'.04em',padding:'0 0 4px'}}>{z}</div>
+                ))}
+                {cells.map((d,idx)=>{
+                  if(d===null) return <div key={idx}/>
+                  const dateStr = `${calMonth}-${pad(d)}`
+                  const isPast = dateStr<today
+                  const isToday = dateStr===today
+                  const entry = calData[dateStr]
+                  return(
+                    <div key={idx} title={entry?.updatedAt?`Actualizat ${new Date(entry.updatedAt).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:''} style={{
+                      borderRadius:8,padding:'8px 6px',minHeight:64,
+                      border:`1px solid ${isToday?'rgba(248,113,113,0.4)':'rgba(159,215,255,0.08)'}`,
+                      background:isToday?'rgba(248,113,113,0.08)':isPast?'rgba(159,215,255,0.02)':'rgba(214,228,244,0.03)',
+                      opacity:isPast?0.45:1,
+                    }}>
+                      <div style={{fontSize:11,fontWeight:700,textDecoration:isPast?'line-through':'none',
+                        color:isToday?'#F87171':'#E8F4FF',marginBottom:4}}>{d}</div>
+                      <div style={{fontSize:11,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking} lei`:'—'}</div>
+                      <div style={{fontSize:11,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb} lei`:'—'}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            )}
+          </div>
+          )
+        })()}
         {mainTab==='monitor'&&<div style={{...panel,border:'1px solid rgba(99,179,237,0.2)',background:'rgba(15,30,55,0.6)'}}>
 
           {/* Header */}
