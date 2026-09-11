@@ -181,6 +181,8 @@ export default function PreturiPage() {
   const [calApt, setCalApt] = useState('') // "apt:<id>" sau "extra:<id>"
   const [calMonth, setCalMonth] = useState('')
   const [calGuests, setCalGuests] = useState('2')
+  const [calScope, setCalScope] = useState<'zi'|'saptamana'|'luna'>('luna') // domeniul SCANARII, separat de luna afisata in grila
+  const [calScopeDate, setCalScopeDate] = useState('') // ziua-ancora pentru scope 'zi'/'saptamana'
   const [calData, setCalData] = useState<Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>({})
   const [loadingCal, setLoadingCal] = useState(false)
   const [calCommandCopied, setCalCommandCopied] = useState(false)
@@ -405,8 +407,21 @@ export default function PreturiPage() {
     return cells
   }
 
-  const calCommand = `python3 ~/Desktop/apartment_price_scan.py ${calId} ${calMonth} both ${calGuests} ${calSource}`
-  const calScanUrl = `apartscan://scan?id=${calId}&month=${calMonth}&platform=both&guests=${calGuests}&source=${calSource}`
+  // Domeniul de scanare (zi/saptamana/luna) e independent de luna AFISATA in grila — poti naviga
+  // vizual prin decembrie, dar tot scana doar azi, daca asa ai ales scope-ul.
+  const calScopeAnchor = calScopeDate || today
+  const [calStart, calEnd] = (() => {
+    if(calScope==='zi') return [calScopeAnchor, calScopeAnchor]
+    if(calScope==='saptamana'){
+      const d = new Date(calScopeAnchor+'T12:00:00'); d.setDate(d.getDate()+6)
+      return [calScopeAnchor, fmt(d)]
+    }
+    const [y,m] = calMonth.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    return [`${calMonth}-01`, `${calMonth}-${pad(lastDay)}`]
+  })()
+  const calCommand = `python3 ~/Desktop/apartment_price_scan.py ${calId} ${calStart} ${calEnd} both ${calGuests} ${calSource}`
+  const calScanUrl = `apartscan://scan?id=${calId}&start=${calStart}&end=${calEnd}&platform=both&guests=${calGuests}&source=${calSource}`
 
   async function copyCalCommand() {
     const command = calCommand
@@ -435,6 +450,7 @@ export default function PreturiPage() {
   useEffect(()=>{ if(calId&&calMonth) loadCalendarData(calId, calMonth, calSource) }, [calId, calMonth, calSource])
   useEffect(()=>{
     if(!calMonth) setCalMonth(today.slice(0,7))
+    if(!calScopeDate) setCalScopeDate(today)
     if(!calApt&&apts.length) setCalApt(`apt:${apts[0].id}`)
   }, [apts])
   useEffect(()=>{ loadExtraLocations() }, [])
@@ -856,6 +872,25 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                   opacity:!calId?0.45:1,
                 }}>{calCommandCopied?'✓':'📋'}</button>
               </div>
+            </div>
+            <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(159,215,255,0.06)',
+              display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+              <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>Scanează</span>
+              <div style={{display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(99,179,237,0.2)'}}>
+                {(['zi','saptamana','luna'] as const).map(sc=>(
+                  <button key={sc} onClick={()=>setCalScope(sc)} style={{
+                    padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',
+                    background:calScope===sc?'rgba(99,179,237,0.18)':'transparent',
+                    color:calScope===sc?'#93C5FD':'rgba(147,197,253,0.45)',
+                  }}>{sc==='zi'?'O zi':sc==='saptamana'?'O săptămână':'Toată luna'}</button>
+                ))}
+              </div>
+              {calScope!=='luna'&&(
+                <input type="date" value={calScopeDate} min={today} onChange={e=>setCalScopeDate(e.target.value)} style={inpSm}/>
+              )}
+              <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',fontFamily:'monospace'}}>
+                {calStart===calEnd?calStart:`${calStart} → ${calEnd}`}
+              </span>
             </div>
             <div style={{padding:'6px 16px',fontSize:10,color:'rgba(147,197,253,0.35)'}}>
               „▶ Pornește scanul" necesită ApartScan.app instalat o dată pe acest Mac (instalare făcută deja) — pornește Terminalul automat, cu comanda potrivită. Butonul 📋 copiază comanda, pentru rulare manuală.
