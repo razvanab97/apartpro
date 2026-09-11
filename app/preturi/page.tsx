@@ -171,16 +171,25 @@ export default function PreturiPage() {
   const [stratPatternZi, setStratPatternZi] = useState('')
   const [stratPatternLuna, setStratPatternLuna] = useState('')
 
-  // ── Calendar preturi (tab nou) — un apartament, o luna intreaga, Booking + Airbnb per zi.
-  // Scanarea propriu-zisa NU se face din server (Booking/Airbnb blocheaza fetch simplu, la fel ca
-  // restul sistemului de preturi) — se face din Terminal, cu script Playwright (~/Desktop/
-  // apartment_price_scan.py), acelasi mecanism ca la Monitor. Aici doar citim/afisam ce a scris
-  // deja scriptul in preturi_live.
-  const [calApt, setCalApt] = useState('')
+  // ── Calendar preturi (tab nou) — un apartament (sau o locatie extra), o luna intreaga,
+  // Booking + Airbnb per zi. Scanarea propriu-zisa NU se face din server (Booking/Airbnb
+  // blocheaza fetch simplu, la fel ca restul sistemului de preturi) — se face din Terminal, cu
+  // script Playwright (~/Desktop/apartment_price_scan.py). Pornit automat prin ApartScan.app
+  // (handler local de URL "apartscan://", instalat o singura data) — butonul deschide link-ul,
+  // macOS porneste aplicatia, aplicatia deschide Terminal cu comanda deja completata si pornita.
+  // Aici doar citim/afisam ce a scris deja scriptul in preturi_live / preturi_extra_live.
+  const [calApt, setCalApt] = useState('') // "apt:<id>" sau "extra:<id>"
   const [calMonth, setCalMonth] = useState('')
+  const [calGuests, setCalGuests] = useState('2')
   const [calData, setCalData] = useState<Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>({})
   const [loadingCal, setLoadingCal] = useState(false)
   const [calCommandCopied, setCalCommandCopied] = useState(false)
+  const [extraLocations, setExtraLocations] = useState<{id:string,nume:string,link_booking?:string,link_airbnb?:string}[]>([])
+  const [showAddExtra, setShowAddExtra] = useState(false)
+  const [extraForm, setExtraForm] = useState({nume:'',linkBooking:'',linkAirbnb:''})
+  const [savingExtra, setSavingExtra] = useState(false)
+  const calSource: 'apt'|'extra' = calApt.startsWith('extra:') ? 'extra' : 'apt'
+  const calId = calApt.includes(':') ? calApt.split(':')[1] : calApt
 
   const pad = (n: number) => String(n).padStart(2, '0')
   const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
@@ -330,21 +339,53 @@ export default function PreturiPage() {
       })
   }
 
-  async function loadCalendarData(aptId:string, month:string) {
-    if(!aptId||!month) { setCalData({}); return }
+  async function loadCalendarData(id:string, month:string, source:'apt'|'extra') {
+    if(!id||!month) { setCalData({}); return }
     setLoadingCal(true)
     try{
       const [y,m] = month.split('-').map(Number)
       const start = `${month}-01`
       const end = fmt(new Date(y, m, 1)) // prima zi a lunii URMATOARE (exclusiv)
-      const {data} = await supabase.from('preturi_live')
+      const table = source==='extra' ? 'preturi_extra_live' : 'preturi_live'
+      const keyField = source==='extra' ? 'locatie_extra_id' : 'apartament_id'
+      const {data} = await supabase.from(table)
         .select('data_checkin,pret_booking,pret_airbnb,pret_booking_original,updated_at')
-        .eq('apartament_id',aptId).gte('data_checkin',start).lt('data_checkin',end)
+        .eq(keyField,id).gte('data_checkin',start).lt('data_checkin',end)
       const map:Record<string,any> = {}
       ;(data||[]).forEach((r:any)=>{map[r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb,bookingOrig:r.pret_booking_original,updatedAt:r.updated_at}})
       setCalData(map)
     }catch(err){console.error('[preturi loadCalendarData]',err)}
     setLoadingCal(false)
+  }
+
+  async function loadExtraLocations() {
+    try{
+      const {data} = await supabase.from('locatii_extra').select('id,nume,link_booking,link_airbnb').order('nume')
+      setExtraLocations(data||[])
+    }catch(err){console.error('[preturi loadExtraLocations]',err)}
+  }
+
+  async function saveExtraLocation() {
+    if(!extraForm.nume.trim()){show('error','Introdu un nume pentru locație');return}
+    if(!extraForm.linkBooking.trim()&&!extraForm.linkAirbnb.trim()){show('error','Introdu cel puțin un link (Booking sau Airbnb)');return}
+    setSavingExtra(true)
+    try{
+      const {data,error} = await supabase.from('locatii_extra').insert({
+        nume:extraForm.nume.trim(),
+        link_booking:extraForm.linkBooking.trim()||null,
+        link_airbnb:extraForm.linkAirbnb.trim()||null,
+      }).select().single()
+      if(error) throw error
+      await loadExtraLocations()
+      setCalApt(`extra:${data.id}`)
+      setExtraForm({nume:'',linkBooking:'',linkAirbnb:''})
+      setShowAddExtra(false)
+      show('success','Locație extra adăugată')
+    }catch(err:any){
+      console.error('[preturi saveExtraLocation]',err)
+      show('error','Nu s-a putut salva — verifică dacă tabela locatii_extra există în Supabase')
+    }
+    setSavingExtra(false)
   }
 
   function shiftCalMonth(delta:number){
@@ -364,8 +405,11 @@ export default function PreturiPage() {
     return cells
   }
 
+  const calCommand = `python3 ~/Desktop/apartment_price_scan.py ${calId} ${calMonth} both ${calGuests} ${calSource}`
+  const calScanUrl = `apartscan://scan?id=${calId}&month=${calMonth}&platform=both&guests=${calGuests}&source=${calSource}`
+
   async function copyCalCommand() {
-    const command = `python3 ~/Desktop/apartment_price_scan.py ${calApt} ${calMonth}`
+    const command = calCommand
     try {
       if(navigator.clipboard?.writeText){
         await navigator.clipboard.writeText(command)
@@ -388,11 +432,12 @@ export default function PreturiPage() {
     setTimeout(()=>setCalCommandCopied(false),1600)
   }
 
-  useEffect(()=>{ if(calApt&&calMonth) loadCalendarData(calApt, calMonth) }, [calApt, calMonth])
+  useEffect(()=>{ if(calId&&calMonth) loadCalendarData(calId, calMonth, calSource) }, [calId, calMonth, calSource])
   useEffect(()=>{
     if(!calMonth) setCalMonth(today.slice(0,7))
-    if(!calApt&&apts.length) setCalApt(apts[0].id)
+    if(!calApt&&apts.length) setCalApt(`apt:${apts[0].id}`)
   }, [apts])
+  useEffect(()=>{ loadExtraLocations() }, [])
 
   // Polling pe jobId pana vine raspunsul
   function startPolling(jobId: string, checkin: string, checkout: string) {
@@ -751,18 +796,30 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           const [calY,calM] = (calMonth||today.slice(0,7)).split('-').map(Number)
           const cells = calMonth?buildCalendarGrid(calMonth):[]
           const zileSapt = ['lun.','mar.','mie.','joi','vin.','sâm.','dum.']
-          const selApt = apts.find(a=>a.id===calApt)
+          const selApt = calSource==='apt' ? apts.find(a=>a.id===calId) : null
+          const selExtra = calSource==='extra' ? extraLocations.find(l=>l.id===calId) : null
+          const inpSm:React.CSSProperties = {padding:'6px 10px',borderRadius:7,fontSize:13,
+            border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none'}
           return(
           <div style={{...panel}}>
             <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(159,215,255,0.08)',
               display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
               <span style={{fontSize:16}}>📅</span>
-              <select value={calApt} onChange={e=>setCalApt(e.target.value)} style={{
-                padding:'6px 10px',borderRadius:7,fontSize:13,fontWeight:600,
-                border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',
-                color:'#E8F4FF',outline:'none'}}>
-                {apts.map(a=><option key={a.id} value={a.id}>{a.nota}</option>)}
+              <select value={calApt} onChange={e=>setCalApt(e.target.value)} style={{...inpSm,fontWeight:600,color:'#E8F4FF'}}>
+                <optgroup label="Apartamentele noastre">
+                  {apts.map(a=><option key={a.id} value={`apt:${a.id}`}>{a.nota}</option>)}
+                </optgroup>
+                {extraLocations.length>0&&(
+                  <optgroup label="Locații extra">
+                    {extraLocations.map(l=><option key={l.id} value={`extra:${l.id}`}>🏷 {l.nume}</option>)}
+                  </optgroup>
+                )}
               </select>
+              <button onClick={()=>setShowAddExtra(v=>!v)} title="Adaugă o locație de urmărit ocazional, care nu e (încă) apartament de-al nostru" style={{
+                padding:'5px 10px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
+                border:'1px solid rgba(196,181,253,0.25)',background:showAddExtra?'rgba(196,181,253,0.12)':'transparent',color:'#C4B5FD'}}>
+                {showAddExtra?'✕ Renunță':'+ Locație extra'}
+              </button>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <button onClick={()=>shiftCalMonth(-1)} style={{
                   padding:'5px 10px',borderRadius:6,fontSize:13,cursor:'pointer',fontWeight:700,
@@ -774,27 +831,51 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                   padding:'5px 10px',borderRadius:6,fontSize:13,cursor:'pointer',fontWeight:700,
                   border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)'}}>▶</button>
               </div>
-              <button onClick={()=>loadCalendarData(calApt,calMonth)} disabled={loadingCal||!calApt} style={{
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:11,color:'rgba(147,197,253,0.5)'}}>👤 Oaspeți</span>
+                <select value={calGuests} onChange={e=>setCalGuests(e.target.value)} style={inpSm}>
+                  {[1,2,3,4,5,6].map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <button onClick={()=>loadCalendarData(calId,calMonth,calSource)} disabled={loadingCal||!calId} style={{
                 padding:'5px 12px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
                 border:'1px solid rgba(99,179,237,0.25)',background:'rgba(99,179,237,0.08)',color:'#93C5FD',
-                opacity:loadingCal||!calApt?0.5:1,
+                opacity:loadingCal||!calId?0.5:1,
               }}>{loadingCal?'...':'↺ Reîmprospătează'}</button>
-              <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:4,fontSize:11,color:'rgba(147,197,253,0.4)'}}>
-                <span>💻</span>
-                <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10,maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
-                  python3 ~/Desktop/apartment_price_scan.py {calApt} {calMonth}
-                </code>
-                <button onClick={copyCalCommand} disabled={!calApt} style={{
-                  padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:600,
-                  border:`1px solid ${calCommandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.25)'}`,
-                  background:calCommandCopied?'rgba(74,222,128,0.1)':'rgba(99,179,237,0.08)',
-                  color:calCommandCopied?'#4ADE80':'#93C5FD',
-                  opacity:!calApt?0.45:1,
-                }}>{calCommandCopied?'✓ Copiat!':'📋 Copiază comanda'}</button>
+              <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6}}>
+                <a href={calScanUrl} title={calCommand} style={{
+                  padding:'6px 14px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:700,textDecoration:'none',
+                  border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',
+                  opacity:!calId?0.45:1,pointerEvents:!calId?'none':'auto',
+                }}>▶ Pornește scanul</a>
+                <button onClick={copyCalCommand} disabled={!calId} title={calCommand} style={{
+                  padding:'6px 8px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:600,
+                  border:`1px solid ${calCommandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.2)'}`,
+                  background:calCommandCopied?'rgba(74,222,128,0.1)':'transparent',
+                  color:calCommandCopied?'#4ADE80':'rgba(147,197,253,0.5)',
+                  opacity:!calId?0.45:1,
+                }}>{calCommandCopied?'✓':'📋'}</button>
               </div>
             </div>
+            <div style={{padding:'6px 16px',fontSize:10,color:'rgba(147,197,253,0.35)'}}>
+              „▶ Pornește scanul" necesită ApartScan.app instalat o dată pe acest Mac (instalare făcută deja) — pornește Terminalul automat, cu comanda potrivită. Butonul 📋 copiază comanda, pentru rulare manuală.
+            </div>
 
-            {!apts.length ? (
+            {showAddExtra&&(
+              <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(196,181,253,0.12)',
+                background:'rgba(196,181,253,0.04)',display:'flex',gap:8,flexWrap:'wrap' as const,alignItems:'center'}}>
+                <input placeholder="Nume locație" value={extraForm.nume} onChange={e=>setExtraForm(f=>({...f,nume:e.target.value}))} style={{...inpSm,flex:'1 1 140px'}}/>
+                <input placeholder="Link Booking" value={extraForm.linkBooking} onChange={e=>setExtraForm(f=>({...f,linkBooking:e.target.value}))} style={{...inpSm,flex:'2 1 220px'}}/>
+                <input placeholder="Link Airbnb" value={extraForm.linkAirbnb} onChange={e=>setExtraForm(f=>({...f,linkAirbnb:e.target.value}))} style={{...inpSm,flex:'2 1 220px'}}/>
+                <button onClick={saveExtraLocation} disabled={savingExtra} style={{
+                  padding:'6px 14px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:700,
+                  border:'1px solid rgba(196,181,253,0.35)',background:'rgba(196,181,253,0.12)',color:'#C4B5FD',
+                  opacity:savingExtra?0.5:1,
+                }}>{savingExtra?'...':'✓ Salvează'}</button>
+              </div>
+            )}
+
+            {!apts.length&&!extraLocations.length ? (
               <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
                 Niciun apartament cu link de Booking sau Airbnb.
               </div>
@@ -805,6 +886,8 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 <span><span style={{color:'#F87171'}}>🏠</span> Airbnb</span>
                 {selApt&&!selApt._bk&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Booking</span>}
                 {selApt&&!selApt._ab&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Airbnb</span>}
+                {selExtra&&!selExtra.link_booking&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Booking</span>}
+                {selExtra&&!selExtra.link_airbnb&&<span style={{color:'rgba(251,191,36,0.7)'}}>⚠ fără link Airbnb</span>}
               </div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:6}}>
                 {zileSapt.map(z=>(
