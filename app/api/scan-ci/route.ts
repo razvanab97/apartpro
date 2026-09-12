@@ -17,8 +17,10 @@ export async function POST(req: NextRequest) {
       '- Județul din secțiunea Domiciliu\n' +
       '- Localitatea/orașul din secțiunea Domiciliu\n' +
       '- Strada, cu tot ce urmează după (nr., bloc, ap.) din secțiunea Domiciliu\n' +
+      '- Telefon, DOAR dacă apare explicit vizibil undeva în imagine, altfel string gol\n' +
       'Răspunde STRICT doar cu JSON, fără nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123",' +
-      '"serie":"XZ","numar":"123456","judet":"Iași","localitate":"Iași","strada":"Str. Exemplu nr. 1"}. ' +
+      '"serie":"XZ","numar":"123456","judet":"Iași","localitate":"Iași","strada":"Str. Exemplu nr. 1",' +
+      '"telefon":""}. ' +
       'Dacă nu poți citi clar un câmp, pune string gol pentru el. Nu inventa date.'
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest) {
       judet: parsed.judet || '',
       localitate: parsed.localitate || '',
       strada: parsed.strada || '',
+      telefon: parsed.telefon || '',
       raw: rawText,
     })
   } catch (e: any) {

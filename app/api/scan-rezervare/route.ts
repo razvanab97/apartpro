@@ -15,8 +15,9 @@ const SCHEMA = {
     moneda: { type: ['string', 'null'] },
     apartament_text: { type: ['string', 'null'] },
     cod: { type: ['string', 'null'] },
+    telefon: { type: ['string', 'null'] },
   },
-  required: ['nume_client', 'adulti', 'copii', 'data_checkin', 'data_checkout', 'nr_nopti', 'pret_total', 'moneda', 'apartament_text', 'cod'],
+  required: ['nume_client', 'adulti', 'copii', 'data_checkin', 'data_checkout', 'nr_nopti', 'pret_total', 'moneda', 'apartament_text', 'cod', 'telefon'],
   additionalProperties: false,
 }
 
@@ -46,7 +47,9 @@ export async function POST(req: NextRequest) {
     "- apartament_text: numele/titlul proprietății dacă apare undeva vizibil în imagine (header, " +
     "titlu anunț), altfel null — nu ghici, doar dacă se vede clar\n" +
     "- cod: codul de confirmare/rezervare al platformei (ex. 'Confirmation code', 'Cod rezervare' — " +
-    "un cod scurt alfanumeric), altfel null\n\n" +
+    "un cod scurt alfanumeric), altfel null\n" +
+    "- telefon: numărul de telefon al oaspetelui, DOAR dacă apare explicit vizibil în imagine, " +
+    "altfel null — nu ghici\n\n" +
     "Răspunde STRICT cu JSON, fără alt text."
 
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
