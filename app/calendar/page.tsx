@@ -51,10 +51,13 @@ function fillVars(tmpl:string, vals:{nume?:string;apartament?:string;data_checki
     .replace(/\{data_checkin\}/gi, vals.data_checkin||'')
     .replace(/\{data_checkout\}/gi, vals.data_checkout||'')
 }
-function msgCheckin(r:any, tmpl?:string){
+function msgCheckin(r:any, tmplGlobal?:string){
   const apt = r.apartament?.nume || 'apartament'
   const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const nume = firstName(r.nume_client)
+  // Mesajul personalizat pe apartament (Editează apartament → Mesaje) are prioritate fata de
+  // sablonul global din Setari — la fel ca la msgCheckoutGen mai jos.
+  const tmpl = r.apartament?.mesaj_checkin || tmplGlobal
   if(tmpl) return fillVars(tmpl,{nume,apartament:apt,data_checkin:ci})
   return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
 }
@@ -74,6 +77,10 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   const nume = firstName(r.nume_client)
   const sablon = sabloane[aptId]
   if(sablon) return applyVars(sablon,nume,apt,co)
+  // Mesajul personalizat pe apartament (Editează apartament → Mesaje) — a doua prioritate,
+  // sub sabloanele dedicate din Șabloane Mesaje, deasupra textului generic de mai jos.
+  const aptMsg = r.apartament?.mesaj_checkout
+  if(aptMsg) return applyVars(aptMsg,nume,apt,co)
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 // Confirmare completa a rezervarii (apartament + perioada + pret) — distinct de msgCheckin,
@@ -206,7 +213,7 @@ export default function CalendarPage() {
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,observatii,apartament:apartamente!inner(id,nume,nota)')
+          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,observatii,apartament:apartamente!inner(id,nume,nota,mesaj_checkin,mesaj_checkout)')
           .or('status_rezervare.neq.anulata,status_rezervare.is.null')
           .lte('data_checkin', end).gte('data_checkout', start)
           .order('data_checkin'),

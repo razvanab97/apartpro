@@ -12,7 +12,7 @@ const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenan
 const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
 const EDIT_TABS = [
   { id:'general' as const, emoji:'🏠', label:'General', desc:'Detalii de bază despre apartament' },
-  { id:'comision' as const, emoji:'💰', label:'Comision', desc:'Proprietar, comision și chiria plătită către el' },
+  { id:'comision' as const, emoji:'💰', label:'Plăți', desc:'Proprietar, comision și chiria plătită către el' },
   { id:'linkuri' as const, emoji:'🔗', label:'Linkuri', desc:'Site, hărți și anunțurile de pe platforme' },
   { id:'mesaje' as const, emoji:'💬', label:'Mesaje', desc:'Instrucțiuni, reguli și mesaje automate' },
 ]
@@ -50,7 +50,7 @@ function withToday(url: string, platform: 'booking'|'airbnb'): string {
   return url
 }
 
-const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON', cod_locker:'' }
+const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string; chirie_ziua?: number } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON', cod_locker:'' }
 
 function CopyBtn({ text }: { text: string }) {
   const [c, setC] = useState(false)
@@ -252,7 +252,7 @@ export default function ApartamentePage() {
   const [proprietari, setProprietari] = useState<Proprietar[]>([])
   const [editOpen, setEditOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string|null>(null)
-  const [editing, setEditing] = useState<Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string }>(empty)
+  const [editing, setEditing] = useState<Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string; chirie_ziua?: number }>(empty)
   const [editTab, setEditTab] = useState<'general'|'comision'|'linkuri'|'mesaje'>('general')
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string|null>(null)
@@ -280,12 +280,12 @@ export default function ApartamentePage() {
 
   function openNew(){ setEditing(empty); setEditTab('general'); setEditOpen(true) }
   async function openEdit(a:Apartament){
-    setEditing({...a, chirie_suma:0, chirie_moneda:'RON'})
+    setEditing({...a, chirie_suma:0, chirie_moneda:'RON', chirie_ziua:undefined})
     setEditTab('general')
     setEditOpen(true)
     const { data: chirieData } = await supabase.from('chirii_fixe')
-      .select('suma,moneda').eq('apartament_id', a.id).eq('activ', true).maybeSingle()
-    if (chirieData) setEditing((prev:any) => ({ ...prev, chirie_suma: chirieData.suma, chirie_moneda: chirieData.moneda }))
+      .select('suma,moneda,ziua_plata').eq('apartament_id', a.id).eq('activ', true).maybeSingle()
+    if (chirieData) setEditing((prev:any) => ({ ...prev, chirie_suma: chirieData.suma, chirie_moneda: chirieData.moneda, chirie_ziua: chirieData.ziua_plata ?? undefined }))
   }
 
   async function toggleAptStatus(id:string, newStatus:string){
@@ -320,11 +320,12 @@ export default function ApartamentePage() {
     if (finalAptId) {
       const chirieSuma = Number((editing as any).chirie_suma) || 0
       const chirieMoneda = (editing as any).chirie_moneda || 'RON'
+      const chirieZiua = Number((editing as any).chirie_ziua) || null
       const { data: existingChirie } = await supabase.from('chirii_fixe')
         .select('id').eq('apartament_id', finalAptId).eq('activ', true).maybeSingle()
       if (chirieSuma > 0) {
-        if (existingChirie) await supabase.from('chirii_fixe').update({ suma: chirieSuma, moneda: chirieMoneda }).eq('id', existingChirie.id)
-        else await supabase.from('chirii_fixe').insert({ apartament_id: finalAptId, suma: chirieSuma, moneda: chirieMoneda, activ: true })
+        if (existingChirie) await supabase.from('chirii_fixe').update({ suma: chirieSuma, moneda: chirieMoneda, ziua_plata: chirieZiua }).eq('id', existingChirie.id)
+        else await supabase.from('chirii_fixe').insert({ apartament_id: finalAptId, suma: chirieSuma, moneda: chirieMoneda, ziua_plata: chirieZiua, activ: true })
       } else if (existingChirie) {
         await supabase.from('chirii_fixe').update({ activ: false }).eq('id', existingChirie.id)
       }
@@ -617,13 +618,17 @@ export default function ApartamentePage() {
 
           <div style={{ marginTop: 4, marginBottom: 4, padding: 14, borderRadius: 10, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.12)' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>
-            <FormRow cols={2}>
+            <FormRow cols={3}>
               <FormGroup><label>Chirie / lună</label><input type="number" value={(editing as any).chirie_suma||0} onChange={e=>setEditing({...editing,chirie_suma:parseFloat(e.target.value)||0} as any)} min={0}/></FormGroup>
               <FormGroup><label>Monedă</label>
                 <select value={(editing as any).chirie_moneda||'RON'} onChange={e=>setEditing({...editing,chirie_moneda:e.target.value} as any)}>
                   <option value="RON">RON</option>
                   <option value="EUR">EUR (convertit automat la curs BNR)</option>
                 </select>
+              </FormGroup>
+              <FormGroup><label>Ziua plății</label>
+                <input type="number" value={(editing as any).chirie_ziua||''} placeholder="ex: 5"
+                  onChange={e=>setEditing({...editing,chirie_ziua:e.target.value?parseInt(e.target.value):undefined} as any)} min={1} max={31}/>
               </FormGroup>
             </FormRow>
             <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:'rgba(159,215,255,0.7)', marginBottom:0, marginTop: 4 }}>

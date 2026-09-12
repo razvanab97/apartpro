@@ -137,6 +137,12 @@ export default function PreturiPage() {
   const [dataCheckout, setDataCheckout] = useState('')
   const [ocupate, setOcupate] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState<string|null>(null)
+  // Scanare automata (2 adulti) declansata din butonul ▶ per rand, tab Preturi — scrie direct
+  // in preturi_live prin acelasi script/ApartScan.app ca la Calendar, doar pentru 1 zi/1 apartament.
+  // Polling scurt dupa declansare, ca pretul sa apara si sa ramana salvat fara alt pas manual.
+  const [scanningIds, setScanningIds] = useState<Set<string>>(new Set())
+  const quickScanPollRef = useRef<any>(null)
+  const quickScanStartRef = useRef<Record<string,number>>({})
   const { toast, show } = useToast()
 
   const [checkinMonitor, setCheckinMonitor] = useState('')
@@ -326,7 +332,7 @@ export default function PreturiPage() {
     loadHistory(true)
     loadEvolutie()
     loadReguli()
-    return () => { if(pollRef.current) clearInterval(pollRef.current) }
+    return () => { if(pollRef.current) clearInterval(pollRef.current); if(quickScanPollRef.current) clearInterval(quickScanPollRef.current) }
   }, [])
 
   useEffect(() => {
@@ -368,17 +374,57 @@ export default function PreturiPage() {
     setPreturi(prev=>({...prev,[aptId]:{...prev[aptId],[field]:val}}))
   }
 
+  async function loadPreturiForDate(data:string){
+    if(!apts.length) return {}
+    const {data:saved} = await supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data).eq('oaspeti',2)
+    const pm:Record<string,{booking:string,airbnb:string}> = {}
+    const rowByApt:Record<string,any> = {}
+    apts.forEach(a=>{
+      const p=(saved||[]).find((x:any)=>x.apartament_id===a.id)
+      pm[a.id]={booking:p?.pret_booking?.toString()||'',airbnb:p?.pret_airbnb?.toString()||''}
+      if(p) rowByApt[a.id]=p
+    })
+    setPreturi(pm)
+    return rowByApt
+  }
+
   function changeData(data:string){
     setDataSelectata(data)
     const _d=new Date(data+'T12:00:00');_d.setDate(_d.getDate()+1);setDataCheckout(fmt(_d))
-    if(!apts.length) return
-    supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data).eq('oaspeti',2)
-      .then(({data:saved})=>{
-        const pm:Record<string,{booking:string,airbnb:string}> = {}
-        apts.forEach(a=>{const p=(saved||[]).find((x:any)=>x.apartament_id===a.id)
-          pm[a.id]={booking:p?.pret_booking?.toString()||'',airbnb:p?.pret_airbnb?.toString()||''}})
-        setPreturi(pm)
+    loadPreturiForDate(data)
+  }
+
+  // URL-ul apartscan:// pentru un scan de 1 zi/1 apartament/2 adulti — acelasi mecanism (script +
+  // ApartScan.app) ca la Calendar, doar cu domeniul restrans la un singur rand din acest tabel.
+  function quickScanUrl(aptId:string){
+    const d = dataSelectata||today
+    return `apartscan://scan?id=${aptId}&start=${d}&end=${d}&platform=both&guests=2&source=apt`
+  }
+  function startQuickScan(aptId:string){
+    quickScanStartRef.current[aptId] = Date.now()
+    setScanningIds(prev=>{const n=new Set(prev);n.add(aptId);return n})
+    if(quickScanPollRef.current) return
+    let elapsed=0
+    quickScanPollRef.current=setInterval(async ()=>{
+      const rowByApt = await loadPreturiForDate(dataSelectata||today)
+      elapsed+=4000
+      setScanningIds(prev=>{
+        const n=new Set(prev)
+        // Sterge din "in curs" doar cand randul din DB e chiar mai nou decat momentul in care
+        // s-a pornit scanarea — altfel un pret vechi, deja existent, ar opri spinner-ul instant
+        // la un re-scan, inainte ca scanarea reala sa fi terminat.
+        prev.forEach(id=>{
+          const row = rowByApt[id]
+          const startedAt = quickScanStartRef.current[id]||0
+          if(row?.updated_at && new Date(row.updated_at).getTime()>startedAt) n.delete(id)
+        })
+        if(n.size===0||elapsed>90000){
+          clearInterval(quickScanPollRef.current); quickScanPollRef.current=null
+          return new Set()
+        }
+        return n
       })
+    },4000)
   }
 
   async function loadCalendarData(id:string, month:string, source:'apt'|'extra') {
@@ -947,6 +993,15 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                 <span style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{apt.nota}</span>
                 <span style={{fontSize:10}}>{ocupate.has(apt.id)?'🔴':'🟢'}</span>
               </div>
+              {(apt._bk||apt._ab)&&(
+                <a href={quickScanUrl(apt.id)} onClick={()=>startQuickScan(apt.id)} title="Scanează automat Booking+Airbnb pentru 2 adulți — prețul apare și rămâne salvat singur"
+                  style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:6,fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,
+                    border:`1px solid ${scanningIds.has(apt.id)?'rgba(252,211,77,0.4)':'rgba(74,222,128,0.35)'}`,
+                    background:scanningIds.has(apt.id)?'rgba(252,211,77,0.1)':'rgba(74,222,128,0.1)',
+                    color:scanningIds.has(apt.id)?'#FCD34D':'#4ADE80'}}>
+                  {scanningIds.has(apt.id)?'⏳':'▶'}
+                </a>
+              )}
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:'rgba(77,163,255,0.5)'}}>🏨</span>
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.booking||''} onChange={e=>updatePret(apt.id,'booking',e.target.value)} style={inp}/>

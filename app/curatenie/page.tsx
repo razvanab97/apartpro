@@ -39,6 +39,10 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   const nume = firstName(r.nume_client)
   const sablon = sabloane[aptId]
   if(sablon) return applyVars(sablon,nume,apt,co)
+  // Mesajul personalizat pe apartament (Editează apartament → Mesaje) — a doua prioritate,
+  // sub sabloanele dedicate din Șabloane Mesaje, deasupra textului generic de mai jos.
+  const aptMsg = r.apartament?.mesaj_checkout
+  if(aptMsg) return applyVars(aptMsg,nume,apt,co)
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 
@@ -522,7 +526,7 @@ export default function CuratenePage() {
     try{
       const [{data:coData},{data:ciData},{data:statusData}] = await Promise.all([
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,data_checkout,apartament:apartamente!inner(id,nume,nota,adresa,status,capacitate_max)')
+          .select('id,nume_client,telefon_client,nr_persoane,nr_nopti,valoare_bruta,data_checkout,apartament:apartamente!inner(id,nume,nota,adresa,status,capacitate_max,mesaj_checkout)')
           .eq('data_checkout', date)
           .eq('apartament.status', 'activ')
           .neq('status_rezervare', 'anulata'),

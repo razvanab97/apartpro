@@ -110,10 +110,13 @@ function fillVars(tmpl:string, vals:{nume?:string;apartament?:string;data_checki
     .replace(/\{data_checkout\}/gi, vals.data_checkout||'')
 }
 
-function msgCheckin(r:any, tmpl?:string){
+function msgCheckin(r:any, tmplGlobal?:string){
   const apt = r.apartament?.nume || 'apartament'
   const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const nume = firstName(r.nume_client)
+  // Mesajul personalizat pe apartament (setat din Editează apartament → Mesaje) are prioritate
+  // fata de sablonul global din Setari — la fel ca la msgCheckoutGen mai jos.
+  const tmpl = r.apartament?.mesaj_checkin || tmplGlobal
   if(tmpl) return fillVars(tmpl,{nume,apartament:apt,data_checkin:ci})
   return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}* pentru data de *${ci}*.\n\nVă așteptăm cu drag! La sosire, vă rugăm să ne anunțați și vă transmitem detaliile de acces.\n\nEchipa AB Homes Iași`
 }
@@ -328,9 +331,9 @@ export default function DashboardPage() {
       // rezervari care se suprapun cu luna curenta (checkin <= sfarsit luna SI checkout > inceput luna)
       supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lte('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa,mesaj_checkin,mesaj_checkout)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
-      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
+      supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa,mesaj_checkin,mesaj_checkout)').eq('data_checkout',todayStr).neq('status_rezervare','anulata').order('data_checkout'),
       // rezervari recente
       supabase.from('rezervari').select('*,apartament:apartamente(nume,comision_procent)').order('created_at',{ascending:false}).limit(8),
       // deconturi neplatite
