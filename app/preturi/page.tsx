@@ -156,7 +156,6 @@ export default function PreturiPage() {
   const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string,dispBooking?:boolean|null,dispAirbnb?:boolean|null}>>({})
   const [dataSelectata, setDataSelectata] = useState('')
   const [dataCheckout, setDataCheckout] = useState('')
-  const [ocupate, setOcupate] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState<string|null>(null)
   // Scanare automata (2 adulti) declansata din butonul ▶ per rand, tab Preturi — scrie direct
   // in preturi_live prin acelasi script/ApartScan.app ca la Calendar, doar pentru 1 zi/1 apartament.
@@ -338,7 +337,6 @@ export default function PreturiPage() {
         // mai jos ruleaza sincron, inaintea acestui .then() async), n-o mai suprascrie cu azi
         setDataSelectata(prev=>prev||today)
         const _co=new Date(today+'T12:00:00');_co.setDate(_co.getDate()+1);setDataCheckout(fmt(_co))
-        loadOcupate(today, list.map((a:any)=>a.id))
         // oaspeti=2 explicit — tab-ul Prețuri e prețul standard (fără selector de oaspeți),
         // ca să nu ridice ambiguu un rând scanat cu alt număr de oaspeți din tab-ul Calendar,
         // care scrie în același tabel.
@@ -360,13 +358,6 @@ export default function PreturiPage() {
     if (mainTab === 'strategie' && !stratLoaded) loadStrategie()
   }, [mainTab])
 
-  async function loadOcupate(data:string, ids:string[]) {
-    try{
-      const {data:rez} = await supabase.from('rezervari').select('apartament_id')
-        .lte('data_checkin',data).gt('data_checkout',data).neq('status_rezervare','anulata').in('apartament_id',ids)
-      setOcupate(new Set((rez||[]).map((r:any)=>r.apartament_id)))
-    }catch(err){console.error('[preturi loadOcupate]',err)}
-  }
 
   function buildUrl(baseUrl:string, platform:string, checkin:string, checkout?:string) {
     if(!checkin) checkin=today; if(!baseUrl) return ''
@@ -1031,14 +1022,17 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
               <div style={{display:'flex',alignItems:'center',gap:6,minWidth:60}}>
                 <span style={{fontSize:13,fontWeight:600,color:'#E8F4FF'}}>{apt.nota}</span>
-                <span style={{fontSize:10}}>{ocupate.has(apt.id)?'🔴':'🟢'}</span>
               </div>
               {(apt._bk||apt._ab)&&(
+                // Buton rotund, albastru (culoarea de accent principală a aplicației) — schimbat
+                // din pastilă verde, cerut direct: era prea ușor de confundat cu pastilele Bk/Ab,
+                // care acum devin verzi/roșii în funcție de disponibilitate (culoare de status,
+                // nu de acțiune) — un buton de declanșat scanarea trebuie să arate clar altfel.
                 <a href={quickScanUrl(apt.id)} onClick={()=>startQuickScan(apt.id)} title="Scanează automat Booking+Airbnb pentru 2 adulți — prețul apare și rămâne salvat singur"
-                  style={{display:'flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:6,fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,
-                    border:`1px solid ${scanningIds.has(apt.id)?'rgba(252,211,77,0.4)':'rgba(74,222,128,0.35)'}`,
-                    background:scanningIds.has(apt.id)?'rgba(252,211,77,0.1)':'rgba(74,222,128,0.1)',
-                    color:scanningIds.has(apt.id)?'#FCD34D':'#4ADE80'}}>
+                  style={{display:'flex',alignItems:'center',justifyContent:'center',width:26,height:26,borderRadius:'50%',fontSize:11,textDecoration:'none',flexShrink:0,
+                    border:`1px solid ${scanningIds.has(apt.id)?'rgba(252,211,77,0.5)':'rgba(77,163,255,0.5)'}`,
+                    background:scanningIds.has(apt.id)?'rgba(252,211,77,0.15)':'rgba(77,163,255,0.15)',
+                    color:scanningIds.has(apt.id)?'#FCD34D':'#4DA3FF'}}>
                   {scanningIds.has(apt.id)?'⏳':'▶'}
                 </a>
               )}
