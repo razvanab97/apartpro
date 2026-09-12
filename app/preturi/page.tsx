@@ -120,6 +120,16 @@ function compareMarketScans(current:any, previous:any|null):MarketComparison {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
+// Reține tab-ul și setările din Calendar între vizite (localStorage) — cerut direct, ca pagina
+// să rămână unde ai lucrat ultima dată, nu să revină mereu la starea implicită. Citit sincron, cu
+// inițializator "lazy" pe fiecare useState (nu într-un efect după montare), ca să nu apară un
+// flash vizibil cu starea implicită înainte de a se restaura cea salvată.
+const PRETURI_STATE_KEY = 'apartpro_preturi_state'
+function loadPersistedPreturiState(): Record<string,string> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(PRETURI_STATE_KEY) || '{}') } catch { return {} }
+}
+
 export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
   const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string}>>({})
@@ -137,6 +147,8 @@ export default function PreturiPage() {
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [platformTab, setPlatformTab] = useState<'booking'|'airbnb'>('booking')
+  // Implicit 'preturi' la primul randare (identic pe server si client, ca sa nu pice hidratarea —
+  // localStorage nu exista pe server). Valoarea salvata se aplica separat, intr-un efect after-mount.
   const [mainTab, setMainTab] = useState<'preturi'|'monitor'|'decizii'|'evolutie'|'strategie'|'calendar'>('preturi')
   const [evolutieData, setEvolutieData] = useState<any[]>([])
   const [loadingEvolutie, setLoadingEvolutie] = useState(false)
@@ -178,6 +190,9 @@ export default function PreturiPage() {
   // (handler local de URL "apartscan://", instalat o singura data) — butonul deschide link-ul,
   // macOS porneste aplicatia, aplicatia deschide Terminal cu comanda deja completata si pornita.
   // Aici doar citim/afisam ce a scris deja scriptul in preturi_live / preturi_extra_live.
+  // Toate implicit "goale"/standard la prima randare (identic server+client) — valorile salvate
+  // din vizita anterioară se aplică separat, într-un efect after-mount (vezi mai jos), ca să nu
+  // pice hidratarea React (localStorage nu există pe server).
   const [calApt, setCalApt] = useState('') // "apt:<id>" sau "extra:<id>"
   const [calMonth, setCalMonth] = useState('')
   const [calGuests, setCalGuests] = useState('2')
@@ -529,12 +544,49 @@ export default function PreturiPage() {
     if(!calScopeDate) setCalScopeDate(today)
     if(!calApt&&apts.length) setCalApt(`apt:${apts[0].id}`)
   }, [apts])
+  // Aplică starea salvată din vizita anterioară — DOAR pe client, după montare (nu în inițializatorul
+  // useState de mai sus), ca html-ul din server și primul randare din client să coincidă exact
+  // (altfel React aruncă eroare de hidratare, localStorage neexistând pe server). Rulează o singură
+  // dată, imediat după efectul de mai sus, ca să suprascrie valorile implicite cu cele salvate.
+  useEffect(()=>{
+    const saved = loadPersistedPreturiState()
+    if(saved.mainTab) setMainTab(saved.mainTab as any)
+    if(saved.calApt) setCalApt(saved.calApt)
+    if(saved.calMonth) setCalMonth(saved.calMonth)
+    if(saved.calGuests) setCalGuests(saved.calGuests)
+    if(saved.calScope) setCalScope(saved.calScope as any)
+    if(saved.calScopeDate){
+      const todayStr = new Date().toISOString().slice(0,10)
+      if(saved.calScopeDate >= todayStr) setCalScopeDate(saved.calScopeDate)
+    }
+    if(saved.calWho) setCalWho(saved.calWho as any)
+  }, [])
   useEffect(()=>{
     stopComparePolling()
     if(calTableView){ loadCompareData(calStart,calEnd,compareIds,compareSource); loadOccupancyRange(calStart,calEnd,compareIds,compareSource) }
   }, [calTableView, calStart, calEnd, compareIdsKey, compareSource])
   useEffect(()=>()=>stopComparePolling(), []) // curatenie la parasirea paginii
   useEffect(()=>{ loadExtraLocations() }, [])
+  useEffect(()=>{
+    try{
+      localStorage.setItem(PRETURI_STATE_KEY, JSON.stringify({
+        mainTab, calApt, calMonth, calGuests, calScope, calScopeDate, calWho,
+      }))
+    }catch{}
+  }, [mainTab, calApt, calMonth, calGuests, calScope, calScopeDate, calWho])
+
+  // Revine la pagina standard — cerut direct, pentru cazul în care ai lăsat Calendarul într-o
+  // stare specifică (alt apartament, altă lună/interval) și vrei să repornești curat.
+  function resetPreturiStandard(){
+    try{ localStorage.removeItem(PRETURI_STATE_KEY) }catch{}
+    setMainTab('preturi')
+    setCalScope('luna')
+    setCalWho('toate')
+    setCalApt('')
+    setCalMonth(today.slice(0,7))
+    setCalScopeDate(today)
+    setCalGuests('2')
+  }
 
   // Polling pe jobId pana vine raspunsul
   function startPolling(jobId: string, checkin: string, checkout: string) {
@@ -799,6 +851,10 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             }}>{labels[tab]}</button>
           )
         })}
+        <button onClick={resetPreturiStandard} title="Revino la pagina standard — tab Prețuri, Calendar cu Toată luna/Toate apartamentele, nimic salvat din vizita asta" style={{
+          marginLeft:'auto',padding:'10px 14px',fontSize:11,fontWeight:600,cursor:'pointer',
+          border:'none',background:'transparent',color:'rgba(159,215,255,0.4)',alignSelf:'center',
+        }}>↺ Resetează</button>
       </div>
       <div style={{padding:'14px 16px',overflowY:'auto',flex:1}}>
 
