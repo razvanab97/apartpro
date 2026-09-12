@@ -67,7 +67,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       try {
         if (localStorage.getItem('sync_auto') !== '1') return
         const last = parseInt(localStorage.getItem('sync_last') || '0')
-        if (last && Date.now() - last < 3590000) return
+        if (last && Date.now() - last < 1790000) return
         localStorage.setItem('sync_last', Date.now().toString())
         const { syncFivestar } = await import('@/lib/syncFivestar')
         const d = new Date()

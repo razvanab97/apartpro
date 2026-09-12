@@ -63,8 +63,8 @@ export default function SyncPage() {
     if (!autoSync) { setNextSyncIn(''); return }
     const tick = () => {
       const last = parseInt(localStorage.getItem('sync_last') || '0')
-      if (!last) { setNextSyncIn('60m 00s'); return }
-      const secs = Math.max(0, Math.round((last + 3600000 - Date.now()) / 1000))
+      if (!last) { setNextSyncIn('30m 00s'); return }
+      const secs = Math.max(0, Math.round((last + 1800000 - Date.now()) / 1000))
       const m = Math.floor(secs / 60), s = secs % 60
       setNextSyncIn(`${m}m ${String(s).padStart(2,'0')}s`)
     }
@@ -201,7 +201,7 @@ export default function SyncPage() {
                 background:autoSync?'rgba(74,222,128,0.1)':'transparent',
                 color:autoSync?'#4ADE80':'rgba(159,215,255,0.5)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
               <span style={{ fontSize:14 }}>{autoSync ? '🔄' : '⏸'}</span>
-              {autoSync ? 'Auto-sync activ (1h)' : 'Activează auto-sync (1h)'}
+              {autoSync ? 'Auto-sync activ (30 min)' : 'Activează auto-sync (30 min)'}
             </button>
             {autoSync && nextSyncIn && (
               <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)', fontFamily:'monospace' }}>

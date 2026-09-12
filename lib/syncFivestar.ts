@@ -165,7 +165,12 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           continue
         }
 
-        const statusNou = b.status_rezervare?.toLowerCase().includes('anulat') ? 'anulata' : 'confirmata'
+        // "Oaspete decazat" (checked-out) trebuie sa devina 'finalizata', nu sa ramana 'confirmata'
+        // la nesfarsit — exact aceeasi conventie deja folosita la Import Excel (parseStatus, app/import/page.tsx),
+        // gasita inconsistenta aici in timpul verificarii: sincronizarea automata nu distingea deloc
+        // starea "finalizata", spre deosebire de fluxul manual de import pentru aceleasi date.
+        const statusRaw = (b.status_rezervare || '').toLowerCase()
+        const statusNou = statusRaw.includes('anulat') ? 'anulata' : (statusRaw.includes('cazat') ? 'finalizata' : 'confirmata')
 
         const idExternValid = idExtern && idExtern.length > 2
         const { data: existingById } = idExternValid ? await supabase.from('rezervari')
