@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export type Loc = { judet: string; localitate: string; strada: string; region: 'bucuresti'|'moldova'|'alte' }
 
 // ~300 adrese reale din România, organizate pe regiuni
@@ -276,11 +278,44 @@ const LOCS: Loc[] = [
   { judet:'Satu Mare', localitate:'Satu Mare', strada:'Calea Ostașilor', region:'alte' },
 ]
 
-export const TOTAL = LOCS.length
+// Adrese reale, extrase din buletine (Preia din captură / scanare CI la o rezervare nouă),
+// cerut direct — se adaugă la pool-ul static de mai sus (indexate după el, la coada listei),
+// ca varietatea/realismul generatorului să crească pe măsură ce se procesează acte reale, fără
+// să inventeze un număr de stradă unde deja există unul exact, extras din act.
+export type LocExtra = Loc & { id: string }
+let EXTRA: LocExtra[] = []
+export function setExtraLocs(list: LocExtra[]) { EXTRA = list }
+function allLocs(): Loc[] { return [...LOCS, ...EXTRA] }
 
-const IDX_BUC = LOCS.map((l,i)=>l.region==='bucuresti'?i:-1).filter(i=>i>=0)
-const IDX_MOL = LOCS.map((l,i)=>l.region==='moldova'?i:-1).filter(i=>i>=0)
-const IDX_ALT = LOCS.map((l,i)=>l.region==='alte'?i:-1).filter(i=>i>=0)
+const MOLDOVA_JUDETE = new Set(['Iași','Bacău','Neamț','Suceava','Galați','Vaslui','Vrancea','Botoșani'])
+export function inferRegion(judet: string): Loc['region'] {
+  const j = (judet||'').trim()
+  if (/^sector/i.test(j) || j==='București') return 'bucuresti'
+  if (MOLDOVA_JUDETE.has(j)) return 'moldova'
+  return 'alte'
+}
+
+export async function saveAdresaExtrasa(judet: string, localitate: string, strada: string) {
+  if (!judet?.trim() || !localitate?.trim() || !strada?.trim()) return
+  try { await supabase.from('adrese_extrase').insert({ judet: judet.trim(), localitate: localitate.trim(), strada: strada.trim() }) } catch {}
+}
+
+export async function loadExtraLocs() {
+  try {
+    const { data } = await supabase.from('adrese_extrase').select('id,judet,localitate,strada').order('created_at', { ascending: true })
+    setExtraLocs((data || []).map((r: any) => ({ id: r.id, judet: r.judet, localitate: r.localitate, strada: r.strada, region: inferRegion(r.judet) })))
+  } catch {}
+}
+
+export function getTotal(): number { return LOCS.length + EXTRA.length }
+
+function regionIndexes(locs: Loc[]) {
+  return {
+    bucuresti: locs.map((l,i)=>l.region==='bucuresti'?i:-1).filter(i=>i>=0),
+    moldova:   locs.map((l,i)=>l.region==='moldova'?i:-1).filter(i=>i>=0),
+    alte:      locs.map((l,i)=>l.region==='alte'?i:-1).filter(i=>i>=0),
+  }
+}
 
 export type AdresaCard = { idx: number; judet: string; localitate: string; adresa: string; region: 'bucuresti'|'moldova'|'alte' }
 
@@ -290,14 +325,18 @@ function pickUnused(pool: number[], used: Set<number>): number|null {
 }
 
 export function generateOne(used: Set<number>): AdresaCard|null {
+  const locs = allLocs()
+  const { bucuresti: IDX_BUC, moldova: IDX_MOL, alte: IDX_ALT } = regionIndexes(locs)
   const r = Math.random()*100
   const order = r<10 ? [IDX_BUC,IDX_MOL,IDX_ALT] : r<70 ? [IDX_MOL,IDX_ALT,IDX_BUC] : [IDX_ALT,IDX_MOL,IDX_BUC]
   let idx: number|null = null
   for (const pool of order) { idx=pickUnused(pool,used); if(idx!==null) break }
   if (idx===null) return null
-  const loc = LOCS[idx]
-  const numar = String(Math.floor(Math.random()*149)+1)
-  return { idx, judet:loc.judet, localitate:loc.localitate, adresa:`${loc.strada} ${numar}`, region:loc.region }
+  const loc = locs[idx]
+  // Adresele reale extrase (idx >= LOCS.length) au deja numărul exact în strada — nu se mai
+  // inventează unul random peste ele, doar peste cele din pool-ul static de bază.
+  const adresa = idx < LOCS.length ? `${loc.strada} ${String(Math.floor(Math.random()*149)+1)}` : loc.strada
+  return { idx, judet:loc.judet, localitate:loc.localitate, adresa, region:loc.region }
 }
 
 export function generateBatch(used: Set<number>, n=4): AdresaCard[] {

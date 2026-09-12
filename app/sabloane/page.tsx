@@ -4,7 +4,7 @@ import { supabase, getStorageUrl, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
 import { Upload, Trash2, Plus, Send } from 'lucide-react'
-import { generateBatch, generateOne, TOTAL, type AdresaCard } from '@/lib/locatii-romania'
+import { generateBatch, generateOne, getTotal, loadExtraLocs, type AdresaCard } from '@/lib/locatii-romania'
 
 const _mpad = (n:number) => String(n).padStart(2,'0')
 const _mfmt = (d:string) => { try { const dt=new Date(d); return `${_mpad(dt.getDate())}.${_mpad(dt.getMonth()+1)}.${dt.getFullYear()}` } catch { return d } }
@@ -221,8 +221,9 @@ function GeneratorLocatiiContent() {
   })
   const [batch, setBatch] = useState<AdresaCard[]>([])
   const [copiedKey, setCopiedKey] = useState<string|null>(null)
+  const [total, setTotal] = useState(getTotal())
 
-  useEffect(() => { setBatch(generateBatch(usedSet,4)) }, [])
+  useEffect(() => { loadExtraLocs().then(() => { setTotal(getTotal()); setBatch(generateBatch(usedSet,4)) }) }, [])
 
   function saveUsed(s: Set<number>) {
     try { localStorage.setItem('loc_used_v1', JSON.stringify([...s])) } catch {}
@@ -252,7 +253,7 @@ function GeneratorLocatiiContent() {
     setBatch(generateBatch(empty,4))
   }
 
-  const remaining = TOTAL - usedSet.size
+  const remaining = total - usedSet.size
   const allDone = batch.length===0
 
   const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.3)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }
@@ -274,7 +275,7 @@ function GeneratorLocatiiContent() {
             10% București · 60% Moldova · 30% restul României
           </div>
           <div style={{fontSize:12, fontWeight:600, color: remaining<20?'rgba(251,146,60,0.8)':'rgba(159,215,255,0.5)'}}>
-            {usedSet.size}/{TOTAL} folosite · {remaining} rămase
+            {usedSet.size}/{total} folosite · {remaining} rămase
           </div>
         </div>
         <button onClick={reset}
@@ -291,7 +292,7 @@ function GeneratorLocatiiContent() {
           border:'1px solid rgba(100,160,255,0.1)'}}>
           <div style={{fontSize:36}}>🎉</div>
           <div style={{fontSize:16, fontWeight:700, color:'#E8F4FF'}}>Toate adresele au fost folosite</div>
-          <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>Ai epuizat cele {TOTAL} adrese din baza de date.</div>
+          <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>Ai epuizat cele {total} adrese din baza de date.</div>
           <button onClick={reset}
             style={{padding:'10px 28px', borderRadius:10, border:'none',
               background:'linear-gradient(135deg,#4DA3FF,#3B82F6)', color:'#fff',

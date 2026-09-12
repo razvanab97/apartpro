@@ -4,10 +4,11 @@ import { Modal } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
 import { ScanLine, X, Copy, Check, Loader2 } from 'lucide-react'
 import { fmt5star } from '@/lib/syncFivestar'
+import { saveAdresaExtrasa } from '@/lib/locatii-romania'
 
-// Nu scrie nimic în baza proprie — sistemul extern (5starDesk sau orice alt PMS/ERP folosit
-// pentru rezervări) nu are API de scriere, doar formularul lui web propriu. Scopul e pur
-// "extrage din poză + editează dacă e cazul + copiază", ca să nu mai retastezi manual
+// Sistemul extern (5starDesk sau orice alt PMS/ERP folosit pentru rezervări) nu are API de
+// scriere, doar formularul lui web propriu — scopul principal e "extrage din poză + editează
+// dacă e cazul + copiază", ca să nu mai retastezi manual
 // nume/telefon/preț/cod/date/oaspeți dintr-o rezervare Airbnb/Booking, sau nume/CNP/adresă
 // dintr-un buletin, direct în formularul acelui sistem — indiferent care e el.
 type RezRaw = { nume_client:string; adulti:number; copii:number; data_checkin:string; data_checkout:string; nr_nopti:number|null; pret_total:number|null; moneda:string|null; apartament_text:string|null; cod:string|null; telefon?:string|null }
@@ -116,6 +117,9 @@ export default function ScanCopyPopup() {
           localitate: r.localitate || '',
           strada: r.strada || '',
         })
+        // Adresa reala de pe buletin creste pool-ul generatorului de adrese
+        // (Șabloane → Generator Locații), cerut direct — best-effort, nu blochează UI-ul
+        saveAdresaExtrasa(r.judet || '', r.localitate || '', r.strada || '')
         setHasResult(true)
       }
     } catch (e: any) {
