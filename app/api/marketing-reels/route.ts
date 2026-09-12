@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { del } from '@vercel/blob'
 import { supabase } from '@/lib/supabase'
 
+// Fără asta, ruta rulează pe limita implicită Vercel (10s pe Hobby) — pentru un reel încărcat
+// manual (descărcat din Blob + transcris cu Whisper + analizat cu gpt-4o-mini, secvențial), un
+// video de 15-25MB depășește ușor 10s, funcția e omorâtă la mijloc, iar în browser apare doar
+// "Conexiune întreruptă" (eroare generică de fetch eșuat), fără nicio legătură reală cu rețeaua.
+export const maxDuration = 60
+
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
 // Instagram serveste meta og: complete doar catre user-agent-uri de tip "bot de preview
