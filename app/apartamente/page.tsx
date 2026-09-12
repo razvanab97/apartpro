@@ -10,6 +10,12 @@ import { CSS } from '@dnd-kit/utilities'
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
 const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
+const EDIT_TABS = [
+  { id:'general' as const, emoji:'🏠', label:'General', desc:'Detalii de bază despre apartament' },
+  { id:'comision' as const, emoji:'💰', label:'Comision', desc:'Proprietar, comision și chiria plătită către el' },
+  { id:'linkuri' as const, emoji:'🔗', label:'Linkuri', desc:'Site, hărți și anunțurile de pe platforme' },
+  { id:'mesaje' as const, emoji:'💬', label:'Mesaje', desc:'Instrucțiuni, reguli și mesaje automate' },
+]
 const pad = (n: number) => String(n).padStart(2,'0')
 // ultima zi a lunii in local time - .toISOString() taie ultima zi pentru fuse est de UTC (ex: Romania)
 function ultimaZiLunaStr(an: number, luna1: number): string {
@@ -247,6 +253,7 @@ export default function ApartamentePage() {
   const [editOpen, setEditOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string|null>(null)
   const [editing, setEditing] = useState<Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string }>(empty)
+  const [editTab, setEditTab] = useState<'general'|'comision'|'linkuri'|'mesaje'>('general')
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string|null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -271,9 +278,10 @@ export default function ApartamentePage() {
     setLoading(false)
   }
 
-  function openNew(){ setEditing(empty); setEditOpen(true) }
+  function openNew(){ setEditing(empty); setEditTab('general'); setEditOpen(true) }
   async function openEdit(a:Apartament){
     setEditing({...a, chirie_suma:0, chirie_moneda:'RON'})
+    setEditTab('general')
     setEditOpen(true)
     const { data: chirieData } = await supabase.from('chirii_fixe')
       .select('suma,moneda').eq('apartament_id', a.id).eq('activ', true).maybeSingle()
@@ -300,7 +308,7 @@ export default function ApartamentePage() {
   }
 
   async function save(){
-    if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); return }
+    if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); setEditTab('general'); return }
     setSaving(true)
     const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null }
     const aptId = editing.id
@@ -537,119 +545,153 @@ export default function ApartamentePage() {
       </div>
 
       {/* Edit modal */}
-      <Modal open={editOpen} onClose={()=>setEditOpen(false)} title={editing.id?'Editează apartament':'Apartament nou'} width="620px">
-        <FormRow cols={2}>
-          <FormGroup><label>Cod intern</label><input value={editing.nota||''} onChange={e=>setEditing({...editing,nota:e.target.value})} placeholder="L99, HD02..."/></FormGroup>
-          <FormGroup><label>Status</label>
-            <select value={editing.status||'activ'} onChange={e=>setEditing({...editing,status:e.target.value})}>
-              <option value="activ">Activ</option><option value="inactiv">Inactiv</option><option value="mentenanta">Mentenanță</option>
-            </select>
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={2}>
-          <FormGroup><label>Nume *</label><input value={editing.nume||''} onChange={e=>setEditing({...editing,nume:e.target.value})} placeholder="Ex: Airy Palas"/></FormGroup>
-          <FormGroup><label>Zonă</label><input value={editing.zona||''} onChange={e=>setEditing({...editing,zona:e.target.value})} placeholder="Palas, Copou..."/></FormGroup>
-        </FormRow>
-        <FormGroup><label>Adresă *</label><input value={editing.adresa||''} onChange={e=>setEditing({...editing,adresa:e.target.value})} placeholder="Stradă, complex..."/></FormGroup>
-        <FormRow cols={3}>
-          <FormGroup><label>Camere</label><input type="number" value={editing.nr_camere||2} onChange={e=>setEditing({...editing,nr_camere:parseInt(e.target.value)||1})} min={1}/></FormGroup>
-          <FormGroup><label>Max pers.</label><input type="number" value={editing.capacitate_max||4} onChange={e=>setEditing({...editing,capacitate_max:parseInt(e.target.value)||1})} min={1}/></FormGroup>
-          <FormGroup><label>Preț (RON/n)</label><input type="number" value={editing.pret_standard||0} onChange={e=>setEditing({...editing,pret_standard:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-        </FormRow>
-        <FormGroup><label>🔒 Cod locker</label>
-          <input value={(editing as any).cod_locker||''} maxLength={10} inputMode="numeric" placeholder="ex: 4821"
-            onChange={e=>setEditing({...editing,cod_locker:e.target.value.replace(/\D/g,'').slice(0,10)} as any)}/>
-        </FormGroup>
-        <FormRow cols={2}>
-          <FormGroup><label>Proprietar</label>
-            <select value={editing.proprietar_id||''} onChange={e=>setEditing({...editing,proprietar_id:e.target.value||undefined})}>
-              <option value="">— Fără —</option>
-              {proprietari.map(p=><option key={p.id} value={p.id}>{p.nume}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup><label>Tip comision</label>
-            <select value={editing.comision_tip||'procent_net_dupa_costuri'} onChange={e=>setEditing({...editing,comision_tip:e.target.value})}>
-              <option value="procent_brut">% din brut</option>
-              <option value="procent_net_platforme">% net platforme</option>
-              <option value="procent_net_dupa_costuri">% net după costuri</option>
-              <option value="fix_lunar">Fix lunar</option>
-              <option value="mixt">Mixt</option>
-            </select>
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={2}>
-          <FormGroup><label>Procent (%)</label><input type="number" value={editing.comision_procent||20} onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}/></FormGroup>
-          <FormGroup><label>Fix (RON)</label><input type="number" value={editing.comision_fix||0} onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-        </FormRow>
+      <Modal open={editOpen} onClose={()=>setEditOpen(false)} title={editing.id?'Editează apartament':'Apartament nou'} width="660px">
+        {/* Tab bar — formularul avea 20+ câmpuri într-o singură listă lungă, fără nicio grupare
+            vizuală (raportat direct: "extrem de urât și neintuitiv"). Împărțit acum pe 4 secțiuni
+            navigabile, ca să nu mai fie nevoie de scroll nesfârșit ca să găsești un câmp anume. */}
+        <div style={{ display:'flex', gap:4, padding:4, borderRadius:12, background:'rgba(7,18,32,0.5)', border:'1px solid rgba(159,215,255,0.1)', marginBottom:6 }}>
+          {EDIT_TABS.map(t=>(
+            <button key={t.id} type="button" onClick={()=>setEditTab(t.id)} style={{
+              flex:'1 1 0', display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+              padding:'8px 6px', borderRadius:8, border:'none', cursor:'pointer',
+              fontSize:12, fontWeight:600, whiteSpace:'nowrap' as const, transition:'all 0.15s',
+              background:editTab===t.id?'rgba(77,163,255,0.18)':'transparent',
+              color:editTab===t.id?'#7BC8FF':'rgba(159,215,255,0.45)',
+            }}>
+              <span>{t.emoji}</span>
+              <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>{t.label}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize:11, color:'rgba(159,215,255,0.35)', marginBottom:20, paddingLeft:2 }}>
+          {EDIT_TABS.find(t=>t.id===editTab)?.desc}
+        </div>
 
-        <div style={{ marginTop: 4, marginBottom: 16, padding: 14, borderRadius: 10, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.12)' }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>
+        {editTab==='general' && (<>
           <FormRow cols={2}>
-            <FormGroup><label>Chirie / lună</label><input type="number" value={(editing as any).chirie_suma||0} onChange={e=>setEditing({...editing,chirie_suma:parseFloat(e.target.value)||0} as any)} min={0}/></FormGroup>
-            <FormGroup><label>Monedă</label>
-              <select value={(editing as any).chirie_moneda||'RON'} onChange={e=>setEditing({...editing,chirie_moneda:e.target.value} as any)}>
-                <option value="RON">RON</option>
-                <option value="EUR">EUR (convertit automat la curs BNR)</option>
+            <FormGroup><label>Cod intern</label><input value={editing.nota||''} onChange={e=>setEditing({...editing,nota:e.target.value})} placeholder="L99, HD02..."/></FormGroup>
+            <FormGroup><label>Status</label>
+              <select value={editing.status||'activ'} onChange={e=>setEditing({...editing,status:e.target.value})}>
+                <option value="activ">Activ</option><option value="inactiv">Inactiv</option><option value="mentenanta">Mentenanță</option>
               </select>
             </FormGroup>
           </FormRow>
-          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:'rgba(159,215,255,0.7)', marginBottom:0, marginTop: 4 }}>
-            <input type="checkbox" checked={!!(editing as any).utilitati_la_proprietar} onChange={e=>setEditing({...editing,utilitati_la_proprietar:e.target.checked} as any)}/>
-            Facturile (gaz/curent/asociație) se decontează proprietarului
-          </label>
-        </div>
-        <FormRow cols={2}>
-          <FormGroup><label>Link Site</label><input value={editing.link_site||''} onChange={e=>setEditing({...editing,link_site:e.target.value})} placeholder="https://abhomesiasi.ro/..."/></FormGroup>
-          <FormGroup><label>📍 Link Google Maps</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
-        </FormRow>
-        <FormGroup><label>🏠 Link Airbnb (primul)</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="https://airbnb.com/..."/></FormGroup>
+          <FormRow cols={2}>
+            <FormGroup><label>Nume *</label><input value={editing.nume||''} onChange={e=>setEditing({...editing,nume:e.target.value})} placeholder="Ex: Airy Palas"/></FormGroup>
+            <FormGroup><label>Zonă</label><input value={editing.zona||''} onChange={e=>setEditing({...editing,zona:e.target.value})} placeholder="Palas, Copou..."/></FormGroup>
+          </FormRow>
+          <FormGroup><label>Adresă *</label><input value={editing.adresa||''} onChange={e=>setEditing({...editing,adresa:e.target.value})} placeholder="Stradă, complex..."/></FormGroup>
+          <FormRow cols={3}>
+            <FormGroup><label>Camere</label><input type="number" value={editing.nr_camere||2} onChange={e=>setEditing({...editing,nr_camere:parseInt(e.target.value)||1})} min={1}/></FormGroup>
+            <FormGroup><label>Max pers.</label><input type="number" value={editing.capacitate_max||4} onChange={e=>setEditing({...editing,capacitate_max:parseInt(e.target.value)||1})} min={1}/></FormGroup>
+            <FormGroup><label>Preț (RON/n)</label><input type="number" value={editing.pret_standard||0} onChange={e=>setEditing({...editing,pret_standard:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+          </FormRow>
+          <FormGroup><label>🔒 Cod locker</label>
+            <input value={(editing as any).cod_locker||''} maxLength={10} inputMode="numeric" placeholder="ex: 4821"
+              onChange={e=>setEditing({...editing,cod_locker:e.target.value.replace(/\D/g,'').slice(0,10)} as any)}/>
+          </FormGroup>
+        </>)}
 
-        <FormGroup>
-          <label>🏨 Linkuri Booking.com</label>
-          {(((editing as any).booking_links as string[]||[]).length===0?['']: ((editing as any).booking_links as string[])).map((lnk:string, idx:number) => (
-            <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
-              <input value={lnk} onChange={e=>{
-                const arr=[...((editing as any).booking_links||[''])]; arr[idx]=e.target.value
-                setEditing({...editing,booking_links:arr} as any)
-              }} placeholder={`https://booking.com/... (${idx+1})`} style={{ flex:1 }}/>
-              {idx===((editing as any).booking_links||['']).length-1
-                ? <button type="button" onClick={()=>setEditing({...editing,booking_links:[...(((editing as any).booking_links as string[])||['']),'']} as any)}
-                    style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', fontSize:12 }}>+ Adaugă</button>
-                : <button type="button" onClick={()=>{ const arr=[...((editing as any).booking_links||[''])]; arr.splice(idx,1); setEditing({...editing,booking_links:arr} as any) }}
-                    style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
-              }
-            </div>
-          ))}
-        </FormGroup>
+        {editTab==='comision' && (<>
+          <FormRow cols={2}>
+            <FormGroup><label>Proprietar</label>
+              <select value={editing.proprietar_id||''} onChange={e=>setEditing({...editing,proprietar_id:e.target.value||undefined})}>
+                <option value="">— Fără —</option>
+                {proprietari.map(p=><option key={p.id} value={p.id}>{p.nume}</option>)}
+              </select>
+            </FormGroup>
+            <FormGroup><label>Tip comision</label>
+              <select value={editing.comision_tip||'procent_net_dupa_costuri'} onChange={e=>setEditing({...editing,comision_tip:e.target.value})}>
+                <option value="procent_brut">% din brut</option>
+                <option value="procent_net_platforme">% net platforme</option>
+                <option value="procent_net_dupa_costuri">% net după costuri</option>
+                <option value="fix_lunar">Fix lunar</option>
+                <option value="mixt">Mixt</option>
+              </select>
+            </FormGroup>
+          </FormRow>
+          <FormRow cols={2}>
+            <FormGroup><label>Procent (%)</label><input type="number" value={editing.comision_procent||20} onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}/></FormGroup>
+            <FormGroup><label>Fix (RON)</label><input type="number" value={editing.comision_fix||0} onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+          </FormRow>
 
-        <FormGroup>
-          <label>🏠 Linkuri Airbnb suplimentare</label>
-          {(((editing as any).airbnb_links as string[])||[]).map((lnk:string, idx:number) => (
-            <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
-              <input value={lnk} onChange={e=>{
-                const arr=[...((editing as any).airbnb_links||[])]; arr[idx]=e.target.value
-                setEditing({...editing,airbnb_links:arr} as any)
-              }} placeholder={`https://airbnb.com/... (${idx+2})`} style={{ flex:1 }}/>
-              <button type="button" onClick={()=>{ const arr=[...((editing as any).airbnb_links||[])]; arr.splice(idx,1); setEditing({...editing,airbnb_links:arr} as any) }}
-                style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
-            </div>
-          ))}
-          <button type="button" onClick={()=>setEditing({...editing,airbnb_links:[...((editing as any).airbnb_links||[]),'']} as any)}
-            style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', cursor:'pointer', fontSize:12 }}>+ Adaugă link Airbnb</button>
-        </FormGroup>
-        <FormGroup><label>Instrucțiuni check-in</label><textarea value={editing.instructiuni_checkin||''} onChange={e=>setEditing({...editing,instructiuni_checkin:e.target.value})} rows={2}/></FormGroup>
-        <FormGroup><label>Reguli</label><textarea value={editing.reguli||''} onChange={e=>setEditing({...editing,reguli:e.target.value})} rows={2}/></FormGroup>
-        <FormGroup>
-          <label>💬 Mesaj Check-in (WhatsApp)</label>
-          <textarea value={editing.mesaj_checkin||''} onChange={e=>setEditing({...editing,mesaj_checkin:e.target.value})}
-            rows={3} placeholder="Mesaj personalizat pentru această locație la check-in (lasă gol pentru mesajul global din Setări)"/>
-        </FormGroup>
-        <FormGroup>
-          <label>💬 Mesaj Check-out (WhatsApp)</label>
-          <textarea value={editing.mesaj_checkout||''} onChange={e=>setEditing({...editing,mesaj_checkout:e.target.value})}
-            rows={3} placeholder="Mesaj personalizat pentru check-out (lasă gol pentru mesajul global)"/>
-        </FormGroup>
-        <div style={{ display:'flex', gap:10, marginTop:4 }}>
+          <div style={{ marginTop: 4, marginBottom: 4, padding: 14, borderRadius: 10, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.12)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>
+            <FormRow cols={2}>
+              <FormGroup><label>Chirie / lună</label><input type="number" value={(editing as any).chirie_suma||0} onChange={e=>setEditing({...editing,chirie_suma:parseFloat(e.target.value)||0} as any)} min={0}/></FormGroup>
+              <FormGroup><label>Monedă</label>
+                <select value={(editing as any).chirie_moneda||'RON'} onChange={e=>setEditing({...editing,chirie_moneda:e.target.value} as any)}>
+                  <option value="RON">RON</option>
+                  <option value="EUR">EUR (convertit automat la curs BNR)</option>
+                </select>
+              </FormGroup>
+            </FormRow>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:'rgba(159,215,255,0.7)', marginBottom:0, marginTop: 4 }}>
+              <input type="checkbox" checked={!!(editing as any).utilitati_la_proprietar} onChange={e=>setEditing({...editing,utilitati_la_proprietar:e.target.checked} as any)}/>
+              Facturile (gaz/curent/asociație) se decontează proprietarului
+            </label>
+          </div>
+        </>)}
+
+        {editTab==='linkuri' && (<>
+          <FormRow cols={2}>
+            <FormGroup><label>Link Site</label><input value={editing.link_site||''} onChange={e=>setEditing({...editing,link_site:e.target.value})} placeholder="https://abhomesiasi.ro/..."/></FormGroup>
+            <FormGroup><label>📍 Link Google Maps</label><input value={editing.link_booking||''} onChange={e=>setEditing({...editing,link_booking:e.target.value})} placeholder="https://maps.app.goo.gl/..."/></FormGroup>
+          </FormRow>
+
+          <div style={{ marginBottom:16, padding:14, borderRadius:10, background:'rgba(239,68,68,0.05)', border:'1px solid rgba(239,68,68,0.15)' }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#F87171', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:10 }}>🏠 Airbnb</div>
+            <FormGroup><label>Link principal</label><input value={editing.link_airbnb||''} onChange={e=>setEditing({...editing,link_airbnb:e.target.value})} placeholder="https://airbnb.com/..."/></FormGroup>
+            <label style={{ fontSize:11, color:'rgba(159,215,255,0.4)', marginBottom:6, display:'block' }}>Linkuri suplimentare</label>
+            {(((editing as any).airbnb_links as string[])||[]).map((lnk:string, idx:number) => (
+              <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
+                <input value={lnk} onChange={e=>{
+                  const arr=[...((editing as any).airbnb_links||[])]; arr[idx]=e.target.value
+                  setEditing({...editing,airbnb_links:arr} as any)
+                }} placeholder={`https://airbnb.com/... (${idx+2})`} style={{ flex:1 }}/>
+                <button type="button" onClick={()=>{ const arr=[...((editing as any).airbnb_links||[])]; arr.splice(idx,1); setEditing({...editing,airbnb_links:arr} as any) }}
+                  style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
+              </div>
+            ))}
+            <button type="button" onClick={()=>setEditing({...editing,airbnb_links:[...((editing as any).airbnb_links||[]),'']} as any)}
+              style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>+ Adaugă link Airbnb</button>
+          </div>
+
+          <div style={{ marginBottom:4, padding:14, borderRadius:10, background:'rgba(96,165,250,0.05)', border:'1px solid rgba(96,165,250,0.15)' }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#60A5FA', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:10 }}>🏨 Booking.com</div>
+            {(((editing as any).booking_links as string[]||[]).length===0?['']: ((editing as any).booking_links as string[])).map((lnk:string, idx:number) => (
+              <div key={idx} style={{ display:'flex', gap:6, marginBottom:6 }}>
+                <input value={lnk} onChange={e=>{
+                  const arr=[...((editing as any).booking_links||[''])]; arr[idx]=e.target.value
+                  setEditing({...editing,booking_links:arr} as any)
+                }} placeholder={`https://booking.com/... (${idx+1})`} style={{ flex:1 }}/>
+                {idx===((editing as any).booking_links||['']).length-1
+                  ? <button type="button" onClick={()=>setEditing({...editing,booking_links:[...(((editing as any).booking_links as string[])||['']),'']} as any)}
+                      style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(96,165,250,0.3)', background:'rgba(96,165,250,0.08)', color:'#60A5FA', cursor:'pointer', fontSize:12 }}>+ Adaugă</button>
+                  : <button type="button" onClick={()=>{ const arr=[...((editing as any).booking_links||[''])]; arr.splice(idx,1); setEditing({...editing,booking_links:arr} as any) }}
+                      style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#F87171', cursor:'pointer', fontSize:12 }}>✕</button>
+                }
+              </div>
+            ))}
+          </div>
+        </>)}
+
+        {editTab==='mesaje' && (<>
+          <FormGroup><label>Instrucțiuni check-in</label><textarea value={editing.instructiuni_checkin||''} onChange={e=>setEditing({...editing,instructiuni_checkin:e.target.value})} rows={2}/></FormGroup>
+          <FormGroup><label>Reguli</label><textarea value={editing.reguli||''} onChange={e=>setEditing({...editing,reguli:e.target.value})} rows={2}/></FormGroup>
+          <FormGroup>
+            <label>💬 Mesaj Check-in (WhatsApp)</label>
+            <textarea value={editing.mesaj_checkin||''} onChange={e=>setEditing({...editing,mesaj_checkin:e.target.value})}
+              rows={3} placeholder="Mesaj personalizat pentru această locație la check-in (lasă gol pentru mesajul global din Setări)"/>
+          </FormGroup>
+          <FormGroup>
+            <label>💬 Mesaj Check-out (WhatsApp)</label>
+            <textarea value={editing.mesaj_checkout||''} onChange={e=>setEditing({...editing,mesaj_checkout:e.target.value})}
+              rows={3} placeholder="Mesaj personalizat pentru check-out (lasă gol pentru mesajul global)"/>
+          </FormGroup>
+        </>)}
+
+        <div style={{ display:'flex', gap:10, marginTop:8 }}>
           <Button variant="primary" onClick={save} loading={saving} style={{ flex:1 }}>Salvează</Button>
           <Button variant="secondary" onClick={()=>setEditOpen(false)} style={{ flex:1 }}>Anulează</Button>
         </div>
