@@ -183,6 +183,7 @@ export default function PreturiPage() {
   const [calGuests, setCalGuests] = useState('2')
   const [calScope, setCalScope] = useState<'zi'|'saptamana'|'luna'>('luna') // domeniul SCANARII, separat de luna afisata in grila
   const [calScopeDate, setCalScopeDate] = useState('') // ziua-ancora pentru scope 'zi'/'saptamana'
+  const [calWho, setCalWho] = useState<'un-apartament'|'toate'>('toate') // la scope zi/saptamana: un singur apartament ales, sau toate deodata
   const [calData, setCalData] = useState<Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>({})
   const [loadingCal, setLoadingCal] = useState(false)
   const [calCommandCopied, setCalCommandCopied] = useState(false)
@@ -369,27 +370,35 @@ export default function PreturiPage() {
     setLoadingCal(false)
   }
 
-  async function loadCompareData(start:string, end:string) {
-    if(!start||!end||!apts.length) return
+  // ids/source parametrizate — funcționează identic pentru "toate apartamentele" (ids = toate)
+  // și pentru "un singur apartament sau o locație extra" (ids = [un id]), cerut direct: la scop
+  // Zi/Săptămână, un singur apartament tot trebuie să poată fi scanat/urmărit, nu doar toate deodată.
+  async function loadCompareData(start:string, end:string, ids:string[], source:'apt'|'extra') {
+    if(!start||!end||!ids.length) return
     try{
-      const {data} = await supabase.from('preturi_live')
-        .select('apartament_id,data_checkin,pret_booking,pret_airbnb')
-        .in('apartament_id',apts.map(a=>a.id)).gte('data_checkin',start).lte('data_checkin',end)
+      const table = source==='extra' ? 'preturi_extra_live' : 'preturi_live'
+      const keyField = source==='extra' ? 'locatie_extra_id' : 'apartament_id'
+      const {data} = await supabase.from(table)
+        .select(`${keyField},data_checkin,pret_booking,pret_airbnb`)
+        .in(keyField,ids).gte('data_checkin',start).lte('data_checkin',end)
       const map:Record<string,Record<string,any>> = {}
       ;(data||[]).forEach((r:any)=>{
-        if(!map[r.apartament_id]) map[r.apartament_id]={}
-        map[r.apartament_id][r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb}
+        const rid = r[keyField]
+        if(!map[rid]) map[rid]={}
+        map[rid][r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb}
       })
       setCompareData(map)
     }catch(err){console.error('[preturi loadCompareData]',err)}
   }
 
-  async function loadOccupancyRange(start:string, end:string) {
-    if(!start||!end||!apts.length) return
+  async function loadOccupancyRange(start:string, end:string, ids:string[], source:'apt'|'extra') {
+    // locațiile extra nu sunt apartamente de-ale noastre — nu au rezervări în sistem, nu are sens
+    // sa verificam disponibilitatea lor din tabela rezervari.
+    if(!start||!end||!ids.length||source==='extra'){ setOccupancyRez([]); return }
     try{
       const {data} = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout')
         .lte('data_checkin',end).gt('data_checkout',start).neq('status_rezervare','anulata')
-        .in('apartament_id',apts.map(a=>a.id))
+        .in('apartament_id',ids)
       setOccupancyRez(data||[])
     }catch(err){console.error('[preturi loadOccupancyRange]',err)}
   }
@@ -397,12 +406,13 @@ export default function PreturiPage() {
     return occupancyRez.some(r=>r.apartament_id===aptId&&r.data_checkin<=day&&r.data_checkout>day)
   }
 
-  function startComparePolling(start:string, end:string) {
+  function startComparePolling(start:string, end:string, ids:string[], source:'apt'|'extra') {
     stopComparePolling()
     setComparePolling(true)
     let elapsedMs = 0
     comparePollRef.current = setInterval(()=>{
-      loadCompareData(start,end)
+      loadCompareData(start,end,ids,source)
+      loadOccupancyRange(start,end,ids,source)
       elapsedMs += 4000
       if(elapsedMs > 15*60*1000) stopComparePolling() // opreste singur dupa 15 min, ca sa nu ramana agatat la nesfarsit
     },4000)
@@ -473,15 +483,21 @@ export default function PreturiPage() {
     const lastDay = new Date(y, m, 0).getDate()
     return [`${calMonth}-01`, `${calMonth}-${pad(lastDay)}`]
   })()
-  // Zi/Săptămână -> compară toate apartamentele deodată (scan --all); Lună -> ramane scanarea
-  // pe UN apartament, cel selectat (view-ul de calendar lunar clasic, per apartament).
-  const calCompareMode = calScope !== 'luna'
-  const calCommand = calCompareMode
+  // Zi/Săptămână -> tabel (nu grila lunară clasică), cu doi subcazuri: "un apartament" (cel ales
+  // din selector, poate fi și o locație extra) sau "toate" (scan --all, doar apartamentele
+  // noastre). Lună -> ramane comportamentul clasic, per apartament, grila calendaristică.
+  const calTableView = calScope !== 'luna'
+  const calScanAll = calTableView && calWho === 'toate'
+  const calCommand = calScanAll
     ? `python3 ~/Desktop/apartment_price_scan.py --all ${calStart} ${calEnd} both ${calGuests}`
     : `python3 ~/Desktop/apartment_price_scan.py ${calId} ${calStart} ${calEnd} both ${calGuests} ${calSource}`
-  const calScanUrl = calCompareMode
+  const calScanUrl = calScanAll
     ? `apartscan://scan?all=1&start=${calStart}&end=${calEnd}&platform=both&guests=${calGuests}`
     : `apartscan://scan?id=${calId}&start=${calStart}&end=${calEnd}&platform=both&guests=${calGuests}&source=${calSource}`
+  const compareSource: 'apt'|'extra' = calWho==='toate' ? 'apt' : calSource
+  const compareIds: string[] = calWho==='toate' ? apts.map(a=>a.id) : (calId ? [calId] : [])
+  const compareIdsKey = compareIds.join(',')
+  const calDisabled = calTableView ? !compareIds.length : !calId
 
   async function copyCalCommand() {
     const command = calCommand
@@ -515,8 +531,8 @@ export default function PreturiPage() {
   }, [apts])
   useEffect(()=>{
     stopComparePolling()
-    if(calCompareMode){ loadCompareData(calStart,calEnd); loadOccupancyRange(calStart,calEnd) }
-  }, [calCompareMode, calStart, calEnd, apts])
+    if(calTableView){ loadCompareData(calStart,calEnd,compareIds,compareSource); loadOccupancyRange(calStart,calEnd,compareIds,compareSource) }
+  }, [calTableView, calStart, calEnd, compareIdsKey, compareSource])
   useEffect(()=>()=>stopComparePolling(), []) // curatenie la parasirea paginii
   useEffect(()=>{ loadExtraLocations() }, [])
 
@@ -942,18 +958,18 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                   </span>
                 )}
                 <a href={calScanUrl} title={calCommand}
-                  onClick={()=>{ if(calCompareMode) startComparePolling(calStart,calEnd) }}
+                  onClick={()=>{ if(calTableView) startComparePolling(calStart,calEnd,compareIds,compareSource) }}
                   style={{
                     padding:'6px 14px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:700,textDecoration:'none',
                     border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',
-                    opacity:(calCompareMode?!apts.length:!calId)?0.45:1,pointerEvents:(calCompareMode?!apts.length:!calId)?'none':'auto',
+                    opacity:calDisabled?0.45:1,pointerEvents:calDisabled?'none':'auto',
                   }}>▶ Pornește scanul</a>
-                <button onClick={copyCalCommand} disabled={calCompareMode?!apts.length:!calId} title={calCommand} style={{
+                <button onClick={copyCalCommand} disabled={calDisabled} title={calCommand} style={{
                   padding:'6px 8px',borderRadius:6,fontSize:12,cursor:'pointer',fontWeight:600,
                   border:`1px solid ${calCommandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.2)'}`,
                   background:calCommandCopied?'rgba(74,222,128,0.1)':'transparent',
                   color:calCommandCopied?'#4ADE80':'rgba(147,197,253,0.5)',
-                  opacity:(calCompareMode?!apts.length:!calId)?0.45:1,
+                  opacity:calDisabled?0.45:1,
                 }}>{calCommandCopied?'✓':'📋'}</button>
               </div>
             </div>
@@ -971,6 +987,17 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               </div>
               {calScope!=='luna'&&(
                 <input type="date" value={calScopeDate} min={today} onChange={e=>setCalScopeDate(e.target.value)} style={inpSm}/>
+              )}
+              {calTableView&&(
+                <div style={{display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(196,181,253,0.25)'}}>
+                  {(['un-apartament','toate'] as const).map(w=>(
+                    <button key={w} onClick={()=>setCalWho(w)} style={{
+                      padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',border:'none',
+                      background:calWho===w?'rgba(196,181,253,0.18)':'transparent',
+                      color:calWho===w?'#C4B5FD':'rgba(147,197,253,0.45)',
+                    }}>{w==='un-apartament'?'Un apartament':'Toate'}</button>
+                  ))}
+                </div>
               )}
               <span style={{fontSize:10,color:'rgba(147,197,253,0.35)',fontFamily:'monospace'}}>
                 {calStart===calEnd?calStart:`${calStart} → ${calEnd}`}
@@ -994,30 +1021,41 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               </div>
             )}
 
-            {calCompareMode ? (()=>{
+            {calTableView ? (()=>{
+              // Rânduri normalizate — "toate" (apartamentele noastre) sau "un apartament" (unul
+              // singur ales din selector, poate fi și o locație extra) folosesc EXACT același
+              // tabel, doar sursa rândurilor diferă. Cerut direct: la Zi/Săptămână, un singur
+              // apartament tot trebuie scanabil/vizibil, nu doar toate deodată.
+              type Row = {id:string,nota:string,_bk:boolean,_ab:boolean}
+              const rows:Row[] = calWho==='toate'
+                ? apts.map(a=>({id:a.id,nota:a.nota,_bk:!!a._bk,_ab:!!a._ab}))
+                : calSource==='apt'
+                  ? (selApt?[{id:selApt.id,nota:selApt.nota,_bk:!!selApt._bk,_ab:!!selApt._ab}]:[])
+                  : (selExtra?[{id:selExtra.id,nota:selExtra.nume,_bk:!!selExtra.link_booking,_ab:!!selExtra.link_airbnb}]:[])
               // Disponibilitate REALĂ (rezervările noastre) — cerut direct, ca să recomande ce
               // apartamente sunt chiar libere pentru perioada aleasă, nu doar ce preț au. Sortate
               // libere primele, ca recomandarea să sară în ochi, nu doar ca simplă coloană.
-              const withOcc = apts.map(a=>({a,occ:compareDays.filter(d=>isOccupiedOn(a.id,d)).length}))
-              const aptsSorted = [...withOcc].sort((x,y)=>x.occ-y.occ)
+              // Nu se aplică locațiilor extra (nu sunt în rezervările noastre).
+              const withOcc = rows.map(r=>({r,occ:compareSource==='extra'?-1:compareDays.filter(d=>isOccupiedOn(r.id,d)).length}))
+              const rowsSorted = [...withOcc].sort((x,y)=>x.occ-y.occ)
               const freeCount = withOcc.filter(x=>x.occ===0).length
               return(
               <div style={{padding:'12px 16px',overflowX:'auto' as const}}>
                 <div style={{fontSize:10,color:'rgba(147,197,253,0.4)',marginBottom:10,display:'flex',gap:14,flexWrap:'wrap' as const}}>
                   <span><span style={{color:'#7BC8FF'}}>🏨</span> Booking</span>
                   <span><span style={{color:'#F87171'}}>🏠</span> Airbnb</span>
-                  <span>· {apts.length} apartamente</span>
-                  {apts.length>0&&<span style={{color:'#4ADE80',fontWeight:700}}>· 🟢 {freeCount} libere toată perioada — recomandate primele</span>}
+                  <span>· {rows.length} {rows.length===1?'locație':'locații'}</span>
+                  {compareSource==='apt'&&rows.length>0&&<span style={{color:'#4ADE80',fontWeight:700}}>· 🟢 {freeCount} libere toată perioada{calWho==='toate'?' — recomandate primele':''}</span>}
                 </div>
-                {!apts.length ? (
+                {!rows.length ? (
                   <div style={{padding:'24px',textAlign:'center' as const,color:'rgba(147,197,253,0.3)',fontSize:12}}>
-                    Niciun apartament cu link de Booking sau Airbnb.
+                    {calWho==='toate'?'Niciun apartament cu link de Booking sau Airbnb.':'Alege un apartament sau o locație extra din selector.'}
                   </div>
                 ) : (
                 <table style={{borderCollapse:'collapse' as const,width:'100%',minWidth:compareDays.length>1?820:420}}>
                   <thead>
                     <tr>
-                      <th style={{textAlign:'left' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)'}}>Apartament</th>
+                      <th style={{textAlign:'left' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)'}}>Locație</th>
                       <th style={{textAlign:'center' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)',whiteSpace:'nowrap' as const}}>Disponibil</th>
                       {compareDays.map(d=>(
                         <th key={d} style={{textAlign:'center' as const,padding:'6px 10px',fontSize:11,color:'rgba(147,197,253,0.5)',borderBottom:'1px solid rgba(159,215,255,0.1)',whiteSpace:'nowrap' as const}}>
@@ -1027,23 +1065,25 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                     </tr>
                   </thead>
                   <tbody>
-                    {aptsSorted.map(({a,occ},i)=>(
-                      <tr key={a.id} style={{background:i%2?'rgba(255,255,255,0.015)':'transparent'}}>
+                    {rowsSorted.map(({r,occ},i)=>(
+                      <tr key={r.id} style={{background:i%2?'rgba(255,255,255,0.015)':'transparent'}}>
                         <td style={{padding:'8px 10px',fontSize:13,fontWeight:700,color:'#E8F4FF',borderBottom:'1px solid rgba(159,215,255,0.05)'}}>
-                          {a.nota}
-                          {!a._bk&&<span style={{marginLeft:6,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Booking">🏨✕</span>}
-                          {!a._ab&&<span style={{marginLeft:4,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Airbnb">🏠✕</span>}
+                          {r.nota}
+                          {!r._bk&&<span style={{marginLeft:6,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Booking">🏨✕</span>}
+                          {!r._ab&&<span style={{marginLeft:4,fontSize:10,color:'rgba(251,191,36,0.7)'}} title="Fără link Airbnb">🏠✕</span>}
                         </td>
                         <td style={{padding:'8px 10px',textAlign:'center' as const,borderBottom:'1px solid rgba(159,215,255,0.05)',whiteSpace:'nowrap' as const}}>
-                          {occ===0
-                            ?<span style={{color:'#4ADE80',fontWeight:700,fontSize:12}}>🟢 Liber</span>
-                            :occ===compareDays.length
-                              ?<span style={{color:'#F87171',fontWeight:700,fontSize:12}}>🔴 Ocupat</span>
-                              :<span style={{color:'#FCD34D',fontWeight:700,fontSize:12}}>🟡 {compareDays.length-occ}/{compareDays.length} libere</span>}
+                          {occ<0
+                            ?<span style={{color:'rgba(147,197,253,0.35)',fontSize:12}} title="Locație extra — nu e în rezervările noastre">—</span>
+                            :occ===0
+                              ?<span style={{color:'#4ADE80',fontWeight:700,fontSize:12}}>🟢 Liber</span>
+                              :occ===compareDays.length
+                                ?<span style={{color:'#F87171',fontWeight:700,fontSize:12}}>🔴 Ocupat</span>
+                                :<span style={{color:'#FCD34D',fontWeight:700,fontSize:12}}>🟡 {compareDays.length-occ}/{compareDays.length} libere</span>}
                         </td>
                         {compareDays.map(d=>{
-                          const entry = compareData[a.id]?.[d]
-                          const occupiedDay = isOccupiedOn(a.id,d)
+                          const entry = compareData[r.id]?.[d]
+                          const occupiedDay = compareSource==='apt'&&isOccupiedOn(r.id,d)
                           return(
                             <td key={d} title={occupiedDay?'Ocupat (rezervare existentă)':'Liber'} style={{padding:'8px 10px',textAlign:'center' as const,
                               borderBottom:'1px solid rgba(159,215,255,0.05)',background:occupiedDay?'rgba(248,113,113,0.06)':'transparent'}}>
