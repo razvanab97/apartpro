@@ -412,9 +412,13 @@ export default function PreturiPage() {
     const d = dataSelectata||today
     return `apartscan://scan?id=${aptId}&start=${d}&end=${d}&platform=both&guests=2&source=apt`
   }
-  function startQuickScan(aptId:string){
-    quickScanStartRef.current[aptId] = Date.now()
-    setScanningIds(prev=>{const n=new Set(prev);n.add(aptId);return n})
+  // Comuna pentru scan pe un rand (startQuickScan) si scan global pe toata ziua
+  // (startBulkAvailabilityScan) — acelasi mecanism de detectat finalul: un id iese din
+  // "in curs" doar cand randul lui din DB e chiar mai nou decat momentul de pornire.
+  function beginScanTracking(ids:string[]){
+    const now = Date.now()
+    ids.forEach(id=>{ quickScanStartRef.current[id]=now })
+    setScanningIds(prev=>{const n=new Set(prev);ids.forEach(id=>n.add(id));return n})
     if(quickScanPollRef.current) return
     let elapsed=0
     quickScanPollRef.current=setInterval(async ()=>{
@@ -422,9 +426,6 @@ export default function PreturiPage() {
       elapsed+=4000
       setScanningIds(prev=>{
         const n=new Set(prev)
-        // Sterge din "in curs" doar cand randul din DB e chiar mai nou decat momentul in care
-        // s-a pornit scanarea — altfel un pret vechi, deja existent, ar opri spinner-ul instant
-        // la un re-scan, inainte ca scanarea reala sa fi terminat.
         prev.forEach(id=>{
           const row = rowByApt[id]
           const startedAt = quickScanStartRef.current[id]||0
@@ -437,6 +438,18 @@ export default function PreturiPage() {
         return n
       })
     },4000)
+  }
+  function startQuickScan(aptId:string){ beginScanTracking([aptId]) }
+
+  // Buton general — verifica disponibilitatea pe toate apartamentele deodata, pentru ziua
+  // selectata, ca sa se vada apoi (pastilele Bk/Ab, deja colorate dupa disponibilitate) unde
+  // are sens sa mai verifici si pretul efectiv, cerut direct.
+  function bulkAvailabilityScanUrl(){
+    const d = dataSelectata||today
+    return `apartscan://scan?all=1&start=${d}&end=${d}&platform=both&guests=2`
+  }
+  function startBulkAvailabilityScan(){
+    beginScanTracking(apts.filter(a=>a._bk||a._ab).map(a=>a.id))
   }
 
   async function loadCalendarData(id:string, month:string, source:'apt'|'extra') {
@@ -1007,6 +1020,12 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               const nopti=Math.round((new Date(dataCheckout+'T12:00:00').getTime()-new Date(dataSelectata+'T12:00:00').getTime())/86400000)
               return nopti>0?<span style={{fontSize:11,color:'rgba(147,197,253,0.5)',fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'3px 8px',borderRadius:5}}>{nopti} {nopti===1?'noapte':'nopți'}</span>:null
             })()}
+            <a href={bulkAvailabilityScanUrl()} onClick={startBulkAvailabilityScan}
+              title="Verifică disponibilitatea Booking+Airbnb pe toate apartamentele, pentru ziua selectată — util ca să vezi apoi unde merită verificat și prețul"
+              style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,fontWeight:600,textDecoration:'none',cursor:'pointer',
+                border:'1px solid rgba(77,163,255,0.4)',background:'rgba(77,163,255,0.12)',color:'#7BC8FF'}}>
+              {apts.some(a=>scanningIds.has(a.id))?'⏳ Verific...':'🔍 Verifică disponibilitate (toate)'}
+            </a>
           </div>
         </div>
 
