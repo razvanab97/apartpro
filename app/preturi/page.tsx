@@ -5,6 +5,23 @@ import { supabase, LUNI } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
 
+// disponibil_booking/disponibil_airbnb nu existau inainte de migrarea recenta — un rand scanat
+// atunci are pretul real completat, dar flagul explicit ramane null (coloana nu exista la vremea
+// aceea). Fara acest fallback, toate scanarile vechi (majoritatea preturilor deja afisate) ar
+// arata gri (nescanat), desi evident au fost gasite disponibile — pretul e chiar acolo.
+function inferDisp(disp: boolean|null|undefined, pret: number|null|undefined): boolean|null {
+  if(disp===true||disp===false) return disp
+  if(pret) return true
+  return null
+}
+
+// Ziua săptămânii, prescurtat — cerut direct, sub butoanele rapide și Check-in/Check-out (ex.
+// "Poimâine" nu spune ce zi e; acum apare "mar." dedesubt, mic, ca la restul aplicației).
+function weekdayShort(dateStr: string): string {
+  if(!dateStr) return ''
+  return new Date(dateStr+'T12:00:00').toLocaleDateString('ro-RO',{weekday:'short'})
+}
+
 interface BookingResult {
   rank: number; name: string; price: number; priceText: string
   isOurs: boolean; matchedCode?: string
@@ -132,7 +149,11 @@ function loadPersistedPreturiState(): Record<string,string> {
 
 export default function PreturiPage() {
   const [apts, setApts] = useState<any[]>([])
-  const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string}>>({})
+  // dispBooking/dispAirbnb: undefined = niciodata scanat, true = disponibil confirmat, false =
+  // indisponibil confirmat — distinctia conteaza (cerut direct: "daca apare disponibil pe booking,
+  // sa apara cu verde, daca apare indisponibil pe airbnb, sa arate rosu"), altfel pretul gol arata
+  // identic in ambele cazuri (niciodata scanat vs. scanat si confirmat indisponibil).
+  const [preturi, setPreturi] = useState<Record<string,{booking:string,airbnb:string,dispBooking?:boolean|null,dispAirbnb?:boolean|null}>>({})
   const [dataSelectata, setDataSelectata] = useState('')
   const [dataCheckout, setDataCheckout] = useState('')
   const [ocupate, setOcupate] = useState<Set<string>>(new Set())
@@ -325,8 +346,8 @@ export default function PreturiPage() {
           .select('*').in('apartament_id',list.map((a:any)=>a.id)).eq('data_checkin',today).eq('oaspeti',2)
         const map:Record<string,any> = {}
         ;(saved||[]).forEach((p:any)=>{map[p.apartament_id]=p})
-        const pm:Record<string,{booking:string,airbnb:string}> = {}
-        list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||''}})
+        const pm:Record<string,{booking:string,airbnb:string,dispBooking?:boolean|null,dispAirbnb?:boolean|null}> = {}
+        list.forEach((a:any)=>{pm[a.id]={booking:map[a.id]?.pret_booking?.toString()||'',airbnb:map[a.id]?.pret_airbnb?.toString()||'',dispBooking:inferDisp(map[a.id]?.disponibil_booking,map[a.id]?.pret_booking),dispAirbnb:inferDisp(map[a.id]?.disponibil_airbnb,map[a.id]?.pret_airbnb)}})
         setPreturi(pm)
       }).catch((err) => console.error('[preturi apts]', err))
     loadHistory(true)
@@ -377,11 +398,11 @@ export default function PreturiPage() {
   async function loadPreturiForDate(data:string){
     if(!apts.length) return {}
     const {data:saved} = await supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data).eq('oaspeti',2)
-    const pm:Record<string,{booking:string,airbnb:string}> = {}
+    const pm:Record<string,{booking:string,airbnb:string,dispBooking?:boolean|null,dispAirbnb?:boolean|null}> = {}
     const rowByApt:Record<string,any> = {}
     apts.forEach(a=>{
       const p=(saved||[]).find((x:any)=>x.apartament_id===a.id)
-      pm[a.id]={booking:p?.pret_booking?.toString()||'',airbnb:p?.pret_airbnb?.toString()||''}
+      pm[a.id]={booking:p?.pret_booking?.toString()||'',airbnb:p?.pret_airbnb?.toString()||'',dispBooking:inferDisp(p?.disponibil_booking,p?.pret_booking),dispAirbnb:inferDisp(p?.disponibil_airbnb,p?.pret_airbnb)}
       if(p) rowByApt[a.id]=p
     })
     setPreturi(pm)
@@ -922,6 +943,15 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
     padding:'5px 10px',borderRadius:7,fontSize:12,border:'1px solid rgba(100,160,255,0.2)',
     background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',outline:'none',
   }
+  // Culoarea pastilei Bk/Ab e determinata STRICT de disponibilitatea confirmata la ultimul scan
+  // (nu de brandul platformei) — cerut direct: verde = disponibil, roșu = indisponibil confirmat,
+  // neutru = niciodată scanat. Fără asta, un "niciodată scanat" și un "indisponibil confirmat"
+  // ar arăta identic (pastila Ab era deja roșiatică din start, ca simplă culoare de brand).
+  function availStyle(disp: boolean|null|undefined): React.CSSProperties {
+    if(disp===true) return { border:'1px solid rgba(74,222,128,0.4)', color:'#4ADE80', background:'rgba(74,222,128,0.08)' }
+    if(disp===false) return { border:'1px solid rgba(248,113,113,0.4)', color:'#F87171', background:'rgba(248,113,113,0.08)' }
+    return { border:'1px solid rgba(159,215,255,0.2)', color:'rgba(159,215,255,0.5)', background:'transparent' }
+  }
 
   return (
     <>
@@ -950,27 +980,37 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             {QUICK.map(({label,val})=>(
               <button key={label} onClick={()=>changeData(val)} style={{
                 padding:'5px 12px',borderRadius:7,fontSize:12,cursor:'pointer',
+                display:'flex',flexDirection:'column' as const,alignItems:'center',gap:1,lineHeight:1.2,
                 border:`1px solid ${dataSelectata===val?'rgba(77,163,255,0.5)':'rgba(159,215,255,0.15)'}`,
                 background:dataSelectata===val?'rgba(77,163,255,0.15)':'transparent',
                 color:dataSelectata===val?'#7BC8FF':'rgba(159,215,255,0.5)',
-              }}>{label}</button>
+              }}>
+                <span>{label}</span>
+                <span style={{fontSize:9,opacity:.6,textTransform:'capitalize' as const}}>{weekdayShort(val)}</span>
+              </button>
             ))}
           </div>
           <div style={{padding:'4px 16px 12px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap' as const}}>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
               <span style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>Check-in</span>
-              <input type="date" value={dataSelectata} onChange={e=>changeData(e.target.value)} style={{
-                padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
-                background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
-              }}/>
+              <div style={{display:'flex',flexDirection:'column' as const,gap:2}}>
+                <input type="date" value={dataSelectata} onChange={e=>changeData(e.target.value)} style={{
+                  padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
+                  background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
+                }}/>
+                {dataSelectata&&<span style={{fontSize:9,color:'rgba(159,215,255,0.4)',textAlign:'center' as const,textTransform:'capitalize' as const}}>{weekdayShort(dataSelectata)}</span>}
+              </div>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:6}}>
               <span style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>Check-out</span>
-              <input type="date" value={dataCheckout} min={dataSelectata}
-                onChange={e=>setDataCheckout(e.target.value)} style={{
-                padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
-                background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
-              }}/>
+              <div style={{display:'flex',flexDirection:'column' as const,gap:2}}>
+                <input type="date" value={dataCheckout} min={dataSelectata}
+                  onChange={e=>setDataCheckout(e.target.value)} style={{
+                  padding:'4px 10px',borderRadius:7,border:'1px solid rgba(100,160,255,0.2)',
+                  background:'rgba(20,38,65,0.8)',color:'rgba(214,228,244,0.9)',fontSize:12,outline:'none'
+                }}/>
+                {dataCheckout&&<span style={{fontSize:9,color:'rgba(159,215,255,0.4)',textAlign:'center' as const,textTransform:'capitalize' as const}}>{weekdayShort(dataCheckout)}</span>}
+              </div>
             </div>
             {dataCheckout&&dataSelectata&&(()=>{
               const nopti=Math.round((new Date(dataCheckout+'T12:00:00').getTime()-new Date(dataSelectata+'T12:00:00').getTime())/86400000)
@@ -1005,12 +1045,16 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:'rgba(77,163,255,0.5)'}}>🏨</span>
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.booking||''} onChange={e=>updatePret(apt.id,'booking',e.target.value)} style={inp}/>
-                {apt._bk&&<a href={buildUrl(apt._bk,'booking',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.3)',color:'#7BC8FF',textDecoration:'none',whiteSpace:'nowrap' as const}}>Bk ↗</a>}
+                {apt._bk&&<a href={buildUrl(apt._bk,'booking',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener"
+                  title={preturi[apt.id]?.dispBooking===true?'Disponibil pe Booking (confirmat la ultimul scan)':preturi[apt.id]?.dispBooking===false?'Indisponibil pe Booking (confirmat la ultimul scan) — verifică/intervino':'Nescanat încă pe Booking pentru această zi'}
+                  style={{fontSize:11,padding:'4px 10px',borderRadius:6,textDecoration:'none',whiteSpace:'nowrap' as const,...availStyle(preturi[apt.id]?.dispBooking)}}>Bk ↗</a>}
               </div>
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:'rgba(248,113,113,0.5)'}}>🏠</span>
                 <input type="number" placeholder="RON" value={preturi[apt.id]?.airbnb||''} onChange={e=>updatePret(apt.id,'airbnb',e.target.value)} style={inp}/>
-                {apt._ab&&<a href={buildUrl(apt._ab,'airbnb',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener" style={{fontSize:11,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(248,113,113,0.3)',color:'#F87171',textDecoration:'none',whiteSpace:'nowrap' as const}}>Ab ↗</a>}
+                {apt._ab&&<a href={buildUrl(apt._ab,'airbnb',dataSelectata||today,dataCheckout)} target="_blank" rel="noopener"
+                  title={preturi[apt.id]?.dispAirbnb===true?'Disponibil pe Airbnb (confirmat la ultimul scan)':preturi[apt.id]?.dispAirbnb===false?'Indisponibil pe Airbnb (confirmat la ultimul scan) — verifică/intervino':'Nescanat încă pe Airbnb pentru această zi'}
+                  style={{fontSize:11,padding:'4px 10px',borderRadius:6,textDecoration:'none',whiteSpace:'nowrap' as const,...availStyle(preturi[apt.id]?.dispAirbnb)}}>Ab ↗</a>}
               </div>
               {preturi[apt.id]?.booking&&preturi[apt.id]?.airbnb&&(
                 <div style={{fontSize:11,fontFamily:'monospace',color:parseInt(preturi[apt.id].booking)>parseInt(preturi[apt.id].airbnb)?'#FCD34D':'#4ADE80'}}>
