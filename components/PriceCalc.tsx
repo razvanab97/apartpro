@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal, FormGroup, FormRow } from '@/components/ui'
 import { Calculator, X, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react'
 import {
@@ -9,6 +9,20 @@ import {
 import { ro } from 'date-fns/locale'
 
 const ZILE = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+
+type Moneda = 'RON' | 'EUR' | 'USD' | 'GBP'
+type Rates = { EUR: number; USD: number; GBP: number }
+const MONEDE: Moneda[] = ['RON', 'EUR', 'USD', 'GBP']
+
+function toRON(amount: number, moneda: Moneda, rates: Rates | null): number {
+  if (moneda === 'RON' || !rates) return amount
+  return amount * rates[moneda]
+}
+
+function fromRON(amountRON: number, moneda: Moneda, rates: Rates | null): number {
+  if (moneda === 'RON' || !rates) return amountRON
+  return amountRON / rates[moneda]
+}
 
 function nightsBetween(a: string, b: string): number {
   if (!a || !b) return 0
@@ -95,7 +109,16 @@ export default function PriceCalc() {
   const [noptiInput, setNoptiInput] = useState('')
   const [mode, setMode] = useState<'perNoapte' | 'total'>('perNoapte')
   const [pretInput, setPretInput] = useState('')
-  const [moneda, setMoneda] = useState<'RON' | 'EUR'>('RON')
+  const [moneda, setMoneda] = useState<Moneda>('RON')
+  const [rates, setRates] = useState<Rates | null>(null)
+  const [cursDate, setCursDate] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/curs-bnr')
+      .then(r => r.json())
+      .then(data => { if (data?.rates) { setRates(data.rates); setCursDate(data.date ?? null) } })
+      .catch(() => {})
+  }, [])
 
   function onPickRange(a: string, b: string) {
     setCheckin(a); setCheckout(b)
@@ -106,6 +129,9 @@ export default function PriceCalc() {
   const pretVal = Number(pretInput) || 0
   const pretPerNoapte = mode === 'perNoapte' ? pretVal : (nopti > 0 ? pretVal / nopti : 0)
   const total = mode === 'perNoapte' ? pretVal * nopti : pretVal
+  const rezultatPrincipal = mode === 'perNoapte' ? total : pretPerNoapte
+  const rezultatRON = toRON(rezultatPrincipal, moneda, rates)
+  const alteMonede = MONEDE.filter(m => m !== moneda)
 
   return (
     <>
@@ -180,9 +206,8 @@ export default function PriceCalc() {
           </FormGroup>
           <FormGroup>
             <label>Monedă</label>
-            <select value={moneda} onChange={e => setMoneda(e.target.value as 'RON' | 'EUR')}>
-              <option value="RON">RON</option>
-              <option value="EUR">EUR</option>
+            <select value={moneda} onChange={e => setMoneda(e.target.value as Moneda)}>
+              {MONEDE.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </FormGroup>
         </FormRow>
@@ -196,10 +221,23 @@ export default function PriceCalc() {
             {mode === 'perNoapte' ? 'Preț final' : 'Preț / noapte'}
           </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: '#4ADE80', fontFamily: 'monospace' }}>
-            {mode === 'perNoapte'
-              ? total.toLocaleString('ro-RO')
-              : pretPerNoapte.toLocaleString('ro-RO', { maximumFractionDigits: 2 })} {moneda}
+            {rezultatPrincipal.toLocaleString('ro-RO', { maximumFractionDigits: 2 })} {moneda}
           </div>
+
+          {rates && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(159,215,255,0.12)' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+                {alteMonede.map(m => (
+                  <div key={m} style={{ fontSize: 13, fontWeight: 600, color: 'rgba(159,215,255,0.75)' }}>
+                    ≈ {fromRON(rezultatRON, m, rates).toLocaleString('ro-RO', { maximumFractionDigits: 2 })} {m}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.35)', marginTop: 6 }}>
+                curs BNR{cursDate ? ` (${format(new Date(cursDate), 'd MMM yyyy', { locale: ro })})` : ''}: 1 EUR = {rates.EUR.toLocaleString('ro-RO', { maximumFractionDigits: 4 })} RON · 1 USD = {rates.USD.toLocaleString('ro-RO', { maximumFractionDigits: 4 })} RON · 1 GBP = {rates.GBP.toLocaleString('ro-RO', { maximumFractionDigits: 4 })} RON
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </>
