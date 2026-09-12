@@ -13,7 +13,12 @@ export async function POST(req: NextRequest) {
     const prompt = 'Ești expert în citirea actelor de identitate românești. Din această imagine extrage:\n' +
       '- Numele complet (Prenume Nume)\n' +
       '- CNP-ul (13 cifre)\n' +
-      'Răspunde STRICT doar cu JSON, fără nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123"}. ' +
+      '- Seria (2 litere) și numărul (6 cifre) actului, separat\n' +
+      '- Județul din secțiunea Domiciliu\n' +
+      '- Localitatea/orașul din secțiunea Domiciliu\n' +
+      '- Strada, cu tot ce urmează după (nr., bloc, ap.) din secțiunea Domiciliu\n' +
+      'Răspunde STRICT doar cu JSON, fără nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123",' +
+      '"serie":"XZ","numar":"123456","judet":"Iași","localitate":"Iași","strada":"Str. Exemplu nr. 1"}. ' +
       'Dacă nu poți citi clar un câmp, pune string gol pentru el. Nu inventa date.'
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -56,6 +61,11 @@ export async function POST(req: NextRequest) {
       success: true,
       nume: parsed.nume || '',
       cnp: parsed.cnp || '',
+      serie: parsed.serie || '',
+      numar: parsed.numar || '',
+      judet: parsed.judet || '',
+      localitate: parsed.localitate || '',
+      strada: parsed.strada || '',
       raw: rawText,
     })
   } catch (e: any) {
