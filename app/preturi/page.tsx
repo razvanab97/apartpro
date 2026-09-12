@@ -159,6 +159,11 @@ export default function PreturiPage() {
   const [extraPairs, setExtraPairs] = useState<{ci: string, co: string}[]>([])
   const pollRef = useRef<NodeJS.Timeout|null>(null)
   const jobIdRef = useRef<string|null>(null)
+  // Bug real prins la testare: loadHistory(true) (apelat la montare) alege ASINCRON ultima
+  // perioadă scanată și suprascrie checkin/checkout — dacă rezolvă DUPĂ efectul de restaurare a
+  // stării salvate, îl anula silentios. Flag-ul asta, setat sincron in efectul de restaurare,
+  // spune lui loadHistory sa NU mai suprascrie o data deja restaurata din vizita anterioara.
+  const restoredMonitorDatesRef = useRef(false)
 
   // --- TAB STRATEGIE ---
   const [stratRezervari, setStratRezervari] = useState<any[]>([])
@@ -272,7 +277,7 @@ export default function PreturiPage() {
         .select('*').order('scanned_at',{ascending:false}).limit(1000)
       const rows = data||[]
       setHistory(rows)
-      if(selectLatestPeriod&&rows[0]?.checkin&&rows[0]?.checkout){
+      if(selectLatestPeriod&&!restoredMonitorDatesRef.current&&rows[0]?.checkin&&rows[0]?.checkout){
         setCheckinMonitor(rows[0].checkin)
         setCheckoutMonitor(rows[0].checkout)
         setScanDayMonitor(scanDay(rows[0]))
@@ -297,7 +302,10 @@ export default function PreturiPage() {
           const ab = apt.link_airbnb?.includes('airbnb.')?apt.link_airbnb:abs[0]||null
           return {...apt,_bk:bk,_ab:ab}
         }).filter((a:any)=>a._bk||a._ab)
-        setApts(list); setDataSelectata(today)
+        setApts(list)
+        // functional update — daca s-a restaurat deja o data salvata (efectul de restaurare de
+        // mai jos ruleaza sincron, inaintea acestui .then() async), n-o mai suprascrie cu azi
+        setDataSelectata(prev=>prev||today)
         const _co=new Date(today+'T12:00:00');_co.setDate(_co.getDate()+1);setDataCheckout(fmt(_co))
         loadOcupate(today, list.map((a:any)=>a.id))
         const {data:saved} = await supabase.from('preturi_live')
@@ -514,6 +522,13 @@ export default function PreturiPage() {
   const compareIdsKey = compareIds.join(',')
   const calDisabled = calTableView ? !compareIds.length : !calId
 
+  // Monitor (booking_scan.py) — aceeași idee ca la Calendar: buton "Pornește scanul" (ApartScan.app)
+  // lângă "Copiază", ca să nu mai fie nevoie de Terminal deschis manual, cerut direct.
+  const monitorPairs = [[checkinMonitor,checkoutMonitor],...extraPairs.map(p=>[p.ci,p.co] as [string,string])]
+  const monitorScanCommand = `python3 ~/Desktop/booking_scan.py ${monitorPairs.map(([ci,co])=>`${ci} ${co}`).join(' ')}`
+  const monitorScanUrl = `apartscan://scan?action=bookingscan&dates=${monitorPairs.map(([ci,co])=>`${ci}_${co}`).join(',')}`
+  const monitorScanDisabled = !checkinMonitor||!checkoutMonitor
+
   async function copyCalCommand() {
     const command = calCommand
     try {
@@ -560,6 +575,13 @@ export default function PreturiPage() {
       if(saved.calScopeDate >= todayStr) setCalScopeDate(saved.calScopeDate)
     }
     if(saved.calWho) setCalWho(saved.calWho as any)
+    if(saved.dataSelectata) setDataSelectata(saved.dataSelectata)
+    if(saved.dataCheckout) setDataCheckout(saved.dataCheckout)
+    if(saved.checkinMonitor){ setCheckinMonitor(saved.checkinMonitor); restoredMonitorDatesRef.current = true }
+    if(saved.checkoutMonitor) setCheckoutMonitor(saved.checkoutMonitor)
+    if(saved.extraPairs){
+      try{ const parsed=JSON.parse(saved.extraPairs); if(Array.isArray(parsed)) setExtraPairs(parsed) }catch{}
+    }
   }, [])
   useEffect(()=>{
     stopComparePolling()
@@ -571,12 +593,15 @@ export default function PreturiPage() {
     try{
       localStorage.setItem(PRETURI_STATE_KEY, JSON.stringify({
         mainTab, calApt, calMonth, calGuests, calScope, calScopeDate, calWho,
+        dataSelectata, dataCheckout, checkinMonitor, checkoutMonitor,
+        extraPairs: JSON.stringify(extraPairs),
       }))
     }catch{}
-  }, [mainTab, calApt, calMonth, calGuests, calScope, calScopeDate, calWho])
+  }, [mainTab, calApt, calMonth, calGuests, calScope, calScopeDate, calWho,
+      dataSelectata, dataCheckout, checkinMonitor, checkoutMonitor, extraPairs])
 
-  // Revine la pagina standard — cerut direct, pentru cazul în care ai lăsat Calendarul într-o
-  // stare specifică (alt apartament, altă lună/interval) și vrei să repornești curat.
+  // Revine la pagina standard — cerut direct, pentru cazul în care ai lăsat pagina într-o stare
+  // specifică (alt apartament, alte date de scanare etc.) și vrei să repornești curat.
   function resetPreturiStandard(){
     try{ localStorage.removeItem(PRETURI_STATE_KEY) }catch{}
     setMainTab('preturi')
@@ -586,6 +611,12 @@ export default function PreturiPage() {
     setCalMonth(today.slice(0,7))
     setCalScopeDate(today)
     setCalGuests('2')
+    setDataSelectata(today)
+    const _co=new Date(today+'T12:00:00');_co.setDate(_co.getDate()+1);setDataCheckout(fmt(_co))
+    const ci=add(1)
+    const d=new Date(ci+'T12:00:00');d.setDate(d.getDate()+1)
+    setCheckinMonitor(ci); setCheckoutMonitor(fmt(d))
+    setExtraPairs([])
   }
 
   // Polling pe jobId pana vine raspunsul
@@ -690,9 +721,7 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
   }
 
   async function copyScanCommand() {
-    const allPairs = [[checkinMonitor, checkoutMonitor], ...extraPairs.map(p=>[p.ci,p.co])]
-    const datesStr = allPairs.map(([ci,co])=>`${ci} ${co}`).join(' ')
-    const command = `python3 ~/Desktop/booking_scan.py ${datesStr}`
+    const command = monitorScanCommand
     try {
       if(navigator.clipboard?.writeText){
         await navigator.clipboard.writeText(command)
@@ -1239,14 +1268,19 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
             <div style={{marginLeft:'auto',fontSize:11,color:'rgba(147,197,253,0.4)',display:'flex',alignItems:'center',gap:4}}>
               <span>💻</span>
               <code style={{fontFamily:'monospace',background:'rgba(99,179,237,0.08)',padding:'2px 8px',borderRadius:4,color:'#93C5FD',fontSize:10,maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
-                python3 ~/Desktop/booking_scan.py {checkinMonitor} {checkoutMonitor}{extraPairs.map(p=>` ${p.ci} ${p.co}`).join('')}
+                {monitorScanCommand}
               </code>
-              <button onClick={copyScanCommand} disabled={!checkinMonitor||!checkoutMonitor} style={{
+              <a href={monitorScanUrl} title={monitorScanCommand} style={{
+                padding:'3px 10px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:700,textDecoration:'none',
+                border:'1px solid rgba(74,222,128,0.35)',background:'rgba(74,222,128,0.12)',color:'#4ADE80',
+                opacity:monitorScanDisabled?0.45:1,pointerEvents:monitorScanDisabled?'none':'auto',
+              }}>▶ Pornește</a>
+              <button onClick={copyScanCommand} disabled={monitorScanDisabled} style={{
                 padding:'3px 8px',borderRadius:5,fontSize:10,cursor:'pointer',fontWeight:600,
                 border:`1px solid ${commandCopied?'rgba(74,222,128,0.35)':'rgba(99,179,237,0.25)'}`,
                 background:commandCopied?'rgba(74,222,128,0.1)':'rgba(99,179,237,0.08)',
                 color:commandCopied?'#4ADE80':'#93C5FD',
-                opacity:!checkinMonitor||!checkoutMonitor?0.45:1,
+                opacity:monitorScanDisabled?0.45:1,
               }}>{commandCopied?'✓ Copiat!':'📋 Copiază'}</button>
             </div>
           </div>
@@ -1277,7 +1311,11 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
           ))}
           <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(99,179,237,0.06)',display:'flex',alignItems:'center',gap:8}}>
             <button onClick={()=>{
-              const ci=add(extraPairs.length+2)
+              // Ziua urmatoare dupa ULTIMA data setata (nu un offset fix fata de azi) — cerut
+              // direct: daca ultima e 17.10, urmatoarea adaugata trebuie sa fie 18.10.
+              const lastCi = extraPairs.length ? extraPairs[extraPairs.length-1].ci : checkinMonitor
+              const d0=new Date((lastCi||today)+'T12:00:00');d0.setDate(d0.getDate()+1)
+              const ci=fmt(d0)
               const d=new Date(ci+'T12:00:00');d.setDate(d.getDate()+1)
               setExtraPairs(prev=>[...prev,{ci,co:fmt(d)}])
             }} style={{padding:'4px 14px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:600,
