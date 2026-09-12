@@ -204,7 +204,9 @@ export default function PreturiPage() {
   const [calScope, setCalScope] = useState<'zi'|'saptamana'|'luna'>('luna') // domeniul SCANARII, separat de luna afisata in grila
   const [calScopeDate, setCalScopeDate] = useState('') // ziua-ancora pentru scope 'zi'/'saptamana'
   const [calWho, setCalWho] = useState<'un-apartament'|'toate'>('toate') // la scope zi/saptamana: un singur apartament ales, sau toate deodata
-  const [calData, setCalData] = useState<Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>({})
+  // Nivelul al doilea de chei (oaspeti, ca string) — la fel ca la compareData, mai multe scanari
+  // ale aceleiasi luni cu numar diferit de oaspeti raman vizibile in paralel, nu se suprascriu.
+  const [calData, setCalData] = useState<Record<string,Record<string,{booking?:number|null,airbnb?:number|null,bookingOrig?:number|null,updatedAt?:string}>>>({})
   const [loadingCal, setLoadingCal] = useState(false)
   const [calCommandCopied, setCalCommandCopied] = useState(false)
   const [extraLocations, setExtraLocations] = useState<{id:string,nume:string,link_booking?:string,link_airbnb?:string}[]>([])
@@ -214,7 +216,9 @@ export default function PreturiPage() {
   // Compară toate apartamentele (scope Zi/Săptămână) — un rând per apartament, completat live
   // pe măsură ce scanarea din Terminal avansează, prin polling simplu pe preturi_live (scriptul
   // scrie progresiv, per apartament+zi+platformă, exact ce face live-ul posibil fără alt mecanism).
-  const [compareData, setCompareData] = useState<Record<string,Record<string,{booking?:number|null,airbnb?:number|null}>>>({})
+  // Nivelul al treilea de chei (oaspeti, ca string) — o scanare cu alt numar de oaspeti pentru
+  // aceeasi zi nu mai suprascrie ce era deja gasit, raman ambele, afisate in paralel in tabel.
+  const [compareData, setCompareData] = useState<Record<string,Record<string,Record<string,{booking?:number|null,airbnb?:number|null}>>>>({})
   const [comparePolling, setComparePolling] = useState(false)
   const comparePollRef = useRef<any>(null)
   // Disponibilitate REALĂ (rezervările noastre, nu ce arată Booking/Airbnb la scanare) — cerut
@@ -308,8 +312,11 @@ export default function PreturiPage() {
         setDataSelectata(prev=>prev||today)
         const _co=new Date(today+'T12:00:00');_co.setDate(_co.getDate()+1);setDataCheckout(fmt(_co))
         loadOcupate(today, list.map((a:any)=>a.id))
+        // oaspeti=2 explicit — tab-ul Prețuri e prețul standard (fără selector de oaspeți),
+        // ca să nu ridice ambiguu un rând scanat cu alt număr de oaspeți din tab-ul Calendar,
+        // care scrie în același tabel.
         const {data:saved} = await supabase.from('preturi_live')
-          .select('*').in('apartament_id',list.map((a:any)=>a.id)).eq('data_checkin',today)
+          .select('*').in('apartament_id',list.map((a:any)=>a.id)).eq('data_checkin',today).eq('oaspeti',2)
         const map:Record<string,any> = {}
         ;(saved||[]).forEach((p:any)=>{map[p.apartament_id]=p})
         const pm:Record<string,{booking:string,airbnb:string}> = {}
@@ -349,11 +356,11 @@ export default function PreturiPage() {
     if(!p?.booking&&!p?.airbnb){show('error','Introdu cel puțin un preț');return}
     setSaving(aptId)
     await supabase.from('preturi_live').upsert({
-      apartament_id:aptId,data_checkin:checkin,
+      apartament_id:aptId,data_checkin:checkin,oaspeti:2,
       pret_booking:p.booking?parseInt(p.booking):null,
       pret_airbnb:p.airbnb?parseInt(p.airbnb):null,
       updated_at:new Date().toISOString()
-    },{onConflict:'apartament_id,data_checkin'})
+    },{onConflict:'apartament_id,data_checkin,oaspeti'})
     setSaving(null); show('success','Preț salvat!')
   }
 
@@ -365,7 +372,7 @@ export default function PreturiPage() {
     setDataSelectata(data)
     const _d=new Date(data+'T12:00:00');_d.setDate(_d.getDate()+1);setDataCheckout(fmt(_d))
     if(!apts.length) return
-    supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data)
+    supabase.from('preturi_live').select('*').in('apartament_id',apts.map(a=>a.id)).eq('data_checkin',data).eq('oaspeti',2)
       .then(({data:saved})=>{
         const pm:Record<string,{booking:string,airbnb:string}> = {}
         apts.forEach(a=>{const p=(saved||[]).find((x:any)=>x.apartament_id===a.id)
@@ -384,10 +391,13 @@ export default function PreturiPage() {
       const table = source==='extra' ? 'preturi_extra_live' : 'preturi_live'
       const keyField = source==='extra' ? 'locatie_extra_id' : 'apartament_id'
       const {data} = await supabase.from(table)
-        .select('data_checkin,pret_booking,pret_airbnb,pret_booking_original,updated_at')
+        .select('data_checkin,oaspeti,pret_booking,pret_airbnb,pret_booking_original,updated_at')
         .eq(keyField,id).gte('data_checkin',start).lt('data_checkin',end)
-      const map:Record<string,any> = {}
-      ;(data||[]).forEach((r:any)=>{map[r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb,bookingOrig:r.pret_booking_original,updatedAt:r.updated_at}})
+      const map:Record<string,Record<string,any>> = {}
+      ;(data||[]).forEach((r:any)=>{
+        if(!map[r.data_checkin]) map[r.data_checkin]={}
+        map[r.data_checkin][String(r.oaspeti ?? 2)]={booking:r.pret_booking,airbnb:r.pret_airbnb,bookingOrig:r.pret_booking_original,updatedAt:r.updated_at}
+      })
       setCalData(map)
     }catch(err){console.error('[preturi loadCalendarData]',err)}
     setLoadingCal(false)
@@ -402,13 +412,14 @@ export default function PreturiPage() {
       const table = source==='extra' ? 'preturi_extra_live' : 'preturi_live'
       const keyField = source==='extra' ? 'locatie_extra_id' : 'apartament_id'
       const {data} = await supabase.from(table)
-        .select(`${keyField},data_checkin,pret_booking,pret_airbnb`)
+        .select(`${keyField},data_checkin,oaspeti,pret_booking,pret_airbnb`)
         .in(keyField,ids).gte('data_checkin',start).lte('data_checkin',end)
-      const map:Record<string,Record<string,any>> = {}
+      const map:Record<string,Record<string,Record<string,any>>> = {}
       ;(data||[]).forEach((r:any)=>{
         const rid = r[keyField]
         if(!map[rid]) map[rid]={}
-        map[rid][r.data_checkin]={booking:r.pret_booking,airbnb:r.pret_airbnb}
+        if(!map[rid][r.data_checkin]) map[rid][r.data_checkin]={}
+        map[rid][r.data_checkin][String(r.oaspeti ?? 2)]={booking:r.pret_booking,airbnb:r.pret_airbnb}
       })
       setCompareData(map)
     }catch(err){console.error('[preturi loadCompareData]',err)}
@@ -1167,13 +1178,28 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                                 :<span style={{color:'#FCD34D',fontWeight:700,fontSize:12}}>🟡 {compareDays.length-occ}/{compareDays.length} libere</span>}
                         </td>
                         {compareDays.map(d=>{
-                          const entry = compareData[r.id]?.[d]
+                          const dayData = compareData[r.id]?.[d] || {}
+                          // Mai multe scanari pentru aceeasi zi, cu numar diferit de oaspeti (ex.
+                          // 2 si 4), raman AMBELE — nu se mai suprascriu — si se afiseaza in
+                          // paralel aici, cate un mini-rand per numar de oaspeti, cerut direct.
+                          const guestKeys = Object.keys(dayData).sort((a,b)=>Number(a)-Number(b))
                           const occupiedDay = compareSource==='apt'&&isOccupiedOn(r.id,d)
                           return(
                             <td key={d} title={occupiedDay?'Ocupat (rezervare existentă)':'Liber'} style={{padding:'8px 10px',textAlign:'center' as const,
                               borderBottom:'1px solid rgba(159,215,255,0.05)',background:occupiedDay?'rgba(248,113,113,0.06)':'transparent'}}>
-                              <div style={{fontSize:12,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking}`:'—'}</div>
-                              <div style={{fontSize:12,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb}`:'—'}</div>
+                              {guestKeys.length<=1 ? (() => {
+                                const entry = dayData[guestKeys[0]]
+                                return (<>
+                                  <div style={{fontSize:12,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking}`:'—'}</div>
+                                  <div style={{fontSize:12,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb}`:'—'}</div>
+                                </>)
+                              })() : guestKeys.map(g=>(
+                                <div key={g} style={{marginBottom:4}}>
+                                  <div style={{fontSize:9,color:'rgba(147,197,253,0.4)',fontWeight:700}}>{g}p</div>
+                                  <div style={{fontSize:12,fontFamily:'monospace',color:'#7BC8FF'}}>{dayData[g]?.booking?`${dayData[g].booking}`:'—'}</div>
+                                  <div style={{fontSize:12,fontFamily:'monospace',color:'#F87171'}}>{dayData[g]?.airbnb?`${dayData[g].airbnb}`:'—'}</div>
+                                </div>
+                              ))}
                             </td>
                           )
                         })}
@@ -1207,9 +1233,11 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                   const dateStr = `${calMonth}-${pad(d)}`
                   const isPast = dateStr<today
                   const isToday = dateStr===today
-                  const entry = calData[dateStr]
+                  const dayData = calData[dateStr] || {}
+                  const guestKeys = Object.keys(dayData).sort((a,b)=>Number(a)-Number(b))
+                  const latestUpdatedAt = guestKeys.map(g=>dayData[g]?.updatedAt).filter(Boolean).sort().pop()
                   return(
-                    <div key={idx} title={entry?.updatedAt?`Actualizat ${new Date(entry.updatedAt).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:''} style={{
+                    <div key={idx} title={latestUpdatedAt?`Actualizat ${new Date(latestUpdatedAt).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:''} style={{
                       borderRadius:8,padding:'8px 6px',minHeight:64,
                       border:`1px solid ${isToday?'rgba(248,113,113,0.4)':'rgba(159,215,255,0.08)'}`,
                       background:isToday?'rgba(248,113,113,0.08)':isPast?'rgba(159,215,255,0.02)':'rgba(214,228,244,0.03)',
@@ -1217,8 +1245,19 @@ IMPORTANT: Trimite fetch-ul POST după ce ai extras datele. Folosește JavaScrip
                     }}>
                       <div style={{fontSize:11,fontWeight:700,textDecoration:isPast?'line-through':'none',
                         color:isToday?'#F87171':'#E8F4FF',marginBottom:4}}>{d}</div>
-                      <div style={{fontSize:11,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking} lei`:'—'}</div>
-                      <div style={{fontSize:11,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb} lei`:'—'}</div>
+                      {guestKeys.length<=1 ? (() => {
+                        const entry = dayData[guestKeys[0]]
+                        return (<>
+                          <div style={{fontSize:11,fontFamily:'monospace',color:'#7BC8FF'}}>{entry?.booking?`${entry.booking} lei`:'—'}</div>
+                          <div style={{fontSize:11,fontFamily:'monospace',color:'#F87171'}}>{entry?.airbnb?`${entry.airbnb} lei`:'—'}</div>
+                        </>)
+                      })() : guestKeys.map(g=>(
+                        <div key={g} style={{marginBottom:3}}>
+                          <div style={{fontSize:9,color:'rgba(147,197,253,0.4)',fontWeight:700}}>{g}p</div>
+                          <div style={{fontSize:10,fontFamily:'monospace',color:'#7BC8FF'}}>{dayData[g]?.booking?`${dayData[g].booking} lei`:'—'}</div>
+                          <div style={{fontSize:10,fontFamily:'monospace',color:'#F87171'}}>{dayData[g]?.airbnb?`${dayData[g].airbnb} lei`:'—'}</div>
+                        </div>
+                      ))}
                     </div>
                   )
                 })}
