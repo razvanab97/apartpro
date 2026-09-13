@@ -161,7 +161,11 @@ export default function RapoartePage() {
   const [allApts, setAllApts] = useState<any[]>([])
 
   useEffect(() => {
-    supabase.from('apartamente').select('id,nume,nota,comision_procent').order('nota').then(
+    // select('*'), nu o lista explicita de coloane — cost_curatenie_per_rezervare e o coloana
+    // noua care poate sa nu existe inca (pana la migrare); o lista explicita ar rupe interogarea
+    // intreaga cu eroare 42703, in loc sa lipseasca doar acel camp (acelasi motiv ca la
+    // disponibil_booking/disponibil_airbnb in app/preturi/page.tsx).
+    supabase.from('apartamente').select('*').order('nota').then(
       ({ data }) => {
         setApartamente(data || [])
         setAllApts(data || [])
@@ -774,11 +778,117 @@ export default function RapoartePage() {
             const totalComAB = totals.comisionAB
             const netFinal = totals.netFinal
 
+            // Detaliu pe fiecare locatie in parte (nu combinat), cu Airbnb/Booking/Privat
+            // separate si costul de curatenie per rezervare al locatiei (daca e setat) — cerut
+            // direct pentru VM07/CG40, generalizat pentru orice apartament cu acest cost setat.
+            const CANAL_GRUP: Record<string,'airbnb'|'booking'|'privat'> = { airbnb:'airbnb', booking:'booking' }
+            const perLocatie = (() => {
+              const map = new Map<string, { apt:any; airbnb:number; airbnbN:number; booking:number; bookingN:number; privat:number; privatN:number }>()
+              for (const r of rezervari) {
+                const aptId = r.apartament_id
+                if (!map.has(aptId)) {
+                  // r.apartament vine din join-ul rezervari->apartamente (doar id/nume/nota) — nu
+                  // contine cost_curatenie_per_rezervare, de-asta trebuie combinat cu lista
+                  // separata `apartamente`, care are toate coloanele.
+                  const apt = { ...(r.apartament||{}), ...(apartamente.find(a=>a.id===aptId)||{}) }
+                  map.set(aptId, { apt, airbnb:0, airbnbN:0, booking:0, bookingN:0, privat:0, privatN:0 })
+                }
+                const e = map.get(aptId)!
+                const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : Number(r.suma_incasata||0)
+                const grup = CANAL_GRUP[r.canal] || 'privat'
+                e[grup] += brut
+                e[`${grup}N` as 'airbnbN'|'bookingN'|'privatN'] += 1
+              }
+              return Array.from(map.values())
+                .map(e => {
+                  const ab = calcComision(e.airbnb,'airbnb'); const abNet = e.airbnb - ab.total
+                  const bk = calcComision(e.booking,'booking'); const bkNet = e.booking - bk.total
+                  const privatNet = e.privat
+                  const netDupaPlatforme = abNet + bkNet + privatNet
+                  const costCuratenie = Number(e.apt?.cost_curatenie_per_rezervare || 0)
+                  const nrRezervari = e.airbnbN + e.bookingN + e.privatN
+                  const curatenieTotal = costCuratenie * nrRezervari
+                  const netDupaCosturi = netDupaPlatforme - curatenieTotal
+                  const comAB = tipRaport==='cu_comision' ? netDupaCosturi * (comisionAB/100) : 0
+                  const netProprietar = netDupaCosturi - comAB
+                  return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, netDupaCosturi, comAB, netProprietar, nrRezervari }
+                })
+                .sort((a,b)=>(a.apt?.nota||'').localeCompare(b.apt?.nota||''))
+            })()
+
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {/* Detaliu pe locatie */}
+                {perLocatie.length > 0 && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'0.6px' }}>Detaliu pe locație (separat, nu combinat)</div>
+                    {perLocatie.map(l => (
+                      <div key={l.apt?.id} style={{ ...panel, overflow:'hidden' }}>
+                        <div style={{ padding:'10px 16px', borderBottom:'1px solid rgba(159,215,255,0.08)', display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:'#4DA3FF', background:'rgba(77,163,255,0.12)', padding:'2px 8px', borderRadius:5 }}>{l.apt?.nota}</span>
+                          <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{l.apt?.nume}</span>
+                          <span style={{ marginLeft:'auto', fontSize:11, color:'rgba(159,215,255,0.4)' }}>{l.nrRezervari} rez.</span>
+                        </div>
+                        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                          <thead style={{ background:'rgba(14,27,43,0.5)' }}>
+                            <tr>
+                              {['Canal','Rez.','Generat','Comision+TVA','Net'].map(h=>(
+                                <th key={h} style={{ padding:'7px 14px', textAlign:h==='Canal'||h==='Rez.'?'left':'right', fontSize:10, fontWeight:600, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'0.5px', borderBottom:'1px solid rgba(159,215,255,0.08)' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'#F87171' }}>Airbnb</td>
+                              <td style={{ padding:'8px 14px', fontSize:12, color:'rgba(214,228,244,0.5)' }}>{l.airbnbN}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', textAlign:'right' }}>{fmt(l.airbnb)}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>{l.airbnb>0?`-${fmt(l.airbnb-l.abNet)}`:'—'}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(l.abNet)}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'#7BC8FF' }}>Booking</td>
+                              <td style={{ padding:'8px 14px', fontSize:12, color:'rgba(214,228,244,0.5)' }}>{l.bookingN}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', textAlign:'right' }}>{fmt(l.booking)}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>{l.booking>0?`-${fmt(l.booking-l.bkNet)}`:'—'}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(l.bkNet)}</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'#4ADE80' }}>Privat</td>
+                              <td style={{ padding:'8px 14px', fontSize:12, color:'rgba(214,228,244,0.5)' }}>{l.privatN}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', textAlign:'right' }}>{fmt(l.privat)}</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'rgba(159,215,255,0.3)', textAlign:'right' }}>—</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#FCD34D', textAlign:'right' }}>{fmt(l.privatNet)}</td>
+                            </tr>
+                            <tr style={{ background:'rgba(14,27,43,0.4)' }}>
+                              <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>Net după platforme</td>
+                              <td style={{ padding:'8px 14px', fontFamily:'monospace', fontWeight:700, color:'#FCD34D', textAlign:'right' }}>{fmt(l.netDupaPlatforme)}</td>
+                            </tr>
+                            {l.costCuratenie > 0 && (
+                              <tr>
+                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>Curățenii — {l.nrRezervari} × {fmt(l.costCuratenie)} RON</td>
+                                <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(l.curatenieTotal)}</td>
+                              </tr>
+                            )}
+                            {tipRaport==='cu_comision' && (
+                              <tr>
+                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>Com. AB Homes {comisionAB}% (din net {l.costCuratenie>0?'după curățenii':'după platforme'})</td>
+                                <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(l.comAB)}</td>
+                              </tr>
+                            )}
+                            <tr style={{ borderTop:'1px solid rgba(159,215,255,0.15)' }}>
+                              <td colSpan={4} style={{ padding:'9px 14px', fontSize:13, fontWeight:700, color:'rgba(214,228,244,0.8)' }}>{tipRaport==='cu_comision'?'Net proprietar':'Net final'}</td>
+                              <td style={{ padding:'9px 14px', fontFamily:'monospace', fontWeight:700, color:'#4ADE80', textAlign:'right', fontSize:15 }}>{fmt(l.netProprietar)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Per platform */}
                 <div style={{ ...panel, overflow:'hidden' }}>
-                  <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(159,215,255,0.08)', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'0.6px' }}>Detaliu comisioane pe platformă</div>
+                  <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(159,215,255,0.08)', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)', textTransform:'uppercase', letterSpacing:'0.6px' }}>Detaliu comisioane pe platformă (combinat, toate locațiile selectate)</div>
                   <table style={{ width:'100%', borderCollapse:'collapse' }}>
                     <thead style={{ background:'rgba(14,27,43,0.5)' }}>
                       <tr>

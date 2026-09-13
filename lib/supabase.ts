@@ -74,6 +74,7 @@ export type Apartament = {
   id: string; nume: string; adresa: string; zona?: string; nr_camere: number
   capacitate_max: number; pret_standard: number; proprietar_id?: string; proprietar?: Proprietar
   comision_tip: string; comision_procent: number; comision_fix: number; costuri_admin: string[]
+  cost_curatenie_per_rezervare?: number
   link_airbnb?: string; link_booking?: string; link_site?: string; instructiuni_checkin?: string
   mesaj_checkin?: string; mesaj_checkout?: string
   link_maps?: string; booking_links?: string[]; airbnb_links?: string[]
