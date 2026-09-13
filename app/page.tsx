@@ -1525,7 +1525,7 @@ export default function DashboardPage() {
         const tasksFiltrate = mesajeActiveTab==='toate' ? mesajeTasks : mesajeTasks.filter(t=>t.categorie===mesajeActiveTab)
         return(
           <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:760,width:'100%',maxHeight:'92vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:960,width:'100%',maxHeight:'88vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
                 <div>
                   <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Mesaje de azi</div>
@@ -1547,54 +1547,57 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:10,paddingRight:2}}>
+              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:8,paddingRight:2}}>
                 {tasksFiltrate.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj aici 🎉</div>}
                 {tasksFiltrate.map(task=>{
                   const sent=mesajeSentIds.has(task.id)
                   const editing=editingMesajId===task.id
                   return(
-                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'14px 16px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap' as const}}>
-                        <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
-                        {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
-                        {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4}}>🇬🇧 EN</span>}
-                        {sent&&<span style={{marginLeft:'auto',fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3}}><Check size={12}/>Trimis</span>}
-                      </div>
-                      <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
-                      {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:2}}>{task.linie2}</div>}
-                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:10}}>
-                        <Phone size={11} color="rgba(159,215,255,0.4)"/>
-                        <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
-                          style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'6px 8px',fontSize:12,color:'#E8F4FF',outline:'none'}}/>
-                      </div>
-                      {editing?(
-                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8}
-                          style={{width:'100%',marginTop:10,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.5,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
-                      ):(
-                        <pre style={{fontSize:12,lineHeight:1.5,color:'rgba(214,228,244,0.7)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'10px 0 0',fontFamily:'inherit'}}>{task.mesaj}</pre>
-                      )}
-                      <div style={{display:'flex',flexDirection:'column' as const,gap:6,marginTop:12}}>
-                        <div style={{display:'flex',gap:6}}>
-                          <button onClick={()=>setEditingMesajId(editing?null:task.id)}
-                            style={{flex:1,padding:'9px 10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                            {editing?'✓ Gata editare':'✏️ Editează text'}
-                          </button>
+                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'10px 14px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+                          <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
+                          {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
+                        </div>
+                        <div style={{minWidth:130,flexShrink:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:'#E8F4FF',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.nume}</div>
+                          {task.linie2&&<div style={{fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.linie2}</div>}
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:5,width:150,flexShrink:0}}>
+                          <Phone size={11} color="rgba(159,215,255,0.4)"/>
+                          <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
+                            style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
+                        </div>
+                        {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>🇬🇧 EN</span>}
+                        {sent&&<span style={{fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}><Check size={12}/>Trimis</span>}
+                        <div style={{display:'flex',alignItems:'center',gap:5,marginLeft:'auto',flexShrink:0}}>
                           <button onClick={()=>traduceMesaj(task)} disabled={translatingMesajId===task.id}
                             title="Traduce mesajul în engleză"
-                            style={{flexShrink:0,width:40,padding:'9px 0',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:translatingMesajId===task.id?'default':'pointer',opacity:translatingMesajId===task.id?0.5:1}}>
+                            style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:translatingMesajId===task.id?'default':'pointer',opacity:translatingMesajId===task.id?0.5:1}}>
                             {translatingMesajId===task.id?'…':'🇬🇧'}
+                          </button>
+                          <button onClick={()=>setEditingMesajId(editing?null:task.id)}
+                            title={editing?'Gata editare':'Editează text'}
+                            style={{padding:'0 10px',height:30,borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:editing?'rgba(159,215,255,0.1)':'transparent',color:'rgba(159,215,255,0.7)',fontSize:12,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap' as const}}>
+                            {editing?'✓ Gata':'✏️ Editează'}
                           </button>
                           <button onDoubleClick={()=>anuleazaMesaj(task.id)}
                             title="Dublu-click pentru a anula acest mesaj din ziua de azi"
-                            style={{flex:1,padding:'9px 10px',borderRadius:8,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.65)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                            🗑 Anulează (dublu-click)
+                            style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.65)',fontSize:12,cursor:'pointer'}}>
+                            🗑
                           </button>
+                          <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
+                            style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,height:30,padding:'0 14px',borderRadius:7,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap' as const}}>
+                            <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
+                          </a>
                         </div>
-                        <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
-                          style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                          <MessageCircle size={14}/>{sent?'Retrimite':'Trimite'}
-                        </a>
                       </div>
+                      {editing?(
+                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8} autoFocus
+                          style={{width:'100%',marginTop:8,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.5,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
+                      ):(
+                        <div style={{fontSize:11,lineHeight:1.4,color:'rgba(214,228,244,0.55)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'6px 0 0',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical' as const,overflow:'hidden'}}>{task.mesaj}</div>
+                      )}
                     </div>
                   )
                 })}
