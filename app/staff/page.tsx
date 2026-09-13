@@ -650,7 +650,7 @@ export default function StaffPage() {
           )}
           {deCuratat.length===0
           ? <div style={{textAlign:'center',padding:'60px 0',color:'rgba(159,215,255,0.25)',fontSize:15}}>Niciun checkout azi</div>
-          : deCuratat.map(apt=>{
+          : deCuratat.map((apt,idx)=>{
             const st=statusuri[apt.id]
             const isGata=st?.status==='gata'
             const isInceput=st?.status==='inceput'
@@ -664,6 +664,8 @@ export default function StaffPage() {
               <div key={apt.id} style={{borderRadius:16,overflow:'hidden',border:'0.5px solid '+borderColor,borderLeft:'3px solid '+borderColor,background:bgColor,marginBottom:8,width:'100%'}}>
                 <div onClick={()=>setExpandedApt(isOpen?null:apt.id)}
                   style={{padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>
+                  {/* Numar curatenie (X din total pe ziua asta) - cerut direct, ca sa se stie cate mai raman */}
+                  <span style={{fontSize:11,fontWeight:800,fontFamily:'monospace',color:'rgba(159,215,255,0.5)',background:'rgba(255,255,255,0.05)',borderRadius:8,padding:'4px 6px',flexShrink:0,minWidth:34,textAlign:'center' as const}}>{idx+1}/{deCuratat.length}</span>
                   <span style={{fontSize:22,flexShrink:0}}>{isGata?'✅':isInceput?'🧹':'⏳'}</span>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:'flex',alignItems:'center',gap:6}}>
