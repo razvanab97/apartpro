@@ -262,8 +262,10 @@ export default function DashboardPage() {
     }catch{}
     setTranslatingMesajId(null)
   }
+  // "Rezolvat" = trimis SAU anulat — altfel un banner cu mesaje doar anulate (nu trimise)
+  // ramanea vizibil la nesfarsit, fiindca nimic nu ajungea vreodata in mesajeSentIds.
   function toateTrimise(list:any[],idPrefix:string){
-    return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id))
+    return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id)||mesajeAnulateIds.has(idPrefix+r.id))
   }
   const gataCheckinsAzi = checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
   const coMesajeTrimise = toateTrimise(checkoutAzi.filter((r:any)=>r.telefon_client),'co-')
@@ -669,6 +671,14 @@ export default function DashboardPage() {
     const isCI=type==='checkin'
     const color=isCI?'#FCD34D':'#C084FC'
     const phone=r.telefon_client||''
+    // Aceleasi id-uri ca in "Mesaje de azi" (co-/ci-/gata- + id rezervare) — trimis sau anulat
+    // de-acolo dispare si de-aici, si invers, cerut direct ("sa dispara de pe toate platformele").
+    function statusOrButton(idPrefix:string, href:string, icon:React.ReactNode, label:string, btnColor:string, btnBg:string){
+      const id=idPrefix+r.id
+      if(mesajeSentIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(74,222,128,0.4)','rgba(74,222,128,0.08)'),color:'#4ADE80',cursor:'default'}}><Check size={12}/>Trimis</span>
+      if(mesajeAnulateIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(248,113,113,0.3)','rgba(248,113,113,0.06)'),color:'rgba(248,113,113,0.55)',cursor:'default'}}>✕ Anulat</span>
+      return <a key={idPrefix} href={href} target="_blank" rel="noreferrer" onClick={()=>marcheazaMesajTrimis(id)} style={waBtn(btnColor,btnBg)}>{icon}{label}</a>
+    }
     return(
       <div style={{background:'rgba(20,35,58,0.6)',border:`1px solid ${isCI?'rgba(252,211,77,0.2)':'rgba(192,132,252,0.2)'}`,borderRadius:10,padding:'12px 14px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
         {/* avatar */}
@@ -687,21 +697,10 @@ export default function DashboardPage() {
         {/* butoane WA */}
         <div style={{display:'flex',gap:6,flexWrap:'wrap' as const}}>
           {isCI&&(<>
-            <a href={waLink(phone,msgCheckin(r,sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer"
-              style={waBtn('rgba(252,211,77,0.9)','rgba(252,211,77,0.08)')}>
-              <MessageCircle size={12}/>Confirmare
-            </a>
-            <a href={waLink(phone,msgAcces(r,sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer"
-              style={waBtn('rgba(77,163,255,0.9)','rgba(77,163,255,0.08)')}>
-              <Key size={12}/>Date acces
-            </a>
+            {statusOrButton('ci-',waLink(phone,msgCheckin(r,sabloaneSetari.checkin_confirmare)),<MessageCircle size={12}/>,'Confirmare','rgba(252,211,77,0.9)','rgba(252,211,77,0.08)')}
+            {statusOrButton('gata-',waLink(phone,msgAcces(r,sabloaneSetari.checkin_acces)),<Key size={12}/>,'Date acces','rgba(77,163,255,0.9)','rgba(77,163,255,0.08)')}
           </>)}
-          {!isCI&&(
-            <a href={waLink(phone,msgCheckoutGen(r,sabloaneCO))} target="_blank" rel="noreferrer"
-              style={waBtn('rgba(192,132,252,0.9)','rgba(192,132,252,0.08)')}>
-              <LogOut size={12}/>Check-out
-            </a>
-          )}
+          {!isCI&&statusOrButton('co-',waLink(phone,msgCheckoutGen(r,sabloaneCO)),<LogOut size={12}/>,'Check-out','rgba(192,132,252,0.9)','rgba(192,132,252,0.08)')}
         </div>
       </div>
     )
@@ -1557,7 +1556,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:8,paddingRight:2}}>
+              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:16,paddingRight:2}}>
                 {tasksFiltrate.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj aici 🎉</div>}
                 {tasksFiltrate.map(task=>{
                   const sent=mesajeSentIds.has(task.id)
