@@ -724,9 +724,7 @@ export default function DashboardPage() {
           .mesaje-sheet { max-height: 94vh !important; border-radius: 16px 16px 0 0 !important; padding: 14px !important; }
           .mesaje-row { padding: 9px 10px !important; }
           .mesaje-row-top { gap: 8px !important; }
-          .mesaje-name-block { min-width: 0 !important; flex: 1 1 auto !important; }
-          .mesaje-phone { width: 100% !important; order: 4; }
-          .mesaje-actions { width: 100%; order: 5; margin-left: 0 !important; }
+          .mesaje-actions { width: 100%; margin-left: 0 !important; }
           .mesaje-actions a { flex: 1; }
         }
       `}</style>
@@ -1568,15 +1566,6 @@ export default function DashboardPage() {
                           <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
                           {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
                         </div>
-                        <div className="mesaje-name-block" style={{minWidth:130,flexShrink:0}}>
-                          <div style={{fontSize:13,fontWeight:700,color:'#E8F4FF',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.nume}</div>
-                          {task.linie2&&<div style={{fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.linie2}</div>}
-                        </div>
-                        <div className="mesaje-phone" style={{display:'flex',alignItems:'center',gap:5,width:150,flexShrink:0}}>
-                          <Phone size={11} color="rgba(159,215,255,0.4)"/>
-                          <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
-                            style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
-                        </div>
                         {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>🇬🇧 EN</span>}
                         {sent&&<span style={{fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}><Check size={12}/>Trimis</span>}
                         <div className="mesaje-actions" style={{display:'flex',alignItems:'center',gap:5,marginLeft:'auto',flexShrink:0}}>
@@ -1600,6 +1589,16 @@ export default function DashboardPage() {
                             <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
                           </a>
                         </div>
+                      </div>
+                      {/* Numele clientului, centrat — cerut direct, separat de restul informatiei */}
+                      <div style={{textAlign:'center' as const,margin:'10px 0'}}>
+                        <div style={{fontSize:16,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
+                        {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.45)',marginTop:1}}>{task.linie2}</div>}
+                      </div>
+                      <div className="mesaje-phone" style={{display:'flex',alignItems:'center',gap:5,width:'100%'}}>
+                        <Phone size={11} color="rgba(159,215,255,0.4)"/>
+                        <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
+                          style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
                       </div>
                       {editing?(
                         <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8} autoFocus
