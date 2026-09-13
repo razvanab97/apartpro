@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
@@ -184,35 +184,18 @@ export default function DashboardPage() {
   const [toggling,setToggling]=useState<string|null>(null)
   const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
   const [sabloaneSetari,setSabloaneSetari]=useState<Record<string,string>>({})
-  const [coWizardOpen,setCoWizardOpen]=useState(false)
-  const [coWizardIdx,setCoWizardIdx]=useState(0)
   const [coBannerDismissed,setCoBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('co_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
-  const [coMesajeTrimise,setCoMesajeTrimise]=useState(()=>{
-    try{return localStorage.getItem('co_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
-  })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
-  const [gataWizardOpen,setGataWizardOpen]=useState(false)
-  const [gataWizardIdx,setGataWizardIdx]=useState(0)
   const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('gata_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
-  const [gataMesajeTrimise,setGataMesajeTrimise]=useState(()=>{
-    try{return localStorage.getItem('gata_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
-  })
-  const [ciWizardOpen,setCiWizardOpen]=useState(false)
-  const [ciWizardIdx,setCiWizardIdx]=useState(0)
   const [ciBannerDismissed,setCiBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('ci_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
-  const [ciMesajeTrimise,setCiMesajeTrimise]=useState(()=>{
-    try{return localStorage.getItem('ci_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
-  })
   const [propNotif,setPropNotif]=useState<any[]>([])
-  const [propWizardOpen,setPropWizardOpen]=useState(false)
-  const [propWizardIdx,setPropWizardIdx]=useState(0)
   // notificare proprietar in ziua de check-in ("astazi ajunge oaspetele X") — spre deosebire
   // de propNotif (rezervari noi, persistat), asta e legat de ZIUA curenta, deci resetare
   // zilnica prin localStorage, la fel ca celelalte bannere de azi (CI/CO/GATA)
@@ -220,21 +203,93 @@ export default function DashboardPage() {
   const [ciPropBannerDismissed,setCiPropBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('ci_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
-  const [ciPropMesajeTrimise,setCiPropMesajeTrimise]=useState(()=>{
-    try{return localStorage.getItem('ci_prop_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
-  })
-  const [ciPropWizardOpen,setCiPropWizardOpen]=useState(false)
-  const [ciPropWizardIdx,setCiPropWizardIdx]=useState(0)
   // aceeasi idee, pentru check-out azi ("astazi pleaca oaspetele X")
   const [coProprietarAzi,setCoProprietarAzi]=useState<any[]>([])
   const [coPropBannerDismissed,setCoPropBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('co_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
   })
-  const [coPropMesajeTrimise,setCoPropMesajeTrimise]=useState(()=>{
-    try{return localStorage.getItem('co_prop_trimis_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+  // Lista unificata "Mesaje de azi" — inlocuieste cele 6 wizard-uri pas-cu-pas separate
+  // (checkout/check-in/acces/cele 3 tipuri de notificare proprietar), cerut direct: o singura
+  // imagine de ansamblu, cu telefon si text editabile pe loc, si bifa per-mesaj la trimitere
+  // (nu doar un flag global "toate trimise" la finalul unui stepper).
+  const [mesajeListOpen,setMesajeListOpen]=useState(false)
+  const [mesajOverrides,setMesajOverrides]=useState<Record<string,{telefon?:string;mesaj?:string}>>({})
+  const [editingMesajId,setEditingMesajId]=useState<string|null>(null)
+  const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>{
+    try{
+      const raw=localStorage.getItem('mesaje_trimise_'+new Date().toISOString().split('T')[0])
+      return raw?new Set(JSON.parse(raw)):new Set()
+    }catch{return new Set()}
   })
-  const [coPropWizardOpen,setCoPropWizardOpen]=useState(false)
-  const [coPropWizardIdx,setCoPropWizardIdx]=useState(0)
+  function marcheazaMesajTrimis(id:string){
+    setMesajeSentIds(prev=>{
+      const n=new Set(prev); n.add(id)
+      try{localStorage.setItem('mesaje_trimise_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
+      return n
+    })
+  }
+  function updateMesajOverride(id:string,patch:{telefon?:string;mesaj?:string}){
+    setMesajOverrides(prev=>({...prev,[id]:{...prev[id],...patch}}))
+  }
+  function toateTrimise(list:any[],idPrefix:string){
+    return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id))
+  }
+  const gataCheckinsAzi = checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
+  const coMesajeTrimise = toateTrimise(checkoutAzi.filter((r:any)=>r.telefon_client),'co-')
+  const ciMesajeTrimise = toateTrimise(checkinAzi.filter((r:any)=>r.telefon_client),'ci-')
+  const gataMesajeTrimise = toateTrimise(gataCheckinsAzi.filter((r:any)=>r.telefon_client),'gata-')
+  const ciPropMesajeTrimise = toateTrimise(ciProprietarAzi,'propci-')
+  const coPropMesajeTrimise = toateTrimise(coProprietarAzi,'propco-')
+
+  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; telefon:string; mesaj:string }
+  const mesajeTasks: MesajTask[] = useMemo(()=>{
+    const tasks: MesajTask[] = []
+    checkoutAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+      const id='co-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#C084FC',titluCategorie:'Checkout',
+        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
+    })
+    checkinAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+      const id='ci-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
+        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
+    })
+    gataCheckinsAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+      const id='gata-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'gata',icon:'🔑',accent:'#7BC8FF',titluCategorie:'Acces',
+        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgGataAcces(r,sabloaneGata)})
+    })
+    propNotif.forEach((r:any)=>{
+      const tel=r.apartament?.proprietar?.telefon
+      if(!tel) return
+      const id='propn-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'prop-nou',icon:'🏠',accent:'#A78BFA',titluCategorie:'Proprietar · rezervare nouă',
+        nume:r.apartament?.proprietar?.nume||r.apartament?.nume,nota:r.apartament?.nota,linie2:`Client: ${r.nume_client}`,
+        telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgProprietar(r)})
+    })
+    ciProprietarAzi.forEach((r:any)=>{
+      const id='propci-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
+      tasks.push({id,rawId:r.id,categorie:'prop-ci',icon:'🔑',accent:'#A78BFA',titluCategorie:'Proprietar · check-in azi',
+        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,linie2:`Oaspete: ${r.nume_client} · ${r.nr_nopti||'?'} nopți`,
+        telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckinProprietar(r)})
+    })
+    coProprietarAzi.forEach((r:any)=>{
+      const id='propco-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
+      tasks.push({id,rawId:r.id,categorie:'prop-co',icon:'🚪',accent:'#A78BFA',titluCategorie:'Proprietar · check-out azi',
+        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,linie2:`Oaspete: ${r.nume_client}`,
+        telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
+    })
+    return tasks
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides])
+
+  function trimiteMesajTask(task: MesajTask){
+    marcheazaMesajTrimis(task.id)
+    if(task.categorie==='prop-nou') marcheazaNotificatProprietar(task.rawId)
+  }
+
   useEffect(()=>{loadData()},[])
   useEffect(()=>{loadPropNotif()},[])
   useEffect(()=>{loadCiProprietarAzi()},[])
@@ -668,7 +723,7 @@ export default function DashboardPage() {
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
                 {coWithPhone.length>0&&(
-                  <button onClick={()=>{setCoWizardIdx(0);setCoWizardOpen(true)}}
+                  <button onClick={()=>setMesajeListOpen(true)}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                     <MessageCircle size={13}/>Trimite mesaje ({coWithPhone.length})
                   </button>
@@ -699,7 +754,7 @@ export default function DashboardPage() {
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
                 {ciWithPhone.length>0&&(
-                  <button onClick={()=>{setCiWizardIdx(0);setCiWizardOpen(true)}}
+                  <button onClick={()=>setMesajeListOpen(true)}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                     <MessageCircle size={13}/>Trimite mesaje ({ciWithPhone.length})
                   </button>
@@ -731,7 +786,7 @@ export default function DashboardPage() {
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
                 {gataWithPhone.length>0&&(
-                  <button onClick={()=>{setGataWizardIdx(0);setGataWizardOpen(true)}}
+                  <button onClick={()=>setMesajeListOpen(true)}
                     style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                     <Key size={13}/>Trimite mesaje ({gataWithPhone.length})
                   </button>
@@ -758,7 +813,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-              <button onClick={()=>{setPropWizardIdx(0);setPropWizardOpen(true)}}
+              <button onClick={()=>setMesajeListOpen(true)}
                 style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                 <MessageCircle size={13}/>Trimite mesaje ({propNotif.length})
               </button>
@@ -785,7 +840,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>{setCiPropWizardIdx(0);setCiPropWizardOpen(true)}}
+                <button onClick={()=>setMesajeListOpen(true)}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                   <MessageCircle size={13}/>Trimite mesaje ({ciProprietarAzi.length})
                 </button>
@@ -813,7 +868,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>{setCoPropWizardIdx(0);setCoPropWizardOpen(true)}}
+                <button onClick={()=>setMesajeListOpen(true)}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                   <MessageCircle size={13}/>Trimite mesaje ({coProprietarAzi.length})
                 </button>
@@ -971,7 +1026,7 @@ export default function DashboardPage() {
                 <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
               </div>
               {checkoutAzi.filter(r=>r.telefon_client).length>0&&(
-                <button onClick={()=>{setCoWizardIdx(0);setCoWizardOpen(true)}}
+                <button onClick={()=>setMesajeListOpen(true)}
                   style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(192,132,252,0.3)',background:'rgba(192,132,252,0.08)',color:'#C084FC',fontSize:10,fontWeight:600,cursor:'pointer'}}>
                   <MessageCircle size={10}/>Trimite tuturor
                 </button>
@@ -1424,313 +1479,58 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* WIZARD CHECKOUT */}
-      {coWizardOpen&&(()=>{
-        const coList=checkoutAzi.filter(r=>r.telefon_client)
-        const r=coList[coWizardIdx]
-        if(!r)return null
-        const isLast=coWizardIdx>=coList.length-1
-        const msg=msgCheckoutGen(r,sabloaneCO)
-        const link=waLink(r.telefon_client,msg)
+      {/* LISTA UNIFICATA — MESAJE DE AZI */}
+      {mesajeListOpen&&(()=>{
+        const sentCount=mesajeTasks.filter(t=>mesajeSentIds.has(t.id)).length
         return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCoWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(192,132,252,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:640,width:'100%',maxHeight:'85vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
                 <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj checkout</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#C084FC'}}>{coWizardIdx+1} / {coList.length}</div>
+                  <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Mesaje de azi</div>
+                  <div style={{fontSize:11,fontFamily:'monospace',color:'rgba(159,215,255,0.45)'}}>{sentCount}/{mesajeTasks.length} trimise</div>
                 </div>
-                <button onClick={()=>setCoWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
+                <button onClick={()=>setMesajeListOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
               </div>
-              <div style={{height:3,background:'rgba(192,132,252,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((coWizardIdx+1)/coList.length)*100}%`,background:'#C084FC',borderRadius:2,transition:'width 0.3s ease'}}/>
+              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:8,paddingRight:2}}>
+                {mesajeTasks.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj de trimis azi 🎉</div>}
+                {mesajeTasks.map(task=>{
+                  const sent=mesajeSentIds.has(task.id)
+                  const editing=editingMesajId===task.id
+                  return(
+                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.3)':'rgba(159,215,255,0.1)'}`,opacity:sent?0.55:1,borderRadius:10,padding:'10px 12px',background:'rgba(14,27,43,0.5)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap' as const}}>
+                        <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
+                        {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
+                        {sent&&<span style={{marginLeft:'auto',fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3}}><Check size={12}/>Trimis</span>}
+                      </div>
+                      <div style={{fontSize:14,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
+                      {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{task.linie2}</div>}
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8}}>
+                        <Phone size={11} color="rgba(159,215,255,0.4)"/>
+                        <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
+                          style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 8px',fontSize:12,color:'#E8F4FF',outline:'none'}}/>
+                      </div>
+                      {editing?(
+                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={6}
+                          style={{width:'100%',marginTop:8,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:8,fontSize:11,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
+                      ):(
+                        <pre style={{fontSize:11,color:'rgba(214,228,244,0.65)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'8px 0 0',maxHeight:54,overflow:'hidden',fontFamily:'inherit'}}>{task.mesaj}</pre>
+                      )}
+                      <div style={{display:'flex',gap:6,marginTop:8}}>
+                        <button onClick={()=>setEditingMesajId(editing?null:task.id)}
+                          style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                          {editing?'✓ Gata':'✏️ Editează text'}
+                        </button>
+                        <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
+                          style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'8px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,textDecoration:'none'}}>
+                          <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <div style={{background:'rgba(192,132,252,0.06)',border:'1px solid rgba(192,132,252,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={()=>{
-                if(isLast){
-                  setCoWizardOpen(false)
-                  setCoMesajeTrimise(true)
-                  try{localStorage.setItem('co_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
-                }else{setCoWizardIdx(i=>i+1)}
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* WIZARD CHECK-IN AZI — CONFIRMARE */}
-      {ciWizardOpen&&(()=>{
-        const ciList=checkinAzi.filter((r:any)=>r.telefon_client)
-        const r=ciList[ciWizardIdx]
-        if(!r)return null
-        const isLast=ciWizardIdx>=ciList.length-1
-        const msg=msgCheckin(r,sabloaneSetari.checkin_confirmare)
-        const link=waLink(r.telefon_client,msg)
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCiWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(252,211,77,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj confirmare check-in</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#FCD34D'}}>{ciWizardIdx+1} / {ciList.length}</div>
-                </div>
-                <button onClick={()=>setCiWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              <div style={{height:3,background:'rgba(252,211,77,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((ciWizardIdx+1)/ciList.length)*100}%`,background:'#FCD34D',borderRadius:2,transition:'width 0.3s ease'}}/>
-              </div>
-              <div style={{background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={()=>{
-                if(isLast){
-                  setCiWizardOpen(false)
-                  setCiMesajeTrimise(true)
-                  try{localStorage.setItem('ci_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
-                }else{setCiWizardIdx(i=>i+1)}
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* WIZARD DATE ACCES (locatii gata) */}
-      {gataWizardOpen&&(()=>{
-        const gataList=checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id)&&r.telefon_client)
-        const r=gataList[gataWizardIdx]
-        if(!r)return null
-        const isLast=gataWizardIdx>=gataList.length-1
-        const msg=msgGataAcces(r,sabloaneGata)
-        const link=waLink(r.telefon_client,msg)
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setGataWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(77,163,255,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Mesaj date acces</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#7BC8FF'}}>{gataWizardIdx+1} / {gataList.length}</div>
-                </div>
-                <button onClick={()=>setGataWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              <div style={{height:3,background:'rgba(77,163,255,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((gataWizardIdx+1)/gataList.length)*100}%`,background:'#4DA3FF',borderRadius:2,transition:'width 0.3s ease'}}/>
-              </div>
-              <div style={{background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.nume_client}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>{r.apartament?.nume}</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 {r.telefon_client}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={()=>{
-                if(isLast){
-                  setGataWizardOpen(false)
-                  setGataMesajeTrimise(true)
-                  try{localStorage.setItem('gata_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
-                }else{setGataWizardIdx(i=>i+1)}
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* WIZARD NOTIFICA PROPRIETAR */}
-      {propWizardOpen&&(()=>{
-        const list=propNotif
-        const r=list[propWizardIdx]
-        if(!r) return null
-        const isLast=propWizardIdx>=list.length-1
-        const msg=msgProprietar(r)
-        const tel=r.apartament.proprietar.telefon
-        const link=waLink(tel,msg)
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setPropWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Notifică proprietarul</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{propWizardIdx+1} / {list.length}</div>
-                </div>
-                <button onClick={()=>setPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((propWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
-              </div>
-              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Client: {r.nume_client}</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer" onClick={()=>marcheazaNotificatProprietar(r.id)}
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={async ()=>{
-                await marcheazaNotificatProprietar(r.id)
-                if(isLast) setPropWizardOpen(false)
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Sări peste →'}
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* WIZARD CHECK-IN AZI — ANUNTA PROPRIETAR */}
-      {ciPropWizardOpen&&(()=>{
-        const list=ciProprietarAzi
-        const r=list[ciPropWizardIdx]
-        if(!r) return null
-        const isLast=ciPropWizardIdx>=list.length-1
-        const msg=msgCheckinProprietar(r)
-        const tel=r.apartament.proprietar.telefon
-        const link=waLink(tel,msg)
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCiPropWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Anunță proprietarul — check-in azi</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{ciPropWizardIdx+1} / {list.length}</div>
-                </div>
-                <button onClick={()=>setCiPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((ciPropWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
-              </div>
-              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Oaspete: {r.nume_client} · {r.nr_nopti||'?'} nopți</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={()=>{
-                if(isLast){
-                  setCiPropWizardOpen(false)
-                  setCiPropMesajeTrimise(true)
-                  try{localStorage.setItem('ci_prop_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
-                }else{setCiPropWizardIdx(i=>i+1)}
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* WIZARD CHECK-OUT AZI — ANUNTA PROPRIETAR */}
-      {coPropWizardOpen&&(()=>{
-        const list=coProprietarAzi
-        const r=list[coPropWizardIdx]
-        if(!r) return null
-        const isLast=coPropWizardIdx>=list.length-1
-        const msg=msgCheckoutProprietar(r)
-        const tel=r.apartament.proprietar.telefon
-        const link=waLink(tel,msg)
-        return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setCoPropWizardOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(167,139,250,0.3)',borderRadius:16,padding:24,maxWidth:420,width:'100%',display:'flex',flexDirection:'column',gap:16}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div>
-                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginBottom:2}}>Anunță proprietarul — check-out azi</div>
-                  <div style={{fontSize:10,fontFamily:'monospace',color:'#A78BFA'}}>{coPropWizardIdx+1} / {list.length}</div>
-                </div>
-                <button onClick={()=>setCoPropWizardOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              <div style={{height:3,background:'rgba(167,139,250,0.15)',borderRadius:2}}>
-                <div style={{height:'100%',width:`${((coPropWizardIdx+1)/list.length)*100}%`,background:'#A78BFA',borderRadius:2,transition:'width 0.3s ease'}}/>
-              </div>
-              <div style={{background:'rgba(167,139,250,0.06)',border:'1px solid rgba(167,139,250,0.18)',borderRadius:10,padding:'12px 14px'}}>
-                <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF',marginBottom:4}}>{r.apartament?.nume}</div>
-                <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-                  {r.apartament?.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{r.apartament.nota}</span>}
-                  <span style={{fontSize:12,color:'rgba(159,215,255,0.55)'}}>Oaspete: {r.nume_client}</span>
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.35)',marginTop:6}}>📱 Proprietar {r.apartament.proprietar.nume}: {tel}</div>
-              </div>
-              <div style={{background:'rgba(14,27,43,0.5)',border:'1px solid rgba(159,215,255,0.08)',borderRadius:8,padding:'10px 12px',maxHeight:140,overflowY:'auto' as const}}>
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginBottom:6,textTransform:'uppercase' as const,letterSpacing:'0.06em'}}>Mesaj</div>
-                <pre style={{fontSize:11,color:'rgba(214,228,244,0.75)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:0,fontFamily:'inherit'}}>{msg}</pre>
-              </div>
-              <a href={link} target="_blank" rel="noreferrer"
-                style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,padding:'13px',borderRadius:10,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
-                <MessageCircle size={16}/>Trimite pe WhatsApp
-              </a>
-              <button onClick={()=>{
-                if(isLast){
-                  setCoPropWizardOpen(false)
-                  setCoPropMesajeTrimise(true)
-                  try{localStorage.setItem('co_prop_trimis_'+new Date().toISOString().split('T')[0],'1')}catch{}
-                }else{setCoPropWizardIdx(i=>i+1)}
-              }}
-                style={{padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:isLast?'#4ADE80':'rgba(159,215,255,0.6)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                {isLast?'✓ Gata — toate mesajele trimise':'Următor →'}
-              </button>
             </div>
           </div>
         )
