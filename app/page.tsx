@@ -215,9 +215,16 @@ export default function DashboardPage() {
   const [mesajeListOpen,setMesajeListOpen]=useState(false)
   const [mesajOverrides,setMesajOverrides]=useState<Record<string,{telefon?:string;mesaj?:string}>>({})
   const [editingMesajId,setEditingMesajId]=useState<string|null>(null)
+  const [mesajeActiveTab,setMesajeActiveTab]=useState<string>('toate')
   const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>{
     try{
       const raw=localStorage.getItem('mesaje_trimise_'+new Date().toISOString().split('T')[0])
+      return raw?new Set(JSON.parse(raw)):new Set()
+    }catch{return new Set()}
+  })
+  const [mesajeAnulateIds,setMesajeAnulateIds]=useState<Set<string>>(()=>{
+    try{
+      const raw=localStorage.getItem('mesaje_anulate_'+new Date().toISOString().split('T')[0])
       return raw?new Set(JSON.parse(raw)):new Set()
     }catch{return new Set()}
   })
@@ -228,8 +235,32 @@ export default function DashboardPage() {
       return n
     })
   }
+  // Ascunde mesajul din lista de azi (nu se sterge nimic din rezervare/proprietar) — cerut cu
+  // dublu-click explicit pe PC, ca sa nu dispara un mesaj din greseala la un click gresit.
+  function anuleazaMesaj(id:string){
+    setMesajeAnulateIds(prev=>{
+      const n=new Set(prev); n.add(id)
+      try{localStorage.setItem('mesaje_anulate_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
+      return n
+    })
+  }
   function updateMesajOverride(id:string,patch:{telefon?:string;mesaj?:string}){
     setMesajOverrides(prev=>({...prev,[id]:{...prev[id],...patch}}))
+  }
+  useEffect(()=>{ if(mesajeListOpen) setMesajeActiveTab('toate') },[mesajeListOpen])
+  const [translatingMesajId,setTranslatingMesajId]=useState<string|null>(null)
+  const [mesajeTraduseIds,setMesajeTraduseIds]=useState<Set<string>>(new Set())
+  async function traduceMesaj(task:{id:string;mesaj:string}){
+    setTranslatingMesajId(task.id)
+    try{
+      const res=await fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:task.mesaj})})
+      const data=await res.json()
+      if(data.translated){
+        updateMesajOverride(task.id,{mesaj:data.translated})
+        setMesajeTraduseIds(prev=>new Set(prev).add(task.id))
+      }
+    }catch{}
+    setTranslatingMesajId(null)
   }
   function toateTrimise(list:any[],idPrefix:string){
     return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id))
@@ -282,8 +313,8 @@ export default function DashboardPage() {
         nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,linie2:`Oaspete: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
-    return tasks
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides])
+    return tasks.filter(t=>!mesajeAnulateIds.has(t.id))
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,mesajeAnulateIds])
 
   function trimiteMesajTask(task: MesajTask){
     marcheazaMesajTrimis(task.id)
@@ -1482,9 +1513,19 @@ export default function DashboardPage() {
       {/* LISTA UNIFICATA — MESAJE DE AZI */}
       {mesajeListOpen&&(()=>{
         const sentCount=mesajeTasks.filter(t=>mesajeSentIds.has(t.id)).length
+        // Etichetele categoriilor prezente azi, in ordinea in care apar prima data in lista —
+        // "pagini" separate pe sectiune, cerut direct (era prea greu de urmarit totul intr-o
+        // singura lista lunga cu toate categoriile amestecate).
+        const categoriiPrezente:{k:string;icon:string;accent:string;titlu:string;count:number}[]=[]
+        mesajeTasks.forEach(t=>{
+          const ex=categoriiPrezente.find(c=>c.k===t.categorie)
+          if(ex) ex.count++
+          else categoriiPrezente.push({k:t.categorie,icon:t.icon,accent:t.accent,titlu:t.titluCategorie,count:1})
+        })
+        const tasksFiltrate = mesajeActiveTab==='toate' ? mesajeTasks : mesajeTasks.filter(t=>t.categorie===mesajeActiveTab)
         return(
           <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:640,width:'100%',maxHeight:'85vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
+            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:760,width:'100%',maxHeight:'92vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
                 <div>
                   <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Mesaje de azi</div>
@@ -1492,39 +1533,66 @@ export default function DashboardPage() {
                 </div>
                 <button onClick={()=>setMesajeListOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
               </div>
-              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:8,paddingRight:2}}>
-                {mesajeTasks.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj de trimis azi 🎉</div>}
-                {mesajeTasks.map(task=>{
+              {categoriiPrezente.length>1&&(
+                <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,flexShrink:0}}>
+                  <button onClick={()=>setMesajeActiveTab('toate')}
+                    style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${mesajeActiveTab==='toate'?'rgba(159,215,255,0.4)':'rgba(159,215,255,0.12)'}`,background:mesajeActiveTab==='toate'?'rgba(159,215,255,0.12)':'transparent',color:mesajeActiveTab==='toate'?'#E8F4FF':'rgba(159,215,255,0.5)',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                    Toate ({mesajeTasks.length})
+                  </button>
+                  {categoriiPrezente.map(c=>(
+                    <button key={c.k} onClick={()=>setMesajeActiveTab(c.k)}
+                      style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${mesajeActiveTab===c.k?c.accent+'88':'rgba(159,215,255,0.12)'}`,background:mesajeActiveTab===c.k?`${c.accent}22`:'transparent',color:mesajeActiveTab===c.k?c.accent:'rgba(159,215,255,0.5)',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' as const}}>
+                      {c.icon} {c.titlu} ({c.count})
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:10,paddingRight:2}}>
+                {tasksFiltrate.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj aici 🎉</div>}
+                {tasksFiltrate.map(task=>{
                   const sent=mesajeSentIds.has(task.id)
                   const editing=editingMesajId===task.id
                   return(
-                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.3)':'rgba(159,215,255,0.1)'}`,opacity:sent?0.55:1,borderRadius:10,padding:'10px 12px',background:'rgba(14,27,43,0.5)'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap' as const}}>
+                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'14px 16px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap' as const}}>
                         <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
                         {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
+                        {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4}}>🇬🇧 EN</span>}
                         {sent&&<span style={{marginLeft:'auto',fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3}}><Check size={12}/>Trimis</span>}
                       </div>
-                      <div style={{fontSize:14,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
-                      {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{task.linie2}</div>}
-                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:8}}>
+                      <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
+                      {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.5)',marginTop:2}}>{task.linie2}</div>}
+                      <div style={{display:'flex',alignItems:'center',gap:6,marginTop:10}}>
                         <Phone size={11} color="rgba(159,215,255,0.4)"/>
                         <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
-                          style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 8px',fontSize:12,color:'#E8F4FF',outline:'none'}}/>
+                          style={{flex:1,minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'6px 8px',fontSize:12,color:'#E8F4FF',outline:'none'}}/>
                       </div>
                       {editing?(
-                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={6}
-                          style={{width:'100%',marginTop:8,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:8,fontSize:11,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
+                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8}
+                          style={{width:'100%',marginTop:10,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.5,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
                       ):(
-                        <pre style={{fontSize:11,color:'rgba(214,228,244,0.65)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'8px 0 0',maxHeight:54,overflow:'hidden',fontFamily:'inherit'}}>{task.mesaj}</pre>
+                        <pre style={{fontSize:12,lineHeight:1.5,color:'rgba(214,228,244,0.7)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'10px 0 0',fontFamily:'inherit'}}>{task.mesaj}</pre>
                       )}
-                      <div style={{display:'flex',gap:6,marginTop:8}}>
-                        <button onClick={()=>setEditingMesajId(editing?null:task.id)}
-                          style={{padding:'8px 10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                          {editing?'✓ Gata':'✏️ Editează text'}
-                        </button>
+                      <div style={{display:'flex',flexDirection:'column' as const,gap:6,marginTop:12}}>
+                        <div style={{display:'flex',gap:6}}>
+                          <button onClick={()=>setEditingMesajId(editing?null:task.id)}
+                            style={{flex:1,padding:'9px 10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                            {editing?'✓ Gata editare':'✏️ Editează text'}
+                          </button>
+                          <button onClick={()=>traduceMesaj(task)} disabled={translatingMesajId===task.id}
+                            title="Traduce mesajul în engleză"
+                            style={{flexShrink:0,width:40,padding:'9px 0',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:translatingMesajId===task.id?'default':'pointer',opacity:translatingMesajId===task.id?0.5:1}}>
+                            {translatingMesajId===task.id?'…':'🇬🇧'}
+                          </button>
+                          <button onDoubleClick={()=>anuleazaMesaj(task.id)}
+                            title="Dublu-click pentru a anula acest mesaj din ziua de azi"
+                            style={{flex:1,padding:'9px 10px',borderRadius:8,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.65)',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                            🗑 Anulează (dublu-click)
+                          </button>
+                        </div>
                         <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
-                          style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'8px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,textDecoration:'none'}}>
-                          <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
+                          style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,padding:'11px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:13,fontWeight:700,textDecoration:'none'}}>
+                          <MessageCircle size={14}/>{sent?'Retrimite':'Trimite'}
                         </a>
                       </div>
                     </div>
