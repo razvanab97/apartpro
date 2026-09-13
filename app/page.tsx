@@ -720,6 +720,16 @@ export default function DashboardPage() {
           .prognoza-card { display: none !important; }
           .dash-topbar-date { display: none !important; }
         }
+        @media (max-width: 560px) {
+          .mesaje-overlay { padding: 0 !important; align-items: flex-end !important; }
+          .mesaje-sheet { max-height: 94vh !important; border-radius: 16px 16px 0 0 !important; padding: 14px !important; }
+          .mesaje-row { padding: 9px 10px !important; }
+          .mesaje-row-top { gap: 8px !important; }
+          .mesaje-name-block { min-width: 0 !important; flex: 1 1 auto !important; }
+          .mesaje-phone { width: 100% !important; order: 4; }
+          .mesaje-actions { width: 100%; order: 5; margin-left: 0 !important; }
+          .mesaje-actions a { flex: 1; }
+        }
       `}</style>
       {/* TOP BAR */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,padding:'9px 20px',background:'rgba(14,27,43,0.65)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(159,215,255,0.08)',flexShrink:0}}>
@@ -1524,8 +1534,8 @@ export default function DashboardPage() {
         })
         const tasksFiltrate = mesajeActiveTab==='toate' ? mesajeTasks : mesajeTasks.filter(t=>t.categorie===mesajeActiveTab)
         return(
-          <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
-            <div style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:960,width:'100%',maxHeight:'88vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
+          <div className="mesaje-overlay" style={{position:'fixed',inset:0,zIndex:1100,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
+            <div className="mesaje-sheet" style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:960,width:'100%',maxHeight:'88vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
                 <div>
                   <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Mesaje de azi</div>
@@ -1553,24 +1563,24 @@ export default function DashboardPage() {
                   const sent=mesajeSentIds.has(task.id)
                   const editing=editingMesajId===task.id
                   return(
-                    <div key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'10px 14px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+                    <div className="mesaje-row" key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'10px 14px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
+                      <div className="mesaje-row-top" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
                         <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
                           <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
                           {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
                         </div>
-                        <div style={{minWidth:130,flexShrink:0}}>
+                        <div className="mesaje-name-block" style={{minWidth:130,flexShrink:0}}>
                           <div style={{fontSize:13,fontWeight:700,color:'#E8F4FF',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.nume}</div>
                           {task.linie2&&<div style={{fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' as const,overflow:'hidden',textOverflow:'ellipsis'}}>{task.linie2}</div>}
                         </div>
-                        <div style={{display:'flex',alignItems:'center',gap:5,width:150,flexShrink:0}}>
+                        <div className="mesaje-phone" style={{display:'flex',alignItems:'center',gap:5,width:150,flexShrink:0}}>
                           <Phone size={11} color="rgba(159,215,255,0.4)"/>
                           <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
                             style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
                         </div>
                         {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>🇬🇧 EN</span>}
                         {sent&&<span style={{fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}><Check size={12}/>Trimis</span>}
-                        <div style={{display:'flex',alignItems:'center',gap:5,marginLeft:'auto',flexShrink:0}}>
+                        <div className="mesaje-actions" style={{display:'flex',alignItems:'center',gap:5,marginLeft:'auto',flexShrink:0}}>
                           <button onClick={()=>traduceMesaj(task)} disabled={translatingMesajId===task.id}
                             title="Traduce mesajul în engleză"
                             style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:translatingMesajId===task.id?'default':'pointer',opacity:translatingMesajId===task.id?0.5:1}}>
