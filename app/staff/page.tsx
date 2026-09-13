@@ -445,7 +445,10 @@ export default function StaffPage() {
   const ocpSet = new Set(ocupate.map((r:any)=>r.apartament_id))
   // Apartamente cu curatenie neterminata din zilele trecute (excluse din lista de azi deja)
   const ramasiteMap = new Map(coRamasite.filter(({rez})=>!coSet.has(rez.apartament_id)).map(({rez,dataCheckout})=>[rez.apartament_id,{rez,dataCheckout}]))
-  const deCuratat = apts.filter(a=>coSet.has(a.id)||ramasiteMap.has(a.id))
+  // O curatenie anulata (din Curatenie -> "Anuleaza") dispare complet de aici, cerut direct —
+  // pana acum ramanea in lista, doar cu un badge rosu "Anulat", fara sa fie clar ca staff-ul
+  // n-are ce sa mai faca acolo.
+  const deCuratat = apts.filter(a=>(coSet.has(a.id)||ramasiteMap.has(a.id))&&statusuri[a.id]?.status!=='anulat')
   const disponibile = apts.filter(a=>!ocpSet.has(a.id))
   const ocupateApts = apts.filter(a=>ocpSet.has(a.id))
   const nrGata = deCuratat.filter(a=>statusuri[a.id]?.status==='gata').length
@@ -671,8 +674,7 @@ export default function StaffPage() {
                     <div style={{display:'flex',gap:5,marginTop:4,flexWrap:'wrap'}}>
                       {isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(34,197,94,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(34,197,94,0.25)'}}>{'Gata'+(st?.ora_gata?' '+st.ora_gata:'')}</span>}
                       {isInceput&&!isGata&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(251,146,60,0.15)',color:'#FB923C',fontWeight:700,border:'1px solid rgba(251,146,60,0.25)'}}>In lucru</span>}
-                      {!isInceput&&!isGata&&st?.status!=='anulat'&&st?.status!=='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(255,255,255,0.05)',color:'rgba(159,215,255,0.4)',border:'1px solid rgba(255,255,255,0.08)'}}>Neinceput</span>}
-                      {st?.status==='anulat'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.15)',color:'#F87171',fontWeight:700,border:'1px solid rgba(248,113,113,0.3)'}}>Anulat</span>}
+                      {!isInceput&&!isGata&&st?.status!=='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(255,255,255,0.05)',color:'rgba(159,215,255,0.4)',border:'1px solid rgba(255,255,255,0.08)'}}>Neinceput</span>}
                       {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>Doar lenjerie</span>}
                       {ramasita&&!isGata&&(()=>{const z=Math.round((new Date(data).getTime()-new Date(ramasita.dataCheckout).getTime())/86400000);return<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.2)',color:'#FCA5A5',fontWeight:700,border:'1px solid rgba(248,113,113,0.4)'}}>{'⚠ '+(z===1?'de ieri':z===2?'de alaltaieri':`de ${z} zile`)}</span>})()}
                       {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
