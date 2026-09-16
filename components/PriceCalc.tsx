@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 import { Modal, FormGroup, FormRow } from '@/components/ui'
 import { Calculator, X, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react'
 import {
@@ -112,13 +113,40 @@ export default function PriceCalc() {
   const [moneda, setMoneda] = useState<Moneda>('RON')
   const [rates, setRates] = useState<Rates | null>(null)
   const [cursDate, setCursDate] = useState<string | null>(null)
+  const [apts, setApts] = useState<{ id: string; nota: string; nume: string }[]>([])
+  const [disponibile, setDisponibile] = useState<{ id: string; nota: string; nume: string }[] | null>(null)
+  const [checkingDisp, setCheckingDisp] = useState(false)
 
   useEffect(() => {
     fetch('/api/curs-bnr')
       .then(r => r.json())
       .then(data => { if (data?.rates) { setRates(data.rates); setCursDate(data.date ?? null) } })
       .catch(() => {})
+    Promise.resolve(supabase.from('apartamente').select('id,nota,nume').eq('status', 'activ').order('nota'))
+      .then(({ data }) => setApts(data || []))
+      .catch(() => {})
   }, [])
+
+  // Aceeasi verificare de disponibilitate (interval de rezervari care se suprapune) ca la
+  // Preturi live -> Calendar, cerut direct — recomanda ce apartamente sunt libere pentru
+  // datele alese, fara sa astepti sa deschizi separat Calendarul.
+  useEffect(() => {
+    if (!checkin || !checkout || apts.length === 0) { setDisponibile(null); return }
+    let cancelled = false
+    setCheckingDisp(true)
+    Promise.resolve(supabase.from('rezervari').select('apartament_id')
+      .lt('data_checkin', checkout).gt('data_checkout', checkin)
+      .neq('status_rezervare', 'anulata')
+      .in('apartament_id', apts.map(a => a.id)))
+      .then(({ data }) => {
+        if (cancelled) return
+        const ocupateIds = new Set((data || []).map((r: any) => r.apartament_id))
+        setDisponibile(apts.filter(a => !ocupateIds.has(a.id)))
+        setCheckingDisp(false)
+      })
+      .catch(() => { if (!cancelled) setCheckingDisp(false) })
+    return () => { cancelled = true }
+  }, [checkin, checkout, apts])
 
   function onPickRange(a: string, b: string) {
     setCheckin(a); setCheckout(b)
@@ -172,6 +200,32 @@ export default function PriceCalc() {
         </div>
 
         <RangeCalendar checkin={checkin} checkout={checkout} onPick={onPickRange} />
+
+        {checkin && checkout && (
+          <div style={{
+            marginTop: 14, padding: '12px 14px', borderRadius: 10,
+            background: disponibile?.length === 0 ? 'rgba(248,113,113,0.06)' : 'rgba(74,222,128,0.06)',
+            border: `1px solid ${disponibile?.length === 0 ? 'rgba(248,113,113,0.25)' : 'rgba(74,222,128,0.2)'}`,
+          }}>
+            <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)', marginBottom: disponibile && disponibile.length > 0 ? 8 : 0 }}>
+              {checkingDisp || !disponibile
+                ? 'Verific disponibilitatea…'
+                : disponibile.length > 0
+                  ? `🟢 Disponibile pentru aceste date (${disponibile.length})`
+                  : '🔴 Nicio locație liberă pentru aceste date'}
+            </div>
+            {!checkingDisp && disponibile && disponibile.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {disponibile.map(a => (
+                  <span key={a.id} title={a.nume} style={{
+                    fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 6,
+                    background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', color: '#4ADE80',
+                  }}>{a.nota || a.nume}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{
           textAlign: 'center', padding: '14px 0', margin: '16px 0 18px',
