@@ -143,6 +143,46 @@ export default function CalendarPage() {
   const [panel, setPanel] = useState<'info'|'new'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
   const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'', notite:'', persoane:'' })
+  // Cauta client existent (dupa nume/telefon) in istoricul rezervarilor, cerut direct — ca sa nu
+  // se retasteze de la zero un client care a mai stat la noi
+  const [clientQuery, setClientQuery] = useState('')
+  const [clientResults, setClientResults] = useState<{nume:string;telefon:string}[]>([])
+  const [searchingClient, setSearchingClient] = useState(false)
+  const [showClientDropdown, setShowClientDropdown] = useState(false)
+  useEffect(() => {
+    const q = clientQuery.trim()
+    if (q.length < 2) { setClientResults([]); return }
+    let cancelled = false
+    setSearchingClient(true)
+    const t = setTimeout(() => {
+      Promise.resolve(supabase.from('rezervari')
+        .select('nume_client,telefon_client')
+        .or(`nume_client.ilike.%${q}%,telefon_client.ilike.%${q}%`)
+        .not('nume_client', 'is', null)
+        .order('data_checkin', { ascending: false })
+        .limit(60))
+        .then(({ data }) => {
+          if (cancelled) return
+          const seen = new Set<string>()
+          const uniq: { nume:string; telefon:string }[] = []
+          for (const r of (data || [])) {
+            const key = (r.nume_client || '').trim().toLowerCase()
+            if (!key || seen.has(key)) continue
+            seen.add(key)
+            uniq.push({ nume: r.nume_client, telefon: r.telefon_client || '' })
+            if (uniq.length >= 8) break
+          }
+          setClientResults(uniq)
+          setSearchingClient(false)
+        })
+        .catch(() => { if (!cancelled) setSearchingClient(false) })
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [clientQuery])
+  function pickClient(c: { nume:string; telefon:string }) {
+    setNewRez(prev => ({ ...prev, nume: c.nume, telefon: c.telefon || prev.telefon }))
+    setClientQuery(''); setClientResults([]); setShowClientDropdown(false)
+  }
   const [rezScanPreview, setRezScanPreview] = useState<string|null>(null)
   const [scanningRez, setScanningRez] = useState(false)
   const [rezScanError, setRezScanError] = useState<string|null>(null)
@@ -821,6 +861,30 @@ export default function CalendarPage() {
                   }
                   {ciScanError && <div style={{ fontSize:11,color:'#F87171',marginTop:5 }}>{ciScanError}</div>}
                   {!scanningCI && !ciScanError && newRez.cnp && ciPreview && <div style={{ fontSize:11,color:'#4ADE80',marginTop:5 }}>✓ Date citite din poză — verifică mai jos</div>}
+                </div>
+
+                {/* Cauta client existent */}
+                <div style={{ marginBottom:10, position:'relative' }}>
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Client existent (opțional)</div>
+                  <input value={clientQuery}
+                    onChange={e=>{ setClientQuery(e.target.value); setShowClientDropdown(true) }}
+                    onFocus={()=>setShowClientDropdown(true)}
+                    onBlur={()=>setTimeout(()=>setShowClientDropdown(false),150)}
+                    placeholder="Caută după nume sau telefon..."
+                    style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
+                  {showClientDropdown && clientQuery.trim().length>=2 && (
+                    <div style={{ position:'absolute',top:'100%',left:0,right:0,marginTop:4,background:'#101c33',border:'1px solid rgba(100,160,255,0.25)',borderRadius:8,maxHeight:220,overflowY:'auto',zIndex:20,boxShadow:'0 8px 24px rgba(0,0,0,0.4)' }}>
+                      {searchingClient && <div style={{ padding:'10px 12px',fontSize:12,color:'rgba(159,215,255,0.4)' }}>Caut...</div>}
+                      {!searchingClient && clientResults.length===0 && <div style={{ padding:'10px 12px',fontSize:12,color:'rgba(159,215,255,0.4)' }}>Niciun client găsit</div>}
+                      {!searchingClient && clientResults.map((c,i)=>(
+                        <button key={c.nume+i} onMouseDown={e=>e.preventDefault()} onClick={()=>pickClient(c)}
+                          style={{ display:'block',width:'100%',textAlign:'left',padding:'8px 12px',background:'transparent',border:'none',borderBottom:i<clientResults.length-1?'1px solid rgba(159,215,255,0.06)':'none',cursor:'pointer' }}>
+                          <div style={{ fontSize:13,fontWeight:600,color:'#E8F4FF' }}>{c.nume}</div>
+                          {c.telefon && <div style={{ fontSize:11,color:'rgba(159,215,255,0.4)' }}>{c.telefon}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Nume */}
