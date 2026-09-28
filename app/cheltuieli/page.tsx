@@ -42,6 +42,12 @@ async function uploadFacturaManual(file: File): Promise<string|null> {
 }
 const UTIL_KEYS = UTIL_COLS.map(c=>c.key)
 
+// YYYY-MM-DD in ora locala — .toISOString() muta data cu o zi in urma la miezul noptii pentru
+// fusele est de UTC (Romania), asa ca nu se foloseste pentru limitele unei perioade
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 // Calculeaza payload-ul de status + data_plata pentru orice bifa de platit din pagina
 // (grid utilitati, costuri extra, costuri flat, obligatii fiscale, plata partiala, restante)
 function withPaidDate(prevStatus: string|undefined, nextStatus: string): { status: string; data_plata?: string|null } {
@@ -152,6 +158,44 @@ export default function CheltuieliPage(){
   const [showSalarii,setShowSalarii]=useState(false)
   const [fSalariu,setFSalariu]=useState({descriere:'',valoare:'',data:new Date().toISOString().slice(0,10)})
   const [savingSalariu,setSavingSalariu]=useState(false)
+
+  // Total platit intr-o perioada aleasa (chirii + utilitati), cerut direct — independent de luna
+  // afisata sus. Foloseste data_plata cand exista; platile bifate inainte sa se salveze data
+  // platii (pana in iunie 2026) au data_plata goala, deci se iau dupa data scadentei (`data`).
+  const [platDe,setPlatDe]=useState(()=>ymdLocal(new Date(now.getFullYear(),now.getMonth(),1)))
+  const [platPana,setPlatPana]=useState(()=>ymdLocal(now))
+  const [platRows,setPlatRows]=useState<any[]>([])
+  const [platLoading,setPlatLoading]=useState(false)
+  const [platErr,setPlatErr]=useState(false)
+  useEffect(()=>{
+    if(!platDe||!platPana||platDe>platPana){ setPlatRows([]); setPlatErr(false); return }
+    let cancelled=false
+    setPlatLoading(true); setPlatErr(false)
+    ;(async()=>{
+      const out:any[]=[]
+      let failed=false
+      for(let from=0;;from+=1000){
+        const {data,error}=await supabase.from('cheltuieli')
+          .select('categorie,valoare,data,data_plata')
+          .eq('status','validat').in('categorie',UTIL_KEYS)
+          .or(`and(data_plata.gte.${platDe},data_plata.lte.${platPana}),and(data_plata.is.null,data.gte.${platDe},data.lte.${platPana})`)
+          .range(from,from+999)
+        if(error||!data){ failed=true; break }
+        out.push(...data)
+        if(data.length<1000) break
+      }
+      if(cancelled) return
+      setPlatRows(failed?[]:out); setPlatErr(failed); setPlatLoading(false)
+    })()
+    return()=>{cancelled=true}
+  },[platDe,platPana])
+  function setPlatPreset(kind:'luna'|'luna_trecuta'|'3luni'|'an'){
+    const y=now.getFullYear(), m=now.getMonth()
+    if(kind==='luna'){ setPlatDe(ymdLocal(new Date(y,m,1))); setPlatPana(ymdLocal(now)) }
+    else if(kind==='luna_trecuta'){ setPlatDe(ymdLocal(new Date(y,m-1,1))); setPlatPana(ymdLocal(new Date(y,m,0))) }
+    else if(kind==='3luni'){ setPlatDe(ymdLocal(new Date(y,m-2,1))); setPlatPana(ymdLocal(now)) }
+    else { setPlatDe(ymdLocal(new Date(y,0,1))); setPlatPana(ymdLocal(now)) }
+  }
 
   const [loading,setLoading]=useState(true)
   const [loadError,setLoadError]=useState(false)
@@ -1474,6 +1518,80 @@ export default function CheltuieliPage(){
             })}
           </div>
         </div>
+
+        {/* ── total platit intr-o perioada aleasa: chirii + utilitati ── */}
+        {(()=>{
+          const fmtR=(n:number)=>n.toLocaleString('ro-RO',{maximumFractionDigits:2})
+          const byCat=UTIL_COLS.map(c=>{
+            const rs=platRows.filter(r=>r.categorie===c.key)
+            return {...c,sum:rs.reduce((s,r)=>s+Number(r.valoare||0),0),n:rs.length}
+          })
+          const chirii=byCat.find(c=>c.key==='chirie')!
+          const utilCats=byCat.filter(c=>c.key!=='chirie')
+          const utilSum=utilCats.reduce((s,c)=>s+c.sum,0)
+          const utilN=utilCats.reduce((s,c)=>s+c.n,0)
+          const faraData=platRows.filter(r=>!r.data_plata).length
+          const invalid=!platDe||!platPana||platDe>platPana
+          const dateInp:React.CSSProperties={background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'rgba(214,228,244,0.9)',fontSize:12,padding:'4px 8px',outline:'none',colorScheme:'dark'}
+          const chip:React.CSSProperties={padding:'4px 10px',borderRadius:6,border:'1px solid rgba(77,163,255,0.2)',background:'rgba(77,163,255,0.08)',color:'rgba(123,200,255,0.85)',cursor:'pointer',fontSize:11}
+          const tiles=[
+            {label:'Chirii plătite',sum:chirii.sum,n:chirii.n,color:'#4ADE80'},
+            {label:'Utilități plătite',sum:utilSum,n:utilN,color:'#4ADE80'},
+            {label:'Total plătit',sum:chirii.sum+utilSum,n:chirii.n+utilN,color:'#7BC8FF'},
+          ]
+          return(
+            <div style={{...glassCard,padding:'16px 20px',marginBottom:24}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10,marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500,color:'#E8F4FF'}}>Total plătit în perioadă — chirii și utilități</div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginTop:2}}>Alege intervalul dorit — se numără după data în care s-a plătit (nu după luna facturii), deci poate diferi de cardurile lunii de mai sus</div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'rgba(159,215,255,0.5)',whiteSpace:'nowrap'}}>De la
+                    <input type="date" value={platDe} max={platPana||undefined} onChange={e=>setPlatDe(e.target.value)} style={dateInp}/>
+                  </label>
+                  <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'rgba(159,215,255,0.5)',whiteSpace:'nowrap'}}>Până la
+                    <input type="date" value={platPana} min={platDe||undefined} onChange={e=>setPlatPana(e.target.value)} style={dateInp}/>
+                  </label>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>
+                <button onClick={()=>setPlatPreset('luna')} style={chip}>Luna aceasta</button>
+                <button onClick={()=>setPlatPreset('luna_trecuta')} style={chip}>Luna trecută</button>
+                <button onClick={()=>setPlatPreset('3luni')} style={chip}>Ultimele 3 luni</button>
+                <button onClick={()=>setPlatPreset('an')} style={chip}>Anul acesta</button>
+              </div>
+              {invalid
+                ? <div style={{fontSize:12,color:'#FCD34D'}}>Data de început trebuie să fie înainte de data de sfârșit.</div>
+                : platErr
+                  ? <div style={{fontSize:12,color:'#F87171'}}>Nu am putut încărca plățile — încearcă din nou (schimbă o dată și înapoi).</div>
+                  : <>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,opacity:platLoading?0.5:1,transition:'opacity .15s'}}>
+                        {tiles.map(t=>(
+                          <div key={t.label} style={{padding:'12px 14px',borderRadius:10,background:'rgba(100,160,255,0.05)',border:'1px solid rgba(100,160,255,0.1)'}}>
+                            <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.5)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:6}}>{t.label}</div>
+                            <div style={{fontSize:20,fontWeight:700,color:t.color,letterSpacing:'-.3px',lineHeight:1}}>{fmtR(t.sum)}<span style={{fontSize:11,fontWeight:400,marginLeft:4,color:'rgba(159,215,255,0.45)'}}>RON</span></div>
+                            <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginTop:6}}>{t.n} {t.n===1?'plată':'plăți'}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12,opacity:platLoading?0.5:1}}>
+                        {utilCats.map(c=>(
+                          <span key={c.key} style={{fontSize:11,padding:'3px 9px',borderRadius:6,background:'rgba(100,160,255,0.06)',border:'1px solid rgba(100,160,255,0.1)',color:c.n>0?'rgba(214,228,244,0.8)':'rgba(159,215,255,0.3)'}}>
+                            {c.label}: <b style={{fontWeight:600}}>{fmtR(c.sum)}</b> <span style={{color:'rgba(159,215,255,0.4)'}}>({c.n})</span>
+                          </span>
+                        ))}
+                      </div>
+                      {!platLoading&&faraData>0&&(
+                        <div style={{fontSize:11,color:'rgba(252,211,77,0.75)',marginTop:10}}>
+                          {faraData} {faraData===1?'plată nu are':'plăți nu au'} salvată data exactă a plății (bifate înainte de iulie 2026) — pentru ele am folosit data scadenței.
+                        </div>
+                      )}
+                    </>
+              }
+            </div>
+          )
+        })()}
 
         {loading?<div style={{color:'rgba(159,215,255,0.35)',fontSize:13,padding:'40px 0'}}>Se încarcă...</div>:<>
 
