@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase, Proprietar, calculeazaDecont } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
-import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, TrendingUp, FileText, Download } from 'lucide-react'
+import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, TrendingUp, FileText, Download, X } from 'lucide-react'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
@@ -280,6 +280,9 @@ export default function ProprietariPage() {
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [platiStatus, setPlatiStatus] = useState<Record<string,any>>({})
   const [savingPlata, setSavingPlata] = useState<string|null>(null)
+  // Apartamente asociate — select-ul de "+ Adaugă apartament" e comun, un singur card e expandat oricand
+  const [addSel, setAddSel] = useState('')
+  const [savingApt, setSavingApt] = useState<string|null>(null)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Partial<Proprietar>>(empty)
   const [saving, setSaving] = useState(false)
@@ -404,6 +407,26 @@ export default function ProprietariPage() {
     loadLunar()
   }
 
+  // Asociaza/dezasociaza un apartament unui proprietar direct din pagina Proprietari (fara sa mergi in Apartamente → Plăți)
+  async function adaugaApartLaProprietar(propId: string, aptId: string) {
+    if (!aptId) return
+    setSavingApt(aptId)
+    const { error } = await supabase.from('apartamente').update({ proprietar_id: propId }).eq('id', aptId)
+    setSavingApt(null)
+    if (error) { show('error', error.message); return }
+    show('success', 'Apartament asociat')
+    setAddSel('')
+    load()
+  }
+  async function scoateApartDinProprietar(aptId: string) {
+    setSavingApt(aptId)
+    const { error } = await supabase.from('apartamente').update({ proprietar_id: null }).eq('id', aptId)
+    setSavingApt(null)
+    if (error) { show('error', error.message); return }
+    show('success', 'Apartament scos de la acest proprietar')
+    load()
+  }
+
   function openNew() { setEditing(empty); setOpen(true) }
   function openEdit(p: Proprietar) { setEditing({ ...p }); setOpen(true) }
 
@@ -498,7 +521,7 @@ export default function ProprietariPage() {
           return (
             <div key={p.id} style={s.card}>
               {/* Header card proprietar */}
-              <div style={s.header} onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+              <div style={s.header} onClick={() => { setExpandedId(isExpanded ? null : p.id); setAddSel('') }}>
                 <div style={{ width:38, height:38, borderRadius:'50%', background:'rgba(77,163,255,0.12)', border:'1px solid rgba(77,163,255,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:700, color:'#4DA3FF', flexShrink:0 }}>
                   {p.nume.split(' ').map((n:string)=>n[0]).join('').substring(0,2).toUpperCase()}
                 </div>
@@ -521,6 +544,37 @@ export default function ProprietariPage() {
               {/* Detalii expandate */}
               {isExpanded && (
                 <div style={{ padding:'0 16px 16px', borderTop:'1px solid rgba(255,255,255,0.06)' }}>
+
+                  {/* Apartamente asociate — adaugi/scoți direct de aici, fara sa mergi in Apartamente → Plăți */}
+                  <div style={{ marginTop:12, marginBottom:14 }}>
+                    <div style={{ fontSize:10, fontWeight:600, color:'rgba(159,215,255,0.4)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:6 }}>Apartamente asociate</div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:8 }}>
+                      {propApts.length === 0 && <div style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>Niciun apartament asociat încă</div>}
+                      {propApts.map(a => (
+                        <div key={a.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', borderRadius:7, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.05)' }}>
+                          <span style={s.nota}>{a.nota||'—'}</span>
+                          <span style={{ fontSize:12, color:'rgba(214,228,244,0.7)', flex:1 }}>{a.nume}</span>
+                          <button onClick={()=>scoateApartDinProprietar(a.id)} disabled={savingApt===a.id} title="Scoate de la acest proprietar"
+                            style={{ background:'none', border:'none', cursor: savingApt===a.id?'wait':'pointer', color:'rgba(248,113,113,0.6)', display:'flex', alignItems:'center', padding:2, opacity: savingApt===a.id?0.5:1 }}>
+                            <X size={12}/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <select value={addSel} onChange={e=>setAddSel(e.target.value)}
+                        style={{ flex:1, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(159,215,255,0.15)', borderRadius:7, color:'#fff', fontSize:12, padding:'6px 8px' }}>
+                        <option value="">— Alege apartament —</option>
+                        {apts.filter(a=>a.proprietar_id!==p.id).map(a=>(
+                          <option key={a.id} value={a.id}>{a.nota?`${a.nota} — `:''}{a.nume}{a.proprietar_id?' (mutat de la alt proprietar)':''}</option>
+                        ))}
+                      </select>
+                      <button onClick={()=>adaugaApartLaProprietar(p.id, addSel)} disabled={!addSel||savingApt===addSel}
+                        style={{ padding:'6px 12px', borderRadius:7, border:'1px solid rgba(77,163,255,0.3)', background:'rgba(77,163,255,0.1)', color:'#7BC8FF', fontSize:12, cursor: addSel?'pointer':'not-allowed', opacity: addSel?1:0.5, whiteSpace:'nowrap' as const }}>
+                        + Adaugă
+                      </button>
+                    </div>
+                  </div>
 
                   {detalii.length === 0 ? (
                     <div style={{ padding:'20px 0', textAlign:'center', fontSize:12, color:'rgba(159,215,255,0.4)' }}>
