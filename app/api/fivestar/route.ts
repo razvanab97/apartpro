@@ -9,12 +9,27 @@ export async function POST(req: NextRequest) {
 
   const body = { t1: T1, t: T, actiune, ...params }
 
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (e: any) {
+    return NextResponse.json({ error: 'Nu am putut contacta 5starDesk', detaliu: String(e?.message || e) }, { status: 502 })
+  }
 
-  const data = await res.json()
-  return NextResponse.json(data)
+  const raw = await res.text()
+  try {
+    const data = JSON.parse(raw)
+    return NextResponse.json(data)
+  } catch {
+    return NextResponse.json({
+      error: '5starDesk nu a răspuns cu JSON valid',
+      statusHttp: res.status,
+      lungimeRaspuns: raw.length,
+      raspunsBrut: raw.slice(0, 1000),
+    }, { status: 502 })
+  }
 }
