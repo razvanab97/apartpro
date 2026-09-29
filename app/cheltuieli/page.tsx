@@ -83,6 +83,13 @@ const DEF: Record<string,Record<string,number>> = {
   'R99':{chirie:2624,internet:45},'Canta':{chirie:1400,internet:25},
   'Mircea':{chirie:1522,internet:25,salubris:83},
 }
+// Chirie fixa efectiva (RON, + TVA daca e bifat) dintr-o configurare chirii_fixe (din Apartamente → Plăți),
+// sau null daca apartamentul n-are nicio chirie fixa setata acolo — in acest caz se cade inapoi pe DEF
+function chirieDinFixe(cf: any, curs: number): number | null {
+  if (!cf || !cf.suma) return null
+  const ronBaza = cf.moneda === 'EUR' ? Number(cf.suma) * curs : Number(cf.suma)
+  return Math.round(cf.cu_tva ? ronBaza * 1.21 : ronBaza)
+}
 function getDef(apt:any){
   if(apt.nota&&DEF[apt.nota]) return DEF[apt.nota]
   if(apt.nume&&DEF[apt.nume]) return DEF[apt.nume]
@@ -210,6 +217,16 @@ export default function CheltuieliPage(){
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
   const [saving,setSaving]=useState<string|null>(null)
 
+  // Chirii fixe configurate in Apartamente → Plăți (apartament_id -> {suma,moneda,cu_tva,ziua_plata}) —
+  // folosite ca sursa reala pentru valoarea/scadenta categoriei "Chirie" de mai jos, in loc de DEF hardcodat
+  const [chiriiFixe,setChiriiFixe]=useState<Record<string,any>>({})
+  const [cursEUR,setCursEUR]=useState(5.0)
+  useEffect(()=>{
+    (async()=>{
+      try{ const res=await fetch('/api/curs-bnr'); const data=await res.json(); if(data?.curs) setCursEUR(data.curs) }catch{}
+    })()
+  },[])
+
   // edit inline util
   const [editCell,setEditCell]=useState<{aptId:string;col:string}|null>(null)
   const [editCol,setEditCol]=useState<string>('')
@@ -320,7 +337,7 @@ export default function CheltuieliPage(){
     const ultimaZiLuna = ultimaZiLunaStr(an, luna)
     ultimaZiRef.current = ultimaZiLuna
     const ultimaZiPrevLuna = ultimaZiLunaStr(prevAn, prevLuna)
-    const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite}]=await Promise.all([
+    const [{data:aptData},{data:chData},{data:chDataPrev},{data:chFacturiNeplatite},{data:chiriiFixeData}]=await Promise.all([
       supabase.from('apartamente').select('id,nume,nota,status,adresa,ordine').order('ordine', { ascending: true, nullsFirst: false }).order('nota,nume'),
       supabase.from('cheltuieli')
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
@@ -337,7 +354,12 @@ export default function CheltuieliPage(){
         .select('id,apartament_id,categorie,descriere,valoare,status,data,nota,fisier_url,data_plata')
         .not('fisier_url','is',null)
         .eq('status','nevalidat'),
+      // select('*') - cu_tva e coloana noua, un select cu lista explicita ar pica toata interogarea daca migrarea n-a rulat inca
+      supabase.from('chirii_fixe').select('*').eq('activ', true),
     ])
+    const chiriiFixeMap:Record<string,any>={}
+    ;(chiriiFixeData||[]).forEach((c:any)=>{ chiriiFixeMap[c.apartament_id]=c })
+    setChiriiFixe(chiriiFixeMap)
     // Ensure AB_EXTRA_NAMES apar in DB cu ID real (upsert daca lipsesc)
     const loadedApts = aptData||[]
     const missingNames = AB_EXTRA_NAMES.filter(name =>
@@ -487,9 +509,11 @@ export default function CheltuieliPage(){
         const prevItem = (chDataPrev||[]).find((c:any)=>
           c.apartament_id===apt.id && c.categorie===col.key
         )
-        const valoare = prevItem ? Number(prevItem.valoare) : (defs?.[col.key] || 0)
+        // Chirie: prioritate pe configurarea din Apartamente → Plăți (+TVA daca e bifat), fallback pe DEF hardcodat
+        const chirieFixa = col.key==='chirie' ? chirieDinFixe(chiriiFixeMap[apt.id], cursEUR) : null
+        const valoare = prevItem ? Number(prevItem.valoare) : (chirieFixa ?? defs?.[col.key] ?? 0)
         if(valoare <= 0) continue
-        const dueDay = getDueForApt(apt.nota, col.key, col.due)
+        const dueDay = (col.key==='chirie' && chiriiFixeMap[apt.id]?.ziua_plata) ? Number(chiriiFixeMap[apt.id].ziua_plata) : getDueForApt(apt.nota, col.key, col.due)
         toAutoSeed.push({
           apartament_id: apt.id,
           categorie: col.key,
@@ -585,14 +609,15 @@ export default function CheltuieliPage(){
     const ins:any[]=[]
     ;(apts||[]).forEach(apt=>{
       const defs=getDef(apt)
-      if(!defs)return
       UTIL_COLS.forEach(col=>{
-        const v=defs[col.key]
+        // Chirie: prioritate pe configurarea din Apartamente → Plăți (+TVA daca e bifat), fallback pe DEF hardcodat
+        const chirieFixa = col.key==='chirie' ? chirieDinFixe(chiriiFixe[apt.id], cursEUR) : null
+        const v = chirieFixa ?? defs?.[col.key]
         if(!v||v===0)return
         // Sari daca exista deja cu valoare > 0
         const ex=util[apt.id]?.[col.key]?.current||util[apt.id]?.[col.key]
         if(ex && Number(ex?.valoare||0)>0)return
-        const dueSeed=getDueForApt(apt.nota,col.key,col.due)
+        const dueSeed=(col.key==='chirie' && chiriiFixe[apt.id]?.ziua_plata) ? Number(chiriiFixe[apt.id].ziua_plata) : getDueForApt(apt.nota,col.key,col.due)
         ins.push({apartament_id:apt.id,categorie:col.key,descriere:col.label,valoare:v,
           data:`${an}-${pad(luna)}-${pad(dueSeed)}`,status:'nevalidat',suportat_de:'proprietar',tva:0})
       })
@@ -1257,7 +1282,7 @@ export default function CheltuieliPage(){
                 const isPaid=item?.status==='validat'
                 const val=item?Number(item.valoare):0
                 const isEdit=editCell?.aptId===apt.id&&editCell?.col===col.key
-                const dueDay=getDueForApt(apt.nota,col.key,col.due)
+                const dueDay=(col.key==='chirie' && chiriiFixe[apt.id]?.ziua_plata) ? Number(chiriiFixe[apt.id].ziua_plata) : getDueForApt(apt.nota,col.key,col.due)
                 const due=`${pad(dueDay)}/${pad(luna)}`
 
                 return(
