@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
@@ -49,6 +50,66 @@ export default function SyncPage() {
   })
   const [nextSyncIn, setNextSyncIn] = useState('')
   const { toast, show } = useToast()
+
+  // Camere semnalate — rezervari unde sincronizarea a gasit un cod de camera diferit de
+  // apartamentul unde rezervarea e stocata deja, dar nu a realocat automat (risc de suprapunere
+  // peste o rezervare activa). Cerut direct: "sa functioneze de acum inainte, sa identifice toate
+  // miscarile" — lista se reincarca la fiecare vizita a paginii, nu doar dupa un sync proaspat.
+  const [semnalate, setSemnalate] = useState<any[]>([])
+  const [loadingSemnalate, setLoadingSemnalate] = useState(false)
+  const [apts, setApts] = useState<{id:string;nota:string;nume:string}[]>([])
+  const [actionId, setActionId] = useState<string|null>(null)
+  const [confirmMutaId, setConfirmMutaId] = useState<string|null>(null)
+
+  async function loadSemnalate() {
+    setLoadingSemnalate(true)
+    try {
+      const [{ data: apartamente }, { data: rez }] = await Promise.all([
+        supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
+        supabase.from('rezervari').select('id,nume_client,telefon_client,apartament_id,data_checkin,data_checkout,camera_semnalata,camera_semnalata_la,status_rezervare')
+          .not('camera_semnalata','is',null).neq('status_rezervare','anulata').order('camera_semnalata_la',{ascending:false}),
+      ])
+      setApts(apartamente||[])
+      setSemnalate(rez||[])
+    } catch { /* coloana poate sa nu existe inca (migrare neaplicata) - lista ramane goala */ }
+    setLoadingSemnalate(false)
+  }
+  useEffect(() => { loadSemnalate() }, [])
+
+  async function ignoraSemnal(id: string) {
+    setActionId(id)
+    await supabase.from('rezervari').update({ camera_semnalata: null, camera_semnalata_la: null }).eq('id', id)
+    setSemnalate(prev => prev.filter(r => r.id !== id))
+    setActionId(null)
+  }
+
+  async function mutaLaCameraSemnalata(r: any) {
+    setActionId(r.id)
+    const aptTinta = apts.find(a => a.nota === r.camera_semnalata)
+    if (!aptTinta) { show('error', `Nu găsesc apartamentul ${r.camera_semnalata}`); setActionId(null); return }
+    // Nu muta orbeste — verifica intai daca noul apartament are deja o rezervare activa care se
+    // suprapune pe aceleasi date (exact riscul gasit manual la primul caz verificat: mutarea ar
+    // fi creat o suprapunere noua peste o rezervare deja confirmata). Esec la verificare (eroare
+    // de retea etc.) = NU se muta, nu se presupune "e liber" — gasit real prin testare directa:
+    // varianta initiala ignora eroarea si proceda oricum cu mutarea.
+    const { data: overlap, error: overlapErr } = await supabase.from('rezervari').select('id,nume_client')
+      .eq('apartament_id', aptTinta.id).neq('id', r.id).neq('status_rezervare','anulata')
+      .lt('data_checkin', r.data_checkout).gt('data_checkout', r.data_checkin)
+    if (overlapErr) {
+      show('error', `Nu am putut verifica suprapunerile pentru ${r.camera_semnalata} — nu s-a mutat nimic, încearcă din nou`)
+      setActionId(null); setConfirmMutaId(null)
+      return
+    }
+    if (overlap && overlap.length > 0) {
+      show('error', `${r.camera_semnalata} are deja o rezervare (${overlap[0].nume_client}) pe aceleași date — verifică manual pe 5starDesk, nu s-a mutat nimic`)
+      setActionId(null); setConfirmMutaId(null)
+      return
+    }
+    await supabase.from('rezervari').update({ apartament_id: aptTinta.id, camera_semnalata: null, camera_semnalata_la: null }).eq('id', r.id)
+    setSemnalate(prev => prev.filter(x => x.id !== r.id))
+    show('success', `${r.nume_client} mutat la ${r.camera_semnalata}`)
+    setActionId(null); setConfirmMutaId(null)
+  }
 
   useEffect(() => {
     try { localStorage.setItem('sync_auto', autoSync ? '1' : '0') } catch {}
@@ -111,6 +172,7 @@ export default function SyncPage() {
       setResult({...res})
       try { localStorage.setItem('sync_last', Date.now().toString()) } catch {}
       if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
+      loadSemnalate()
     } catch(e:any) {
       show('error', 'Eroare: ' + e.message)
     }
@@ -237,6 +299,60 @@ export default function SyncPage() {
             )}
           </div>
         </div>
+
+        {/* Camere semnalate — discrepante intre codul din 5starDesk si apartamentul unde e stocata rezervarea */}
+        {(loadingSemnalate || semnalate.length > 0) && (
+          <div style={{ ...panel, borderColor:'rgba(252,211,77,0.25)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'#FCD34D' }}>⚠ Camere semnalate de verificat {semnalate.length>0?`(${semnalate.length})`:''}</div>
+              <button onClick={loadSemnalate} disabled={loadingSemnalate}
+                style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:11, cursor:'pointer' }}>
+                {loadingSemnalate?'Se încarcă...':'↻ Reîmprospătează'}
+              </button>
+            </div>
+            <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
+              Rezervarea are un cod de cameră diferit de apartamentul unde e stocată — nu s-a mutat automat (risc de suprapunere). Verifică pe 5starDesk dacă e nevoie, apoi ignoră sau mută.
+            </div>
+            {semnalate.length===0 && !loadingSemnalate && (
+              <div style={{ fontSize:12, color:'rgba(159,215,255,0.35)', textAlign:'center', padding:'10px 0' }}>Nimic de verificat momentan</div>
+            )}
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {semnalate.map(r => {
+                const aptCurent = apts.find(a => a.id === r.apartament_id)
+                const busy = actionId === r.id
+                return (
+                  <div key={r.id} style={{ padding:'10px 12px', borderRadius:8, background:'rgba(252,211,77,0.05)', border:'1px solid rgba(252,211,77,0.15)' }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{r.nume_client}</div>
+                        <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginTop:2 }}>
+                          {r.data_checkin} → {r.data_checkout} · stocată la <b style={{color:'#7BC8FF'}}>{aptCurent?.nota||'?'}</b>, cod semnalat <b style={{color:'#FCD34D'}}>{r.camera_semnalata}</b>
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                        <button onClick={()=>ignoraSemnal(r.id)} disabled={busy}
+                          style={{ padding:'6px 12px', borderRadius:7, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.6)', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                          Ignoră
+                        </button>
+                        {confirmMutaId===r.id ? (
+                          <button onClick={()=>mutaLaCameraSemnalata(r)} disabled={busy}
+                            style={{ padding:'6px 12px', borderRadius:7, border:'none', background:'#FCD34D', color:'#1A1400', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                            {busy?'Se mută...':`Sigur, mută la ${r.camera_semnalata}`}
+                          </button>
+                        ) : (
+                          <button onClick={()=>setConfirmMutaId(r.id)} disabled={busy}
+                            style={{ padding:'6px 12px', borderRadius:7, border:'1px solid rgba(252,211,77,0.35)', background:'rgba(252,211,77,0.1)', color:'#FCD34D', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                            Mută la {r.camera_semnalata}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Raw API response (for debugging) */}
         {rawData && (

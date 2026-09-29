@@ -61,6 +61,44 @@ export const ALIAS_MAP: Record<string, string> = {
   'NEWTON URBAN': 'NT9', 'NEWTON': 'NT9', 'NT 9': 'NT9',
 }
 
+// Extrasa separat, testabila independent de fetch/DB — vezi lib/syncFivestar.match.test.ts
+// (script de verificare, nu framework de teste) pentru scenariul exact al bug-ului reparat.
+export function matchAptFromBooking(b: any, aptByNota: Record<string,string>): { aptId: string|null; codIncredere: string[]; codFallback: string[] } {
+  const codIncredere = [b.numar_camera, b.tip_camera, b.cod_camera]
+    .filter(Boolean).map((s:any) => normCod(String(s)))
+  const codFallback = [b.id_camera, b.camera, b.unitate, b.room, b.denumire_camera, b.name, b.room_name]
+    .filter(Boolean).map((s:any) => normCod(String(s)))
+
+  const aptByNotaNorm: Record<string,string> = {}
+  for (const [k, v] of Object.entries(aptByNota)) aptByNotaNorm[normCod(k)] = v
+  const aliasNorm: Record<string,string> = {}
+  for (const [k, v] of Object.entries(ALIAS_MAP)) aliasNorm[normCod(k)] = v
+
+  function matchCod(cod: string): string | null {
+    if (aptByNotaNorm[cod]) return aptByNotaNorm[cod]
+    if (aliasNorm[cod] && aptByNotaNorm[aliasNorm[cod]]) return aptByNotaNorm[aliasNorm[cod]]
+    const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
+    if (matches) {
+      for (const m of matches) {
+        if (aptByNotaNorm[m]) return aptByNotaNorm[m]
+        if (aliasNorm[m] && aptByNotaNorm[aliasNorm[m]]) return aptByNotaNorm[aliasNorm[m]]
+      }
+    }
+    for (const [alias, codCorect] of Object.entries(aliasNorm)) {
+      if (cod.includes(alias) && aptByNotaNorm[normCod(codCorect)]) return aptByNotaNorm[normCod(codCorect)]
+    }
+    for (const nota of Object.keys(aptByNotaNorm)) {
+      if (cod.includes(nota)) return aptByNotaNorm[nota]
+    }
+    return null
+  }
+
+  let aptId: string | null = null
+  for (const cod of codIncredere) { aptId = matchCod(cod); if (aptId) break }
+  if (!aptId) for (const cod of codFallback) { aptId = matchCod(cod); if (aptId) break }
+  return { aptId, codIncredere, codFallback }
+}
+
 export async function syncFivestar(dateFrom: string, dateTo: string): Promise<SyncResult> {
   const res: SyncResult = { total:0, inserted:0, updated:0, skipped:0, errors:0, logs:[] }
 
@@ -124,44 +162,17 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
         const totalPret = pret + pretExtra
         const idExtern = String(b.id || b.id_rezervare || '')
 
-        let aptId: string | null = null
-        const codCandidati = [
-          b.id_camera, b.camera, b.unitate, b.room,
-          b.numar_camera, b.tip_camera, b.cod_camera,
-          b.denumire_camera, b.name, b.room_name
-        ].filter(Boolean).map((s:any) => normCod(String(s)))
-
-        // Construieste si un aptByNota cu chei normalizate (fara diacritice) pentru matching robust
-        const aptByNotaNorm: Record<string,string> = {}
-        for (const [k, v] of Object.entries(aptByNota)) aptByNotaNorm[normCod(k)] = v
-        const aliasNorm: Record<string,string> = {}
-        for (const [k, v] of Object.entries(ALIAS_MAP)) aliasNorm[normCod(k)] = v
-
-        for (const cod of codCandidati) {
-          if (aptByNotaNorm[cod]) { aptId = aptByNotaNorm[cod]; break }
-          if (aliasNorm[cod] && aptByNotaNorm[aliasNorm[cod]]) { aptId = aptByNotaNorm[aliasNorm[cod]]; break }
-          const matches = cod.match(/\b([A-Z]{1,4}\d{2,3})\b/g)
-          if (matches) {
-            for (const m of matches) {
-              if (aptByNotaNorm[m]) { aptId = aptByNotaNorm[m]; break }
-              if (aliasNorm[m] && aptByNotaNorm[aliasNorm[m]]) { aptId = aptByNotaNorm[aliasNorm[m]]; break }
-            }
-            if (aptId) break
-          }
-          for (const [alias, codCorect] of Object.entries(aliasNorm)) {
-            if (cod.includes(alias) && aptByNotaNorm[normCod(codCorect)]) { aptId = aptByNotaNorm[normCod(codCorect)]; break }
-          }
-          if (aptId) break
-          for (const nota of Object.keys(aptByNotaNorm)) {
-            if (cod.includes(nota)) { aptId = aptByNotaNorm[nota]; break }
-          }
-          if (aptId) break
-        }
+        // Doua niveluri de incredere, cautate SEPARAT (vezi matchAptFromBooking) — bug real gasit
+        // prin testare directa: o rezervare cu tip_camera/numar_camera="GS08" (corect, scris si
+        // in observatii) a fost atribuita gresit lui N32, fiindca un camp mai devreme in lista
+        // amestecata veche (id_camera/camera/unitate/room — text liber, nu neaparat un cod) s-a
+        // potrivit din greseala prin alias/substring INAINTE sa ajunga la campul de incredere.
+        const { aptId, codIncredere, codFallback } = matchAptFromBooking(b, aptByNota)
 
         if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); continue }
         if (!aptId) {
           res.skipped++
-          res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${codCandidati.join(',')}` })
+          res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${[...codIncredere,...codFallback].join(',')}` })
           continue
         }
 
@@ -173,12 +184,15 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
         const statusNou = statusRaw.includes('anulat') ? 'anulata' : (statusRaw.includes('cazat') ? 'finalizata' : 'confirmata')
 
         const idExternValid = idExtern && idExtern.length > 2
+        // select('*') peste tot mai jos, nu o lista explicita — camera_semnalata/camera_semnalata_la
+        // sunt coloane noi, care pot sa nu existe inca (pana la migrare); o lista explicita ar rupe
+        // interogarea intreaga cu eroare 42703, la fel ca la disponibil_booking mai demult.
         const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-          .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane').ilike('observatii', `%${idExtern}%`).limit(1)
+          .select('*').ilike('observatii', `%${idExtern}%`).limit(1)
           : { data: [] }
         const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane')
+            .select('*')
             .eq('apartament_id', aptId)
             .eq('data_checkin', checkin)
             .eq('data_checkout', checkout)
@@ -186,7 +200,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           : { data: [] }
         const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
           ? await supabase.from('rezervari')
-            .select('id,telefon_client,apartament_id,status_rezervare,data_checkin,data_checkout,suma_incasata,nume_client,canal,observatii,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+            .select('*').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
           : { data: [] }
 
         const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
@@ -220,7 +234,19 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
           // camera si ar fi mutate gresit. O nepotrivire de apartament aici e semnal de
           // verificat manual, nu de aplicat automat.
           if (aptId && existing[0].apartament_id !== aptId) {
-            res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — camera indica alt apartament decat cel existent, NU s-a realocat automat (verifica manual)` })
+            // Semnalul se SALVEAZA acum (nu doar un rand de log care dispare) - cerut direct,
+            // ca sa identifice singur toate discrepantele astea, la fiecare sincronizare, nu doar
+            // o data, manual. Lista completa apare in Sync 5starDesk -> "Camere semnalate".
+            const codDetectat = (apts||[]).find((a:any)=>a.id===aptId)?.nota || null
+            if (codDetectat && codDetectat !== existing[0].camera_semnalata) {
+              updates.camera_semnalata = codDetectat
+              updates.camera_semnalata_la = new Date().toISOString()
+            }
+            res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — camera indica ${codDetectat||'alt apartament'}, diferit de cel existent, NU s-a realocat automat (verifica manual)` })
+          } else if (existing[0].camera_semnalata) {
+            // Resincronizare care confirma iar apartamentul curent -> semnalul vechi nu mai e valabil
+            updates.camera_semnalata = null
+            updates.camera_semnalata_la = null
           }
           if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
           if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
@@ -230,7 +256,15 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
             updates.valoare_bruta = totalPret
           }
           if (Object.keys(updates).length > 0) {
-            await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
+            const { error: updErr } = await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
+            if (updErr) {
+              // Cel mai probabil camera_semnalata/camera_semnalata_la nu exista inca (pana la
+              // migrare) - reincearca fara ele, ca actualizarea de baza sa nu se blocheze.
+              const { camera_semnalata, camera_semnalata_la, ...fallbackUpdates } = updates
+              if (Object.keys(fallbackUpdates).length > 0) {
+                await supabase.from('rezervari').update(fallbackUpdates).eq('id', existing[0].id)
+              }
+            }
           }
           res.skipped++
           res.logs.push({ type:'skip', msg: `↺ ${numeClient} (${checkin}) — există${Object.keys(updates).length?' + actualizat ('+Object.keys(updates).join(',')+')':''}` })
