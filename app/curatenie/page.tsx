@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase, normalizeWaPhone } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -65,7 +65,7 @@ export default function CuratenePage() {
   const [rapoarteData, setRapoarteData] = useState<any[]>([])
   const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
   const [casaLuna, setCasaLuna] = useState<any[]>([])
-  const [costPerCuratenie, setCostPerCuratenie] = useState(150)
+  const [costPerCuratenie, setCostPerCuratenie] = useState<number|''>(150)
   const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
   const [filtruAptRaport, setFiltruAptRaport] = useState<Set<string>>(new Set())
   const [aptListRaport, setAptListRaport] = useState<string[]>([])
@@ -243,11 +243,12 @@ export default function CuratenePage() {
   }
 
   async function saveCostCuratenie() {
+    const val = Number(costPerCuratenie) || 0
     const existing = await supabase.from('setari').select('id').eq('cheie','cost_curatenie').maybeSingle()
     if(existing.data?.id) {
-      await supabase.from('setari').update({valoare:String(costPerCuratenie)}).eq('cheie','cost_curatenie')
+      await supabase.from('setari').update({valoare:String(val)}).eq('cheie','cost_curatenie')
     } else {
-      await supabase.from('setari').insert({cheie:'cost_curatenie',valoare:String(costPerCuratenie)})
+      await supabase.from('setari').insert({cheie:'cost_curatenie',valoare:String(val)})
     }
   }
 
@@ -1105,7 +1106,7 @@ export default function CuratenePage() {
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Cost / curățenie (RON)</div>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              <input type="number" value={costPerCuratenie} onChange={e=>setCostPerCuratenie(Number(e.target.value))} min={0}
+              <input type="number" value={numVal(costPerCuratenie,150)} onChange={e=>setCostPerCuratenie(numInput(e.target.value,0))} min={0}
                 style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none',width:100}}/>
               <button onClick={saveCostCuratenie}
                 style={{padding:'7px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer'}}>
@@ -1270,7 +1271,7 @@ export default function CuratenePage() {
         {filteredRapoarte.length>0&&(()=>{
           const totalCuratenii = filteredRapoarte.reduce((s:number,r:any)=>s+r.nrCuratenii,0)
           const totalGata = filteredRapoarte.reduce((s:number,r:any)=>s+r.nrGata,0)
-          const totalCost = totalCuratenii * costPerCuratenie
+          const totalCost = totalCuratenii * (Number(costPerCuratenie)||0)
           const zileActive = filteredRapoarte.length
           return (
             <>
@@ -1324,7 +1325,7 @@ export default function CuratenePage() {
                             {r.timpMediu?`${Math.floor(r.timpMediu/60)?Math.floor(r.timpMediu/60)+'h ':''}${r.timpMediu%60}m`:'-'}
                           </div>
                           <div style={{fontSize:12,color:'#FCD34D',textAlign:'center' as const,fontFamily:'monospace',fontWeight:600}}>{r.totalLenjerii||'-'}</div>
-                          <div style={{fontSize:12,color:'#FCD34D',fontFamily:'monospace'}}>{(r.nrCuratenii*costPerCuratenie).toLocaleString('ro-RO')}</div>
+                          <div style={{fontSize:12,color:'#FCD34D',fontFamily:'monospace'}}>{(r.nrCuratenii*(Number(costPerCuratenie)||0)).toLocaleString('ro-RO')}</div>
                         </div>
                       ))}
                       <div style={{display:'grid',gridTemplateColumns:'90px 1fr 65px 65px 75px 70px 90px',padding:'10px 14px',background:'rgba(74,222,128,0.06)',borderTop:'1px solid rgba(74,222,128,0.15)',alignItems:'center'}}>

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone } from '@/lib/supabase'
+import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
@@ -109,8 +109,8 @@ export default function RezervariPage() {
     }))
   }
 
-  function recalcComisionPlatforma(brut: number, pct: number) {
-    const val = brut * pct / 100
+  function recalcComisionPlatforma(brut: number|'', pct: number|'') {
+    const val = Number(brut||0) * Number(pct||0) / 100
     const tva = val * 0.19
     setEditing((prev: any) => ({
       ...prev,
@@ -145,6 +145,20 @@ export default function RezervariPage() {
       // Convert empty strings to null for UUID fields
       apartament_id: editing.apartament_id || null,
       proprietar_id: editing.proprietar_id || null,
+      // Campurile numerice pot fi ramase '' daca s-a salvat cu inputul golit fara sa se retasteze
+      // (vezi numVal/numInput) - le trecem explicit pe 0 aici, ca sa nu trimitem '' spre coloane numerice
+      nr_persoane: Number(editing.nr_persoane)||1,
+      valoare_bruta: Number(editing.valoare_bruta)||0,
+      taxa_curatenie_incasata: Number(editing.taxa_curatenie_incasata)||0,
+      suma_incasata: Number(editing.suma_incasata)||0,
+      comision_platforma_procent: Number(editing.comision_platforma_procent)||0,
+      comision_platforma_valoare: Number(editing.comision_platforma_valoare)||0,
+      tva_comision_platforma: Number(editing.tva_comision_platforma)||0,
+      cost_curatenie: Number(editing.cost_curatenie)||0,
+      cost_spalatorie: Number(editing.cost_spalatorie)||0,
+      cost_consumabile: Number(editing.cost_consumabile)||0,
+      cost_mentenanta: Number(editing.cost_mentenanta)||0,
+      alte_costuri: Number(editing.alte_costuri)||0,
     }
     delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at; delete payload.rezervare_id
 
@@ -490,7 +504,7 @@ export default function RezervariPage() {
         <FormRow cols={4}>
           <FormGroup><label>Check-in *</label><input type="date" value={editing.data_checkin} onChange={e=>setEditing({...editing,data_checkin:e.target.value})}/></FormGroup>
           <FormGroup><label>Check-out *</label><input type="date" value={editing.data_checkout} onChange={e=>setEditing({...editing,data_checkout:e.target.value})}/></FormGroup>
-          <FormGroup><label>Persoane</label><input type="number" value={editing.nr_persoane} onChange={e=>setEditing({...editing,nr_persoane:parseInt(e.target.value)||1})} min={1}/></FormGroup>
+          <FormGroup><label>Persoane</label><input type="number" value={numVal(editing.nr_persoane,1)} onChange={e=>setEditing({...editing,nr_persoane:numInput(e.target.value,1)})} min={1}/></FormGroup>
           <FormGroup>
             <label>Monedă</label>
             <select value={editing.moneda} onChange={e=>setEditing({...editing,moneda:e.target.value})}>
@@ -501,10 +515,10 @@ export default function RezervariPage() {
         <FormRow cols={3}>
           <FormGroup>
             <label>Valoare brută rezervare</label>
-            <input type="number" value={editing.valoare_bruta} onChange={e=>recalcComisionPlatforma(parseFloat(e.target.value)||0, editing.comision_platforma_procent)} min={0} step={0.01}/>
+            <input type="number" value={numVal(editing.valoare_bruta,0)} onChange={e=>recalcComisionPlatforma(numInput(e.target.value,0), editing.comision_platforma_procent)} min={0} step={0.01}/>
           </FormGroup>
-          <FormGroup><label>Taxă curățenie încasată</label><input type="number" value={editing.taxa_curatenie_incasata} onChange={e=>setEditing({...editing,taxa_curatenie_incasata:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-          <FormGroup><label>Sumă efectiv încasată</label><input type="number" value={editing.suma_incasata} onChange={e=>setEditing({...editing,suma_incasata:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+          <FormGroup><label>Taxă curățenie încasată</label><input type="number" value={numVal(editing.taxa_curatenie_incasata,0)} onChange={e=>setEditing({...editing,taxa_curatenie_incasata:numInput(e.target.value,0)})} min={0}/></FormGroup>
+          <FormGroup><label>Sumă efectiv încasată</label><input type="number" value={numVal(editing.suma_incasata,0)} onChange={e=>setEditing({...editing,suma_incasata:numInput(e.target.value,0)})} min={0}/></FormGroup>
         </FormRow>
 
         <div className="my-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
@@ -512,23 +526,23 @@ export default function RezervariPage() {
           <FormRow cols={3}>
             <FormGroup>
               <label>% Comision platformă</label>
-              <input type="number" value={editing.comision_platforma_procent} onChange={e=>recalcComisionPlatforma(editing.valoare_bruta, parseFloat(e.target.value)||0)} min={0} max={100} step={0.5}/>
+              <input type="number" value={numVal(editing.comision_platforma_procent,0)} onChange={e=>recalcComisionPlatforma(editing.valoare_bruta, numInput(e.target.value,0))} min={0} max={100} step={0.5}/>
             </FormGroup>
-            <FormGroup><label>Valoare comision (RON)</label><input type="number" value={editing.comision_platforma_valoare} onChange={e=>setEditing({...editing,comision_platforma_valoare:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-            <FormGroup><label>TVA / taxă aferentă</label><input type="number" value={editing.tva_comision_platforma} onChange={e=>setEditing({...editing,tva_comision_platforma:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+            <FormGroup><label>Valoare comision (RON)</label><input type="number" value={numVal(editing.comision_platforma_valoare,0)} onChange={e=>setEditing({...editing,comision_platforma_valoare:numInput(e.target.value,0)})} min={0}/></FormGroup>
+            <FormGroup><label>TVA / taxă aferentă</label><input type="number" value={numVal(editing.tva_comision_platforma,0)} onChange={e=>setEditing({...editing,tva_comision_platforma:numInput(e.target.value,0)})} min={0}/></FormGroup>
           </FormRow>
         </div>
 
         <div className="my-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
           <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text3)' }}>Costuri operaționale</p>
           <FormRow cols={3}>
-            <FormGroup><label>Cost curățenie</label><input type="number" value={editing.cost_curatenie} onChange={e=>setEditing({...editing,cost_curatenie:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-            <FormGroup><label>Cost spălătorie</label><input type="number" value={editing.cost_spalatorie} onChange={e=>setEditing({...editing,cost_spalatorie:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-            <FormGroup><label>Cost consumabile</label><input type="number" value={editing.cost_consumabile} onChange={e=>setEditing({...editing,cost_consumabile:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+            <FormGroup><label>Cost curățenie</label><input type="number" value={numVal(editing.cost_curatenie,0)} onChange={e=>setEditing({...editing,cost_curatenie:numInput(e.target.value,0)})} min={0}/></FormGroup>
+            <FormGroup><label>Cost spălătorie</label><input type="number" value={numVal(editing.cost_spalatorie,0)} onChange={e=>setEditing({...editing,cost_spalatorie:numInput(e.target.value,0)})} min={0}/></FormGroup>
+            <FormGroup><label>Cost consumabile</label><input type="number" value={numVal(editing.cost_consumabile,0)} onChange={e=>setEditing({...editing,cost_consumabile:numInput(e.target.value,0)})} min={0}/></FormGroup>
           </FormRow>
           <FormRow cols={2}>
-            <FormGroup><label>Cost mentenanță</label><input type="number" value={editing.cost_mentenanta} onChange={e=>setEditing({...editing,cost_mentenanta:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
-            <FormGroup><label>Alte costuri</label><input type="number" value={editing.alte_costuri} onChange={e=>setEditing({...editing,alte_costuri:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+            <FormGroup><label>Cost mentenanță</label><input type="number" value={numVal(editing.cost_mentenanta,0)} onChange={e=>setEditing({...editing,cost_mentenanta:numInput(e.target.value,0)})} min={0}/></FormGroup>
+            <FormGroup><label>Alte costuri</label><input type="number" value={numVal(editing.alte_costuri,0)} onChange={e=>setEditing({...editing,alte_costuri:numInput(e.target.value,0)})} min={0}/></FormGroup>
           </FormRow>
         </div>
 

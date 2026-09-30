@@ -149,6 +149,17 @@ export const CATEGORII_CHELTUIELI = ['curatenie','spalatorie','consumabile','men
 export const CATEGORII_LABEL: Record<string, string> = { curatenie:'Curățenie', spalatorie:'Spălătorie / Lenjerii', consumabile:'Consumabile', mentenanta:'Mentenanță', reparatii:'Reparații', comision_booking:'Comision Booking', comision_airbnb:'Comision Airbnb', tva_platforma:'TVA / Taxă platformă', contabilitate:'Contabilitate', fotografii:'Fotografii / Promovare', alte:'Alte cheltuieli' }
 export const LUNI = ['','Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
 
+// Inputuri numerice controlate — raportat direct: la orice input type="number" din aplicatie,
+// stergerea completa a cifrelor revenea fortat la 0 la fiecare tasta, deci nu puteai goli
+// campul ca sa scrii o cifra noua de la zero. numVal/numInput lasa campul gol cat timp editezi
+// (o valoare '' e omisa/tratata ca 0 de restul codului, care oricum face `valoare||0` la citire).
+export function numVal(v: number | '' | null | undefined, fallback: number): number | '' {
+  return v === '' ? '' : (v ?? fallback)
+}
+export function numInput(raw: string, fallback: number = 0): number | '' {
+  return raw === '' ? '' : (parseFloat(raw) || fallback)
+}
+
 // prefixul 40 se adauga DOAR la numere mobile romanesti reale (07xxxxxxxx, 10 cifre) -
 // orice alt numar de 10 cifre care incepe cu 0 (ex. mobil strain scris local) ramane neatins
 export function normalizeWaPhone(phone: string): string {

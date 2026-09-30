@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { FileText, Download, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
@@ -137,7 +137,7 @@ export default function RapoartePage() {
   const [anEnd, setAnEnd] = useState(new Date().getFullYear())
   const [selectedPlatforme, setSelectedPlatforme] = useState<string[]>(['airbnb','booking','direct','whatsapp','telefon'])
   const [tipRaport, setTipRaport] = useState<'cu_comision'|'fara_comision'>('cu_comision')
-  const [comisionAB, setComisionAB] = useState(20)
+  const [comisionAB, setComisionAB] = useState<number|''>(20)
   const [rezervari, setRezervari] = useState<any[]>([])
   const [generated, setGenerated] = useState(false)
   const [periodStart, setPeriodStart] = useState('')
@@ -145,13 +145,13 @@ export default function RapoartePage() {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   // Calculator state - ridicat din CalculatorDecontat pentru PDF export
-  const [calcContabilitate, setCalcContabilitate] = useState(0)
-  const [calcCuratenie, setCalcCuratenie] = useState(0)
-  const [calcLenjerii, setCalcLenjerii] = useState(0)
-  const [calcPromovare, setCalcPromovare] = useState(0)
-  const [calcIncasatCash, setCalcIncasatCash] = useState(0)
-  const [calcChirie, setCalcChirie] = useState(0)
-  const [calcAltelinii, setCalcAltelinii] = useState<{desc:string;val:number;tip:'scade'|'adauga'}[]>([])
+  const [calcContabilitate, setCalcContabilitate] = useState<number|''>(0)
+  const [calcCuratenie, setCalcCuratenie] = useState<number|''>(0)
+  const [calcLenjerii, setCalcLenjerii] = useState<number|''>(0)
+  const [calcPromovare, setCalcPromovare] = useState<number|''>(0)
+  const [calcIncasatCash, setCalcIncasatCash] = useState<number|''>(0)
+  const [calcChirie, setCalcChirie] = useState<number|''>(0)
+  const [calcAltelinii, setCalcAltelinii] = useState<{desc:string;val:number|'';tip:'scade'|'adauga'}[]>([])
   const [activeTab, setActiveTab] = useState<'rezervari'|'fiscal'>('rezervari')
   const { toast, show } = useToast()
   const [graficeData, setGraficeData] = useState<any[]>([])
@@ -312,7 +312,7 @@ export default function RapoartePage() {
     const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : Number(r.suma_incasata || 0)
     const { com, tva, total } = calcComision(brut, r.canal)
     const net = brut - total
-    const comAB = tipRaport === 'cu_comision' ? net * (comisionAB / 100) : 0
+    const comAB = tipRaport === 'cu_comision' ? net * ((Number(comisionAB)||0) / 100) : 0
     acc.brut += brut
     acc.com += com
     acc.tva += tva
@@ -348,7 +348,7 @@ export default function RapoartePage() {
         const brut = Number(r.suma_incasata||0)
         const { total } = calcComision(brut, r.canal)
         const net = brut - total
-        const comAB = tipRaport === 'cu_comision' ? net*(comisionAB/100) : 0
+        const comAB = tipRaport === 'cu_comision' ? net*((Number(comisionAB)||0)/100) : 0
         const row = [r.nume_client, `${r.data_checkin}→${r.data_checkout}`, String(r.nr_nopti||0), r.canal?.toUpperCase(), r.apartament?.nota||'—', `${fmt(brut)}`, total>0?`-${fmt(total)}`:'—', `${fmt(net)}`]
         if (tipRaport === 'cu_comision') row.push(`-${fmt(comAB)}`)
         row.push(`${fmt(net-comAB)}`)
@@ -387,21 +387,22 @@ export default function RapoartePage() {
       ]
       let totalScaz = 0; let totalAdd = 0
       const fixedItems: [string,number][] = [
-        ['Contabilitate', calcContabilitate],
-        ['Curatenie', calcCuratenie],
-        ['Lenjerii', calcLenjerii],
-        ['Promovare', calcPromovare],
-        ['Chirie platita', calcChirie],
-        ['Incasat cash (direct de proprietar)', calcIncasatCash],
+        ['Contabilitate', Number(calcContabilitate)||0],
+        ['Curatenie', Number(calcCuratenie)||0],
+        ['Lenjerii', Number(calcLenjerii)||0],
+        ['Promovare', Number(calcPromovare)||0],
+        ['Chirie platita', Number(calcChirie)||0],
+        ['Incasat cash (direct de proprietar)', Number(calcIncasatCash)||0],
       ]
       fixedItems.forEach(([label, val]) => {
         if(val>0){ calcRows.push([`  - ${label}`, `- ${fmt(val)} RON`]); totalScaz+=val }
       })
       calcAltelinii.forEach(({desc,val,tip}) => {
-        if(val>0 && desc.trim()){
+        const v = Number(val)||0
+        if(v>0 && desc.trim()){
           const isScade = tip==='scade'
-          calcRows.push([`  ${isScade?'-':'+'} ${desc}`, `${isScade?'- ':'+ '}${fmt(val)} RON`])
-          if(isScade) totalScaz+=val; else totalAdd+=val
+          calcRows.push([`  ${isScade?'-':'+'} ${desc}`, `${isScade?'- ':'+ '}${fmt(v)} RON`])
+          if(isScade) totalScaz+=v; else totalAdd+=v
         }
       })
       const netProp = totals.netFinal + totalAdd - totalScaz
@@ -669,7 +670,7 @@ export default function RapoartePage() {
             {tipRaport === 'cu_comision' && (
               <div>
                 <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)', marginBottom:4, display:'block' }}>Com. AB (%)</label>
-                <input type="number" value={comisionAB} onChange={e=>setComisionAB(Number(e.target.value))} min={0} max={100} style={{ textAlign:'center' }}/>
+                <input type="number" value={numVal(comisionAB,20)} onChange={e=>setComisionAB(numInput(e.target.value,0))} min={0} max={100} style={{ textAlign:'center' }}/>
               </div>
             )}
             <div style={{ display:'flex', gap:8, alignSelf:'flex-end' }}>
@@ -732,7 +733,7 @@ export default function RapoartePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={comisionAB} periodStart={periodStart} periodEnd={periodEnd}/>)}
+                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={Number(comisionAB)||0} periodStart={periodStart} periodEnd={periodEnd}/>)}
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'rgba(14,27,43,0.5)' }}>
@@ -813,7 +814,7 @@ export default function RapoartePage() {
                   const nrRezervari = e.airbnbN + e.bookingN + e.privatN
                   const curatenieTotal = costCuratenie * nrRezervari
                   const netDupaCosturi = netDupaPlatforme - curatenieTotal
-                  const comAB = tipRaport==='cu_comision' ? netDupaCosturi * (comisionAB/100) : 0
+                  const comAB = tipRaport==='cu_comision' ? netDupaCosturi * ((Number(comisionAB)||0)/100) : 0
                   const netProprietar = netDupaCosturi - comAB
                   return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, netDupaCosturi, comAB, netProprietar, nrRezervari }
                 })
@@ -1011,13 +1012,13 @@ export default function RapoartePage() {
 
 function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitate, curatenie, setCuratenie, lenjerii, setLenjerii, promovare, setPromovare, incasatCash, setIncasatCash, chirie, setChirie, altelinii, setAltelinii }: {
   netFinal: number; perioada: string
-  contabilitate:number; setContabilitate:(v:number)=>void
-  curatenie:number; setCuratenie:(v:number)=>void
-  lenjerii:number; setLenjerii:(v:number)=>void
-  promovare:number; setPromovare:(v:number)=>void
-  incasatCash:number; setIncasatCash:(v:number)=>void
-  chirie:number; setChirie:(v:number)=>void
-  altelinii:{desc:string;val:number;tip:'scade'|'adauga'}[]; setAltelinii:(v:any)=>void
+  contabilitate:number|''; setContabilitate:(v:number|'')=>void
+  curatenie:number|''; setCuratenie:(v:number|'')=>void
+  lenjerii:number|''; setLenjerii:(v:number|'')=>void
+  promovare:number|''; setPromovare:(v:number|'')=>void
+  incasatCash:number|''; setIncasatCash:(v:number|'')=>void
+  chirie:number|''; setChirie:(v:number|'')=>void
+  altelinii:{desc:string;val:number|'';tip:'scade'|'adauga'}[]; setAltelinii:(v:any)=>void
 }) {
 
   const totalScazaminte = Number(contabilitate)+Number(curatenie)+Number(lenjerii)+Number(promovare)+Number(chirie)+
@@ -1067,14 +1068,14 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
             <div>
               <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Încasat cash de proprietar</div>
               <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Proprietarul a primit direct → se scade din ce îi mai datorezi</div>
-              <input type="number" min={0} value={incasatCash||''} placeholder="0"
-                onChange={e=>setIncasatCash(Number(e.target.value)||0)} data-pdf="incasat-cash" style={inp}/>
+              <input type="number" min={0} value={numVal(incasatCash,0)} placeholder="0"
+                onChange={e=>setIncasatCash(numInput(e.target.value,0))} data-pdf="incasat-cash" style={inp}/>
             </div>
             <div>
               <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>Chirie plătită</div>
               <div style={{ fontSize:9, color:'rgba(159,215,255,0.3)', marginBottom:6 }}>Chiria lunară achitată proprietarului → se scade din total</div>
-              <input type="number" min={0} value={chirie||''} placeholder="0"
-                onChange={e=>setChirie(Number(e.target.value)||0)} data-pdf="chirie" style={inp}/>
+              <input type="number" min={0} value={numVal(chirie,0)} placeholder="0"
+                onChange={e=>setChirie(numInput(e.target.value,0))} data-pdf="chirie" style={inp}/>
             </div>
           </div>
         </div>
@@ -1091,8 +1092,8 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
             ] as any[]).map(([label, val, setter]) => (
               <div key={label}>
                 <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
-                <input type="number" min={0} value={val||''} placeholder="0"
-                  onChange={e=>setter(Number(e.target.value)||0)} style={inp}/>
+                <input type="number" min={0} value={numVal(val,0)} placeholder="0"
+                  onChange={e=>setter(numInput(e.target.value,0))} style={inp}/>
               </div>
             ))}
           </div>
@@ -1106,8 +1107,8 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
                 <input value={linie.desc} placeholder="Descriere"
                   onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],desc:e.target.value}; setAltelinii(n) }}
                   style={inp}/>
-                <input type="number" min={0} value={linie.val||''} placeholder="0"
-                  onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],val:Number(e.target.value)||0}; setAltelinii(n) }}
+                <input type="number" min={0} value={numVal(linie.val,0)} placeholder="0"
+                  onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],val:numInput(e.target.value,0)}; setAltelinii(n) }}
                   style={inp}/>
                 <select value={linie.tip}
                   onChange={e=>{ const n=[...altelinii]; n[idx]={...n[idx],tip:e.target.value as any}; setAltelinii(n) }}
@@ -1132,14 +1133,14 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
           <div style={{ display:'flex', flexDirection:'column', gap:5, marginBottom:10 }}>
             {[
               ['Net raportat', netFinal, '#4ADE80', false],
-              incasatCash>0 && ['− Încasat cash (direct)', incasatCash, '#F87171', true],
-              chirie>0 && ['− Chirie plătită', chirie, '#F87171', true],
-              ...altelinii.filter(l=>l.tip==='adauga'&&l.val>0).map(l=>[`+ ${l.desc||'Adaos'}`, l.val, '#4ADE80', false]),
-              contabilitate>0 && ['− Contabilitate', contabilitate, '#F87171', true],
-              curatenie>0 && ['− Curățenie', curatenie, '#F87171', true],
-              lenjerii>0 && ['− Lenjerii', lenjerii, '#F87171', true],
-              promovare>0 && ['− Promovare', promovare, '#F87171', true],
-              ...altelinii.filter(l=>l.tip==='scade'&&l.val>0).map(l=>[`− ${l.desc||'Deducere'}`, l.val, '#F87171', true]),
+              Number(incasatCash)>0 && ['− Încasat cash (direct)', incasatCash, '#F87171', true],
+              Number(chirie)>0 && ['− Chirie plătită', chirie, '#F87171', true],
+              ...altelinii.filter(l=>l.tip==='adauga'&&Number(l.val)>0).map(l=>[`+ ${l.desc||'Adaos'}`, l.val, '#4ADE80', false]),
+              Number(contabilitate)>0 && ['− Contabilitate', contabilitate, '#F87171', true],
+              Number(curatenie)>0 && ['− Curățenie', curatenie, '#F87171', true],
+              Number(lenjerii)>0 && ['− Lenjerii', lenjerii, '#F87171', true],
+              Number(promovare)>0 && ['− Promovare', promovare, '#F87171', true],
+              ...altelinii.filter(l=>l.tip==='scade'&&Number(l.val)>0).map(l=>[`− ${l.desc||'Deducere'}`, l.val, '#F87171', true]),
             ].filter(Boolean).map((item:any, i) => (
               <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
                 <span style={{ color:'rgba(159,215,255,0.5)' }}>{item[0]}</span>

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase, Apartament, Proprietar, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
+import { supabase, Apartament, Proprietar, reorderAptsSubset, persistAptOrdine, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Building2, Edit2, Trash2, ExternalLink, Copy, MapPin, Check, Calculator, ChevronDown, ChevronUp, X, ChevronRight, GripVertical } from 'lucide-react'
@@ -65,20 +65,20 @@ function CopyBtn({ text }: { text: string }) {
 function Calc({ apt }: { apt: any }) {
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [chirie, setChirie] = useState(0)
+  const [chirie, setChirie] = useState<number|''>(0)
   const [chirieEUR, setChirieEUR] = useState(0)
   const [chirieMoneda, setChirieMoneda] = useState('RON')
   const [cursEUR, setCursEUR] = useState(5.0)
-  const [eonCurent, setEonCurent] = useState(0)
-  const [eonGaz, setEonGaz] = useState(0)
-  const [asociatie, setAsociatie] = useState(0)
-  const [internet, setInternet] = useState(0)
-  const [alteFix, setAlteFix] = useState(0)
-  const [curatenie, setCuratenie] = useState(200)
-  const [consumabile, setConsumabile] = useState(100)
-  const [lenjerii, setLenjerii] = useState(80)
-  const [altVar, setAltVar] = useState(0)
-  const [zile, setZile] = useState(25)
+  const [eonCurent, setEonCurent] = useState<number|''>(0)
+  const [eonGaz, setEonGaz] = useState<number|''>(0)
+  const [asociatie, setAsociatie] = useState<number|''>(0)
+  const [internet, setInternet] = useState<number|''>(0)
+  const [alteFix, setAlteFix] = useState<number|''>(0)
+  const [curatenie, setCuratenie] = useState<number|''>(200)
+  const [consumabile, setConsumabile] = useState<number|''>(100)
+  const [lenjerii, setLenjerii] = useState<number|''>(80)
+  const [altVar, setAltVar] = useState<number|''>(0)
+  const [zile, setZile] = useState<number|''>(25)
   const [loadingCh, setLoadingCh] = useState(false)
 
   async function preiadinCheltuieli() {
@@ -146,7 +146,7 @@ function Calc({ apt }: { apt: any }) {
   const totalFix = Number(chirie)+Number(eonCurent)+Number(eonGaz)+Number(asociatie)+Number(internet)+Number(alteFix)
   const totalVar = Number(curatenie)+Number(consumabile)+Number(lenjerii)+Number(altVar)
   const totalLuna = totalFix+totalVar
-  const costN = zile>0?Math.round(totalLuna/zile):0
+  const costN = Number(zile)>0?Math.round(totalLuna/Number(zile)):0
   const p15=Math.round(costN*1.15), p25=Math.round(costN*1.25), p40=Math.round(costN*1.40)
   const pBooking=Math.round(p25/0.83), pAirbnb=Math.round(p25/0.85), pDirect=p25
 
@@ -198,7 +198,7 @@ function Calc({ apt }: { apt: any }) {
             <div style={{ fontSize:10, fontWeight:600, color:'rgba(77,163,255,0.7)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Cheltuieli fixe / lună</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
               {([[chirieMoneda==='EUR'?'Chirie ('+chirieEUR+' EUR × '+cursEUR.toFixed(2)+')':'Chirie/Rată',chirie,setChirie],['E.ON Energie',eonCurent,setEonCurent],['E.ON Gaz',eonGaz,setEonGaz],['Asociație',asociatie,setAsociatie],['Internet',internet,setInternet],['Altele fixe',alteFix,setAlteFix]] as any[]).map(([l,v,s])=>(
-                <div key={l}><div style={lbl}>{l}</div><input type="number" value={v} onChange={e=>s(Number(e.target.value))} style={inp}/></div>
+                <div key={l}><div style={lbl}>{l}</div><input type="number" value={numVal(v,0)} onChange={e=>s(numInput(e.target.value,0))} style={inp}/></div>
               ))}
             </div>
           </div>
@@ -208,14 +208,14 @@ function Calc({ apt }: { apt: any }) {
             <div style={{ fontSize:10, fontWeight:600, color:'rgba(252,211,77,0.7)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:6 }}>Cheltuieli variabile / lună</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
               {([['Curățenie',curatenie,setCuratenie],['Consumabile',consumabile,setConsumabile],['Lenjerii',lenjerii,setLenjerii],['Altele var.',altVar,setAltVar]] as any[]).map(([l,v,s])=>(
-                <div key={l}><div style={lbl}>{l}</div><input type="number" onChange={e=>s(Number(e.target.value))} value={v} style={inp}/></div>
+                <div key={l}><div style={lbl}>{l}</div><input type="number" onChange={e=>s(numInput(e.target.value,0))} value={numVal(v,0)} style={inp}/></div>
               ))}
             </div>
           </div>
 
           {/* Zile ocupate + totale */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
-            <div><div style={lbl}>Zile ocupate/lună</div><input type="number" value={zile} onChange={e=>setZile(Number(e.target.value))} style={inp}/></div>
+            <div><div style={lbl}>Zile ocupate/lună</div><input type="number" value={numVal(zile,25)} onChange={e=>setZile(numInput(e.target.value,25))} style={inp}/></div>
             <div style={{ background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.12)',borderRadius:6,padding:'5px 8px' }}>
               <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)' }}>FIXE/LUNĂ</div>
               <div style={{ fontSize:12, fontWeight:700, color:'#7BC8FF', fontFamily:'monospace' }}>{totalFix.toLocaleString('ro-RO')}</div>
@@ -230,7 +230,7 @@ function Calc({ apt }: { apt: any }) {
           <div style={{ background:'rgba(14,27,43,0.7)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:8,padding:'10px 12px' }}>
             <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:8 }}>Scenarii profitabilitate (net după comisioane platforme)</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:5 }}>
-              {([['Break-even',costN,'rgba(159,215,255,0.5)',0],['+15%',p15,'#7BC8FF',Math.round((p15-costN)*zile)],['+25%',p25,'#4DA3FF',Math.round((p25-costN)*zile)],['+40%',p40,'#4ADE80',Math.round((p40-costN)*zile)]] as any[]).map(([l,v,col,profit])=>(
+              {([['Break-even',costN,'rgba(159,215,255,0.5)',0],['+15%',p15,'#7BC8FF',Math.round((p15-costN)*Number(zile))],['+25%',p25,'#4DA3FF',Math.round((p25-costN)*Number(zile))],['+40%',p40,'#4ADE80',Math.round((p40-costN)*Number(zile))]] as any[]).map(([l,v,col,profit])=>(
                 <div key={l} style={{ background:'rgba(255,255,255,0.03)',borderRadius:6,padding:'7px 8px',textAlign:'center' as const }}>
                   <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', marginBottom:2 }}>{l}</div>
                   <div style={{ fontSize:14, fontWeight:700, color:col, fontFamily:'monospace' }}>{v}</div>
@@ -312,7 +312,7 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); setEditTab('general'); return }
     setSaving(true)
-    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, cost_curatenie_per_rezervare:editing.cost_curatenie_per_rezervare||0, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null, exclus_statistici:!!(editing as any).exclus_statistici }
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere||1, capacitate_max:editing.capacitate_max||1, pret_standard:editing.pret_standard||0, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent||0, comision_fix:editing.comision_fix||0, cost_curatenie_per_rezervare:editing.cost_curatenie_per_rezervare||0, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null, exclus_statistici:!!(editing as any).exclus_statistici }
     const aptId = editing.id
     let { data: savedApt, error } = editing.id
       ? await supabase.from('apartamente').update(p).eq('id',editing.id).select('id').single()
@@ -609,9 +609,9 @@ export default function ApartamentePage() {
           </FormRow>
           <FormGroup><label>Adresă *</label><input value={editing.adresa||''} onChange={e=>setEditing({...editing,adresa:e.target.value})} placeholder="Stradă, complex..."/></FormGroup>
           <FormRow cols={3}>
-            <FormGroup><label>Camere</label><input type="number" value={editing.nr_camere||2} onChange={e=>setEditing({...editing,nr_camere:parseInt(e.target.value)||1})} min={1}/></FormGroup>
-            <FormGroup><label>Max pers.</label><input type="number" value={editing.capacitate_max||4} onChange={e=>setEditing({...editing,capacitate_max:parseInt(e.target.value)||1})} min={1}/></FormGroup>
-            <FormGroup><label>Preț (RON/n)</label><input type="number" value={editing.pret_standard||0} onChange={e=>setEditing({...editing,pret_standard:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+            <FormGroup><label>Camere</label><input type="number" value={numVal(editing.nr_camere,2)} onChange={e=>setEditing({...editing,nr_camere:numInput(e.target.value,1)} as any)} min={1}/></FormGroup>
+            <FormGroup><label>Max pers.</label><input type="number" value={numVal(editing.capacitate_max,4)} onChange={e=>setEditing({...editing,capacitate_max:numInput(e.target.value,1)} as any)} min={1}/></FormGroup>
+            <FormGroup><label>Preț (RON/n)</label><input type="number" value={numVal(editing.pret_standard,0)} onChange={e=>setEditing({...editing,pret_standard:numInput(e.target.value,0)} as any)} min={0}/></FormGroup>
           </FormRow>
           <FormGroup><label>🔒 Cod locker</label>
             <input value={(editing as any).cod_locker||''} maxLength={10} inputMode="numeric" placeholder="ex: 4821"
@@ -640,18 +640,18 @@ export default function ApartamentePage() {
           </FormRow>
           <FormRow cols={3}>
             <FormGroup><label>Procent (%)</label>
-              <input type="number" value={editing.comision_procent||20} disabled={editing.comision_tip==='fara_comision'}
-                onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}
+              <input type="number" value={numVal(editing.comision_procent,20)} disabled={editing.comision_tip==='fara_comision'}
+                onChange={e=>setEditing({...editing,comision_procent:numInput(e.target.value,0)} as any)} min={0} max={100}
                 style={editing.comision_tip==='fara_comision'?{opacity:0.4}:undefined}/>
             </FormGroup>
             <FormGroup><label>Fix (RON)</label>
-              <input type="number" value={editing.comision_fix||0} disabled={editing.comision_tip==='fara_comision'}
-                onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}
+              <input type="number" value={numVal(editing.comision_fix,0)} disabled={editing.comision_tip==='fara_comision'}
+                onChange={e=>setEditing({...editing,comision_fix:numInput(e.target.value,0)} as any)} min={0}
                 style={editing.comision_tip==='fara_comision'?{opacity:0.4}:undefined}/>
             </FormGroup>
             <FormGroup><label>Cost curățenie / rezervare (RON)</label>
-              <input type="number" value={editing.cost_curatenie_per_rezervare||0} placeholder="0"
-                onChange={e=>setEditing({...editing,cost_curatenie_per_rezervare:parseFloat(e.target.value)||0})} min={0}/>
+              <input type="number" value={numVal(editing.cost_curatenie_per_rezervare,0)} placeholder="0"
+                onChange={e=>setEditing({...editing,cost_curatenie_per_rezervare:numInput(e.target.value,0)} as any)} min={0}/>
             </FormGroup>
           </FormRow>
           {editing.comision_tip==='fara_comision' && (
@@ -664,7 +664,7 @@ export default function ApartamentePage() {
             <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>
             <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)', marginTop: -4, marginBottom: 10 }}>Chirie fixă lunară — intră automat și în Cheltuieli, la categoria „Chirie", cu suma și ziua de plată de aici</div>
             <FormRow cols={3}>
-              <FormGroup><label>Chirie / lună</label><input type="number" value={(editing as any).chirie_suma||0} onChange={e=>setEditing({...editing,chirie_suma:parseFloat(e.target.value)||0} as any)} min={0}/></FormGroup>
+              <FormGroup><label>Chirie / lună</label><input type="number" value={numVal((editing as any).chirie_suma,0)} onChange={e=>setEditing({...editing,chirie_suma:numInput(e.target.value,0)} as any)} min={0}/></FormGroup>
               <FormGroup><label>Monedă</label>
                 <select value={(editing as any).chirie_moneda||'RON'} onChange={e=>setEditing({...editing,chirie_moneda:e.target.value} as any)}>
                   <option value="RON">RON</option>

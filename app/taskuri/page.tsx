@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, numVal, numInput } from '@/lib/supabase'
 import { getNotifPrefs } from '@/lib/notifPrefs'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
@@ -2200,13 +2200,13 @@ export default function TaskuriPage() {
                     {![1,7,30].includes(Number(editing.interval_zile)) && (
                       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
-                        <input type="number" min={1} value={editing.interval_zile ?? 14} onChange={e => setEditing({ ...editing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                        <input type="number" min={1} value={numVal(editing.interval_zile,14)} onChange={e => setEditing({ ...editing, interval_zile: numInput(e.target.value,1) })} style={{ width: 60 }}/>
                         <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
                       </div>
                     )}
                     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Apare cu</span>
-                      <input type="number" min={0} value={editing.zile_avans ?? 5} onChange={e => setEditing({ ...editing, zile_avans: parseInt(e.target.value) || 0 })} style={{ width: 60 }}/>
+                      <input type="number" min={0} value={numVal(editing.zile_avans,5)} onChange={e => setEditing({ ...editing, zile_avans: numInput(e.target.value,0) })} style={{ width: 60 }}/>
                       <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile înainte de scadență</span>
                     </div>
                     <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(159,215,255,0.4)' }}>
@@ -2272,13 +2272,13 @@ export default function TaskuriPage() {
               {![1,7,30].includes(Number(templateEditing.interval_zile)) && (
                 <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>La fiecare</span>
-                  <input type="number" min={1} value={templateEditing.interval_zile ?? 14} onChange={e => setTemplateEditing({ ...templateEditing, interval_zile: parseInt(e.target.value) || 1 })} style={{ width: 60 }}/>
+                  <input type="number" min={1} value={numVal(templateEditing.interval_zile,14)} onChange={e => setTemplateEditing({ ...templateEditing, interval_zile: numInput(e.target.value,1) })} style={{ width: 60 }}/>
                   <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>zile</span>
                 </div>
               )}
             </div>
             <FormRow>
-              <FormGroup><label>Apare cu (zile înainte)</label><input type="number" min={0} value={templateEditing.zile_avans ?? 0} onChange={e => setTemplateEditing({ ...templateEditing, zile_avans: parseInt(e.target.value) || 0 })}/></FormGroup>
+              <FormGroup><label>Apare cu (zile înainte)</label><input type="number" min={0} value={numVal(templateEditing.zile_avans,0)} onChange={e => setTemplateEditing({ ...templateEditing, zile_avans: numInput(e.target.value,0) })}/></FormGroup>
               <FormGroup><label>Următoarea scadență</label><input type="date" value={templateEditing.data_urmatoare || ''} onChange={e => setTemplateEditing({ ...templateEditing, data_urmatoare: e.target.value })}/></FormGroup>
             </FormRow>
             <div style={{ display: 'flex', gap: 10 }}>

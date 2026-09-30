@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, ImageIcon, Type, Plus, Trash2, Phone, Mail, Globe } from 'lucide-react'
@@ -428,7 +428,7 @@ export default function InboxPage() {
         <FormRow cols={3}>
           <FormGroup><label>Check-in</label><input type="date" value={editing.data_checkin||''} onChange={e=>setEditing({...editing,data_checkin:e.target.value})}/></FormGroup>
           <FormGroup><label>Check-out</label><input type="date" value={editing.data_checkout||''} onChange={e=>setEditing({...editing,data_checkout:e.target.value})}/></FormGroup>
-          <FormGroup><label>Persoane</label><input type="number" value={editing.nr_persoane||2} onChange={e=>setEditing({...editing,nr_persoane:parseInt(e.target.value)})} min={1} max={20}/></FormGroup>
+          <FormGroup><label>Persoane</label><input type="number" value={numVal(editing.nr_persoane,2)} onChange={e=>setEditing({...editing,nr_persoane:numInput(e.target.value,1)})} min={1} max={20}/></FormGroup>
         </FormRow>
         <FormRow cols={2}>
           <FormGroup><label>Status</label>
