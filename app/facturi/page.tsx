@@ -534,6 +534,17 @@ export default function FacturiPage() {
         setSaving(null)
         return
       }
+    } else if (f.apartament_id && f.perioada) {
+      // Facturi fara numar propriu fiabil (ex. Urbica - "situatie individuala", fara numar unic al
+      // documentului, doar numere de la furnizorii din spate, comune tuturor apartamentelor din bloc)
+      // - verifica duplicat dupa apartament + perioada, ca sa nu ramana fara nicio protectie
+      const { data: existing } = await supabase.from('cheltuieli')
+        .select('id').eq('apartament_id', f.apartament_id).ilike('nota', `%${f.perioada}%`).limit(1)
+      if (existing && existing.length > 0) {
+        show('error', `⚠ O factură pentru perioada "${f.perioada}" a mai fost încărcată la acest apartament`)
+        setSaving(null)
+        return
+      }
     }
 
     const now = new Date()
