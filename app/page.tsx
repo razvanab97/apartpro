@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, normalizeWaPhone } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -335,7 +335,7 @@ export default function DashboardPage() {
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkin',today0)
         .neq('status_rezervare','anulata')
-      setCiProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+      setCiProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon && PROPRIETAR_NOTIF_APT_IDS.includes(r.apartament?.id)))
     }catch{}
   }
   function msgCheckinProprietar(r:any){
@@ -351,7 +351,7 @@ export default function DashboardPage() {
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkout',today0)
         .neq('status_rezervare','anulata')
-      setCoProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+      setCoProprietarAzi((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon && PROPRIETAR_NOTIF_APT_IDS.includes(r.apartament?.id)))
     }catch{}
   }
   function msgCheckoutProprietar(r:any){
@@ -366,7 +366,7 @@ export default function DashboardPage() {
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,nr_persoane,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .or('proprietar_notificat.is.null,proprietar_notificat.eq.false')
         .neq('status_rezervare','anulata')
-      setPropNotif((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon))
+      setPropNotif((data||[]).filter((r:any)=>r.apartament?.proprietar?.telefon && PROPRIETAR_NOTIF_APT_IDS.includes(r.apartament?.id)))
     }catch{}
   }
   async function marcheazaNotificatProprietar(id:string){
