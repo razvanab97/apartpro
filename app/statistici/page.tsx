@@ -11,7 +11,7 @@ type Tab = 'dashboard' | 'evolutie' | 'upload' | 'booking'
 type SortBy = 'vizualizari' | 'ocupare' | 'pozitie' | 'tarif' | 'delta' | 'recent'
 type ShowFilter = 'toate' | 'scaderi' | 'cresteri'
 
-interface Apt { id: string; nume: string; nota: string }
+interface Apt { id: string; nume: string; nota: string; exclus_statistici?: boolean }
 
 interface StatRow {
   id: string
@@ -459,9 +459,13 @@ export default function StatisticiPage() {
   const { toast, show } = useToast()
 
   useEffect(() => {
-    supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota')
+    // select('*') - exclus_statistici e coloana noua, un select cu lista explicita ar pica toata
+    // interogarea daca migrarea n-a rulat inca (acelasi motiv ca la disponibil_booking mai demult)
+    // apts ramane cu TOATE apartamentele active (inclusiv cele excluse din statistici) - le mai
+    // folosesc tab-ul Upload si numele afisat pe carduri; doar statsApts (mai jos) e filtrat in plus
+    supabase.from('apartamente').select('*').eq('status','activ').order('nota')
       .then(
-        ({ data }) => setApts(data || []),
+        ({ data }) => setApts((data||[]) as Apt[]),
         (err) => console.error('[statistici apts]', err)
       )
     try {
@@ -509,7 +513,16 @@ export default function StatisticiPage() {
     return map
   }, [stats])
 
-  const allCards = useMemo(() => Object.values(pairMap).map(entries => ({ latest: entries[0], prev: entries[1] })), [pairMap])
+  // Apartamentele bifate "Exclus din Statistici" in Apartamente → General nu mai apar aici (Dashboard +
+  // Evoluție) - dar raman in `apts` normal pentru tab-ul Upload si pentru numele afisat pe alte carduri
+  const statsApts = useMemo(() => apts.filter(a => !a.exclus_statistici), [apts])
+
+  const allCards = useMemo(() => {
+    const aptIds = new Set(statsApts.map(a => a.id))
+    return Object.values(pairMap)
+      .filter(entries => aptIds.has(entries[0].apartament_id))
+      .map(entries => ({ latest: entries[0], prev: entries[1] }))
+  }, [pairMap, statsApts])
   const cards = allCards
 
   // Edit helpers
@@ -999,7 +1012,7 @@ export default function StatisticiPage() {
                 Selectează locații pentru comparație ({evoApts.length} selectate):
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
-                {apts.map((a, i) => {
+                {statsApts.map((a, i) => {
                   const sel = evoApts.includes(a.id)
                   const hasData = !!pairMap[`${a.id}_${evoPlatforma}`]
                   const color = LINE_COLORS[evoApts.indexOf(a.id) % LINE_COLORS.length]

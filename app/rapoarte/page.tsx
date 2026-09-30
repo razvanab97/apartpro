@@ -167,10 +167,14 @@ export default function RapoartePage() {
     // disponibil_booking/disponibil_airbnb in app/preturi/page.tsx).
     supabase.from('apartamente').select('*').order('nota').then(
       ({ data }) => {
-        setApartamente(data || [])
-        setAllApts(data || [])
-        setGraficeApts((data||[]).map((a:any)=>a.id))  // all selected by default
-        setSelectedApts((data||[]).map((a:any)=>a.id))  // raport: toate selectate by default
+        const all = data || []
+        setApartamente(all)
+        setAllApts(all)
+        // Selectate implicit toate, MAI PUTIN cele bifate "Exclus din Statistici" in Apartamente →
+        // General - raman disponibile in selector, doar nu pornesc bifate (cerut direct)
+        const defaultSel = all.filter((a:any)=>!a.exclus_statistici).map((a:any)=>a.id)
+        setGraficeApts(defaultSel)
+        setSelectedApts(defaultSel)
       },
       (err) => console.error('[rapoarte apartamente]', err)
     )

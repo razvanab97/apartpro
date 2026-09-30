@@ -50,7 +50,7 @@ function withToday(url: string, platform: 'booking'|'airbnb'): string {
   return url
 }
 
-const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string; chirie_ziua?: number; chirie_cu_tva?: boolean } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, cost_curatenie_per_rezervare:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON', chirie_cu_tva:false, cod_locker:'' }
+const empty: Partial<Apartament> & { chirie_suma?: number; chirie_moneda?: string; chirie_ziua?: number; chirie_cu_tva?: boolean; exclus_statistici?: boolean } = { nume:'', adresa:'', zona:'', nr_camere:2, capacitate_max:4, pret_standard:0, proprietar_id:'', comision_tip:'procent_net_dupa_costuri', comision_procent:20, comision_fix:0, cost_curatenie_per_rezervare:0, link_airbnb:'', link_booking:'', link_site:'', instructiuni_checkin:'', reguli:'', status:'activ', nota:'', utilitati_la_proprietar:false, chirie_suma:0, chirie_moneda:'RON', chirie_cu_tva:false, cod_locker:'', exclus_statistici:false }
 
 function CopyBtn({ text }: { text: string }) {
   const [c, setC] = useState(false)
@@ -312,12 +312,21 @@ export default function ApartamentePage() {
   async function save(){
     if(!editing.nume||!editing.adresa){ show('error','Completează numele și adresa'); setEditTab('general'); return }
     setSaving(true)
-    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, cost_curatenie_per_rezervare:editing.cost_curatenie_per_rezervare||0, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null }
+    const p: any={ mesaj_checkin:editing.mesaj_checkin||null, mesaj_checkout:editing.mesaj_checkout||null, booking_links:(editing as any).booking_links||null, airbnb_links:(editing as any).airbnb_links||null, nume:editing.nume, adresa:editing.adresa, zona:editing.zona||null, nr_camere:editing.nr_camere, capacitate_max:editing.capacitate_max, pret_standard:editing.pret_standard, proprietar_id:editing.proprietar_id||null, comision_tip:editing.comision_tip, comision_procent:editing.comision_procent, comision_fix:editing.comision_fix, cost_curatenie_per_rezervare:editing.cost_curatenie_per_rezervare||0, link_airbnb:editing.link_airbnb||null, link_booking:editing.link_booking||null, link_site:editing.link_site||null, instructiuni_checkin:editing.instructiuni_checkin||null, reguli:editing.reguli||null, status:editing.status, nota:editing.nota||null, utilitati_la_proprietar:!!(editing as any).utilitati_la_proprietar, cod_locker:(editing as any).cod_locker||null, exclus_statistici:!!(editing as any).exclus_statistici }
     const aptId = editing.id
-    const { data: savedApt, error } = editing.id
+    let { data: savedApt, error } = editing.id
       ? await supabase.from('apartamente').update(p).eq('id',editing.id).select('id').single()
       : await supabase.from('apartamente').insert(p).select('id').single()
-    if(error){ show('error',error.message); setSaving(false); return }
+    if(error){
+      // exclus_statistici poate sa nu existe inca (coloana noua) - daca scrierea esueaza din orice motiv,
+      // reincearca o data fara ea, ca sa nu piarda tot restul formularului doar din cauza unui camp nou
+      const { exclus_statistici, ...pFallback } = p
+      const retry = editing.id
+        ? await supabase.from('apartamente').update(pFallback).eq('id',editing.id).select('id').single()
+        : await supabase.from('apartamente').insert(pFallback).select('id').single()
+      if(retry.error){ show('error',retry.error.message); setSaving(false); return }
+      savedApt = retry.data
+    }
     const finalAptId = aptId || savedApt?.id
     if (finalAptId) {
       const chirieSuma = Number((editing as any).chirie_suma) || 0
@@ -588,6 +597,10 @@ export default function ApartamentePage() {
               </select>
             </FormGroup>
           </FormRow>
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:12, color:'rgba(159,215,255,0.7)', margin:'-4px 0 14px' }}>
+            <input type="checkbox" checked={!!(editing as any).exclus_statistici} onChange={e=>setEditing({...editing,exclus_statistici:e.target.checked} as any)}/>
+            📊 Exclus din Statistici / Rapoarte (dispare din comparații; rămâne activ pentru rezervări, sincronizare, Cheltuieli)
+          </label>
           <FormRow cols={2}>
             <FormGroup><label>Nume *</label><input value={editing.nume||''} onChange={e=>setEditing({...editing,nume:e.target.value})} placeholder="Ex: Airy Palas"/></FormGroup>
             <FormGroup><label>Zonă</label><input value={editing.zona||''} onChange={e=>setEditing({...editing,zona:e.target.value})} placeholder="Palas, Copou..."/></FormGroup>
