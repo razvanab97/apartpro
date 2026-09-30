@@ -135,6 +135,7 @@ export function calculeazaDecont(
   else if (tip === 'procent_net_dupa_costuri') { baza = brut - comPlatf - tvaPlatf - totalCosturi; comision = baza * procent }
   else if (tip === 'fix_lunar') { baza = brut - comPlatf - tvaPlatf - totalCosturi; comision = fix }
   else if (tip === 'mixt') { baza = brut - comPlatf - tvaPlatf - totalCosturi; comision = fix + baza * procent }
+  else if (tip === 'fara_comision') { baza = brut - comPlatf - tvaPlatf - totalCosturi; comision = 0 }
   const suma_proprietar = Math.max(0, baza - comision)
   return { baza: Math.round(baza*100)/100, comision: Math.round(comision*100)/100, suma_proprietar: Math.round(suma_proprietar*100)/100 }
 }

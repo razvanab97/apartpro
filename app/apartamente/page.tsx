@@ -9,7 +9,7 @@ import { SortableContext, rectSortingStrategy, useSortable } from '@dnd-kit/sort
 import { CSS } from '@dnd-kit/utilities'
 
 const SC: Record<string,string> = { activ:'#22C55E', inactiv:'#EF4444', mentenanta:'#F59E0B' }
-const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%' }
+const CTL: Record<string,string> = { procent_brut:'% brut', procent_net_platforme:'% net platf.', procent_net_dupa_costuri:'% net costuri', fix_lunar:'Fix lunar', mixt:'Fix+%', fara_comision:'Fără comision' }
 const EDIT_TABS = [
   { id:'general' as const, emoji:'🏠', label:'General', desc:'Detalii de bază despre apartament' },
   { id:'comision' as const, emoji:'💰', label:'Plăți', desc:'Proprietar, comision și chiria plătită către el' },
@@ -520,7 +520,9 @@ export default function ApartamentePage() {
               )}
               <div style={{ display:'flex', justifyContent:'space-between' }}>
                 <span style={{ color:'rgba(159,215,255,0.4)' }}>Comision</span>
-                <span style={{ color:'#4ADE80', fontFamily:'monospace' }}>{selected.comision_procent}% · {CTL[selected.comision_tip]||selected.comision_tip}</span>
+                <span style={{ color: selected.comision_tip==='fara_comision'?'rgba(159,215,255,0.5)':'#4ADE80', fontFamily:'monospace' }}>
+                  {selected.comision_tip==='fara_comision' ? 'Fără comision' : `${selected.comision_procent}% · ${CTL[selected.comision_tip]||selected.comision_tip}`}
+                </span>
               </div>
               {selected.dotari?.length>0 && (
                 <div>
@@ -632,17 +634,31 @@ export default function ApartamentePage() {
                 <option value="procent_net_dupa_costuri">% net după costuri</option>
                 <option value="fix_lunar">Fix lunar</option>
                 <option value="mixt">Mixt</option>
+                <option value="fara_comision">Fără comision</option>
               </select>
             </FormGroup>
           </FormRow>
           <FormRow cols={3}>
-            <FormGroup><label>Procent (%)</label><input type="number" value={editing.comision_procent||20} onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}/></FormGroup>
-            <FormGroup><label>Fix (RON)</label><input type="number" value={editing.comision_fix||0} onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}/></FormGroup>
+            <FormGroup><label>Procent (%)</label>
+              <input type="number" value={editing.comision_procent||20} disabled={editing.comision_tip==='fara_comision'}
+                onChange={e=>setEditing({...editing,comision_procent:parseFloat(e.target.value)||0})} min={0} max={100}
+                style={editing.comision_tip==='fara_comision'?{opacity:0.4}:undefined}/>
+            </FormGroup>
+            <FormGroup><label>Fix (RON)</label>
+              <input type="number" value={editing.comision_fix||0} disabled={editing.comision_tip==='fara_comision'}
+                onChange={e=>setEditing({...editing,comision_fix:parseFloat(e.target.value)||0})} min={0}
+                style={editing.comision_tip==='fara_comision'?{opacity:0.4}:undefined}/>
+            </FormGroup>
             <FormGroup><label>Cost curățenie / rezervare (RON)</label>
               <input type="number" value={editing.cost_curatenie_per_rezervare||0} placeholder="0"
                 onChange={e=>setEditing({...editing,cost_curatenie_per_rezervare:parseFloat(e.target.value)||0})} min={0}/>
             </FormGroup>
           </FormRow>
+          {editing.comision_tip==='fara_comision' && (
+            <div style={{ fontSize:11, color:'rgba(159,215,255,0.4)', marginTop:-8, marginBottom:14 }}>
+              Proprietarul primește tot netul (după costuri operaționale), fără niciun comision reținut de AB Homes.
+            </div>
+          )}
 
           <div style={{ marginTop: 4, marginBottom: 4, padding: 14, borderRadius: 10, background: 'rgba(77,163,255,0.05)', border: '1px solid rgba(77,163,255,0.12)' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(159,215,255,0.6)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>Plată chirie către proprietar</div>

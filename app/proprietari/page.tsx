@@ -203,7 +203,7 @@ function DeconturiContent() {
                 <span style={{ color:'var(--text2)' }}>Bază comision administrator</span>
                 <span className="font-mono font-semibold" style={{ color:'var(--text)' }}>{preview.bazaComision.toLocaleString('ro-RO')} RON</span>
               </div>
-              <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>- Comision admin ({preview.apt.comision_procent}%)</span><span className="font-mono" style={{ color:'var(--red)' }}>-{preview.comisionAdmin.toLocaleString('ro-RO')} RON</span></div>
+              <div className="flex justify-between"><span style={{ color:'var(--text3)' }}>- Comision admin{preview.apt.comision_tip==='fara_comision'?' (fără comision)':` (${preview.apt.comision_procent}%)`}</span><span className="font-mono" style={{ color:'var(--red)' }}>-{preview.comisionAdmin.toLocaleString('ro-RO')} RON</span></div>
               <div className="flex justify-between p-3 rounded-xl mt-2" style={{ background:'rgba(45,212,160,0.08)', border:'1px solid rgba(45,212,160,0.2)' }}>
                 <span className="font-bold" style={{ color:'var(--text)' }}>Sumă netă de virat proprietarului</span>
                 <span className="font-bold text-lg font-mono" style={{ color:'var(--green)' }}>{preview.sumaProprietar.toLocaleString('ro-RO')} RON</span>
