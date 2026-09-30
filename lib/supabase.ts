@@ -92,6 +92,7 @@ export type Rezervare = {
   comision_platforma_valoare: number; tva_comision_platforma: number; cost_curatenie: number
   cost_spalatorie: number; cost_consumabile: number; cost_mentenanta: number; alte_costuri: number
   baza_calcul_comision: number; comision_administrator: number; suma_proprietar: number
+  platit_proprietar?: boolean; suma_platita_proprietar?: number; data_plata_proprietar?: string
   status_decont: string; status_facturare?: string; observatii?: string; mesaj_checkin?: string; mesaj_checkout?: string; created_at: string
 }
 export type Cheltuiala = {

@@ -159,12 +159,23 @@ export default function RezervariPage() {
       cost_consumabile: Number(editing.cost_consumabile)||0,
       cost_mentenanta: Number(editing.cost_mentenanta)||0,
       alte_costuri: Number(editing.alte_costuri)||0,
+      platit_proprietar: !!editing.platit_proprietar,
+      suma_platita_proprietar: editing.platit_proprietar ? (Number(editing.suma_platita_proprietar)||0) : null,
+      data_plata_proprietar: editing.platit_proprietar ? (editing.data_plata_proprietar || new Date().toISOString().slice(0,10)) : null,
     }
     delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at; delete payload.rezervare_id
 
-    const { error } = editing.id
+    let { error } = editing.id
       ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
       : await supabase.from('rezervari').insert(payload)
+    if (error) {
+      // platit_proprietar/suma_platita_proprietar/data_plata_proprietar pot sa nu existe inca
+      // (coloane noi) - reincearca fara ele, sa nu piarda restul rezervarii
+      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, ...fallback } = payload
+      ;({ error } = editing.id
+        ? await supabase.from('rezervari').update(fallback).eq('id', editing.id)
+        : await supabase.from('rezervari').insert(fallback))
+    }
     if (error) { show('error', error.message); setSaving(false); return }
     show('success', editing.id ? 'Rezervare actualizată' : 'Rezervare adăugată')
     setOpen(false); setSaving(false); load()
@@ -571,6 +582,20 @@ export default function RezervariPage() {
                   <div className="flex justify-between pt-2 border-t mt-2" style={{ borderColor:'var(--border)' }}>
                     <span className="font-bold text-sm" style={{ color:'var(--text)' }}>Suma de virat proprietar</span>
                     <span className="font-bold text-base font-mono" style={{ color:'var(--green)' }}>{c.suma_proprietar.toLocaleString('ro-RO')} RON</span>
+                  </div>
+                  {/* Plata efectiva catre proprietar, per rezervare — cerut direct: "la cele cu
+                      comision, sa putem sa bifam daca s-a platit si cat s-a platit catre proprietar" */}
+                  <div className="pt-2 mt-1 border-t" style={{ borderColor:'var(--border)' }}>
+                    <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize:12, color:'var(--text2)' }}>
+                      <input type="checkbox" checked={!!editing.platit_proprietar}
+                        onChange={e=>setEditing({...editing,platit_proprietar:e.target.checked,suma_platita_proprietar:editing.suma_platita_proprietar??c.suma_proprietar})}/>
+                      Plătit către proprietar
+                    </label>
+                    {editing.platit_proprietar && (
+                      <input type="number" value={numVal(editing.suma_platita_proprietar,0)} placeholder="Sumă plătită (RON)"
+                        onChange={e=>setEditing({...editing,suma_platita_proprietar:numInput(e.target.value,0)})} min={0}
+                        style={{ marginTop:6 }}/>
+                    )}
                   </div>
                 </div>
               </div>

@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
 import { TabRezervari, TabClienti } from '../import/page'
-import { syncFivestar, fmt5star, type SyncResult } from '@/lib/syncFivestar'
+import { syncFivestar, fmt5star, fetchOneBookingById, type SyncResult } from '@/lib/syncFivestar'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -57,6 +57,11 @@ export default function SyncPage() {
   // miscarile" — lista se reincarca la fiecare vizita a paginii, nu doar dupa un sync proaspat.
   const [semnalate, setSemnalate] = useState<any[]>([])
   const [loadingSemnalate, setLoadingSemnalate] = useState(false)
+  // Cautare manuala dupa ID de rezervare 5starDesk — cerut direct, pentru rezervari reale, active pe
+  // 5starDesk, care nu au ajuns (inca) la noi prin sincronizarea automata/periodica
+  const [idCautat, setIdCautat] = useState('')
+  const [cautandId, setCautandId] = useState(false)
+  const [rezultatIdCautat, setRezultatIdCautat] = useState<SyncResult|null>(null)
   const [apts, setApts] = useState<{id:string;nota:string;nume:string}[]>([])
   const [actionId, setActionId] = useState<string|null>(null)
   const [confirmMutaId, setConfirmMutaId] = useState<string|null>(null)
@@ -179,6 +184,22 @@ export default function SyncPage() {
     setLoading(false)
   }
 
+  async function cautaDupaId() {
+    if (!idCautat.trim()) { show('error', 'Introdu un ID de rezervare 5starDesk'); return }
+    setCautandId(true)
+    setRezultatIdCautat(null)
+    try {
+      const res = await fetchOneBookingById(idCautat)
+      setRezultatIdCautat(res)
+      if (res.inserted > 0) { show('success', 'Rezervare adusă din 5starDesk!'); loadSemnalate() }
+      else if (res.updated > 0 || res.skipped > 0 && res.errors === 0) show('success', 'Rezervare găsită și actualizată')
+      else if (res.errors > 0) show('error', res.logs[res.logs.length-1]?.msg || 'Eroare la căutare')
+    } catch(e:any) {
+      show('error', 'Eroare: ' + e.message)
+    }
+    setCautandId(false)
+  }
+
   async function deleteAndResync() {
     if (!confirmDelete) {
       setConfirmDelete(true)
@@ -298,6 +319,30 @@ export default function SyncPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Cautare/import manual dupa ID de rezervare 5starDesk — cerut direct, ca sa poti aduce o
+            rezervare anume, activa pe 5starDesk, care nu a ajuns la noi prin sincronizarea automata */}
+        <div style={panel}>
+          <div style={{ fontSize:13, fontWeight:600, color:'#FFF', marginBottom:6 }}>🔎 Adaugă rezervare după ID (5starDesk)</div>
+          <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
+            Ai o rezervare activă pe 5starDesk care nu apare în calendar aici? Pune ID-ul rezervării (din 5starDesk) și caută/aduce direct de-acolo.
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={idCautat} onChange={e=>setIdCautat(e.target.value)} placeholder="ex: 1384749"
+              onKeyDown={e=>{ if(e.key==='Enter') cautaDupaId() }}
+              style={{ flex:1, background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:8, color:'rgba(214,228,244,0.9)', fontSize:13, padding:'8px 10px', outline:'none' }}/>
+            <Button variant="primary" icon={cautandId?<Loader2 size={14} style={{animation:'spin 1s linear infinite'}}/>:<RefreshCw size={14}/>} onClick={cautaDupaId} loading={cautandId}>
+              Caută și adaugă
+            </Button>
+          </div>
+          {rezultatIdCautat && (
+            <div style={{ marginTop:12, padding:'10px 12px', borderRadius:8, background: rezultatIdCautat.errors>0 ? 'rgba(248,113,113,0.06)' : 'rgba(74,222,128,0.06)', border:`1px solid ${rezultatIdCautat.errors>0?'rgba(248,113,113,0.2)':'rgba(74,222,128,0.2)'}` }}>
+              {rezultatIdCautat.logs.map((l,i)=>(
+                <div key={i} style={{ fontSize:12, color: l.type==='err'?'#F87171':l.type==='ok'?'#4ADE80':'rgba(159,215,255,0.6)', marginBottom:4 }}>{l.msg}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Camere semnalate — discrepante intre codul din 5starDesk si apartamentul unde e stocata rezervarea */}

@@ -353,11 +353,14 @@ export default function ProprietariPage() {
       const liniiApt: any[] = []
 
       if (chirie) {
-        const liveRON = chirie.moneda === 'EUR' ? Math.round(chirie.suma * cursEUR) : chirie.suma
+        // chirie.suma e baza FARA TVA - daca e bifat cu_tva (Apartamente → Plăți), platim si TVA-ul catre proprietar
+        const sumaBaza = chirie.moneda === 'EUR' ? chirie.suma * cursEUR : chirie.suma
+        const liveRON = Math.round(chirie.cu_tva ? sumaBaza * 1.21 : sumaBaza)
         const linie = platiStatus[`${apt.id}_chirie`]
         const platit = !!linie?.platit
         const sumaAfisata = platit ? Number(linie.suma_ron) : liveRON
-        liniiApt.push({ tip: 'chirie', label: chirie.moneda === 'EUR' ? `${chirie.suma} EUR (${platit ? Number(linie.curs_eur).toFixed(4) : cursEUR.toFixed(4)})` : 'RON', suma: sumaAfisata, platit, linie })
+        const labelMoneda = chirie.moneda === 'EUR' ? `${chirie.suma} EUR (${platit ? Number(linie.curs_eur).toFixed(4) : cursEUR.toFixed(4)})` : 'RON'
+        liniiApt.push({ tip: 'chirie', label: chirie.cu_tva ? `${labelMoneda} + TVA 21%` : labelMoneda, suma: sumaAfisata, platit, linie })
         totalRON += sumaAfisata
         if (platit) totalPlatit += sumaAfisata
       }
@@ -387,7 +390,8 @@ export default function ProprietariPage() {
       // La marcarea ca platit, inghetam suma RON + cursul EUR folosit ACUM (aprox data platii)
       if (tip === 'chirie') {
         const chirie = chirii.find(c => c.apartament_id === apt.id)
-        const sumaRon = chirie.moneda === 'EUR' ? Math.round(chirie.suma * cursEUR) : chirie.suma
+        const sumaBaza = chirie.moneda === 'EUR' ? chirie.suma * cursEUR : chirie.suma
+        const sumaRon = Math.round(chirie.cu_tva ? sumaBaza * 1.21 : sumaBaza)
         payload = { proprietar_id: propId, apartament_id: apt.id, luna, an, tip, suma_ron: sumaRon, curs_eur: chirie.moneda === 'EUR' ? cursEUR : null, suma_eur: chirie.moneda === 'EUR' ? chirie.suma : null, platit: true, data_platii: new Date().toISOString().slice(0,10) }
       } else {
         const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id)

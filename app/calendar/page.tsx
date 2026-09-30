@@ -12,6 +12,7 @@ type Rez = {
   data_checkin: string; data_checkout: string
   canal: string; status_rezervare: string; nr_nopti?: number; nr_persoane?: number
   suma_incasata?: number; observatii?: string
+  suma_proprietar?: number; platit_proprietar?: boolean; suma_platita_proprietar?: number
   apartament?: any
 }
 type Apt = { id: string; nume: string; nota: string | null }
@@ -91,7 +92,7 @@ function msgConfirmareRezervare(r:any){
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const nopti = r.data_checkin && r.data_checkout ? nightsBetween(r.data_checkin, r.data_checkout) : null
   const nume = firstName(r.nume_client)
-  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}*.\n\n📅 *Check-in:* ${ci}\n📅 *Check-out:* ${co}${nopti?`\n🌙 *Nopți:* ${nopti}`:''}${r.suma_incasata?`\n💰 *Total:* ${r.suma_incasata} RON`:''}\n\nVă vom trimite detaliile de acces în ziua sosirii.\n\nEchipa AB Homes Iași`
+  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}*.\n\n📅 *Check-in:* ${ci}\n📅 *Check-out:* ${co}${nopti?`\n🌙 *Nopți:* ${nopti}`:''}${r.suma_incasata?`\n💰 *Total:* ${r.suma_incasata} RON`:''}\n\nImediat ce locația e pregătită, primiți aici datele de acces.\n\nEchipa AB Homes Iași`
 }
 function msgGataAcces(r:any, sabloane:Record<string,string>){
   const apt = r.apartament?.nume || 'apartament'
@@ -194,7 +195,7 @@ export default function CalendarPage() {
   const [lastSaved, setLastSaved] = useState<any>(null)
   const [saveError, setSaveError] = useState<string|null>(null)
   const [editRez, setEditRez] = useState<any>(null)
-  const [editForm, setEditForm] = useState({nume:'',telefon:'',checkin:'',checkout:'',pret:'',observatii:''})
+  const [editForm, setEditForm] = useState({nume:'',telefon:'',checkin:'',checkout:'',pret:'',observatii:'',platitProprietar:false,sumaPlatitaProprietar:''})
   const [editSaving, setEditSaving] = useState(false)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const [scanningCI, setScanningCI] = useState(false)
@@ -252,8 +253,11 @@ export default function CalendarPage() {
       const end   = isoDate(year, month, daysInMonth(year, month))
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
+        // select('*') pe rezervari (nu lista explicita) - platit_proprietar/suma_platita_proprietar
+        // sunt coloane noi, care pot sa nu existe inca; o lista explicita ar pica TOATA interogarea
+        // principala a calendarului daca migrarea n-a rulat, in loc sa lipseasca doar acele campuri
         supabase.from('rezervari')
-          .select('id,nume_client,telefon_client,data_checkin,data_checkout,canal,status_rezervare,nr_nopti,nr_persoane,suma_incasata,observatii,apartament:apartamente!inner(id,nume,nota,mesaj_checkin,mesaj_checkout)')
+          .select('*,apartament:apartamente!inner(id,nume,nota,mesaj_checkin,mesaj_checkout,proprietar_id,comision_tip,proprietar:proprietari(nume))')
           .or('status_rezervare.neq.anulata,status_rezervare.is.null')
           .lte('data_checkin', end).gte('data_checkout', start)
           .order('data_checkin'),
@@ -345,14 +349,24 @@ export default function CalendarPage() {
   async function saveEdit(){
     if(!editRez) return
     setEditSaving(true)
-    const { error } = await supabase.from('rezervari').update({
+    const payload:any = {
       nume_client: editForm.nume,
       telefon_client: editForm.telefon||null,
       data_checkin: editForm.checkin,
       data_checkout: editForm.checkout,
       suma_incasata: parseFloat(editForm.pret)||0,
       observatii: editForm.observatii||null,
-    }).eq('id', editRez.id)
+      platit_proprietar: editForm.platitProprietar,
+      suma_platita_proprietar: editForm.platitProprietar ? (parseFloat(editForm.sumaPlatitaProprietar)||0) : null,
+      data_plata_proprietar: editForm.platitProprietar ? new Date().toISOString().slice(0,10) : null,
+    }
+    let { error } = await supabase.from('rezervari').update(payload).eq('id', editRez.id)
+    if(error){
+      // platit_proprietar/suma_platita_proprietar/data_plata_proprietar pot sa nu existe inca
+      // (coloane noi) - reincearca fara ele, sa nu piarda restul modificarilor formularului
+      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, ...fallback } = payload
+      ;({ error } = await supabase.from('rezervari').update(fallback).eq('id', editRez.id))
+    }
     setEditSaving(false)
     if(!error){ setEditRez(null); setTooltip(null); await load() }
     else alert('Eroare: '+error.message)
@@ -1016,13 +1030,20 @@ Echipa AB Homes Iași`)}
           </div>
 
           {tooltip.rez.telefon_client&&(
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:7 }}>
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:8,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:7 }}>
               <span style={{ fontSize:12,color:'rgba(214,228,244,0.8)',fontFamily:'monospace' }}>{tooltip.rez.telefon_client}</span>
               <a href={`https://wa.me/${tooltip.rez.telefon_client.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener"
                 style={{ display:'flex',alignItems:'center',gap:5,padding:'5px 8px',borderRadius:7,background:'rgba(37,211,102,0.15)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',textDecoration:'none',fontSize:11,fontWeight:600,flexShrink:0 }}>
                 <MessageCircle size={12}/> WA
               </a>
             </div>
+          )}
+
+          {tooltip.rez.telefon_client&&(
+            <a href={waLink(tooltip.rez.telefon_client, msgConfirmareRezervare(tooltip.rez))} target="_blank" rel="noreferrer"
+              style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,width:'100%',padding:'7px',marginBottom:10,borderRadius:7,border:'1px solid rgba(167,139,250,0.3)',background:'rgba(167,139,250,0.08)',color:'#A78BFA',textDecoration:'none',fontSize:12,fontWeight:600 }}>
+              📋 Mesaj confirmare (dată, perioadă, sumă)
+            </a>
           )}
 
           {tooltip.rez.observatii&&(
@@ -1032,9 +1053,17 @@ Echipa AB Homes Iași`)}
             </div>
           )}
 
+          {tooltip.rez.apartament?.proprietar_id && (
+            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10,padding:'7px 10px',borderRadius:7,background: tooltip.rez.platit_proprietar?'rgba(74,222,128,0.06)':'rgba(248,113,113,0.06)',border:`1px solid ${tooltip.rez.platit_proprietar?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.15)'}` }}>
+              <span style={{ fontSize:11,color: tooltip.rez.platit_proprietar?'#4ADE80':'rgba(248,113,113,0.75)',fontWeight:600 }}>
+                {tooltip.rez.platit_proprietar ? `✓ Plătit proprietar${tooltip.rez.suma_platita_proprietar!=null?` (${Number(tooltip.rez.suma_platita_proprietar).toLocaleString('ro-RO')} RON)`:''}` : '✕ Neplătit proprietar'}
+              </span>
+            </div>
+          )}
+
           <button onClick={()=>{
             setEditRez(tooltip.rez)
-            setEditForm({nume:tooltip.rez.nume_client||'',telefon:tooltip.rez.telefon_client||'',checkin:tooltip.rez.data_checkin||'',checkout:tooltip.rez.data_checkout||'',pret:String(tooltip.rez.suma_incasata||''),observatii:tooltip.rez.observatii||''})
+            setEditForm({nume:tooltip.rez.nume_client||'',telefon:tooltip.rez.telefon_client||'',checkin:tooltip.rez.data_checkin||'',checkout:tooltip.rez.data_checkout||'',pret:String(tooltip.rez.suma_incasata||''),observatii:tooltip.rez.observatii||'',platitProprietar:!!tooltip.rez.platit_proprietar,sumaPlatitaProprietar:tooltip.rez.suma_platita_proprietar!=null?String(tooltip.rez.suma_platita_proprietar):(tooltip.rez.suma_proprietar!=null?String(tooltip.rez.suma_proprietar):'')})
             setTooltip(null)
           }} style={{ width:'100%',padding:'7px',borderRadius:7,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer' }}>
             ✏️ Editează rezervarea
@@ -1064,6 +1093,30 @@ Echipa AB Homes Iași`)}
                 placeholder="ex. plată cash la sosire, alocă parcare..."
                 style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
             </div>
+
+            {/* Plata catre proprietar, per rezervare - cerut direct: "la cele cu comision, sa putem
+                sa bifam daca s-a platit si cat s-a platit catre proprietar, in fiecare rezervare in
+                parte" - inainte era doar un workaround manual scris in Observatii */}
+            {editRez?.apartament?.proprietar_id && (
+              <div style={{ marginBottom:14, padding:10, borderRadius:9, background:'rgba(74,222,128,0.05)', border:'1px solid rgba(74,222,128,0.15)' }}>
+                <div style={{ fontSize:10,color:'rgba(74,222,128,0.6)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em' }}>
+                  Plată proprietar {editRez.apartament.proprietar?.nume?`(${editRez.apartament.proprietar.nume})`:''}
+                </div>
+                <label style={{ display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,color:'rgba(214,228,244,0.85)',marginBottom:editForm.platitProprietar?8:0 }}>
+                  <input type="checkbox" checked={editForm.platitProprietar}
+                    onChange={e=>setEditForm(f=>({...f,platitProprietar:e.target.checked,sumaPlatitaProprietar:f.sumaPlatitaProprietar||String(editRez?.suma_proprietar||'')}))}/>
+                  Plătit către proprietar
+                </label>
+                {editForm.platitProprietar && (
+                  <input type="number" value={editForm.sumaPlatitaProprietar} placeholder="Sumă plătită (RON)"
+                    onChange={e=>setEditForm(f=>({...f,sumaPlatitaProprietar:e.target.value}))}
+                    style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(74,222,128,0.25)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'7px 10px',outline:'none',boxSizing:'border-box' }}/>
+                )}
+                {editRez?.suma_proprietar!=null && (
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.35)',marginTop:6 }}>Calculat: {Number(editRez.suma_proprietar).toLocaleString('ro-RO')} RON</div>
+                )}
+              </div>
+            )}
 
             {editForm.telefon && (()=>{
               const liveR = {...editRez, nume_client:editForm.nume, telefon_client:editForm.telefon, data_checkin:editForm.checkin, data_checkout:editForm.checkout}
@@ -1126,8 +1179,10 @@ Echipa AB Homes Iași`)}
         const items=Array.from(calcSel.values())
         const total=Math.round(items.reduce((s,r)=>s+proRataMonth(r,year,month),0))
         const totalNet=Math.round(items.reduce((s,r)=>s+netAprox(proRataMonth(r,year,month),r.canal),0))
+        // Repozitionat sus-dreapta (nu jos-dreapta) - raportat direct ca se suprapunea peste rezervari
+        // in grid si nu se mai putea lucra; sus, sub clopotel, e mult mai putin folosit activ
         return(
-          <div style={{ position:'fixed',bottom:24,right:24,zIndex:500,background:'rgba(6,14,26,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(74,222,128,0.45)',borderRadius:14,padding:'14px 16px',minWidth:280,maxWidth:340,boxShadow:'0 12px 40px rgba(0,0,0,0.7)' }}>
+          <div style={{ position:'fixed',top:64,right:20,zIndex:500,background:'rgba(6,14,26,0.97)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(74,222,128,0.45)',borderRadius:14,padding:'14px 16px',minWidth:280,maxWidth:340,maxHeight:'calc(100vh - 100px)',overflowY:'auto' as const,boxShadow:'0 12px 40px rgba(0,0,0,0.7)' }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
               <span style={{ fontSize:11,fontWeight:700,color:'rgba(74,222,128,0.7)',textTransform:'uppercase',letterSpacing:'.1em' }}>🧮 Calculator</span>
               <button onClick={()=>setCalcSel(new Map())} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.35)',fontSize:18,lineHeight:1,padding:'0 2px' }}>✕</button>
