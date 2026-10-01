@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase as sb } from '@/lib/supabase'
+import { idsDinObs, citesteListaSetari, adaugaDeVerificat, CHEIE_SARITE, type DeVerificat } from '@/lib/syncFivestar'
 
 const T1  = '3cvbat7zgH54347Artesrtyrt466yj57se4lkg4'
 const T   = 'Y5paEuVpBBop8pHG1qLVF6ymqCdPkzlncJGK0L50'
@@ -46,11 +47,6 @@ function parseCanal(s: string): string {
   if (l.includes('airbnb')) return 'airbnb'
   if (l.includes('booking')) return 'booking'
   return 'direct'
-}
-
-// ID-urile 5starDesk din observatii ("L88 | 1386750 | Rezervare noua") - aceeasi regula ca in lib/syncFivestar.ts
-function idsDinObs(obs: any): string[] {
-  return String(obs||'').split('|').map(s => s.trim()).filter(s => /^\d{5,9}$/.test(s))
 }
 
 function fmtForApi(isoDate: string): string {
@@ -125,6 +121,8 @@ export async function GET(req: NextRequest) {
 
     logs.push(`5SD: ${rezervariList.length} rezervari (${checkinParam} → ${checkoutParam})`)
 
+    const sarite = new Set<string>((await citesteListaSetari(CHEIE_SARITE)).map(String))
+    const deVerificat: DeVerificat[] = []
     for (const b of rezervariList) {
       try {
         const checkin  = parse5star(b.prima_zi || b.checkin || '')
@@ -142,6 +140,7 @@ export async function GET(req: NextRequest) {
         const idValid = idExtern && idExtern.length > 2
 
         if (!checkin || !checkout) { skipped++; continue }
+        if (idExtern && sarite.has(idExtern)) { skipped++; continue }  // marcata "sari" in Sync -> De verificat
 
         const aptId = findAptId(b, aptByNotaNorm)
         if (!aptId) { skipped++; logs.push(`⚠ ${numeClient} (${checkin}): apt negasit`); continue }
@@ -161,11 +160,13 @@ export async function GET(req: NextRequest) {
           ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('apartament_id', aptId).eq('data_checkin', checkin).eq('data_checkout', checkout).limit(10)
           : { data: [] }
         const byApt = (candApt||[]).filter(liber).slice(0,1)
+        const blocate: any[] = (candApt||[]).filter((r:any) => !liber(r))
 
         const { data: candName } = (!byId.length && !byApt.length)
           ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(10)
           : { data: [] }
         const libereName = (candName||[]).filter(liber)
+        for (const r of (candName||[])) if (!liber(r) && !blocate.some(x => x.id === r.id)) blocate.push(r)
         const peAptIndicat = libereName.find((r:any) => r.apartament_id === aptId)
         const byName = peAptIndicat ? [peAptIndicat] : libereName.slice(0,1)
 
@@ -196,6 +197,13 @@ export async function GET(req: NextRequest) {
           } else skipped++
         } else if (statusNou === 'anulata') {
           skipped++
+        } else if (blocate.length) {
+          // Ambigua -> decizie manuala in Sync -> "De verificat", nu import automat
+          const nota = (id: string) => (apts||[]).find((a:any)=>a.id===id)?.nota || '?'
+          const motiv = blocate.map((r:any) => `${r.nume_client} · ${nota(r.apartament_id)} · ${r.data_checkin}→${r.data_checkout} · ID ${idsDinObs(r.observatii).join(',')}${r.status_rezervare==='anulata'?' (anulată)':''}`).join(' | ')
+          deVerificat.push({ id5sd: idExtern, nume: numeClient, checkin, checkout, aptId, cod: nota(aptId), canal, telefon, nrPersoane,
+            pret: totalPret, statusNou, obs: [b.tip_camera||b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | '), motiv, la: new Date().toISOString() })
+          skipped++; logs.push(`⏸ ${numeClient} (${checkin}) — de verificat manual`)
         } else {
           const { error } = await sb.from('rezervari').insert({
             apartament_id: aptId, canal, nume_client: numeClient,
@@ -212,6 +220,7 @@ export async function GET(req: NextRequest) {
       } catch (e: any) { errors++; logs.push(`Err row: ${e.message}`) }
     }
 
+    await adaugaDeVerificat(deVerificat)
     const result = { ok: true, total: rezervariList.length, inserted, updated, skipped, errors, duration_ms: Date.now()-startTime, logs: logs.slice(-20) }
     await sb.from('setari').upsert({ cheie: 'last_sync', valoare: JSON.stringify({ ...result, time: new Date().toISOString() }) }, { onConflict: 'cheie' })
     return NextResponse.json(result)

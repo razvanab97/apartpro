@@ -5,11 +5,147 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
 import { TabRezervari, TabClienti } from '../import/page'
-import { syncFivestar, fmt5star, fetchOneBookingById, type SyncResult } from '@/lib/syncFivestar'
+import { syncFivestar, fmt5star, fetchOneBookingById, idsDinObs, citesteListaSetari, scrieListaSetari, CHEIE_DE_VERIFICAT, CHEIE_SARITE, type SyncResult, type DeVerificat } from '@/lib/syncFivestar'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+// Rezervari 5starDesk ambigue (acelasi client pe mai multe camere / slot cu o rezervare anulata),
+// lasate de sincronizare pentru decizie manuala - cerut direct: "da-mi manual in aplicatie, sa
+// editez eu, sa marchez daca bifam sau sarim". Bifam = se importa (sau, daca era deja importata,
+// se pastreaza cu modificarile facute aici); sarim = nu se mai importa niciodata automat.
+function DeVerificatPanel({ apts, refreshKey, show, panel }: { apts:{id:string;nota:string;nume:string}[]; refreshKey:number; show:(t:any,m:string)=>void; panel:React.CSSProperties }) {
+  const [lista, setLista] = useState<DeVerificat[]>([])
+  const [edit, setEdit] = useState<Record<string, Partial<DeVerificat>>>({})
+  const [busy, setBusy] = useState<string|null>(null)
+  const [confirm, setConfirm] = useState<string|null>(null)
+  const [loading, setLoading] = useState(false)
+
+  async function load() {
+    setLoading(true)
+    try { setLista(await citesteListaSetari(CHEIE_DE_VERIFICAT)) } catch {}
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [refreshKey])
+
+  const val = (x: DeVerificat): DeVerificat => ({ ...x, ...(edit[x.id5sd]||{}) })
+  const setCamp = (id: string, k: keyof DeVerificat, v: any) => { setEdit(e => ({ ...e, [id]: { ...(e[id]||{}), [k]: v } })); setConfirm(null) }
+
+  async function scoate(id5sd: string) {
+    const l: DeVerificat[] = (await citesteListaSetari(CHEIE_DE_VERIFICAT)).filter((x:DeVerificat) => x.id5sd !== id5sd)
+    await scrieListaSetari(CHEIE_DE_VERIFICAT, l)
+    setLista(l)
+  }
+
+  async function bifeaza(x0: DeVerificat) {
+    const x = val(x0)
+    if (!x.aptId) { show('error', 'Alege apartamentul'); return }
+    if (!x.checkin || !x.checkout || x.checkout <= x.checkin) { show('error', 'Datele nu sunt valide'); return }
+    setBusy(x.id5sd)
+    try {
+      // Suprapunere cu o rezervare activa pe apartamentul ales -> cere a doua apasare
+      let q = supabase.from('rezervari').select('id,nume_client').eq('apartament_id', x.aptId).neq('status_rezervare','anulata')
+        .lt('data_checkin', x.checkout).gt('data_checkout', x.checkin)
+      if (x.rid) q = q.neq('id', x.rid)
+      const { data: ov, error: ovErr } = await q
+      if (ovErr) { show('error', 'Nu am putut verifica suprapunerile — încearcă din nou'); return }
+      if (ov && ov.length && confirm !== x.id5sd+':ov') {
+        setConfirm(x.id5sd+':ov')
+        show('error', `Se suprapune cu ${ov.map((r:any)=>r.nume_client).join(', ')} pe același apartament — apasă din nou ca să confirmi`)
+        return
+      }
+      const campuri = { apartament_id: x.aptId, nume_client: x.nume, data_checkin: x.checkin, data_checkout: x.checkout,
+        suma_incasata: Number(x.pret)||0, valoare_bruta: Number(x.pret)||0, canal: x.canal }
+      if (x.rid) {
+        const { error } = await supabase.from('rezervari').update(campuri).eq('id', x.rid)
+        if (error) { show('error', error.message); return }
+      } else {
+        const { data: exista } = await supabase.from('rezervari').select('id,observatii').ilike('observatii', `%${x.id5sd}%`).limit(10)
+        if (!(exista||[]).some((r:any) => idsDinObs(r.observatii).includes(x.id5sd))) {
+          const { error } = await supabase.from('rezervari').insert({ ...campuri, moneda:'RON', telefon_client: x.telefon, nr_persoane: x.nrPersoane,
+            status_rezervare: x.statusNou, status_plata: (Number(x.pret)||0) > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat', observatii: x.obs || null })
+          if (error) { show('error', error.message); return }
+        }
+      }
+      await scoate(x.id5sd)
+      show('success', `${x.nume} — ${x.rid ? 'păstrată' : 'importată'}`)
+    } finally { setBusy(null) }
+  }
+
+  async function sari(x: DeVerificat) {
+    if (confirm !== x.id5sd+':sari') { setConfirm(x.id5sd+':sari'); return }
+    setBusy(x.id5sd)
+    try {
+      const sarite = (await citesteListaSetari(CHEIE_SARITE)).map(String)
+      if (!sarite.includes(x.id5sd)) await scrieListaSetari(CHEIE_SARITE, [...sarite, x.id5sd])
+      // Deja importata -> anulata (nu stearsa: reversibil, iar sincronizarea n-o mai atinge fiind in "sarite")
+      if (x.rid) await supabase.from('rezervari').update({ status_rezervare: 'anulata' }).eq('id', x.rid)
+      await scoate(x.id5sd)
+      show('success', `${x.nume} — sărită`)
+    } finally { setBusy(null); setConfirm(null) }
+  }
+
+  if (!loading && !lista.length) return null
+  const inp: React.CSSProperties = { width:'100%', background:'rgba(20,38,65,0.8)', border:'1px solid rgba(100,160,255,0.2)', borderRadius:7, color:'rgba(214,228,244,0.9)', fontSize:12, padding:'6px 8px', outline:'none' }
+  const lbl: React.CSSProperties = { fontSize:10, color:'rgba(159,215,255,0.45)', marginBottom:3, display:'block' }
+  return (
+    <div style={{ ...panel, borderColor:'rgba(252,211,77,0.25)' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:'#FCD34D' }}>⏸ Rezervări de verificat {lista.length>0?`(${lista.length})`:''}</div>
+        <button onClick={load} disabled={loading}
+          style={{ padding:'4px 10px', borderRadius:6, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.5)', fontSize:11, cursor:'pointer' }}>
+          {loading?'Se încarcă...':'↻ Reîmprospătează'}
+        </button>
+      </div>
+      <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
+        Rezervări din 5starDesk care seamănă cu altele deja existente (același client pe mai multe camere, sau pe locul unei rezervări anulate). Nu se importă automat. Corectează ce e nevoie, apoi bifează sau sari.
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {lista.map(x0 => {
+          const x = val(x0)
+          const b = busy === x.id5sd
+          return (
+            <div key={x.id5sd} style={{ padding:'10px 12px', borderRadius:8, background:'rgba(252,211,77,0.05)', border:'1px solid rgba(252,211,77,0.15)' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:4 }}>
+                <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{x0.nume}</span>
+                <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)', fontFamily:'monospace' }}>ID {x.id5sd} · {x0.cod}</span>
+                {x.rid && <span style={{ fontSize:10, padding:'2px 7px', borderRadius:5, background:'rgba(77,163,255,0.12)', color:'#7BC8FF' }}>importată deja — confirmă</span>}
+              </div>
+              <div style={{ fontSize:11, color:'rgba(252,211,77,0.75)', marginBottom:10 }}>Seamănă cu: {x.motiv}</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:8, marginBottom:10 }}>
+                <div><label style={lbl}>Apartament</label>
+                  <select value={x.aptId||''} onChange={e=>setCamp(x.id5sd,'aptId',e.target.value||null)} style={inp}>
+                    <option value="">— alege —</option>
+                    {x.aptId && !apts.some(a=>a.id===x.aptId) && <option value={x.aptId}>{x0.cod}</option>}
+                    {apts.map(a=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
+                  </select></div>
+                <div><label style={lbl}>Nume client</label><input value={x.nume} onChange={e=>setCamp(x.id5sd,'nume',e.target.value)} style={inp}/></div>
+                <div><label style={lbl}>Check-in</label><input type="date" value={x.checkin} onChange={e=>setCamp(x.id5sd,'checkin',e.target.value)} style={inp}/></div>
+                <div><label style={lbl}>Check-out</label><input type="date" value={x.checkout} onChange={e=>setCamp(x.id5sd,'checkout',e.target.value)} style={inp}/></div>
+                <div><label style={lbl}>Sumă (RON)</label><input type="number" value={String(x.pret ?? '')} onChange={e=>setCamp(x.id5sd,'pret',e.target.value)} style={inp}/></div>
+                <div><label style={lbl}>Canal</label>
+                  <select value={x.canal} onChange={e=>setCamp(x.id5sd,'canal',e.target.value)} style={inp}>
+                    {['booking','airbnb','direct'].map(c=><option key={c} value={c}>{c}</option>)}
+                  </select></div>
+              </div>
+              <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                <button onClick={()=>sari(x)} disabled={b}
+                  style={{ padding:'6px 12px', borderRadius:7, border:'1px solid rgba(248,113,113,0.3)', background: confirm===x.id5sd+':sari'?'#F87171':'transparent', color: confirm===x.id5sd+':sari'?'#fff':'rgba(248,113,113,0.85)', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                  {confirm===x.id5sd+':sari' ? (x.rid ? 'Sigur? O anulez' : 'Sigur, sari') : 'Sari'}
+                </button>
+                <button onClick={()=>bifeaza(x0)} disabled={b}
+                  style={{ padding:'6px 14px', borderRadius:7, border:'none', background:'#4ADE80', color:'#062012', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                  {b ? 'Se salvează...' : confirm===x.id5sd+':ov' ? '✓ Confirmă oricum' : x.rid ? '✓ Păstrează' : '✓ Importă'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function ImportContent() {
@@ -65,6 +201,7 @@ export default function SyncPage() {
   const [apts, setApts] = useState<{id:string;nota:string;nume:string}[]>([])
   const [actionId, setActionId] = useState<string|null>(null)
   const [confirmMutaId, setConfirmMutaId] = useState<string|null>(null)
+  const [refreshDeVerificat, setRefreshDeVerificat] = useState(0)
 
   async function loadSemnalate() {
     setLoadingSemnalate(true)
@@ -178,6 +315,7 @@ export default function SyncPage() {
       try { localStorage.setItem('sync_last', Date.now().toString()) } catch {}
       if (res.inserted > 0) show('success', `${res.inserted} rezervări importate!`)
       loadSemnalate()
+      setRefreshDeVerificat(k => k+1)
     } catch(e:any) {
       show('error', 'Eroare: ' + e.message)
     }
@@ -191,6 +329,7 @@ export default function SyncPage() {
     try {
       const res = await fetchOneBookingById(idCautat)
       setRezultatIdCautat(res)
+      setRefreshDeVerificat(k => k+1)
       if (res.inserted > 0) { show('success', 'Rezervare adusă din 5starDesk!'); loadSemnalate() }
       else if (res.updated > 0 || res.skipped > 0 && res.errors === 0) show('success', 'Rezervare găsită și actualizată')
       else if (res.errors > 0) show('error', res.logs[res.logs.length-1]?.msg || 'Eroare la căutare')
@@ -344,6 +483,8 @@ export default function SyncPage() {
             </div>
           )}
         </div>
+
+        <DeVerificatPanel apts={apts} refreshKey={refreshDeVerificat} show={show} panel={panel}/>
 
         {/* Camere semnalate — discrepante intre codul din 5starDesk si apartamentul unde e stocata rezervarea */}
         {(loadingSemnalate || semnalate.length > 0) && (

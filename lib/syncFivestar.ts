@@ -7,6 +7,35 @@ export type SyncResult = {
   skipped: number
   errors: number
   logs: { type: 'ok'|'skip'|'err'|'info'; msg: string }[]
+  deVerificat?: DeVerificat[]
+}
+
+// Rezervari 5starDesk ambigue, lasate pentru decizie manuala in Sync -> "De verificat" (cerut direct:
+// "da-mi manual in aplicatie, sa editez eu, sa marchez daca bifam sau sarim"). Ambiguu = exista deja
+// la noi un rand pe acelasi apartament+date sau acelasi nume+check-in, dar legat de ALT ID 5starDesk
+// (acelasi client pe mai multe camere, rezervare noua pe slotul uneia anulate). rid = rezervarea e deja
+// importata (inainte de lista asta) si asteapta doar confirmare.
+export type DeVerificat = {
+  id5sd: string; nume: string; checkin: string; checkout: string; aptId: string|null; cod: string
+  canal: string; telefon: string|null; nrPersoane: number|null; pret: number; statusNou: string
+  obs: string; motiv: string; rid?: string; la: string
+}
+// Liste JSON in tabela setari (cheie/valoare) - fara migrare noua
+export const CHEIE_DE_VERIFICAT = 'sync_de_verificat'
+export const CHEIE_SARITE = 'sync_sarite'
+export async function citesteListaSetari(cheie: string): Promise<any[]> {
+  const { data } = await supabase.from('setari').select('valoare').eq('cheie', cheie).maybeSingle()
+  try { const v = JSON.parse(data?.valoare || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
+}
+export async function scrieListaSetari(cheie: string, lista: any[]) {
+  await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify(lista) }, { onConflict: 'cheie' })
+}
+export async function adaugaDeVerificat(items: DeVerificat[]) {
+  if (!items.length) return
+  const lista: DeVerificat[] = await citesteListaSetari(CHEIE_DE_VERIFICAT)
+  const ids = new Set(lista.map(x => x.id5sd))
+  const noi = items.filter(x => !ids.has(x.id5sd))
+  if (noi.length) await scrieListaSetari(CHEIE_DE_VERIFICAT, [...lista, ...noi])
 }
 
 export function fmt5star(iso: string): string {
@@ -101,7 +130,7 @@ export function matchAptFromBooking(b: any, aptByNota: Record<string,string>): {
 
 // ID-urile 5starDesk dintr-un camp observatii ("L88 | 1386750 | Rezervare noua") - token exact,
 // nu substring: ilike '%138674%' prindea si 1386749.
-function idsDinObs(obs: any): string[] {
+export function idsDinObs(obs: any): string[] {
   return String(obs||'').split('|').map(s => s.trim()).filter(s => /^\d{5,9}$/.test(s))
 }
 
@@ -109,7 +138,8 @@ function idsDinObs(obs: any): string[] {
 // extrasa separat din syncFivestar ca sa poata fi refolosita si de fetchOneBookingById (cautare
 // manuala dupa ID, cerut direct: "sa luam numar de rezervare in 5 stars, care e pierdut si sistemul
 // sa caute si sa aduca de acolo o rezervare"), fara sa duplice toata logica de potrivire/actualizare.
-async function processOneBooking(b: any, aptByNota: Record<string,string>, apts: any[], res: SyncResult): Promise<void> {
+type Ctx = { sarite: Set<string>; force?: boolean }
+async function processOneBooking(b: any, aptByNota: Record<string,string>, apts: any[], res: SyncResult, ctx: Ctx): Promise<void> {
   try {
     const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
     const checkoutRaw = b.ultima_zi || b.checkout || b.check_out || b.data_checkout || ''
@@ -132,6 +162,8 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
     const { aptId, codIncredere, codFallback } = matchAptFromBooking(b, aptByNota)
 
     if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); return }
+    // Marcata "sari" in Sync -> De verificat: nu se mai importa/actualizeaza niciodata automat
+    if (!ctx.force && idExtern && ctx.sarite.has(idExtern)) { res.skipped++; res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — sărită manual` }); return }
 
     // "Oaspete decazat" (checked-out) trebuie sa devina 'finalizata', nu sa ramana 'confirmata'
     // la nesfarsit — exact aceeasi conventie deja folosita la Import Excel (parseStatus, app/import/page.tsx),
@@ -178,12 +210,14 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
         .limit(10)
       : { data: [] }
     const existingByApt = (candByApt||[]).filter(liber).slice(0,1)
+    const blocate: any[] = (candByApt||[]).filter((r:any) => !liber(r))
     const { data: candByName } = (!existingById.length && !existingByApt.length)
       ? await supabase.from('rezervari')
         .select('*').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(10)
       : { data: [] }
     // Intre randurile libere cu acelasi nume, cel de pe apartamentul indicat are prioritate
     const libereByName = (candByName||[]).filter(liber)
+    for (const r of (candByName||[])) if (!liber(r) && !blocate.some(x => x.id === r.id)) blocate.push(r)
     const peAptIndicat = libereByName.find((r:any) => r.apartament_id === aptId)
     const existingByName = peAptIndicat ? [peAptIndicat] : libereByName.slice(0,1)
 
@@ -267,6 +301,17 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
       // opreste deja bucla), dar TypeScript nu poate urmari invariantul peste tot fluxul de mai sus.
       res.skipped++
       res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit` })
+    } else if (!ctx.force && blocate.length) {
+      // Ambigua -> decizie manuala, nu import automat
+      const nota = (id: string) => (apts||[]).find((a:any)=>a.id===id)?.nota || '?'
+      const motiv = blocate.map((r:any) => `${r.nume_client} · ${nota(r.apartament_id)} · ${r.data_checkin}→${r.data_checkout} · ID ${idsDinObs(r.observatii).join(',')}${r.status_rezervare==='anulata'?' (anulată)':''}`).join(' | ')
+      ;(res.deVerificat ||= []).push({
+        id5sd: idExtern, nume: numeClient, checkin, checkout, aptId, cod: nota(aptId), canal, telefon, nrPersoane,
+        pret: totalPret, statusNou, obs: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | '),
+        motiv, la: new Date().toISOString(),
+      })
+      res.skipped++
+      res.logs.push({ type:'info', msg: `⏸ ${numeClient} (${checkin}, ${nota(aptId)}) — seamănă cu altă rezervare (${motiv}); de verificat manual mai jos, în „De verificat”` })
     } else {
       const { error } = await supabase.from('rezervari').insert({
         apartament_id: aptId,
@@ -342,9 +387,11 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
     res.total = rezervariList.length
     res.logs.push({ type:'info', msg: `${rezervariList.length} rezervari primite de la 5starDesk` })
 
+    const sarite = new Set<string>((await citesteListaSetari(CHEIE_SARITE)).map(String))
     for (const b of rezervariList) {
-      await processOneBooking(b, aptByNota, apts||[], res)
+      await processOneBooking(b, aptByNota, apts||[], res, { sarite })
     }
+    await adaugaDeVerificat(res.deVerificat || [])
   } catch(e:any) {
     res.errors++; res.logs.push({ type:'err', msg: 'Eroare conexiune: ' + e.message })
   }
@@ -406,7 +453,13 @@ export async function fetchOneBookingById(id: string): Promise<SyncResult> {
     }
 
     res.total = 1
-    await processOneBooking(b, aptByNota, apts||[], res)
+    // Cautare explicita dupa ID = decizie manuala deja luata -> importa direct, chiar daca e ambigua
+    // sau fusese marcata "sari"; o scoate si din listele De verificat / sarite.
+    await processOneBooking(b, aptByNota, apts||[], res, { sarite: new Set(), force: true })
+    const sarite = (await citesteListaSetari(CHEIE_SARITE)).map(String)
+    if (sarite.includes(idTrim)) await scrieListaSetari(CHEIE_SARITE, sarite.filter(x => x !== idTrim))
+    const coada: DeVerificat[] = await citesteListaSetari(CHEIE_DE_VERIFICAT)
+    if (coada.some(x => x.id5sd === idTrim)) await scrieListaSetari(CHEIE_DE_VERIFICAT, coada.filter(x => x.id5sd !== idTrim))
   } catch(e:any) {
     res.errors++; res.logs.push({ type:'err', msg: 'Eroare conexiune: ' + e.message })
   }
