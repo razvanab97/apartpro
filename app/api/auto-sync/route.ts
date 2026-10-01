@@ -48,6 +48,11 @@ function parseCanal(s: string): string {
   return 'direct'
 }
 
+// ID-urile 5starDesk din observatii ("L88 | 1386750 | Rezervare noua") - aceeasi regula ca in lib/syncFivestar.ts
+function idsDinObs(obs: any): string[] {
+  return String(obs||'').split('|').map(s => s.trim()).filter(s => /^\d{5,9}$/.test(s))
+}
+
 function fmtForApi(isoDate: string): string {
   // Formeaza "1 Jul 2026" din "2026-07-01" fara probleme de timezone
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -130,7 +135,10 @@ export async function GET(req: NextRequest) {
         const telefon = b.telefon ? String(b.telefon) : null
         const nrPersoane = (Number(b.adulti) || 0) + (Number(b.copii) || 0) || null
         const totalPret = (parseFloat(b.pret_camera||'0')||0) + (parseFloat(b.pret_extra||'0')||0)
-        const statusNou = (b.status_rezervare||'').toLowerCase().includes('anulat') ? 'anulata' : 'confirmata'
+        // "Oaspete cazat/decazat" -> 'finalizata', ca in lib/syncFivestar.ts (altfel cron-ul de noapte le
+        // readucea pe 'confirmata' si sincronizarea manuala le punea inapoi - ping-pong zilnic)
+        const statusRaw = (b.status_rezervare||'').toLowerCase()
+        const statusNou = statusRaw.includes('anulat') ? 'anulata' : (statusRaw.includes('cazat') ? 'finalizata' : 'confirmata')
         const idValid = idExtern && idExtern.length > 2
 
         if (!checkin || !checkout) { skipped++; continue }
@@ -138,25 +146,34 @@ export async function GET(req: NextRequest) {
         const aptId = findAptId(b, aptByNotaNorm)
         if (!aptId) { skipped++; logs.push(`⚠ ${numeClient} (${checkin}): apt negasit`); continue }
 
-        // Cauta existent dupa ID in observatii
-        const { data: byId } = idValid
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').ilike('observatii', `%${idExtern}%`).limit(1)
+        // Cauta existent dupa ID in observatii (token exact, nu substring)
+        const { data: candId } = idValid
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').ilike('observatii', `%${idExtern}%`).limit(10)
           : { data: [] }
+        const byId = (candId||[]).filter((r:any) => idsDinObs(r.observatii).includes(idExtern)).slice(0,1)
+
+        // Un rand legat deja de ALT ID 5starDesk nu e aceeasi rezervare (acelasi client pe mai multe
+        // camere in aceleasi date, sau rezervare noua pe slotul uneia anulate) - vezi lib/syncFivestar.ts
+        const liber = (r:any) => { const ids = idsDinObs(r.observatii); return !idValid || !ids.length || ids.includes(idExtern) }
 
         // Cauta dupa apartament + date
-        const { data: byApt } = !byId?.length
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('apartament_id', aptId).eq('data_checkin', checkin).eq('data_checkout', checkout).limit(1)
+        const { data: candApt } = !byId.length
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('apartament_id', aptId).eq('data_checkin', checkin).eq('data_checkout', checkout).limit(10)
           : { data: [] }
+        const byApt = (candApt||[]).filter(liber).slice(0,1)
 
-        const { data: byName } = (!byId?.length && !byApt?.length)
-          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+        const { data: candName } = (!byId.length && !byApt.length)
+          ? await sb.from('rezervari').select('id,nume_client,canal,observatii,status_rezervare,apartament_id,data_checkin,data_checkout,suma_incasata,telefon_client,nr_persoane').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(10)
           : { data: [] }
+        const libereName = (candName||[]).filter(liber)
+        const peAptIndicat = libereName.find((r:any) => r.apartament_id === aptId)
+        const byName = peAptIndicat ? [peAptIndicat] : libereName.slice(0,1)
 
-        const existing = byId?.length ? byId : byApt?.length ? byApt : byName
+        const existing = byId.length ? byId : byApt.length ? byApt : byName
 
         if (existing?.length) {
           const e = existing[0]
-          const foundById = (byId?.length ?? 0) > 0
+          const foundById = byId.length > 0
           const upd: any = {}
           if (!foundById) {
             if (numeClient && e.nume_client !== numeClient) upd.nume_client = numeClient

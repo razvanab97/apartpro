@@ -99,6 +99,12 @@ export function matchAptFromBooking(b: any, aptByNota: Record<string,string>): {
   return { aptId, codIncredere, codFallback }
 }
 
+// ID-urile 5starDesk dintr-un camp observatii ("L88 | 1386750 | Rezervare noua") - token exact,
+// nu substring: ilike '%138674%' prindea si 1386749.
+function idsDinObs(obs: any): string[] {
+  return String(obs||'').split('|').map(s => s.trim()).filter(s => /^\d{5,9}$/.test(s))
+}
+
 // Procesarea unei singure rezervari 5starDesk (potrivire apartament, cautare duplicat, insert/update) -
 // extrasa separat din syncFivestar ca sa poata fi refolosita si de fetchOneBookingById (cautare
 // manuala dupa ID, cerut direct: "sa luam numar de rezervare in 5 stars, care e pierdut si sistemul
@@ -144,34 +150,48 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
     // select('*') peste tot mai jos, nu o lista explicita — camera_semnalata/camera_semnalata_la
     // sunt coloane noi, care pot sa nu existe inca (pana la migrare); o lista explicita ar rupe
     // interogarea intreaga cu eroare 42703, la fel ca la disponibil_booking mai demult.
-    const { data: existingById } = idExternValid ? await supabase.from('rezervari')
-      .select('*').ilike('observatii', `%${idExtern}%`).limit(1)
+    const { data: candById } = idExternValid ? await supabase.from('rezervari')
+      .select('*').ilike('observatii', `%${idExtern}%`).limit(10)
       : { data: [] }
+    const existingById = (candById||[]).filter((r:any) => idsDinObs(r.observatii).includes(idExtern)).slice(0,1)
 
-    if (!aptId && !existingById?.length) {
+    // Un rand deja legat de ALT ID 5starDesk nu e "aceeasi rezervare", chiar daca numele/datele/camera
+    // coincid - bug raportat direct: acelasi client (firma) cu 2-3 camere pe aceleasi date (THINSLICES
+    // L99+L88, STANCIU L83+L88+L99) -> a doua camera se lipea prin nume+checkin de randul primei camere,
+    // ii suprascria ID-ul si nu se mai importa niciodata. La fel o rezervare noua, reala, pe un slot cu o
+    // rezervare ANULATA veche (alt client, acelasi apartament+date) se lipea de cea anulata, iar la
+    // urmatoarea trecere cea anulata o "lua inapoi" - rezervarea reala ramanea invizibila in calendar.
+    const liber = (r:any) => { const ids = idsDinObs(r.observatii); return !idExternValid || !ids.length || ids.includes(idExtern) }
+
+    if (!aptId && !existingById.length) {
       res.skipped++
       res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${[...codIncredere,...codFallback].join(',')}` })
       return
     }
 
-    const { data: existingByApt } = (!existingById?.length && aptId && checkin && checkout)
+    const { data: candByApt } = (!existingById.length && aptId && checkin && checkout)
       ? await supabase.from('rezervari')
         .select('*')
         .eq('apartament_id', aptId)
         .eq('data_checkin', checkin)
         .eq('data_checkout', checkout)
-        .limit(1)
+        .limit(10)
       : { data: [] }
-    const { data: existingByName } = (!existingById?.length && !existingByApt?.length)
+    const existingByApt = (candByApt||[]).filter(liber).slice(0,1)
+    const { data: candByName } = (!existingById.length && !existingByApt.length)
       ? await supabase.from('rezervari')
-        .select('*').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(1)
+        .select('*').eq('nume_client', numeClient).eq('data_checkin', checkin).limit(10)
       : { data: [] }
+    // Intre randurile libere cu acelasi nume, cel de pe apartamentul indicat are prioritate
+    const libereByName = (candByName||[]).filter(liber)
+    const peAptIndicat = libereByName.find((r:any) => r.apartament_id === aptId)
+    const existingByName = peAptIndicat ? [peAptIndicat] : libereByName.slice(0,1)
 
-    const existing = existingById?.length ? existingById : (existingByApt?.length ? existingByApt : existingByName)
+    const existing = existingById.length ? existingById : (existingByApt.length ? existingByApt : existingByName)
 
     if (existing && existing.length > 0) {
       const updates: any = {}
-      const foundById = (existingById?.length ?? 0) > 0
+      const foundById = existingById.length > 0
       // Daca gasim prin date (nu ID) si rezervarea curenta e anulata → NU suprascriem, DECAT
       // daca si checkout-ul coincide exact (nume + checkin + checkout, nu doar nume + checkin) -
       // semnal destul de puternic ca e aceeasi rezervare, nu o coincidenta. Gasit cu un caz real:
