@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, normalizeWaPhone, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
@@ -46,6 +46,16 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 
+const CASA_REPORT_START = '2026-10'
+const LUNI_RO = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
+// 'yyyy-mm' +/- n luni
+function lunaVecina(luna: string, n: number): string {
+  const [a, l] = luna.split('-').map(Number)
+  const d = new Date(a, l - 1 + n, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+const lunaText = (luna: string) => { const [a, l] = luna.split('-').map(Number); return `${LUNI_RO[l - 1]} ${a}` }
+
 export default function CuratenePage() {
   const todayIso = new Date().toISOString().split('T')[0]
   const [selectedDate, setSelectedDate] = useState(todayIso)
@@ -65,6 +75,12 @@ export default function CuratenePage() {
   const [rapoarteData, setRapoarteData] = useState<any[]>([])
   const [rapoarteLuna, setRapoarteLuna] = useState(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })
   const [casaLuna, setCasaLuna] = useState<any[]>([])
+  // Surplus (sold pozitiv) reportat din lunile precedente - cerut direct: "daca avem surplus de bani pe
+  // luna precedenta, orice e cu plus, sa se mute ca extra in luna aceasta"; doar de la CASA_REPORT_START
+  // incolo ("nu mai e cazul acum, zic de lunile viitoare"). Calculat din staff_casa, nu salvat separat,
+  // ca o corectura intr-o luna veche sa se propage singura in lunile de dupa.
+  const [casaReport, setCasaReport] = useState(0)
+  const casaLunaCeruta = useRef('')  // la clickuri rapide pe ‹ › nu lasa un raspuns vechi sa-l suprascrie pe cel nou
   const [costPerCuratenie, setCostPerCuratenie] = useState<number|''>(150)
   const [raportTab, setRaportTab] = useState<'sumar'|'detaliat'|'checkout'>('sumar')
   const [filtruAptRaport, setFiltruAptRaport] = useState<Set<string>>(new Set())
@@ -317,11 +333,26 @@ export default function CuratenePage() {
 
   async function loadCasaLuna(lunaParam?: string) {
     const luna = lunaParam || rapoarteLuna
+    casaLunaCeruta.current = luna
     const [an, lun] = luna.split('-')
     const primaZi = `${an}-${lun}-01`
     const ultimaZi = format(new Date(Number(an), Number(lun), 0), 'yyyy-MM-dd')
     const { data } = await supabase.from('staff_casa').select('*').gte('data', primaZi).lte('data', ultimaZi).order('created_at', { ascending: false })
+    let report = 0
+    if (luna > CASA_REPORT_START) {
+      const { data: ant } = await supabase.from('staff_casa').select('data,tip,suma,preluat').gte('data', `${CASA_REPORT_START}-01`).lt('data', primaZi)
+      const peLuna: Record<string, number> = {}
+      for (const e of ant || []) {
+        if (e.preluat === false) continue
+        const k = String(e.data).slice(0, 7)
+        peLuna[k] = (peLuna[k] || 0) + (e.tip === 'incasare' ? 1 : -1) * Number(e.suma)
+      }
+      // Lant luna cu luna: sold = surplus adus + incasat - cheltuit; doar un sold pozitiv trece mai departe
+      for (let k = CASA_REPORT_START; k < luna; k = lunaVecina(k, 1)) report = Math.max(0, report + (peLuna[k] || 0))
+    }
+    if (casaLunaCeruta.current !== luna) return
     setCasaLuna(data || [])
+    setCasaReport(report)
   }
 
   async function addCasaGen(tip: 'incasare' | 'cheltuiala') {
@@ -1100,8 +1131,25 @@ export default function CuratenePage() {
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap' as const}}>
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Lună</div>
-            <input type="month" value={rapoarteLuna} onChange={e=>{const v=e.target.value;setRapoarteLuna(v);setRapoarteData([]);loadRapoarte(v)}}
-              style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.8)',fontSize:13,padding:'7px 10px',outline:'none'}}/>
+            {(()=>{
+              // ‹ luna › + lista derulanta cu nume de luni - mai usor decat inputul type=month (cerut direct)
+              const alege=(v:string)=>{setRapoarteLuna(v);setRapoarteData([])}
+              const acum=new Date(); const lunaAcum=`${acum.getFullYear()}-${String(acum.getMonth()+1).padStart(2,'0')}`
+              const optiuni=Array.from({length:27},(_,i)=>lunaVecina(lunaAcum,3-i))
+              if(!optiuni.includes(rapoarteLuna)) optiuni.push(rapoarteLuna)
+              const btn:React.CSSProperties={padding:'7px 11px',borderRadius:8,border:'1px solid rgba(100,160,255,0.2)',background:'rgba(20,38,65,0.8)',color:'#7BC8FF',fontSize:14,fontWeight:700,cursor:'pointer',lineHeight:1}
+              return(
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  <button onClick={()=>alege(lunaVecina(rapoarteLuna,-1))} style={btn} title="Luna precedentă">‹</button>
+                  <select value={rapoarteLuna} onChange={e=>alege(e.target.value)}
+                    style={{background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,fontWeight:600,padding:'7px 10px',outline:'none',minWidth:150,cursor:'pointer'}}>
+                    {optiuni.map(o=><option key={o} value={o}>{lunaText(o)}</option>)}
+                  </select>
+                  <button onClick={()=>alege(lunaVecina(rapoarteLuna,1))} style={btn} title="Luna următoare">›</button>
+                  {rapoarteLuna!==lunaAcum&&<button onClick={()=>alege(lunaAcum)} style={{...btn,fontSize:11,fontWeight:600,whiteSpace:'nowrap'}}>Luna curentă</button>}
+                </div>
+              )
+            })()}
           </div>
           <div>
             <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>Cost / curățenie (RON)</div>
@@ -1126,7 +1174,7 @@ export default function CuratenePage() {
         {(()=>{
           const totalIn=casaLuna.filter(e=>e.tip==='incasare'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
           const totalOut=casaLuna.filter(e=>e.tip==='cheltuiala'&&e.preluat!==false).reduce((s:number,e:any)=>s+Number(e.suma),0)
-          const sold=totalIn-totalOut
+          const sold=totalIn-totalOut+casaReport
           const [an,lun]=rapoarteLuna.split('-')
           const lunaLabel=['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'][Number(lun)]
           return(
@@ -1176,8 +1224,9 @@ export default function CuratenePage() {
                 </div>
               )}
 
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:casaLuna.filter((e:any)=>e.preluat!==false).length?12:0}}>
+              <div style={{display:'grid',gridTemplateColumns:`repeat(${casaReport>0?4:3},1fr)`,gap:8,marginBottom:casaLuna.filter((e:any)=>e.preluat!==false).length?12:0}}>
                 {[
+                  ...(casaReport>0?[{l:`Extra din ${lunaText(lunaVecina(rapoarteLuna,-1)).split(' ')[0]}`,v:casaReport,c:'#A78BFA'}]:[]),
                   {l:'Total încasat',v:totalIn,c:'#4ADE80'},
                   {l:'Total cheltuit',v:totalOut,c:'#F87171'},
                   {l:'Sold',v:sold,c:sold>=0?'#7BC8FF':'#FCD34D'},
