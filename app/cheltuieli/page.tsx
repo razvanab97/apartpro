@@ -221,11 +221,18 @@ export default function CheltuieliPage(){
   // folosite ca sursa reala pentru valoarea/scadenta categoriei "Chirie" de mai jos, in loc de DEF hardcodat
   const [chiriiFixe,setChiriiFixe]=useState<Record<string,any>>({})
   const [cursEUR,setCursEUR]=useState(5.0)
-  useEffect(()=>{
-    (async()=>{
-      try{ const res=await fetch('/api/curs-bnr'); const data=await res.json(); if(data?.curs) setCursEUR(data.curs) }catch{}
+  // Cursul BNR e asteptat in load() INAINTE de calculul chiriei (altfel prima incarcare putea folosi
+  // valoarea implicita 5.0 in loc de cursul real - diferenta de sute de lei la chiriile in EUR)
+  const cursPromise=useRef<Promise<number>|null>(null)
+  function getCursBNR(){
+    if(!cursPromise.current) cursPromise.current=(async()=>{
+      try{ const res=await fetch('/api/curs-bnr'); const data=await res.json(); if(data?.curs&&!data?.error){ setCursEUR(data.curs); return Number(data.curs) } }catch{}
+      cursPromise.current=null  // reincearca la urmatorul load
+      return 0
     })()
-  },[])
+    return cursPromise.current
+  }
+  useEffect(()=>{ getCursBNR() },[])
 
   // edit inline util
   const [editCell,setEditCell]=useState<{aptId:string;col:string}|null>(null)
@@ -360,6 +367,21 @@ export default function CheltuieliPage(){
     const chiriiFixeMap:Record<string,any>={}
     ;(chiriiFixeData||[]).forEach((c:any)=>{ chiriiFixeMap[c.apartament_id]=c })
     setChiriiFixe(chiriiFixeMap)
+    // Chiria din Cheltuieli = chiria bifata in Apartamente → Plăți (cerut direct: N32 e 500 EUR + TVA la
+    // cursul BNR actual, aici ramasese 3080 copiat din luna trecuta). Se aliniaza DOAR chiriile neplatite,
+    // din luna curenta si cele viitoare, fara resturi de plati partiale; cele platite raman suma achitata.
+    const cursAcum = await getCursBNR()
+    const lunaCurenta = new Date().toISOString().slice(0,7)
+    const chiriiDeAliniat:{id:string;valoare:number}[] = []
+    // doar apartamente active (ex: L94/R99 inactive au valori puse intentionat, ca 1 RON)
+    const aptActive = new Set((aptData||[]).filter((a:any)=>a.status!=='inactiv').map((a:any)=>a.id))
+    if(`${an}-${pad(luna)}` >= lunaCurenta) for(const c of (chData||[]) as any[]){
+      if(c.categorie!=='chirie' || !aptActive.has(c.apartament_id) || ['validat','platit'].includes(c.status) || /Rest de plată/.test(c.nota||'')) continue
+      const cf = chiriiFixeMap[c.apartament_id]
+      const corect = (cf?.moneda==='EUR' && !cursAcum) ? null : chirieDinFixe(cf, cursAcum)
+      if(corect && Math.abs(Number(c.valoare)-corect) >= 1){ c.valoare = corect; chiriiDeAliniat.push({id:c.id,valoare:corect}) }
+    }
+    if(chiriiDeAliniat.length) await Promise.all(chiriiDeAliniat.map(x=>supabase.from('cheltuieli').update({valoare:x.valoare}).eq('id',x.id)))
     // Ensure AB_EXTRA_NAMES apar in DB cu ID real (upsert daca lipsesc)
     const loadedApts = aptData||[]
     const missingNames = AB_EXTRA_NAMES.filter(name =>
@@ -449,8 +471,11 @@ export default function CheltuieliPage(){
       }
     })
 
-    // Facturi neplatite din luna precedenta: muta automat pe luna curenta
-    const toMove = (chDataPrev||[]).filter((ch:any) => ch.fisier_url && ch.status==='nevalidat')
+    // Facturi neplatite din luna precedenta: muta automat pe luna curenta - DOAR cand luna afisata e
+    // chiar luna curenta reala (bug gasit la testare: simpla rasfoire a unei luni viitoare muta toate
+    // facturile neplatite in luna aceea, iar din ea mai departe la urmatoarea luna rasfoita)
+    const toMove = `${an}-${pad(luna)}` === lunaCurenta
+      ? (chDataPrev||[]).filter((ch:any) => ch.fisier_url && ch.status==='nevalidat') : []
     if(toMove.length > 0){
       await Promise.all(toMove.map((ch:any) =>
         supabase.from('cheltuieli').update({
@@ -510,8 +535,10 @@ export default function CheltuieliPage(){
           c.apartament_id===apt.id && c.categorie===col.key
         )
         // Chirie: prioritate pe configurarea din Apartamente → Plăți (+TVA daca e bifat), fallback pe DEF hardcodat
-        const chirieFixa = col.key==='chirie' ? chirieDinFixe(chiriiFixeMap[apt.id], cursEUR) : null
-        const valoare = prevItem ? Number(prevItem.valoare) : (chirieFixa ?? defs?.[col.key] ?? 0)
+        const cfApt = chiriiFixeMap[apt.id]
+        const chirieFixa = (col.key==='chirie' && !(cfApt?.moneda==='EUR' && !cursAcum)) ? chirieDinFixe(cfApt, cursAcum) : null
+        // Chiria configurata are prioritate si fata de luna precedenta (aceea poate avea un curs vechi)
+        const valoare = chirieFixa ?? (prevItem ? Number(prevItem.valoare) : (defs?.[col.key] ?? 0))
         if(valoare <= 0) continue
         const dueDay = (col.key==='chirie' && chiriiFixeMap[apt.id]?.ziua_plata) ? Number(chiriiFixeMap[apt.id].ziua_plata) : getDueForApt(apt.nota, col.key, col.due)
         toAutoSeed.push({
