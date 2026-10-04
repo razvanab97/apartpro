@@ -268,32 +268,34 @@ export default function DashboardPage() {
     return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id)||mesajeAnulateIds.has(idPrefix+r.id))
   }
   const gataCheckinsAzi = checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
-  const coMesajeTrimise = toateTrimise(checkoutAzi.filter((r:any)=>r.telefon_client),'co-')
-  const ciMesajeTrimise = toateTrimise(checkinAzi.filter((r:any)=>r.telefon_client),'ci-')
-  const gataMesajeTrimise = toateTrimise(gataCheckinsAzi.filter((r:any)=>r.telefon_client),'gata-')
+  // Si rezervarile FARA telefon intra in mesaje (cerut direct: Booking nu mai trimite toate numerele) -
+  // apar marcate "fara numar", cu camp de completat manual, nu dispar din lista
+  const coMesajeTrimise = toateTrimise(checkoutAzi,'co-')
+  const ciMesajeTrimise = toateTrimise(checkinAzi,'ci-')
+  const gataMesajeTrimise = toateTrimise(gataCheckinsAzi,'gata-')
   const ciPropMesajeTrimise = toateTrimise(ciProprietarAzi,'propci-')
   const coPropMesajeTrimise = toateTrimise(coProprietarAzi,'propco-')
 
-  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; telefon:string; mesaj:string }
+  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; telefon:string; mesaj:string; faraTelefon?:boolean }
   const mesajeTasks: MesajTask[] = useMemo(()=>{
     const tasks: MesajTask[] = []
-    checkoutAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+    checkoutAzi.forEach((r:any)=>{
       const id='co-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#C084FC',titluCategorie:'Checkout',
         nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
     })
-    checkinAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+    checkinAzi.forEach((r:any)=>{
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
     })
-    gataCheckinsAzi.filter((r:any)=>r.telefon_client).forEach((r:any)=>{
+    gataCheckinsAzi.forEach((r:any)=>{
       const id='gata-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'gata',icon:'🔑',accent:'#7BC8FF',titluCategorie:'Acces',
         nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client,mesaj:ov?.mesaj??msgGataAcces(r,sabloaneGata)})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgGataAcces(r,sabloaneGata)})
     })
     propNotif.forEach((r:any)=>{
       const tel=r.apartament?.proprietar?.telefon
@@ -318,7 +320,30 @@ export default function DashboardPage() {
     return tasks.filter(t=>!mesajeAnulateIds.has(t.id))
   },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,mesajeAnulateIds])
 
+  // Numar adaugat manual la o rezervare fara telefon -> salvat in rezervare (o singura data,
+  // apoi apare peste tot: Rezervari, Calendar, mesajele de maine etc.)
+  async function salveazaTelefonRezervare(task: MesajTask){
+    const tel=(task.telefon||'').trim()
+    if(!tel||!task.faraTelefon) return
+    const {error}=await supabase.from('rezervari').update({telefon_client:tel}).eq('id',task.rawId)
+    if(error) return
+    const upd=(l:any[])=>l.map((r:any)=>r.id===task.rawId?{...r,telefon_client:tel}:r)
+    setCheckinAzi(upd); setCheckoutAzi(upd)
+  }
+  // Sugestie de numar din rezervarile anterioare ale aceluiasi client (acelasi nume exact)
+  const [telSugestii,setTelSugestii]=useState<Record<string,string>>({})
+  useEffect(()=>{
+    if(!mesajeListOpen) return
+    const nume=[...new Set(mesajeTasks.filter(t=>t.faraTelefon).map(t=>t.nume).filter(Boolean))]
+    if(!nume.length) return
+    supabase.from('rezervari').select('nume_client,telefon_client,data_checkin').in('nume_client',nume)
+      .not('telefon_client','is',null).order('data_checkin',{ascending:false})
+      .then(({data})=>{ const m:Record<string,string>={}; (data||[]).forEach((r:any)=>{ if(!m[r.nume_client]) m[r.nume_client]=r.telefon_client }); setTelSugestii(m) })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[mesajeListOpen])
+
   function trimiteMesajTask(task: MesajTask){
+    if(task.faraTelefon&&task.telefon.trim()) salveazaTelefonRezervare(task)
     marcheazaMesajTrimis(task.id)
     if(task.categorie==='prop-nou') marcheazaNotificatProprietar(task.rawId)
   }
@@ -746,7 +771,7 @@ export default function DashboardPage() {
         {/* BANNER CHECK-OUT DIMINEATA */}
         {(()=>{
           const isMorning=now.getHours()>=7&&now.getHours()<11
-          const coWithPhone=checkoutAzi.filter(r=>r.telefon_client)
+          const coFaraTel=checkoutAzi.filter(r=>!r.telefon_client).length
           if(!isMorning||checkoutAzi.length===0||coBannerDismissed||coMesajeTrimise)return null
           return(
             <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
@@ -760,12 +785,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                {coWithPhone.length>0&&(
-                  <button onClick={()=>setMesajeListOpen(true)}
-                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                    <MessageCircle size={13}/>Trimite mesaje ({coWithPhone.length})
-                  </button>
-                )}
+                <button onClick={()=>setMesajeListOpen(true)}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <MessageCircle size={13}/>Trimite mesaje ({checkoutAzi.length}){coFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {coFaraTel} fără nr.</span>}
+                </button>
                 <button onClick={()=>{setCoBannerDismissed(true);try{localStorage.setItem('co_banner_'+todayStr,'1')}catch{}}}
                   style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                   Ignoră
@@ -777,7 +800,7 @@ export default function DashboardPage() {
 
         {/* BANNER CHECK-IN AZI — CONFIRMARE REZERVARE */}
         {(()=>{
-          const ciWithPhone=checkinAzi.filter((r:any)=>r.telefon_client)
+          const ciFaraTel=checkinAzi.filter((r:any)=>!r.telefon_client).length
           if(checkinAzi.length===0||ciBannerDismissed||ciMesajeTrimise)return null
           return(
             <div style={{background:'rgba(252,211,77,0.08)',border:'1px solid rgba(252,211,77,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
@@ -791,12 +814,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                {ciWithPhone.length>0&&(
-                  <button onClick={()=>setMesajeListOpen(true)}
-                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                    <MessageCircle size={13}/>Trimite mesaje ({ciWithPhone.length})
-                  </button>
-                )}
+                <button onClick={()=>setMesajeListOpen(true)}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <MessageCircle size={13}/>Trimite mesaje ({checkinAzi.length}){ciFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {ciFaraTel} fără nr.</span>}
+                </button>
                 <button onClick={()=>{setCiBannerDismissed(true);try{localStorage.setItem('ci_banner_'+todayStr,'1')}catch{}}}
                   style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                   Ignoră
@@ -809,7 +830,7 @@ export default function DashboardPage() {
         {/* BANNER LOCATII GATA — DATE ACCES */}
         {(()=>{
           const gataCheckins=checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
-          const gataWithPhone=gataCheckins.filter((r:any)=>r.telefon_client)
+          const gataFaraTel=gataCheckins.filter((r:any)=>!r.telefon_client).length
           if(gataCheckins.length===0||gataBannerDismissed||gataMesajeTrimise)return null
           return(
             <div style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
@@ -823,12 +844,10 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                {gataWithPhone.length>0&&(
-                  <button onClick={()=>setMesajeListOpen(true)}
-                    style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                    <Key size={13}/>Trimite mesaje ({gataWithPhone.length})
-                  </button>
-                )}
+                <button onClick={()=>setMesajeListOpen(true)}
+                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                  <Key size={13}/>Trimite mesaje ({gataCheckins.length}){gataFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {gataFaraTel} fără nr.</span>}
+                </button>
                 <button onClick={()=>{setGataBannerDismissed(true);try{localStorage.setItem('gata_banner_'+todayStr,'1')}catch{}}}
                   style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                   Ignoră
@@ -1063,7 +1082,7 @@ export default function DashboardPage() {
                 <span style={{...panelTitle,color:'#C084FC'}}>Check-out astăzi</span>
                 <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
               </div>
-              {checkoutAzi.filter(r=>r.telefon_client).length>0&&(
+              {checkoutAzi.length>0&&(
                 <button onClick={()=>setMesajeListOpen(true)}
                   style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(192,132,252,0.3)',background:'rgba(192,132,252,0.08)',color:'#C084FC',fontSize:10,fontWeight:600,cursor:'pointer'}}>
                   <MessageCircle size={10}/>Trimite tuturor
@@ -1584,10 +1603,17 @@ export default function DashboardPage() {
                             style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.65)',fontSize:12,cursor:'pointer'}}>
                             🗑
                           </button>
+                          {task.telefon.trim()?(
                           <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
                             style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,height:30,padding:'0 14px',borderRadius:7,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap' as const}}>
                             <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
                           </a>
+                          ):(
+                          <span title="Adaugă întâi numărul de telefon"
+                            style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,height:30,padding:'0 14px',borderRadius:7,border:'1px solid rgba(159,215,255,0.12)',color:'rgba(159,215,255,0.35)',fontSize:12,fontWeight:700,whiteSpace:'nowrap' as const,cursor:'not-allowed'}}>
+                            <MessageCircle size={13}/>Trimite
+                          </span>
+                          )}
                         </div>
                       </div>
                       {/* Numele clientului, centrat — cerut direct, separat de restul informatiei */}
@@ -1595,10 +1621,28 @@ export default function DashboardPage() {
                         <div style={{fontSize:16,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
                         {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.45)',marginTop:1}}>{task.linie2}</div>}
                       </div>
+                      {task.faraTelefon&&(
+                        <div style={{fontSize:11,color:'#FCA5A5',background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:6,padding:'5px 8px',marginBottom:5,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
+                          <span>⚠ Fără număr de telefon (nu a venit de la platformă) — adaugă-l manual mai jos</span>
+                          {telSugestii[task.nume]&&!task.telefon.trim()&&(
+                            <button onClick={()=>updateMesajOverride(task.id,{telefon:telSugestii[task.nume]})}
+                              style={{padding:'2px 8px',borderRadius:5,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                              Folosește {telSugestii[task.nume]} (rezervare anterioară)
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div className="mesaje-phone" style={{display:'flex',alignItems:'center',gap:5,width:'100%'}}>
-                        <Phone size={11} color="rgba(159,215,255,0.4)"/>
+                        <Phone size={11} color={task.faraTelefon&&!task.telefon.trim()?'#F87171':'rgba(159,215,255,0.4)'}/>
                         <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
-                          style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
+                          placeholder={task.faraTelefon?'Adaugă numărul de telefon…':''}
+                          style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:`1px solid ${task.faraTelefon&&!task.telefon.trim()?'rgba(248,113,113,0.45)':'rgba(159,215,255,0.15)'}`,borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
+                        {task.faraTelefon&&task.telefon.trim()&&(
+                          <button onClick={()=>salveazaTelefonRezervare(task)} title="Salvează numărul în rezervare"
+                            style={{flexShrink:0,padding:'5px 9px',borderRadius:6,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' as const}}>
+                            💾 Salvează
+                          </button>
+                        )}
                       </div>
                       {editing?(
                         <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8} autoFocus

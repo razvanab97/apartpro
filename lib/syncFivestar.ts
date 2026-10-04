@@ -250,7 +250,12 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
           }
         }
       }
-      if (telefon && !existing[0].telefon_client) updates.telefon_client = telefon
+      // Rezervare fara telefon (ex: Booking nu l-a trimis) -> la fiecare sincronizare cautam iar numarul;
+      // apare de indata ce e adaugat in 5starDesk. Un numar pus manual la noi nu e suprascris niciodata.
+      if (telefon && !existing[0].telefon_client) {
+        updates.telefon_client = String(telefon)
+        res.logs.push({ type:'ok', msg: `📞 ${numeClient} (${checkin}) — telefon completat din 5starDesk` })
+      }
       if (nrPersoane && Number(existing[0].nr_persoane) !== nrPersoane) updates.nr_persoane = nrPersoane
       // NU realocam automat apartamentul la potrivire prin ID extern - 5starDesk poate
       // redenumi/reatribui o camera (ex: L94 -> M08 dupa inchiderea unui apartament),

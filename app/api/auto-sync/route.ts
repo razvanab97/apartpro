@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
             if (idValid && !(e.observatii||'').includes(idExtern))
               upd.observatii = [b.tip_camera||b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ')
           }
-          if (telefon && !e.telefon_client) upd.telefon_client = telefon
+          if (telefon && !e.telefon_client) { upd.telefon_client = telefon; logs.push(`📞 ${numeClient} (${checkin}) — telefon completat`) }  // rezervari fara numar: il cautam la fiecare sync
           if (nrPersoane && Number(e.nr_persoane) !== nrPersoane) upd.nr_persoane = nrPersoane
           if (aptId && e.apartament_id !== aptId) upd.apartament_id = aptId
           if (e.status_rezervare !== statusNou) upd.status_rezervare = statusNou
