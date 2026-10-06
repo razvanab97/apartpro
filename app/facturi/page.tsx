@@ -53,6 +53,8 @@ type Factura = {
   adrese_matching?: string[]
   apartament_id: string | null
   _autoMatched?: boolean
+  _nrApartament?: string | null
+  _aptConflict?: string | null
   errorMsg?: string
   status: 'procesat' | 'salvat' | 'eroare'
   processing?: boolean
@@ -382,6 +384,27 @@ export default function FacturiPage() {
         // Numarul apartamentului - prioritate: cod Urbica > nr_apartament din AI
         const nrDinCodUrbica = entryData.cod_locatie_urbica ? URBICA_COD_MAP[entryData.cod_locatie_urbica] || null : null
         const nrAptExplicit = nrDinCodUrbica || entryData.nr_apartament || null
+        // Numarul apartamentului scris in adresa ("ap. 32") - verificare incrucisata cu codul Urbica.
+        // Doua situatii pot arata identic (aceeasi luna, aceleasi sume pe bloc), singura diferenta e
+        // apartamentul - daca cele doua surse nu se potrivesc, nu asociem automat nimic.
+        const nrDinAdresa = String(entryData.adresa_consum || '').match(/\bap(?:artament)?\.?\s*(\d+)/i)?.[1]
+          || (entryData.nr_apartament ? String(entryData.nr_apartament).replace(/\D/g, '') || null : null)
+        const codNecunoscut = !!entryData.cod_locatie_urbica && !nrDinCodUrbica
+        const aptConflict = !!nrDinCodUrbica && !!nrDinAdresa && nrDinCodUrbica !== nrDinAdresa
+          ? `Cod Urbica ${entryData.cod_locatie_urbica} = ap. ${nrDinCodUrbica}, dar adresa din factură spune ap. ${nrDinAdresa} — alege apartamentul manual`
+          : codNecunoscut
+            ? `Cod Urbica ${entryData.cod_locatie_urbica} necunoscut (adresa: ap. ${nrDinAdresa || '?'}) — alege apartamentul manual`
+            : null
+        if (aptConflict) {
+          if (!silent) show('error', `⚠ ${aptConflict}`)
+          return {
+            ...entryData, id: entryId, processing: false,
+            base64Preview: previewUrl, mimeType, status: 'procesat' as const,
+            apartament_id: null, _autoMatched: false,
+            _nrApartament: nrDinCodUrbica || nrDinAdresa || null, _aptConflict: aptConflict,
+            file_url: fileUrl || undefined,
+          }
+        }
         if (nrDinCodUrbica && !silent) {
           show('info', `Urbica cod ${entryData.cod_locatie_urbica} → ap. ${nrDinCodUrbica}`)
         }
@@ -437,6 +460,7 @@ export default function FacturiPage() {
           base64Preview: previewUrl, mimeType, status: 'procesat' as const,
           apartament_id: autoAptId,
           _autoMatched: !!autoAptId,
+          _nrApartament: nrAptExplicit || nrDinAdresa || null,
           file_url: fileUrl || undefined,
         }
       }
@@ -679,6 +703,9 @@ export default function FacturiPage() {
                               <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{f.furnizor}</span>
                               {validNr(f.nr_factura) && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>#{validNr(f.nr_factura)}</span>}
                             </div>
+                            {f._aptConflict && (
+                              <div style={{ fontSize:12, color:'#F87171', marginBottom:4 }}>⚠ {f._aptConflict}</div>
+                            )}
                             {f.status==='eroare' && f.errorMsg && (
                               <div style={{ fontSize:12, color:'#F87171', marginBottom:4 }}>{f.errorMsg}</div>
                             )}
@@ -686,6 +713,11 @@ export default function FacturiPage() {
                               <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
                                 {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>
                               </span>
+                              {f._nrApartament && (
+                                <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, fontWeight:700, background:f._aptConflict?'rgba(248,113,113,0.12)':'rgba(252,211,77,0.1)', border:`1px solid ${f._aptConflict?'rgba(248,113,113,0.35)':'rgba(252,211,77,0.3)'}`, color:f._aptConflict?'#F87171':'#FCD34D' }}>
+                                  ap. {f._nrApartament}
+                                </span>
+                              )}
                               {f.apartament_id && (() => {
                                 const apt = apts.find((a:any) => a.id === f.apartament_id)
                                 const label = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : null

@@ -32,11 +32,11 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Esti un expert in citirea facturilor romanesti. Analizeaza aceasta factura si extrage EXACT:
 1. Furnizor: numele companiei emitente
-2. Suma CURENTA de plata - DOAR factura curenta, fara restante/solduri anterioare.
+2. Suma CURENTA de plata - REGULA PENTRU TOATE FACTURILE: ne intereseaza DOAR suma lunii curente, fara restante/solduri anterioare/penalizari/fonduri. Pune aceasta valoare atat in "suma_totala" cat si in "suma_luna_curenta".
    - Pentru facturi normale: cauta 'Total valoare factura curenta' sau 'Suma factura curenta'
    - Pentru TermoService (tsiasi.ro): cauta EXACT 'Total luna [LUNA] [AN]:' - aceasta e suma lunii curente. NU folosi 'Rest de plata' sau 'Restanta' care includ datorii vechi
    - Pentru E-BLOC (e-bloc.ro, Kondo Plus): cauta EXACT 'TOTAL LUNA CURENTĂ:' - aceasta e suma corecta. NU folosi 'TOTAL DE PLATĂ' care include restante
-   - Pentru URBICA ('SITUAȚIE INDIVIDUALĂ'): documentul are 'Luna curentă' (doar intretinerea lunara: apa, administrare, curatenie, paza, salubritate etc) SEPARAT de liniile de fond ('Fond modernizare lift', 'Fond reparatii', 'Fond rulment') care sunt taxe la fel de curente (rate lunare reale, ex. 'RATA 1/3'), doar afisate separat. Suma corecta e 'Total general' MINUS 'Restanța întreținere' MINUS 'Restanță fonduri' MINUS 'Penalizări' (astea 3 sunt singurele care reprezinta datorie veche, nu 'Luna curentă' + fondurile). Daca 'Restanța întreținere'/'Restanță fonduri'/'Penalizări' sunt 0 (cazul obisnuit), suma corecta e pur si simplu 'Total general' - NU 'Luna curentă' singura, care omite fondurile.
+   - Pentru URBICA ('SITUAȚIE INDIVIDUALĂ'): suma corecta este DOAR valoarea de pe randul 'Luna curentă' (ex: 'Luna curentă ... 668,97' → 668.97). NU folosi 'Total general' si NU aduna 'Restanța întreținere', 'Restanță fonduri', 'Penalizări' sau 'Fond reparații'/'Fond rulment'/'Fond modernizare lift'. Pune aceeasi valoare si in "suma_luna_curenta".
    - Pentru Royal (aplicatie mobila, Bl. R7): e un screenshot cu lista de cheltuieli individuale grupate pe luna (Salubris, ApaVital, Administratie, Cheltuieli statie de pompare etc), fiecare cu status 'Neachitata' si o suma. Screenshot-ul poate arata MAI MULTE luni deodata (grupate sub un titlu de luna, ex. 'Iunie 2026', 'Mai 2026') - CITESTE TOATE lunile vizibile in imagine, nu doar prima de sus. Pentru FIECARE luna: suma_totala = suma valorilor mari (NU sumele mici rosii de 'restanta' de sub fiecare, alea sunt penalizari separate deja incluse in valoarea mare) ale TUTUROR liniilor din acea luna. Furnizor = 'Royal'. Adresa = apartamentul din header (ex: 'Bl. R7, sc. A, ap. 99'). nr_apartament = numarul din header. Populeaza campul "facturi_multiple" cu CATE UN OBIECT PENTRU FIECARE LUNA vizibila in imagine (chiar daca e doar una), cu perioada/suma_totala/detalii proprii fiecarei luni; campurile perioada/suma_totala/detalii de la nivelul principal al JSON-ului trebuie sa fie identice cu prima luna din facturi_multiple (compatibilitate). In "detalii" (atat la nivel principal cat si in fiecare intrare din facturi_multiple) scrie OBLIGATORIU calculul exact, verificat, cu fiecare linie si suma ei si rezultatul final, ca sa poata fi verificat manual, ex: "Salubris 38.1 + ApaVital 146.78 + Administratie 156.15 + Cheltuieli statie de pompare 10.49 = 351.52 RON (Iunie 2026)".
    - NU folosi 'Sold de plata', 'Total de achitat', 'Rest de plata' care includ restante
 3. Data scadentei (termenul limita de plata, format YYYY-MM-DD) - cauta 'Data scadenta', 'Termen plata', 'Data limita'
@@ -56,6 +56,7 @@ Raspunde DOAR cu JSON valid, fara explicatii, fara markdown:
 {
   "furnizor": "numele companiei",
   "suma_totala": 123.45,
+  "suma_luna_curenta": "suma DOAR pentru luna curenta, fara restante/penalizari/fonduri (la Urbica: randul 'Luna curentă'), ca numar",
   "moneda": "RON",
   "data_scadenta": "YYYY-MM-DD sau null",
   "data_emitere": "YYYY-MM-DD sau null",
@@ -124,6 +125,16 @@ Campul "facturi_multiple" e relevant DOAR pentru Royal cu mai multe luni intr-un
       }
     }
 
+    // Pentru TOATE facturile ne intereseaza doar suma lunii curente (fara restante, penalizari,
+    // fonduri). AI-ul o intoarce separat in suma_luna_curenta si ea suprascrie suma_totala, ca sa
+    // nu depindem de un calcul facut de AI (ex. Urbica: Total general 3915.21 → Luna curentă 668.97).
+    // Royal cu mai multe luni foloseste facturi_multiple, deci nu se atinge.
+    const lunaCurenta = parseSuma(parsed.suma_luna_curenta)
+    const multiLuni = Array.isArray(parsed.facturi_multiple) && parsed.facturi_multiple.length > 1
+    if (!multiLuni && lunaCurenta !== null && lunaCurenta > 0) {
+      parsed.suma_totala = lunaCurenta
+    }
+
     // Detectare categorie dupa furnizor + tip_serviciu + filename
     const textLower = ((parsed.furnizor || '') + ' ' + (parsed.tip_serviciu || '') + ' ' + (filename || '')).toLowerCase()
     let categorie = 'alta'
@@ -149,4 +160,16 @@ Campul "facturi_multiple" e relevant DOAR pentru Royal cu mai multe luni intr-un
     console.error('facturi-extract error:', e)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
+}
+
+// Accepta numar sau text in format romanesc/englezesc ("1 553,66", "1.553,66", "668.97", "1,553.66")
+function parseSuma(v: unknown): number | null {
+  if (typeof v === 'number') return isFinite(v) ? Math.round(v * 100) / 100 : null
+  if (typeof v !== 'string') return null
+  let t = v.replace(/[^\d.,-]/g, '')
+  const lastComma = t.lastIndexOf(','), lastDot = t.lastIndexOf('.')
+  if (lastComma > lastDot) t = t.replace(/\./g, '').replace(',', '.')
+  else t = t.replace(/,/g, '')
+  const n = parseFloat(t)
+  return isFinite(n) ? Math.round(n * 100) / 100 : null
 }
