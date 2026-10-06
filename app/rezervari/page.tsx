@@ -52,6 +52,9 @@ export default function RezervariPage() {
   const [searchNume, setSearchNume] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
+  const [sortCrescator, setSortCrescator] = useState(true)
+  function comutaSort() { setSortCrescator(v => !v) }
   const [sabloanePop, setSabloanePop] = useState<any>(null)
   const [sabloane, setSabloane] = useState<any[]>([])
   const { toast, show } = useToast()
@@ -84,12 +87,23 @@ export default function RezervariPage() {
     setLoadError(false)
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
-      const [{ data: rez }, { data: apt }] = await Promise.all([
-        supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix,proprietar:proprietari(id,nume,telefon)), proprietar:proprietari(id,nume)')
-          .order('data_checkin', { ascending: false }),
+      // Supabase intoarce maxim 1000 de randuri pe cerere - bug gasit: cu 2.099 rezervari, cele cu
+      // check-in inainte de ~27.03.2026 nu apareau deloc. Se incarca pe pagini pana la capat.
+      const toateRez = async () => {
+        const PAGINA = 1000, rez: any[] = []
+        for (let de = 0; ; de += PAGINA) {
+          const { data, error } = await supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix,proprietar:proprietari(id,nume,telefon)), proprietar:proprietari(id,nume)')
+            .order('data_checkin', { ascending: false }).order('id').range(de, de + PAGINA - 1)
+          if (error) throw error
+          rez.push(...(data || []))
+          if (!data || data.length < PAGINA) return rez
+        }
+      }
+      const [rez, { data: apt }] = await Promise.all([
+        toateRez(),
         supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').eq('status','activ').order('nume'),
       ])
-      setRezervari(rez||[])
+      setRezervari(rez)
       setApartamente((apt as Apartament[])||[])
       clearTimeout(bail)
     }catch(err){console.error('[rezervari load]',err);clearTimeout(bail);setLoadError(true)}
@@ -208,6 +222,11 @@ export default function RezervariPage() {
     if (dateFrom && r.data_checkin < dateFrom) return false
     if (dateTo && r.data_checkin > dateTo) return false
     return true
+  }).sort((a, b) => {
+    // Ordine cronologica (cerut direct: "foarte dezordonate"): dupa check-in, apoi check-out,
+    // apartament si nume - rezervarile din aceeasi zi stau mereu in aceeasi ordine.
+    const k = (r: any) => [r.data_checkin || '', r.data_checkout || '', r.apartament?.nume || '', r.nume_client || ''].join('|')
+    return sortCrescator ? k(a).localeCompare(k(b)) : k(b).localeCompare(k(a))
   })
 
   const c = calcul()
@@ -411,7 +430,9 @@ export default function RezervariPage() {
                     />
                   </th>
                   <th>Client</th><th>Apartament</th><th>Canal</th>
-                  <th>Check-in</th><th>Check-out</th><th>Nopți</th>
+                  <th onClick={e=>{e.stopPropagation();comutaSort()}} style={{cursor:'pointer',userSelect:'none',color:'#7BC8FF'}} title="Schimbă ordinea">
+                    Check-in {sortCrescator ? '↑' : '↓'}
+                  </th><th>Check-out</th><th>Nopți</th>
                   <th>Sumă</th><th>Proprietar</th><th>Status</th><th>Plată</th><th>Decont</th><th>Facturare</th><th></th>
                 </tr></thead>
                 <tbody>
@@ -506,7 +527,7 @@ export default function RezervariPage() {
 
       <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
         onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
-        saving={saving} onSave={save} onClose={()=>setOpen(false)} />
+        saving={saving} onSave={save} onClose={()=>setOpen(false)} onReload={load} />
 
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={deleteRez}
         title="Șterge rezervare" message="Sigur vrei să ștergi această rezervare?" />
