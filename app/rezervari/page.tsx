@@ -1,9 +1,10 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, numVal, numInput, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
+import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { Button, Badge, CanalBadge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
-import { Plus, CalendarCheck, Edit2, Trash2, Calculator, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
+import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
+import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
+import RezervareModal from '@/components/RezervareModal'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -25,7 +26,7 @@ const emptyRez = {
   moneda:'RON', status_plata:'neplatit', status_rezervare:'confirmata',
   comision_platforma_procent:0, comision_platforma_valoare:0, tva_comision_platforma:0,
   cost_curatenie:0, cost_spalatorie:0, cost_consumabile:0, cost_mentenanta:0, alte_costuri:0,
-  status_decont:'nedecontat', status_facturare:'nefacturat', observatii:'', apartament_id:'', proprietar_id:'',
+  status_decont:'nedecontat', status_facturare:'nefacturat', cod_rezervare_platforma:'', observatii:'', apartament_id:'', proprietar_id:'',
 }
 
 export default function RezervariPage() {
@@ -51,7 +52,6 @@ export default function RezervariPage() {
   const [searchNume, setSearchNume] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [showCalc, setShowCalc] = useState(false)
   const [sabloanePop, setSabloanePop] = useState<any>(null)
   const [sabloane, setSabloane] = useState<any[]>([])
   const { toast, show } = useToast()
@@ -96,8 +96,8 @@ export default function RezervariPage() {
     setLoading(false)
   }
 
-  function openNew() { setEditing({...emptyRez}); setShowCalc(false); setOpen(true) }
-  function openEdit(r: any) { setEditing({...r}); setShowCalc(false); setOpen(true) }
+  function openNew() { setEditing({...emptyRez}); setOpen(true) }
+  function openEdit(r: any) { setEditing({...r}); setOpen(true) }
 
   function onAptChange(aptId: string) {
     const apt = apartamente.find(a => a.id === aptId)
@@ -159,6 +159,7 @@ export default function RezervariPage() {
       cost_consumabile: Number(editing.cost_consumabile)||0,
       cost_mentenanta: Number(editing.cost_mentenanta)||0,
       alte_costuri: Number(editing.alte_costuri)||0,
+      cod_rezervare_platforma: String(editing.cod_rezervare_platforma||'').trim() || null,
       platit_proprietar: !!editing.platit_proprietar,
       suma_platita_proprietar: editing.platit_proprietar ? (Number(editing.suma_platita_proprietar)||0) : null,
       data_plata_proprietar: editing.platit_proprietar ? (editing.data_plata_proprietar || new Date().toISOString().slice(0,10)) : null,
@@ -168,16 +169,28 @@ export default function RezervariPage() {
     let { error } = editing.id
       ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
       : await supabase.from('rezervari').insert(payload)
+    let codNesalvat = false
+    if (error && /cod_rezervare_platforma/.test(error.message)) {
+      // cod_rezervare_platforma e coloana noua (supabase/cod_rezervare_platforma.sql) - pana la migrare
+      // salvam restul rezervarii si anuntam ca doar codul n-a putut fi salvat
+      const { cod_rezervare_platforma, ...faraCod } = payload
+      codNesalvat = !!cod_rezervare_platforma
+      ;({ error } = editing.id
+        ? await supabase.from('rezervari').update(faraCod).eq('id', editing.id)
+        : await supabase.from('rezervari').insert(faraCod))
+    }
     if (error) {
       // platit_proprietar/suma_platita_proprietar/data_plata_proprietar pot sa nu existe inca
       // (coloane noi) - reincearca fara ele, sa nu piarda restul rezervarii
-      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, ...fallback } = payload
+      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, cod_rezervare_platforma, ...fallback } = payload
+      if (cod_rezervare_platforma) codNesalvat = true
       ;({ error } = editing.id
         ? await supabase.from('rezervari').update(fallback).eq('id', editing.id)
         : await supabase.from('rezervari').insert(fallback))
     }
     if (error) { show('error', error.message); setSaving(false); return }
-    show('success', editing.id ? 'Rezervare actualizată' : 'Rezervare adăugată')
+    if (codNesalvat) show('error', 'Rezervarea s-a salvat, dar codul de rezervare nu — lipsește coloana cod_rezervare_platforma în baza de date')
+    else show('success', editing.id ? 'Rezervare actualizată' : 'Rezervare adăugată')
     setOpen(false); setSaving(false); load()
   }
 
@@ -491,152 +504,9 @@ export default function RezervariPage() {
         </div>
       </div>
 
-      <Modal open={open} onClose={()=>setOpen(false)} title={editing.id?'Editează rezervare':'Rezervare nouă'} width="max-w-3xl">
-        <FormRow cols={2}>
-          <FormGroup>
-            <label>Apartament *</label>
-            <select value={editing.apartament_id||''} onChange={e=>onAptChange(e.target.value)}>
-              <option value="">— Selectează apartament —</option>
-              {apartamente.map(a=><option key={a.id} value={a.id}>{a.nume}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup>
-            <label>Canal rezervare</label>
-            <select value={editing.canal} onChange={e=>setEditing({...editing,canal:e.target.value})}>
-              {Object.entries(CANALE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={3}>
-          <FormGroup><label>Nume client *</label><input value={editing.nume_client} onChange={e=>setEditing({...editing,nume_client:e.target.value})} placeholder="Prenume Nume"/></FormGroup>
-          <FormGroup><label>Telefon</label><input value={editing.telefon_client||''} onChange={e=>setEditing({...editing,telefon_client:e.target.value})} placeholder="+40 7xx..."/></FormGroup>
-          <FormGroup><label>Email</label><input value={editing.email_client||''} onChange={e=>setEditing({...editing,email_client:e.target.value})} placeholder="email@..."/></FormGroup>
-        </FormRow>
-        <FormRow cols={4}>
-          <FormGroup><label>Check-in *</label><input type="date" value={editing.data_checkin} onChange={e=>setEditing({...editing,data_checkin:e.target.value})}/></FormGroup>
-          <FormGroup><label>Check-out *</label><input type="date" value={editing.data_checkout} onChange={e=>setEditing({...editing,data_checkout:e.target.value})}/></FormGroup>
-          <FormGroup><label>Persoane</label><input type="number" value={numVal(editing.nr_persoane,1)} onChange={e=>setEditing({...editing,nr_persoane:numInput(e.target.value,1)})} min={1}/></FormGroup>
-          <FormGroup>
-            <label>Monedă</label>
-            <select value={editing.moneda} onChange={e=>setEditing({...editing,moneda:e.target.value})}>
-              <option>RON</option><option>EUR</option><option>USD</option>
-            </select>
-          </FormGroup>
-        </FormRow>
-        <FormRow cols={3}>
-          <FormGroup>
-            <label>Valoare brută rezervare</label>
-            <input type="number" value={numVal(editing.valoare_bruta,0)} onChange={e=>recalcComisionPlatforma(numInput(e.target.value,0), editing.comision_platforma_procent)} min={0} step={0.01}/>
-          </FormGroup>
-          <FormGroup><label>Taxă curățenie încasată</label><input type="number" value={numVal(editing.taxa_curatenie_incasata,0)} onChange={e=>setEditing({...editing,taxa_curatenie_incasata:numInput(e.target.value,0)})} min={0}/></FormGroup>
-          <FormGroup><label>Sumă efectiv încasată</label><input type="number" value={numVal(editing.suma_incasata,0)} onChange={e=>setEditing({...editing,suma_incasata:numInput(e.target.value,0)})} min={0}/></FormGroup>
-        </FormRow>
-
-        <div className="my-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text3)' }}>Comision platformă</p>
-          <FormRow cols={3}>
-            <FormGroup>
-              <label>% Comision platformă</label>
-              <input type="number" value={numVal(editing.comision_platforma_procent,0)} onChange={e=>recalcComisionPlatforma(editing.valoare_bruta, numInput(e.target.value,0))} min={0} max={100} step={0.5}/>
-            </FormGroup>
-            <FormGroup><label>Valoare comision (RON)</label><input type="number" value={numVal(editing.comision_platforma_valoare,0)} onChange={e=>setEditing({...editing,comision_platforma_valoare:numInput(e.target.value,0)})} min={0}/></FormGroup>
-            <FormGroup><label>TVA / taxă aferentă</label><input type="number" value={numVal(editing.tva_comision_platforma,0)} onChange={e=>setEditing({...editing,tva_comision_platforma:numInput(e.target.value,0)})} min={0}/></FormGroup>
-          </FormRow>
-        </div>
-
-        <div className="my-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text3)' }}>Costuri operaționale</p>
-          <FormRow cols={3}>
-            <FormGroup><label>Cost curățenie</label><input type="number" value={numVal(editing.cost_curatenie,0)} onChange={e=>setEditing({...editing,cost_curatenie:numInput(e.target.value,0)})} min={0}/></FormGroup>
-            <FormGroup><label>Cost spălătorie</label><input type="number" value={numVal(editing.cost_spalatorie,0)} onChange={e=>setEditing({...editing,cost_spalatorie:numInput(e.target.value,0)})} min={0}/></FormGroup>
-            <FormGroup><label>Cost consumabile</label><input type="number" value={numVal(editing.cost_consumabile,0)} onChange={e=>setEditing({...editing,cost_consumabile:numInput(e.target.value,0)})} min={0}/></FormGroup>
-          </FormRow>
-          <FormRow cols={2}>
-            <FormGroup><label>Cost mentenanță</label><input type="number" value={numVal(editing.cost_mentenanta,0)} onChange={e=>setEditing({...editing,cost_mentenanta:numInput(e.target.value,0)})} min={0}/></FormGroup>
-            <FormGroup><label>Alte costuri</label><input type="number" value={numVal(editing.alte_costuri,0)} onChange={e=>setEditing({...editing,alte_costuri:numInput(e.target.value,0)})} min={0}/></FormGroup>
-          </FormRow>
-        </div>
-
-        {/* Calculator preview */}
-        {editing.apartament_id && c && (
-          <div className="my-3 rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border)' }}>
-            <button className="w-full flex items-center justify-between p-3 text-xs font-semibold" style={{ background: 'var(--bg3)', color: 'var(--text2)' }} onClick={()=>setShowCalc(!showCalc)}>
-              <span className="flex items-center gap-2"><Calculator size={13}/>Calcul decont proprietar</span>
-              {showCalc ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
-            </button>
-            {showCalc && (
-              <div className="p-4" style={{ background: 'var(--bg3)' }}>
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex justify-between"><span style={{ color: 'var(--text3)' }}>Valoare brută</span><span style={{ fontFamily:'monospace', color:'var(--text)' }}>{editing.valoare_bruta.toLocaleString('ro-RO')} RON</span></div>
-                  {editing.comision_platforma_valoare > 0 && <div className="flex justify-between"><span style={{ color: 'var(--text3)' }}>- Comision platformă</span><span style={{ fontFamily:'monospace', color:'var(--red)' }}>-{editing.comision_platforma_valoare.toLocaleString('ro-RO')} RON</span></div>}
-                  {editing.tva_comision_platforma > 0 && <div className="flex justify-between"><span style={{ color: 'var(--text3)' }}>- TVA platformă</span><span style={{ fontFamily:'monospace', color:'var(--red)' }}>-{editing.tva_comision_platforma.toLocaleString('ro-RO')} RON</span></div>}
-                  {(editing.cost_curatenie+editing.cost_spalatorie+editing.cost_consumabile+editing.cost_mentenanta+editing.alte_costuri) > 0 && (
-                    <div className="flex justify-between"><span style={{ color: 'var(--text3)' }}>- Costuri operaționale</span>
-                    <span style={{ fontFamily:'monospace', color:'var(--red)' }}>-{(editing.cost_curatenie+editing.cost_spalatorie+editing.cost_consumabile+editing.cost_mentenanta+editing.alte_costuri).toLocaleString('ro-RO')} RON</span></div>
-                  )}
-                  <div className="flex justify-between pt-1.5 border-t" style={{ borderColor:'var(--border)' }}>
-                    <span style={{ color:'var(--text2)', fontWeight:500 }}>= Bază calcul comision</span>
-                    <span style={{ fontFamily:'monospace', fontWeight:600, color:'var(--text)' }}>{c.baza.toLocaleString('ro-RO')} RON</span>
-                  </div>
-                  <div className="flex justify-between"><span style={{ color: 'var(--text3)' }}>- Comision administrator 20%</span><span style={{ fontFamily:'monospace', color:'var(--red)' }}>-{c.comision.toLocaleString('ro-RO')} RON</span></div>
-                  <div className="flex justify-between pt-2 border-t mt-2" style={{ borderColor:'var(--border)' }}>
-                    <span className="font-bold text-sm" style={{ color:'var(--text)' }}>Suma de virat proprietar</span>
-                    <span className="font-bold text-base font-mono" style={{ color:'var(--green)' }}>{c.suma_proprietar.toLocaleString('ro-RO')} RON</span>
-                  </div>
-                  {/* Plata efectiva catre proprietar, per rezervare — cerut direct: "la cele cu
-                      comision, sa putem sa bifam daca s-a platit si cat s-a platit catre proprietar" */}
-                  <div className="pt-2 mt-1 border-t" style={{ borderColor:'var(--border)' }}>
-                    <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize:12, color:'var(--text2)' }}>
-                      <input type="checkbox" checked={!!editing.platit_proprietar}
-                        onChange={e=>setEditing({...editing,platit_proprietar:e.target.checked,suma_platita_proprietar:editing.suma_platita_proprietar??c.suma_proprietar})}/>
-                      Plătit către proprietar
-                    </label>
-                    {editing.platit_proprietar && (
-                      <input type="number" value={numVal(editing.suma_platita_proprietar,0)} placeholder="Sumă plătită (RON)"
-                        onChange={e=>setEditing({...editing,suma_platita_proprietar:numInput(e.target.value,0)})} min={0}
-                        style={{ marginTop:6 }}/>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <FormRow cols={4}>
-          <FormGroup>
-            <label>Status rezervare</label>
-            <select value={editing.status_rezervare} onChange={e=>setEditing({...editing,status_rezervare:e.target.value})}>
-              {Object.entries(STATUS_REZERVARE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup>
-            <label>Status plată</label>
-            <select value={editing.status_plata} onChange={e=>setEditing({...editing,status_plata:e.target.value})}>
-              {Object.entries(STATUS_PLATA_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>
-          </FormGroup>
-          <FormGroup>
-            <label>Status decont</label>
-            <select value={editing.status_decont} onChange={e=>setEditing({...editing,status_decont:e.target.value})}>
-              <option value="nedecontat">Nedecontat</option>
-              <option value="inclus">Inclus în decont</option>
-              <option value="decontat">Decontat</option>
-            </select>
-          </FormGroup>
-          <FormGroup>
-            <label>Facturare</label>
-            <select value={editing.status_facturare||'nefacturat'} onChange={e=>setEditing({...editing,status_facturare:e.target.value})}>
-              {Object.entries(STATUS_FACTURARE_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
-            </select>
-          </FormGroup>
-        </FormRow>
-        <FormGroup><label>Observații</label><textarea value={editing.observatii||''} onChange={e=>setEditing({...editing,observatii:e.target.value})} rows={2} placeholder="Notițe interne..."/></FormGroup>
-        <div className="flex gap-3 mt-2">
-          <Button variant="primary" onClick={save} loading={saving} className="flex-1">Salvează rezervarea</Button>
-          <Button variant="secondary" onClick={()=>setOpen(false)} className="flex-1">Anulează</Button>
-        </div>
-      </Modal>
+      <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
+        onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
+        saving={saving} onSave={save} onClose={()=>setOpen(false)} />
 
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={deleteRez}
         title="Șterge rezervare" message="Sigur vrei să ștergi această rezervare?" />

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS, CANALE_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -276,7 +276,7 @@ export default function DashboardPage() {
   const ciPropMesajeTrimise = toateTrimise(ciProprietarAzi,'propci-')
   const coPropMesajeTrimise = toateTrimise(coProprietarAzi,'propco-')
 
-  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; telefon:string; mesaj:string; faraTelefon?:boolean }
+  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; codPlatforma?:string; canalLabel?:string; telefon:string; mesaj:string; faraTelefon?:boolean }
   const mesajeTasks: MesajTask[] = useMemo(()=>{
     const tasks: MesajTask[] = []
     checkoutAzi.forEach((r:any)=>{
@@ -289,6 +289,7 @@ export default function DashboardPage() {
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        codPlatforma:r.cod_rezervare_platforma||undefined,canalLabel:CANALE_LABEL[r.canal]||r.canal,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
     })
     gataCheckinsAzi.forEach((r:any)=>{
@@ -1620,6 +1621,13 @@ export default function DashboardPage() {
                       <div style={{textAlign:'center' as const,margin:'10px 0'}}>
                         <div style={{fontSize:16,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
                         {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.45)',marginTop:1}}>{task.linie2}</div>}
+                        {/* Numarul rezervarii de la platforma (Airbnb/Booking), completat in Rezervari - nu ID-ul 5starDesk */}
+                        {task.codPlatforma&&(
+                          <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,padding:'3px 10px',borderRadius:999,fontSize:12,fontWeight:600,color:'#FCD34D',background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.35)'}}>
+                            <span style={{opacity:.75,fontWeight:500}}>{task.canalLabel}</span>
+                            <span style={{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',letterSpacing:'.04em'}}># {task.codPlatforma}</span>
+                          </div>
+                        )}
                       </div>
                       {task.faraTelefon&&(
                         <div style={{fontSize:11,color:'#FCA5A5',background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:6,padding:'5px 8px',marginBottom:5,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
