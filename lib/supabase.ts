@@ -155,11 +155,19 @@ export const LUNI = ['','Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie',
 // locatii, cerut direct: "functia asta de notifica proprietarii se pastreaza doar la locatiile
 // urmatoare... Nu si la celelalte, ca dam sistemul peste cap" — restul proprietarilor nu se
 // asteapta la aceste mesaje. Id-uri (nu nota/nume) fiindca 2 din cele 3 nu au nota setata.
-export const PROPRIETAR_NOTIF_APT_IDS = [
-  'a439e727-a4e6-46db-97b9-9bd7cc00b79f', // VM07 - Vila Păcurari
-  'b3f27f24-2703-42ad-9444-32fbbae11a3e', // Cherry by AB Homes
-  '489298e2-5422-489d-9721-13886c53210c', // Comfy & Chic Apartment
+// Proprietarii care primesc mesaje pe WhatsApp (rezervare noua, check-in azi, check-out azi).
+// Dupa PROPRIETAR, nu dupa apartament - bug raportat: Cherry 3 (al Emmei, adaugat mai tarziu) nu
+// aparea la „anunta proprietarii”, fiindca lista fixa avea doar ID-ul lui Cherry 2. Acum orice
+// apartament nou al acestor proprietari e inclus automat.
+export const PROPRIETAR_NOTIF_IDS = [
+  'd6c82f18-14a2-4240-8f81-80086f38bd25', // Danut - VM07 Vila Păcurari
+  'f9d803ec-571e-4db2-9a74-cc3daee35d4e', // Emma - Cherry 2 + Cherry 3 by AB Homes
+  '38daf039-b044-4461-ad07-9bf79cb17eaa', // Petrică Ancuța - Comfy & Chic Apartment
 ]
+export function notificaProprietar(r: any): boolean {
+  const prop = r?.apartament?.proprietar
+  return !!prop?.telefon && PROPRIETAR_NOTIF_IDS.includes(prop?.id || r?.apartament?.proprietar_id)
+}
 
 // Inputuri numerice controlate — raportat direct: la orice input type="number" din aplicatie,
 // stergerea completa a cifrelor revenea fortat la 0 la fiecare tasta, deci nu puteai goli

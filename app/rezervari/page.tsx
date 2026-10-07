@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
+import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, notificaProprietar } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
@@ -413,7 +413,7 @@ export default function RezervariPage() {
                               📋
                             </button>
                           )}
-                          {r.apartament?.proprietar?.telefon && PROPRIETAR_NOTIF_APT_IDS.includes(r.apartament?.id) && (
+                          {notificaProprietar(r) && (
                             <a
                               href={waLinkProprietar(r)}
                               target="_blank"
