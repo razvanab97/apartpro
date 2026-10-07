@@ -2,7 +2,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
+import RezervareEditor from '@/components/RezervareEditor'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
@@ -194,9 +195,10 @@ export default function CalendarPage() {
   const [lastNrRez, setLastNrRez] = useState<string|null>(null)
   const [lastSaved, setLastSaved] = useState<any>(null)
   const [saveError, setSaveError] = useState<string|null>(null)
-  const [editRez, setEditRez] = useState<any>(null)
-  const [editForm, setEditForm] = useState({nume:'',telefon:'',checkin:'',checkout:'',pret:'',observatii:'',platitProprietar:false,sumaPlatitaProprietar:''})
-  const [editSaving, setEditSaving] = useState(false)
+  // Editarea deschide formularul complet (acelasi ca in Rezervari) - inainte era un editor separat,
+  // simplificat, iar butonul lui ramanea sub marginea ecranului in cardul rezervarii
+  const [editId, setEditId] = useState<string|null>(null)
+  const [sablonRez, setSablonRez] = useState<any>(null)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const [scanningCI, setScanningCI] = useState(false)
   const [ciScanError, setCiScanError] = useState<string|null>(null)
@@ -233,7 +235,8 @@ export default function CalendarPage() {
     })
   }, [])
 
-  async function deschideSabloane(aptId:string){
+  async function deschideSabloane(aptId:string, r?:any){
+    if(r) setSablonRez(r)
     setSabloanePop({aptId})
     const {data} = await supabase.from('sabloane_mesaje').select('*').eq('apartament_id',aptId).order('tip')
     setSabloaneApt(data||[])
@@ -346,39 +349,10 @@ export default function CalendarPage() {
     }
   }
 
-  async function saveEdit(){
-    if(!editRez) return
-    setEditSaving(true)
-    const payload:any = {
-      nume_client: editForm.nume,
-      telefon_client: editForm.telefon||null,
-      data_checkin: editForm.checkin,
-      data_checkout: editForm.checkout,
-      suma_incasata: parseFloat(editForm.pret)||0,
-      observatii: editForm.observatii||null,
-      platit_proprietar: editForm.platitProprietar,
-      suma_platita_proprietar: editForm.platitProprietar ? (parseFloat(editForm.sumaPlatitaProprietar)||0) : null,
-      data_plata_proprietar: editForm.platitProprietar ? new Date().toISOString().slice(0,10) : null,
-    }
-    let { error } = await supabase.from('rezervari').update(payload).eq('id', editRez.id)
-    if(error){
-      // platit_proprietar/suma_platita_proprietar/data_plata_proprietar pot sa nu existe inca
-      // (coloane noi) - reincearca fara ele, sa nu piarda restul modificarilor formularului
-      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, ...fallback } = payload
-      ;({ error } = await supabase.from('rezervari').update(fallback).eq('id', editRez.id))
-    }
-    setEditSaving(false)
-    if(!error){ setEditRez(null); setTooltip(null); await load() }
-    else alert('Eroare: '+error.message)
-  }
-
-  async function cancelRez(){
-    if(!editRez) return
-    if(!confirm(`Anulezi rezervarea lui ${editRez.nume_client}? Se eliberează perioada în calendar.`)) return
-    setEditSaving(true)
-    const { error } = await supabase.from('rezervari').update({ status_rezervare:'anulata' }).eq('id', editRez.id)
-    setEditSaving(false)
-    if(!error){ setEditRez(null); setTooltip(null); await load() }
+  async function cancelRez(r:any){
+    if(!confirm(`Anulezi rezervarea lui ${r.nume_client}? Se eliberează perioada în calendar.`)) return
+    const { error } = await supabase.from('rezervari').update({ status_rezervare:'anulata' }).eq('id', r.id)
+    if(!error){ setEditId(null); setTooltip(null); await load() }
     else alert('Eroare: '+error.message)
   }
 
@@ -993,8 +967,14 @@ Echipa AB Homes Iași`)}
 
       {/* Tooltip — card informativ despre rezervare (nu editarea, aia e alt buton mai jos) */}
       {tooltip && (
-        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.min(tooltip.y-10,window.innerHeight-420), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${cs(tooltip.rez.canal).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
-          <div style={{ fontSize:17,fontWeight:700,color:'#fff',marginBottom:6 }}>{tooltip.rez.nume_client}</div>
+        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.max(12,Math.min(tooltip.y-10,window.innerHeight-560)), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${cs(tooltip.rez.canal).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)', maxHeight:'calc(100vh - 24px)', overflowY:'auto' as const }}>
+          <div style={{ display:'flex',alignItems:'flex-start',gap:8,marginBottom:6 }}>
+            <div style={{ flex:1,minWidth:0,fontSize:17,fontWeight:700,color:'#fff' }}>{tooltip.rez.nume_client}</div>
+            <button onClick={()=>{ setEditId(tooltip.rez.id); setTooltip(null) }} title="Editează rezervarea"
+              style={{ display:'flex',alignItems:'center',gap:5,flexShrink:0,padding:'5px 10px',borderRadius:8,border:'1px solid rgba(77,163,255,0.45)',background:'rgba(77,163,255,0.16)',color:'#7BC8FF',fontSize:12,fontWeight:700,cursor:'pointer' }}>
+              <Pencil size={12}/> Editează
+            </button>
+          </div>
           <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:14 }}>
             {tooltip.rez.apartament?.nota&&<span style={{ fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.15)',padding:'2px 7px',borderRadius:5,fontFamily:'monospace' }}>{tooltip.rez.apartament.nota}</span>}
             <span style={{ fontSize:13,color:'rgba(159,215,255,0.6)' }}>{tooltip.rez.apartament?.nume||'—'}</span>
@@ -1061,117 +1041,42 @@ Echipa AB Homes Iași`)}
             </div>
           )}
 
-          <button onClick={()=>{
-            setEditRez(tooltip.rez)
-            setEditForm({nume:tooltip.rez.nume_client||'',telefon:tooltip.rez.telefon_client||'',checkin:tooltip.rez.data_checkin||'',checkout:tooltip.rez.data_checkout||'',pret:String(tooltip.rez.suma_incasata||''),observatii:tooltip.rez.observatii||'',platitProprietar:!!tooltip.rez.platit_proprietar,sumaPlatitaProprietar:tooltip.rez.suma_platita_proprietar!=null?String(tooltip.rez.suma_platita_proprietar):(tooltip.rez.suma_proprietar!=null?String(tooltip.rez.suma_proprietar):'')})
-            setTooltip(null)
-          }} style={{ width:'100%',padding:'7px',borderRadius:7,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer' }}>
+          <button onClick={()=>{ setEditId(tooltip.rez.id); setTooltip(null) }} style={{ width:'100%',padding:'7px',borderRadius:7,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer' }}>
             ✏️ Editează rezervarea
           </button>
         </div>
       )}
 
-      {/* Edit modal */}
-      {editRez&&(
-        <div onClick={()=>setEditRez(null)} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center' }}>
-          <div onClick={e=>e.stopPropagation()} style={{ width:340,background:'rgba(8,18,36,0.99)',border:'1px solid rgba(100,160,255,0.25)',borderRadius:14,padding:'20px' }}>
-            <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16 }}>
-              <span style={{ fontSize:14,fontWeight:700,color:'#7BC8FF' }}>Editează rezervare</span>
-              <button onClick={()=>setEditRez(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',fontSize:18,lineHeight:1 }}>✕</button>
-            </div>
-            {([['Nume client','nume','text','Ion Popescu'],['Telefon','telefon','text','+40 7xx'],['Check-in','checkin','date',''],['Check-out','checkout','date',''],['Preț (RON)','pret','number','0']] as [string,string,string,string][]).map(([lbl,key,type,ph])=>(
-              <div key={key} style={{ marginBottom:10 }}>
-                <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.06em' }}>{lbl}</div>
-                <input type={type} value={(editForm as any)[key]} placeholder={ph}
-                  onChange={e=>setEditForm(f=>({...f,[key]:e.target.value}))}
-                  style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}/>
-              </div>
-            ))}
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.06em' }}>Observații</div>
-              <textarea value={editForm.observatii} onChange={e=>setEditForm(f=>({...f,observatii:e.target.value}))} rows={4}
-                placeholder="ex. plată cash la sosire, alocă parcare..."
-                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
-            </div>
-
-            {/* Plata catre proprietar, per rezervare - cerut direct: "la cele cu comision, sa putem
-                sa bifam daca s-a platit si cat s-a platit catre proprietar, in fiecare rezervare in
-                parte" - inainte era doar un workaround manual scris in Observatii */}
-            {editRez?.apartament?.proprietar_id && (
-              <div style={{ marginBottom:14, padding:10, borderRadius:9, background:'rgba(74,222,128,0.05)', border:'1px solid rgba(74,222,128,0.15)' }}>
-                <div style={{ fontSize:10,color:'rgba(74,222,128,0.6)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em' }}>
-                  Plată proprietar {editRez.apartament.proprietar?.nume?`(${editRez.apartament.proprietar.nume})`:''}
-                </div>
-                <label style={{ display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:12,color:'rgba(214,228,244,0.85)',marginBottom:editForm.platitProprietar?8:0 }}>
-                  <input type="checkbox" checked={editForm.platitProprietar}
-                    onChange={e=>setEditForm(f=>({...f,platitProprietar:e.target.checked,sumaPlatitaProprietar:f.sumaPlatitaProprietar||String(editRez?.suma_proprietar||'')}))}/>
-                  Plătit către proprietar
-                </label>
-                {editForm.platitProprietar && (
-                  <input type="number" value={editForm.sumaPlatitaProprietar} placeholder="Sumă plătită (RON)"
-                    onChange={e=>setEditForm(f=>({...f,sumaPlatitaProprietar:e.target.value}))}
-                    style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(74,222,128,0.25)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'7px 10px',outline:'none',boxSizing:'border-box' }}/>
-                )}
-                {editRez?.suma_proprietar!=null && (
-                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.35)',marginTop:6 }}>Calculat: {Number(editRez.suma_proprietar).toLocaleString('ro-RO')} RON</div>
-                )}
-              </div>
-            )}
-
-            {editForm.telefon && (()=>{
-              const liveR = {...editRez, nume_client:editForm.nume, telefon_client:editForm.telefon, data_checkin:editForm.checkin, data_checkout:editForm.checkout}
-              const btn = (bg:string,color:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:7,border:`1px solid ${color}`,background:bg,color,fontSize:11,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const}) as React.CSSProperties
-              return (
-                <div style={{ marginBottom:14 }}>
-                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.4)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Trimite mesaj</div>
+      {/* Editare - formularul complet de rezervare (comun cu pagina Rezervari) */}
+      {editId&&(
+        <RezervareEditor rezervareId={editId} onClose={()=>setEditId(null)} onSaved={load}
+          extra={(r:any)=>{
+            const btn = (bg:string,color:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'7px 11px',borderRadius:8,border:`1px solid ${color}`,background:bg,color,fontSize:12,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const})
+            return (
+              <div>
+                {r.telefon_client ? (
                   <div style={{ display:'flex',gap:6,flexWrap:'wrap' as const }}>
-                    <a href={waLink(editForm.telefon, msgConfirmareRezervare(liveR))} target="_blank" rel="noreferrer"
-                      style={btn('rgba(74,222,128,0.1)','#4ADE80')}>
-                      <Check size={12}/>Confirmare rezervare
-                    </a>
-                    <a href={waLink(editForm.telefon, msgCheckin(liveR, sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer"
-                      style={btn('rgba(252,211,77,0.08)','rgba(252,211,77,0.9)')}>
-                      <MessageCircle size={12}/>Reminder sosire
-                    </a>
-                    <a href={waLink(editForm.telefon, msgAcces(liveR, sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer"
-                      style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}>
-                      <Key size={12}/>Date acces
-                    </a>
-                    <a href={waLink(editForm.telefon, msgGataAcces(liveR, sabloaneGata))} target="_blank" rel="noreferrer"
-                      style={btn('rgba(74,222,128,0.08)','rgba(74,222,128,0.9)')}>
-                      <CheckCircle2 size={12}/>Gata locația
-                    </a>
-                    <a href={waLink(editForm.telefon, msgCheckoutGen(liveR, sabloaneCO))} target="_blank" rel="noreferrer"
-                      style={btn('rgba(192,132,252,0.08)','rgba(192,132,252,0.9)')}>
-                      <LogOut size={12}/>Check-out
-                    </a>
-                    {editRez?.apartament?.id && (
-                      <button onClick={()=>deschideSabloane(editRez.apartament.id)}
-                        style={btn('rgba(159,215,255,0.06)','rgba(159,215,255,0.5)')}>
-                        <FileText size={12}/>Alte șabloane
-                      </button>
+                    <a href={waLink(r.telefon_client, msgConfirmareRezervare(r))} target="_blank" rel="noreferrer" style={btn('rgba(74,222,128,0.1)','#4ADE80')}><Check size={12}/>Confirmare rezervare</a>
+                    <a href={waLink(r.telefon_client, msgCheckin(r, sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer" style={btn('rgba(252,211,77,0.08)','rgba(252,211,77,0.9)')}><MessageCircle size={12}/>Reminder sosire</a>
+                    <a href={waLink(r.telefon_client, msgAcces(r, sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer" style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}><Key size={12}/>Date acces</a>
+                    <a href={waLink(r.telefon_client, msgGataAcces(r, sabloaneGata))} target="_blank" rel="noreferrer" style={btn('rgba(74,222,128,0.08)','rgba(74,222,128,0.9)')}><CheckCircle2 size={12}/>Gata locația</a>
+                    <a href={waLink(r.telefon_client, msgCheckoutGen(r, sabloaneCO))} target="_blank" rel="noreferrer" style={btn('rgba(192,132,252,0.08)','rgba(192,132,252,0.9)')}><LogOut size={12}/>Check-out</a>
+                    {r.apartament_id && (
+                      <button type="button" onClick={()=>deschideSabloane(r.apartament_id, r)} style={btn('rgba(159,215,255,0.06)','rgba(159,215,255,0.5)')}><FileText size={12}/>Alte șabloane</button>
                     )}
                   </div>
-                </div>
-              )
-            })()}
-
-            <div style={{ display:'flex',gap:8 }}>
-              <button onClick={saveEdit} disabled={editSaving}
-                style={{ flex:1,padding:'10px',borderRadius:9,border:'none',background:'rgba(77,163,255,0.8)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6 }}>
-                {editSaving?<><Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se salvează...</>:<><Check size={14}/>Salvează</>}
-              </button>
-              <button onClick={()=>setEditRez(null)}
-                style={{ padding:'10px 16px',borderRadius:9,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.5)',fontSize:13,cursor:'pointer' }}>
-                Închide
-              </button>
-            </div>
-            <button onClick={cancelRez} disabled={editSaving}
-              style={{ width:'100%',marginTop:8,padding:'8px',borderRadius:9,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.7)',fontSize:12,fontWeight:600,cursor:'pointer' }}>
-              🗑 Anulează rezervarea
-            </button>
-          </div>
-        </div>
+                ) : (
+                  <div style={{ fontSize:12,color:'rgba(159,215,255,0.45)' }}>Adaugă un telefon ca să poți trimite mesaje pe WhatsApp.</div>
+                )}
+                {r.status_rezervare!=='anulata' && (
+                  <button type="button" onClick={()=>cancelRez(r)}
+                    style={{ marginTop:12,padding:'7px 12px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'transparent',color:'rgba(248,113,113,0.8)',fontSize:12,fontWeight:600,cursor:'pointer' }}>
+                    🗑 Anulează rezervarea
+                  </button>
+                )}
+              </div>
+            )
+          }}/>
       )}
 
       {/* ── Calculator panel ── */}
@@ -1232,8 +1137,8 @@ Echipa AB Homes Iași`)}
               </div>
             )}
             {sabloaneApt.map((s:any) => {
-              const liveR = {...editRez, nume_client:editForm.nume, telefon_client:editForm.telefon}
-              const preview = (s.text||'').replace(/{nume}/gi, firstName(editForm.nume))
+              const liveR = sablonRez || {}
+              const preview = (s.text||'').replace(/{nume}/gi, firstName(liveR.nume_client||''))
               return (
                 <div key={s.id} style={{background:'rgba(11,22,42,0.7)',border:'1px solid rgba(100,160,255,0.1)',borderRadius:12,padding:14,marginBottom:10}}>
                   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
@@ -1243,8 +1148,8 @@ Echipa AB Homes Iași`)}
                   <div style={{fontSize:12,color:'rgba(159,215,255,0.6)',whiteSpace:'pre-wrap' as const,lineHeight:1.5,marginBottom:8,maxHeight:100,overflow:'hidden'}}>
                     {preview}
                   </div>
-                  <button onClick={()=>trimiteSablonWA(liveR, s)} disabled={!editForm.telefon}
-                    style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#22C55E,#16A34A)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:editForm.telefon?1:0.5}}>
+                  <button onClick={()=>trimiteSablonWA(liveR, s)} disabled={!liveR.telefon_client}
+                    style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#22C55E,#16A34A)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:liveR.telefon_client?1:0.5}}>
                     💬 Trimite pe WhatsApp
                   </button>
                 </div>

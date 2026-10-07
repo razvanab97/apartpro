@@ -1,10 +1,11 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, Rezervare, Apartament, calculeazaDecont, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
+import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, PROPRIETAR_NOTIF_APT_IDS } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 import RezervareModal from '@/components/RezervareModal'
+import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -113,99 +114,17 @@ export default function RezervariPage() {
   function openNew() { setEditing({...emptyRez}); setOpen(true) }
   function openEdit(r: any) { setEditing({...r}); setOpen(true) }
 
-  function onAptChange(aptId: string) {
-    const apt = apartamente.find(a => a.id === aptId)
-    setEditing((prev: any) => ({
-      ...prev,
-      apartament_id: aptId,
-      proprietar_id: apt?.proprietar_id || '',
-      comision_platforma_procent: aptId.includes('booking') ? 15 : 0,
-    }))
-  }
-
-  function recalcComisionPlatforma(brut: number|'', pct: number|'') {
-    const val = Number(brut||0) * Number(pct||0) / 100
-    const tva = val * 0.19
-    setEditing((prev: any) => ({
-      ...prev,
-      valoare_bruta: brut,
-      comision_platforma_procent: pct,
-      comision_platforma_valoare: Math.round(val*100)/100,
-      tva_comision_platforma: Math.round(tva*100)/100,
-    }))
-  }
-
-  const calcul = useCallback(() => {
-    const apt = apartamente.find(a => a.id === editing.apartament_id)
-    if (!apt) return null
-    return calculeazaDecont(editing, apt)
-  }, [editing, apartamente])
+  const onAptChange = (aptId: string) => setEditing((prev: any) => cuApartament(prev, aptId, apartamente))
+  const recalcComisionPlatforma = (brut: number|'', pct: number|'') => setEditing((prev: any) => cuComision(prev, brut, pct))
+  const calcul = useCallback(() => decont(editing, apartamente), [editing, apartamente])
 
   async function save() {
-    // apartament_id is optional - can be set later
-    if (!editing.nume_client) { show('error','Completează numele clientului'); return }
-    if (!editing.data_checkin || !editing.data_checkout) { show('error','Completează datele'); return }
-    if (editing.data_checkout <= editing.data_checkin) { show('error','Data checkout trebuie să fie după check-in'); return }
-
     setSaving(true)
-    const apt = apartamente.find(a => a.id === editing.apartament_id)
-    const c = calculeazaDecont(editing, apt||{})
-
-    const payload = {
-      ...editing,
-      baza_calcul_comision: c.baza,
-      comision_administrator: c.comision,
-      suma_proprietar: c.suma_proprietar,
-      // Convert empty strings to null for UUID fields
-      apartament_id: editing.apartament_id || null,
-      proprietar_id: editing.proprietar_id || null,
-      // Campurile numerice pot fi ramase '' daca s-a salvat cu inputul golit fara sa se retasteze
-      // (vezi numVal/numInput) - le trecem explicit pe 0 aici, ca sa nu trimitem '' spre coloane numerice
-      nr_persoane: Number(editing.nr_persoane)||1,
-      valoare_bruta: Number(editing.valoare_bruta)||0,
-      taxa_curatenie_incasata: Number(editing.taxa_curatenie_incasata)||0,
-      suma_incasata: Number(editing.suma_incasata)||0,
-      comision_platforma_procent: Number(editing.comision_platforma_procent)||0,
-      comision_platforma_valoare: Number(editing.comision_platforma_valoare)||0,
-      tva_comision_platforma: Number(editing.tva_comision_platforma)||0,
-      cost_curatenie: Number(editing.cost_curatenie)||0,
-      cost_spalatorie: Number(editing.cost_spalatorie)||0,
-      cost_consumabile: Number(editing.cost_consumabile)||0,
-      cost_mentenanta: Number(editing.cost_mentenanta)||0,
-      alte_costuri: Number(editing.alte_costuri)||0,
-      cod_rezervare_platforma: String(editing.cod_rezervare_platforma||'').trim() || null,
-      platit_proprietar: !!editing.platit_proprietar,
-      suma_platita_proprietar: editing.platit_proprietar ? (Number(editing.suma_platita_proprietar)||0) : null,
-      data_plata_proprietar: editing.platit_proprietar ? (editing.data_plata_proprietar || new Date().toISOString().slice(0,10)) : null,
-    }
-    delete payload.id; delete payload.apartament; delete payload.proprietar; delete payload.nr_nopti; delete payload.created_at; delete payload.updated_at; delete payload.rezervare_id
-
-    let { error } = editing.id
-      ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
-      : await supabase.from('rezervari').insert(payload)
-    let codNesalvat = false
-    if (error && /cod_rezervare_platforma/.test(error.message)) {
-      // cod_rezervare_platforma e coloana noua (supabase/cod_rezervare_platforma.sql) - pana la migrare
-      // salvam restul rezervarii si anuntam ca doar codul n-a putut fi salvat
-      const { cod_rezervare_platforma, ...faraCod } = payload
-      codNesalvat = !!cod_rezervare_platforma
-      ;({ error } = editing.id
-        ? await supabase.from('rezervari').update(faraCod).eq('id', editing.id)
-        : await supabase.from('rezervari').insert(faraCod))
-    }
-    if (error) {
-      // platit_proprietar/suma_platita_proprietar/data_plata_proprietar pot sa nu existe inca
-      // (coloane noi) - reincearca fara ele, sa nu piarda restul rezervarii
-      const { platit_proprietar, suma_platita_proprietar, data_plata_proprietar, cod_rezervare_platforma, ...fallback } = payload
-      if (cod_rezervare_platforma) codNesalvat = true
-      ;({ error } = editing.id
-        ? await supabase.from('rezervari').update(fallback).eq('id', editing.id)
-        : await supabase.from('rezervari').insert(fallback))
-    }
-    if (error) { show('error', error.message); setSaving(false); return }
-    if (codNesalvat) show('error', 'Rezervarea s-a salvat, dar codul de rezervare nu — lipsește coloana cod_rezervare_platforma în baza de date')
-    else show('success', editing.id ? 'Rezervare actualizată' : 'Rezervare adăugată')
-    setOpen(false); setSaving(false); load()
+    const err = await salveazaRezervare(editing, apartamente)
+    setSaving(false)
+    if (err) { show('error', err); return }
+    show('success', editing.id ? 'Rezervare actualizată' : 'Rezervare adăugată')
+    setOpen(false); load()
   }
 
   async function deleteRez() {

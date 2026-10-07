@@ -21,6 +21,9 @@ type Props = {
   onSave: () => void
   onClose: () => void
   onReload?: () => void
+  // Actiuni specifice paginii care deschide formularul (ex. calendarul: mesaje WhatsApp, anulare),
+  // primesc rezervarea asa cum e in formular in acel moment
+  extra?: (editing: any) => ReactNode
 }
 
 const C = {
@@ -118,7 +121,7 @@ function Fold({ title, value, open, onToggle, children }: { title: string; value
   )
 }
 
-export default function RezervareModal({ open, editing, setEditing, apartamente, onAptChange, recalcComisionPlatforma, calcul, saving, onSave, onClose, onReload }: Props) {
+export default function RezervareModal({ open, editing, setEditing, apartamente, onAptChange, recalcComisionPlatforma, calcul, saving, onSave, onClose, onReload, extra }: Props) {
   const totalCosturi = COSTURI.reduce((s, [k]) => s + (Number(editing?.[k]) || 0), 0)
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
   const [showCosturi, setShowCosturi] = useState(false)
@@ -232,6 +235,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 <div>
                   <Label>Canal</Label>
                   <select value={editing.canal} onChange={e => set({ canal: e.target.value })}>
+                    {/* Canale din afara listei (ex. „intern” din calendar) raman selectate, nu apar ca Booking */}
+                    {editing.canal && !CANALE_LABEL[editing.canal] && <option value={editing.canal}>{editing.canal.charAt(0).toUpperCase() + editing.canal.slice(1)}</option>}
                     {Object.entries(CANALE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
@@ -271,6 +276,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             <Group title="Observații">
               <textarea value={editing.observatii || ''} onChange={e => set({ observatii: e.target.value })} rows={2} placeholder="Notițe interne..." style={{ resize: 'vertical' }} />
             </Group>
+
+            {extra && <Group title="Mesaje și acțiuni">{extra(editing)}</Group>}
           </div>
 
           {/* ── Dreapta: bani, decont, statusuri, factura ── */}
