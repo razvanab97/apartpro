@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, notificaProprietar } from '@/lib/supabase'
+import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, notificaProprietar, pretRezervareText } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
@@ -69,7 +69,8 @@ export default function RezervariPage() {
   
   function waLinkProprietar(r: any): string {
     const nr = normalizeWaPhone(r.apartament?.proprietar?.telefon || '')
-    const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}`
+    const pret = pretRezervareText(r)
+    const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${pret?`\nPreț: ${pret}`:''}`
     return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
   }
 

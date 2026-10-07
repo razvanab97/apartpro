@@ -164,6 +164,13 @@ export const PROPRIETAR_NOTIF_IDS = [
   'f9d803ec-571e-4db2-9a74-cc3daee35d4e', // Emma - Cherry 2 + Cherry 3 by AB Homes
   '38daf039-b044-4461-ad07-9bf79cb17eaa', // Petrică Ancuța - Comfy & Chic Apartment
 ]
+// Pretul rezervarii pentru mesajele catre proprietar: valoarea bruta, iar daca e 0 (ex. rezervari
+// interne din calendar, care au doar suma incasata) suma incasata. Text gata de pus in mesaj sau ''.
+export function pretRezervareText(r: any): string {
+  const v = Number(r?.valoare_bruta) > 0 ? Number(r.valoare_bruta) : Number(r?.suma_incasata) || 0
+  if (!(v > 0)) return ''
+  return `${v.toLocaleString('ro-RO', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${r?.moneda || 'RON'}`
+}
 export function notificaProprietar(r: any): boolean {
   const prop = r?.apartament?.proprietar
   return !!prop?.telefon && PROPRIETAR_NOTIF_IDS.includes(prop?.id || r?.apartament?.proprietar_id)

@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, normalizeWaPhone, notificaProprietar, CANALE_LABEL } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -154,7 +154,8 @@ function msgProprietar(r:any){
   const apt = r.apartament?.nume || 'apartament'
   const ci = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const co = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
-  return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${ci} → ${co} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}`
+  const pret = pretRezervareText(r)
+  return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${ci} → ${co} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${pret?`\nPreț: ${pret}`:''}`
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
@@ -389,7 +390,7 @@ export default function DashboardPage() {
   async function loadPropNotif(){
     try{
       const {data}=await supabase.from('rezervari')
-        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,nr_persoane,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,nr_persoane,valoare_bruta,suma_incasata,moneda,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .or('proprietar_notificat.is.null,proprietar_notificat.eq.false')
         .neq('status_rezervare','anulata')
       setPropNotif((data||[]).filter((r:any)=>notificaProprietar(r)))
