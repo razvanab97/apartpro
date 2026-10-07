@@ -33,7 +33,10 @@ const MONTHS = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie',
 const DAYS_RO = ['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminică']
 
 function daysInMonth(y:number,m:number){ return new Date(y,m+1,0).getDate() }
-function isoDate(y:number,m:number,d:number){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}` }
+// Normalizeaza ca Date: ziua 32 din octombrie = 1 noiembrie - calendarul arata si primele zile din luna urmatoare
+function isoDate(y:number,m:number,d:number){ const t=new Date(y,m,d); return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}` }
+// Cate zile din luna urmatoare se mai vad la dreapta (cerut direct: "inca 10 zile din luna urmatoare")
+const ZILE_EXTRA = 10
 function getDow(y:number,m:number,d:number){ return (new Date(y,m,d).getDay()+6)%7 }
 function firstName(name:string){ return (name||'').split(' ')[0] }
 function waLink(phone:string, msg:string){
@@ -253,7 +256,7 @@ export default function CalendarPage() {
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
       const start = isoDate(year, month, 1)
-      const end   = isoDate(year, month, daysInMonth(year, month))
+      const end   = isoDate(year, month, daysInMonth(year, month) + ZILE_EXTRA)
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         // select('*') pe rezervari (nu lista explicita) - platit_proprietar/suma_platita_proprietar
@@ -273,6 +276,7 @@ export default function CalendarPage() {
   }
 
   const days        = daysInMonth(year, month)
+  const zileVizibile = days + ZILE_EXTRA   // luna curenta + primele zile din luna urmatoare
   const displayApts = selApt ? apts.filter(a => a.id === selApt) : apts
   const rez         = selApt ? rezAll.filter(r => r.apartament?.id === selApt) : rezAll
 
@@ -490,7 +494,7 @@ export default function CalendarPage() {
           <div style={{ display:'flex',alignItems:'center',gap:8,padding:'5px 12px',borderRadius:7,background:'rgba(124,58,237,0.15)',border:'1px solid rgba(124,58,237,0.4)' }}>
             <span style={{ fontSize:11,color:'#A78BFA' }}>
               <strong>{apts.find(a=>a.id===selRange.aptId)?.nota||''} {apts.find(a=>a.id===selRange.aptId)?.nume}</strong>
-              {' · '}{selRange.from}–{selRange.to} {MONTHS[month]} ({selRange.to-selRange.from+1}n)
+              {' · '}{(()=>{ const a=new Date(year,month,selRange.from), b=new Date(year,month,selRange.to); const z=(t:Date)=>`${t.getDate()} ${MONTHS[t.getMonth()].slice(0,3).toLowerCase()}`; return `${z(a)} – ${z(b)}` })()} ({selRange.to-selRange.from+1}n)
             </span>
             <button onClick={()=>openNewRez(selRange.aptId,selRange.from,selRange.to)}
               style={{ display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'none',background:'rgba(124,58,237,0.7)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer' }}>
@@ -525,7 +529,7 @@ export default function CalendarPage() {
         {/* ── Grid ── */}
         <div style={{ flex:1, overflowX:'auto', overflowY:'auto', userSelect:'none' }}
           onClick={e=>{ if(!(e.target as HTMLElement).closest('[data-rez]')) setTooltip(null) }}>
-          <div style={{ minWidth: LABEL_W + days*COL_W }}>
+          <div style={{ minWidth: LABEL_W + zileVizibile*COL_W }}>
 
             {/* Day headers */}
             <div style={{ display:'flex', position:'sticky', top:0, zIndex:15, background:'rgba(6,14,26,0.98)', borderBottom:'2px solid rgba(159,215,255,0.1)' }}>
@@ -533,13 +537,15 @@ export default function CalendarPage() {
 
               {viewMode==='sume'&&<div style={{ width:90,flexShrink:0,height:HDR_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}><span style={{ fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.6)',letterSpacing:'.08em' }}>TOTAL</span></div>}
 
-              {Array.from({length:days},(_,i)=>{
+              {Array.from({length:zileVizibile},(_,i)=>{
                 const d   = i+1
                 const ds  = isoDate(year,month,d)
                 const dow = getDow(year,month,d)
                 const isWk= dow===5||dow===6
                 const isT = ds===today
 
+                const extra = d>days   // zi din luna urmatoare
+                const nrZi  = extra ? d-days : d
                 const numColor = isT?'#4ADE80':isWk?'#6B8EFF':'rgba(214,228,244,0.75)'
                 const dayColor = isT?'rgba(74,222,128,0.5)':isWk?'rgba(107,142,255,0.5)':'rgba(159,215,255,0.25)'
                 const hdrBg   = isT?'rgba(74,222,128,0.08)':isWk?'rgba(107,142,255,0.06)':'transparent'
@@ -550,10 +556,13 @@ export default function CalendarPage() {
                     style={{ width:COL_W, flexShrink:0, height:HDR_H, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
                       background: selectedDay===d ? 'rgba(123,200,255,0.15)' : hdrBg,
                       borderRight:'1px solid rgba(159,215,255,0.06)',
+                      borderLeft: d===days+1 ? '2px solid rgba(167,139,250,0.55)' : undefined,
                       borderBottom: selectedDay===d ? '2px solid #7BC8FF' : '2px solid transparent',
+                      opacity: extra && selectedDay!==d ? 0.62 : 1,
                       cursor:'pointer', transition:'background .12s', userSelect:'none',
                       position:'relative' as const }}>
-                    <span style={{ fontSize:18, fontWeight:700, color: selectedDay===d ? '#FFFFFF' : numColor, lineHeight:1 }}>{d}</span>
+                    {d===days+1 && <span style={{ position:'absolute', top:2, left:4, fontSize:8, fontWeight:800, color:'#A78BFA', letterSpacing:'.04em', textTransform:'uppercase' as const }}>{MONTHS[(month+1)%12].slice(0,3)}</span>}
+                    <span style={{ fontSize:18, fontWeight:700, color: selectedDay===d ? '#FFFFFF' : numColor, lineHeight:1 }}>{nrZi}</span>
                     <span style={{ fontSize:10, fontWeight:500, color: selectedDay===d ? '#7BC8FF' : dayColor, letterSpacing:'.04em' }}>
                       {['L','M','M','J','V','S','D'][dow]}
                     </span>
@@ -577,7 +586,7 @@ export default function CalendarPage() {
                   </div>
 
                   {/* Cells */}
-                  {Array.from({length:days},(_,i)=>{
+                  {Array.from({length:zileVizibile},(_,i)=>{
                     const d   = i+1
                     const ds  = isoDate(year,month,d)
                     const r   = getRez(apt.id,d)
@@ -589,7 +598,7 @@ export default function CalendarPage() {
                     const tail    = d===1 && !r ? getRezTail(apt.id) : null
                     const rOrTail = r || tail
                     const isStart = r && (r.data_checkin===ds || d===1)
-                    const nextR   = d<days ? getRez(apt.id,d+1) : null
+                    const nextR   = d<zileVizibile ? getRez(apt.id,d+1) : null
                     const isEnd   = r && nextR?.id!==r.id
                     const style   = cs(rOrTail?.canal||'direct')
 
@@ -597,6 +606,7 @@ export default function CalendarPage() {
                     if(inSel)    cellBg = 'rgba(124,58,237,0.2)'
                     else if(isT) cellBg = 'rgba(74,222,128,0.05)'
                     else if(isWk)cellBg = 'rgba(107,142,255,0.04)'
+                    if(!inSel && d>days) cellBg = 'rgba(167,139,250,0.035)'
 
                     return (
                       <div key={d}
@@ -619,12 +629,12 @@ export default function CalendarPage() {
                           }
                           setIsDragging(false)
                         }}
-                        style={{ width:COL_W, flexShrink:0, height:ROW_H, position:'relative', background:cellBg, borderRight:`1px solid rgba(159,215,255,${isWk?'0.08':'0.04'})`, cursor:r?'default':'crosshair', transition:'background .05s' }}>
+                        style={{ width:COL_W, flexShrink:0, height:ROW_H, position:'relative', background:cellBg, borderRight:`1px solid rgba(159,215,255,${isWk?'0.08':'0.04'})`, borderLeft: d===days+1 ? '2px solid rgba(167,139,250,0.45)' : undefined, cursor:r?'default':'crosshair', transition:'background .05s' }}>
 
                         {/* Reservation bar */}
                         {r && isStart && (()=>{
                           let span=0
-                          for(let dd=d;dd<=days;dd++){
+                          for(let dd=d;dd<=zileVizibile;dd++){
                             if(getRez(apt.id,dd)?.id===r.id) span++
                             else break
                           }
@@ -640,7 +650,7 @@ export default function CalendarPage() {
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
                               {viewMode==='sume'
                                 ? (()=>{
-                                    const brut=proRataMonth(r,year,month)
+                                    const brut=d>days ? proRataMonth(r,year,month+1) : proRataMonth(r,year,month)
                                     const net=netAprox(brut,r.canal)
                                     const isPlatf=esteplatforma(r.canal)
                                     return <>
@@ -727,7 +737,7 @@ export default function CalendarPage() {
               <div style={{ padding:'16px 14px', flex:1 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
                   <div>
-                    <div style={{ fontSize:14,fontWeight:700,color:'#7BC8FF' }}>{panelDay} {MONTHS[month]} {year}</div>
+                    <div style={{ fontSize:14,fontWeight:700,color:'#7BC8FF' }}>{new Date(year,month,panelDay).getDate()} {MONTHS[new Date(year,month,panelDay).getMonth()]} {new Date(year,month,panelDay).getFullYear()}</div>
                     <div style={{ fontSize:11,color:'rgba(159,215,255,0.4)',marginTop:2 }}>{DAYS_RO[getDow(year,month,panelDay)]}</div>
                   </div>
                   <button onClick={()=>setPanel(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',display:'flex' }}><X size={15}/></button>
