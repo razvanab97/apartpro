@@ -127,6 +127,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [showCosturi, setShowCosturi] = useState(false)
   const [showComision, setShowComision] = useState(false)
   const [original, setOriginal] = useState<any>(null)
+  // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
+  // recalculeaza singur cand se schimba datele; cand se scrie direct totalul, pretul se deduce din el
+  const [pretNoapte, setPretNoapte] = useState<number | '' | null>(null)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
 
   // La fiecare deschidere: randurile pliabile pornesc deschise doar daca au valori; se retine starea
@@ -139,6 +142,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setShowCosturi(totalCosturi > 0)
       setShowComision(comision > 0)
       setOriginal(editing)
+      setPretNoapte(null)
       setFactura({ etapa: 'idle' })
     }
   }
@@ -164,6 +168,17 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const cod = COD_CANAL[editing.canal] || { label: 'Cod rezervare platformă', ph: 'nr. rezervării de la platformă' }
   const procentAdmin = Number((apt as any)?.comision_procent || 20)
   const pePerNoapte = nopti > 0 ? (Number(editing.valoare_bruta) || 0) / nopti : 0
+  const noptiIntre = (ci: string, co: string) => ci && co ? Math.max(0, Math.round((new Date(co).getTime() - new Date(ci).getTime()) / 86400000)) : 0
+  const total = (pret: number, n: number) => Math.round(pret * n * 100) / 100
+  // Schimbarea datelor: daca pretul pe noapte a fost scris de mana, totalul se actualizeaza cu noile nopti
+  const setDate = (patch: { data_checkin?: string; data_checkout?: string }) => {
+    set(patch)
+    if (pretNoapte !== null && Number(pretNoapte) > 0) {
+      const n = noptiIntre(patch.data_checkin ?? editing.data_checkin, patch.data_checkout ?? editing.data_checkout)
+      recalcComisionPlatforma(total(Number(pretNoapte), n), editing.comision_platforma_procent)
+    }
+  }
+  const pretAfisat = pretNoapte !== null ? pretNoapte : (pePerNoapte > 0 ? Math.round(pePerNoapte * 100) / 100 : '')
 
   // Factura (Oblio, prin ContaFlow): doar Airbnb, rezervare salvata, cu cod si suma, fara modificari nesalvate
   const campuriFactura = ['cod_rezervare_platforma', 'valoare_bruta', 'nume_client', 'data_checkin', 'data_checkout', 'canal', 'apartament_id', 'nr_persoane', 'telefon_client']
@@ -242,9 +257,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 </div>
               </div>
               <div className="rz-grid rz-dates" style={{ marginTop: 12 }}>
-                <div><Label>Check-in *</Label><input type="date" value={editing.data_checkin} onChange={e => set({ data_checkin: e.target.value })} /></div>
+                <div><Label>Check-in *</Label><input type="date" value={editing.data_checkin} onChange={e => setDate({ data_checkin: e.target.value })} /></div>
                 <div className="rz-nights" title="Nopți"><Moon size={12} />{nopti}</div>
-                <div><Label>Check-out *</Label><input type="date" value={editing.data_checkout} onChange={e => set({ data_checkout: e.target.value })} /></div>
+                <div><Label>Check-out *</Label><input type="date" value={editing.data_checkout} onChange={e => setDate({ data_checkout: e.target.value })} /></div>
                 <div>
                   <Label>Persoane</Label>
                   <div className="rz-step">
@@ -287,9 +302,26 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 <select value={moneda} onChange={e => set({ moneda: e.target.value })} className="rz-mini">
                   <option>RON</option><option>EUR</option><option>USD</option>
                 </select>
-              }>Valoare brută</Label>
-              <Money big value={editing.valoare_bruta} suffix={moneda} onChange={v => recalcComisionPlatforma(v, editing.comision_platforma_procent)} />
-              {pePerNoapte > 0 && <div style={{ fontSize: 11, color: C.faint, marginTop: 4 }}>{fmt(pePerNoapte)} {moneda} / noapte</div>}
+              }>Preț pe noapte × {nopti} {nopti === 1 ? 'noapte' : 'nopți'}</Label>
+              <div className="rz-calc">
+                <Money value={pretAfisat} suffix={`${moneda}/n`} onChange={v => {
+                  setPretNoapte(v)
+                  recalcComisionPlatforma(v === '' ? '' : total(Number(v), nopti), editing.comision_platforma_procent)
+                }} />
+                <span className="rz-eq">=</span>
+                <div>
+                  <Money big value={editing.valoare_bruta} suffix={moneda} onChange={v => { setPretNoapte(null); recalcComisionPlatforma(v, editing.comision_platforma_procent) }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: C.faint, marginTop: 4 }}>
+                <span>preț / noapte</span><span>total rezervare (valoare brută)</span>
+              </div>
+              {!(Number(editing.valoare_bruta) > 0) && Number(editing.suma_incasata) > 0 && (
+                <button type="button" className="rz-btn" style={{ marginTop: 8, fontSize: 12, padding: '6px 10px' }}
+                  onClick={() => { setPretNoapte(null); recalcComisionPlatforma(Number(editing.suma_incasata), editing.comision_platforma_procent) }}>
+                  Folosește încasatul ({fmt(Number(editing.suma_incasata))} {moneda}) ca total
+                </button>
+              )}
               <div className="rz-grid rz-2" style={{ marginTop: 12 }}>
                 <div><Label>Încasat efectiv</Label><Money value={editing.suma_incasata} suffix={moneda} onChange={v => set({ suma_incasata: v })} /></div>
                 <div><Label>Taxă curățenie</Label><Money value={editing.taxa_curatenie_incasata} suffix={moneda} onChange={v => set({ taxa_curatenie_incasata: v })} /></div>
@@ -435,6 +467,10 @@ const CSS = `
 .rz input[type=number]::-webkit-inner-spin-button,.rz input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .rz input[type=number]{-moz-appearance:textfield}
 .rz .rz-big{height:48px;font-size:22px;font-weight:700;letter-spacing:-.01em}
+.rz-calc{display:grid;grid-template-columns:minmax(0,0.9fr) auto minmax(0,1.3fr);align-items:center;gap:8px}
+.rz-calc .rz-big{height:48px}
+.rz-calc > div:first-child input{height:48px;font-size:16px;font-weight:600}
+.rz-eq{font-size:18px;color:${C.faint}}
 .rz .rz-mini{width:auto;height:26px;padding:0 8px;font-size:11.5px}
 .rz-step{display:flex;height:38px;border:1px solid rgba(159,215,255,0.16);border-radius:9px;overflow:hidden;background:rgba(255,255,255,0.035)}
 .rz-step button{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:${C.blue};cursor:pointer}
