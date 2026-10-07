@@ -713,9 +713,14 @@ export default function CalendarPage() {
         </div>
 
         {/* ── Panel lateral ── */}
+        {/* Info pe zi = panou lateral; Rezervare noua = popup centrat peste calendar (cerut direct:
+            "mai in stanga, mai mult ca pop up decat ca zona prestabilita") */}
         {panel && (
-          <div style={{ width:260, flexShrink:0, borderLeft:'1px solid rgba(159,215,255,0.1)', background:'rgba(8,18,36,0.95)', overflowY:'auto', display:'flex', flexDirection:'column' }}
-            onMouseUp={()=>setIsDragging(false)}>
+          <div style={panel==='new'
+              ? { position:'fixed', inset:0, zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding:16, background:'rgba(4,10,20,0.62)', backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)' }
+              : { width:260, flexShrink:0, borderLeft:'1px solid rgba(159,215,255,0.1)', background:'rgba(8,18,36,0.95)', overflowY:'auto', display:'flex', flexDirection:'column' }}
+            onMouseUp={()=>setIsDragging(false)}
+            onClick={e=>{ if(panel==='new' && e.target===e.currentTarget){ setPanel(null); clearSel() } }}>
 
             {/* ── PANEL: Zi info ── */}
             {panel==='info' && panelDay && dayInfoApts && (
@@ -765,7 +770,7 @@ export default function CalendarPage() {
 
             {/* ── PANEL: Rezervare nouă ── */}
             {panel==='new' && (
-              <div style={{ padding:'16px 14px', flex:1, display:'flex', flexDirection:'column' }}>
+              <div style={{ padding:'20px 22px', width:480, maxWidth:'100%', maxHeight:'92vh', overflowY:'auto', display:'flex', flexDirection:'column', background:'#0D1A2B', border:'1px solid rgba(167,139,250,0.3)', borderRadius:16, boxShadow:'0 30px 80px rgba(0,0,0,0.55)', animation:'fadeIn .16s ease' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
                   <div>
                     <div style={{ fontSize:14,fontWeight:700,color:'#A78BFA' }}>Rezervare nouă</div>
