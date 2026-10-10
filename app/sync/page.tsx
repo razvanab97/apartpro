@@ -100,7 +100,7 @@ function DeVerificatPanel({ apts, refreshKey, show, panel }: { apts:{id:string;n
         </button>
       </div>
       <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
-        Rezervări din 5starDesk care seamănă cu altele deja existente (același client pe mai multe camere, sau pe locul unei rezervări anulate). Nu se importă automat. Corectează ce e nevoie, apoi bifează sau sari.
+        Rezervări active în 5starDesk care nu se pot importa singure — de obicei fiindcă 5starDesk nu le-a atribuit încă o cameră. Alege apartamentul și corectează ce e nevoie, apoi bifează sau sari. Dacă între timp 5starDesk le dă o cameră, intră automat la următoarea sincronizare.
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {lista.map(x0 => {
@@ -113,7 +113,7 @@ function DeVerificatPanel({ apts, refreshKey, show, panel }: { apts:{id:string;n
                 <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)', fontFamily:'monospace' }}>ID {x.id5sd} · {x0.cod}</span>
                 {x.rid && <span style={{ fontSize:10, padding:'2px 7px', borderRadius:5, background:'rgba(77,163,255,0.12)', color:'#7BC8FF' }}>importată deja — confirmă</span>}
               </div>
-              <div style={{ fontSize:11, color:'rgba(252,211,77,0.75)', marginBottom:10 }}>Seamănă cu: {x.motiv}</div>
+              <div style={{ fontSize:11, color:'rgba(252,211,77,0.75)', marginBottom:10 }}>{x.tip==='fara_camera' ? '⚠ Fără cameră atribuită în 5starDesk — alege apartamentul mai jos' : `Seamănă cu: ${x.motiv}`}</div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:8, marginBottom:10 }}>
                 <div><label style={lbl}>Apartament</label>
                   <select value={x.aptId||''} onChange={e=>setCamp(x.id5sd,'aptId',e.target.value||null)} style={inp}>
@@ -533,7 +533,7 @@ export default function SyncPage() {
               </button>
             </div>
             <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
-              Rezervarea are un cod de cameră diferit de apartamentul unde e stocată — nu s-a mutat automat (risc de suprapunere). Verifică pe 5starDesk dacă e nevoie, apoi ignoră sau mută.
+              Rezervările viitoare mutate în 5starDesk pe altă cameră se mută singure la sincronizare, dacă apartamentul e liber. Aici rămân doar cele care nu s-au putut muta (apartament ocupat pe acele date, rezervare deja încheiată) sau cărora 5starDesk le-a scos camera. Verifică pe 5starDesk, apoi ignoră sau mută.
             </div>
             {semnalate.length===0 && !loadingSemnalate && (
               <div style={{ fontSize:12, color:'rgba(159,215,255,0.35)', textAlign:'center', padding:'10px 0' }}>Nimic de verificat momentan</div>
@@ -548,7 +548,7 @@ export default function SyncPage() {
                       <div>
                         <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{r.nume_client}</div>
                         <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginTop:2 }}>
-                          {r.data_checkin} → {r.data_checkout} · stocată la <b style={{color:'#7BC8FF'}}>{aptCurent?.nota||'?'}</b>, cod semnalat <b style={{color:'#FCD34D'}}>{r.camera_semnalata}</b>
+                          {r.data_checkin} → {r.data_checkout} · stocată la <b style={{color:'#7BC8FF'}}>{aptCurent?.nota||'?'}</b>, {r.camera_semnalata==='NEALOCAT' ? <b style={{color:'#F87171'}}>fără cameră în 5starDesk</b> : <>cod semnalat <b style={{color:'#FCD34D'}}>{r.camera_semnalata}</b></>}
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
@@ -556,7 +556,7 @@ export default function SyncPage() {
                           style={{ padding:'6px 12px', borderRadius:7, border:'1px solid rgba(159,215,255,0.15)', background:'transparent', color:'rgba(159,215,255,0.6)', fontSize:11, fontWeight:600, cursor:'pointer' }}>
                           Ignoră
                         </button>
-                        {confirmMutaId===r.id ? (
+                        {r.camera_semnalata==='NEALOCAT' ? null : confirmMutaId===r.id ? (
                           <button onClick={()=>mutaLaCameraSemnalata(r)} disabled={busy}
                             style={{ padding:'6px 12px', borderRadius:7, border:'none', background:'#FCD34D', color:'#1A1400', fontSize:11, fontWeight:700, cursor:'pointer' }}>
                             {busy?'Se mută...':`Sigur, mută la ${r.camera_semnalata}`}

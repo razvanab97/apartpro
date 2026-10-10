@@ -8,6 +8,7 @@ export type SyncResult = {
   errors: number
   logs: { type: 'ok'|'skip'|'err'|'info'; msg: string }[]
   deVerificat?: DeVerificat[]
+  rezolvate?: string[]   // ID-uri 5starDesk gasite/importate la noi in sincronizarea asta (scoase din "De verificat")
 }
 
 // Rezervari 5starDesk ambigue, lasate pentru decizie manuala in Sync -> "De verificat" (cerut direct:
@@ -19,6 +20,7 @@ export type DeVerificat = {
   id5sd: string; nume: string; checkin: string; checkout: string; aptId: string|null; cod: string
   canal: string; telefon: string|null; nrPersoane: number|null; pret: number; statusNou: string
   obs: string; motiv: string; rid?: string; la: string
+  tip?: 'fara_camera'   // rezervare activa in 5starDesk, dar fara camera atribuita acolo -> alegi tu apartamentul
 }
 // Liste JSON in tabela setari (cheie/valoare) - fara migrare noua
 export const CHEIE_DE_VERIFICAT = 'sync_de_verificat'
@@ -30,12 +32,32 @@ export async function citesteListaSetari(cheie: string): Promise<any[]> {
 export async function scrieListaSetari(cheie: string, lista: any[]) {
   await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify(lista) }, { onConflict: 'cheie' })
 }
-export async function adaugaDeVerificat(items: DeVerificat[]) {
-  if (!items.length) return
+export async function adaugaDeVerificat(items: DeVerificat[], rezolvate: string[] = []) {
+  if (!items.length && !rezolvate.length) return
   const lista: DeVerificat[] = await citesteListaSetari(CHEIE_DE_VERIFICAT)
-  const ids = new Set(lista.map(x => x.id5sd))
+  // Ce a ajuns intre timp la noi (importat de sync sau gasit dupa ID) iese singur din lista
+  const rez = new Set(rezolvate)
+  const ramase = lista.filter(x => !rez.has(x.id5sd))
+  const ids = new Set(ramase.map(x => x.id5sd))
   const noi = items.filter(x => !ids.has(x.id5sd))
-  if (noi.length) await scrieListaSetari(CHEIE_DE_VERIFICAT, [...lista, ...noi])
+  if (noi.length || ramase.length !== lista.length) await scrieListaSetari(CHEIE_DE_VERIFICAT, [...ramase, ...noi])
+}
+
+const aziISO = () => new Date().toISOString().slice(0, 10)
+
+// Protectie anti-dubluri: doua sincronizari pornite in acelasi timp (cron + tab-uri deschise + buton)
+// inserau aceeasi rezervare de 2-3 ori (19 cazuri gasite). Dupa fiecare insert verificam ID-ul: daca
+// exista mai multe randuri, il pastram pe cel mai vechi (aceeasi alegere in ambele procese) si le
+// stergem pe celelalte - DOAR daca sunt create in ultimele 10 minute (adica de sincronizarile astea).
+async function eliminaDubluriProaspete(idExtern: string): Promise<number> {
+  const { data } = await supabase.from('rezervari').select('id,observatii,created_at').ilike('observatii', `%${idExtern}%`).limit(10)
+  const randuri = (data||[]).filter((r:any) => idsDinObs(r.observatii).includes(idExtern))
+    .sort((a:any, b:any) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)))
+  if (randuri.length < 2) return 0
+  const prag = Date.now() - 10 * 60 * 1000
+  const deSters = randuri.slice(1).filter((r:any) => new Date(r.created_at).getTime() > prag).map((r:any) => r.id)
+  if (deSters.length) await supabase.from('rezervari').delete().in('id', deSters)
+  return deSters.length
 }
 
 export function fmt5star(iso: string): string {
@@ -139,7 +161,7 @@ export function idsDinObs(obs: any): string[] {
 // manuala dupa ID, cerut direct: "sa luam numar de rezervare in 5 stars, care e pierdut si sistemul
 // sa caute si sa aduca de acolo o rezervare"), fara sa duplice toata logica de potrivire/actualizare.
 type Ctx = { sarite: Set<string>; force?: boolean }
-async function processOneBooking(b: any, aptByNota: Record<string,string>, apts: any[], res: SyncResult, ctx: Ctx): Promise<void> {
+export async function processOneBooking(b: any, aptByNota: Record<string,string>, apts: any[], res: SyncResult, ctx: Ctx): Promise<void> {
   try {
     const checkinRaw = b.prima_zi || b.checkin || b.check_in || b.data_checkin || ''
     const checkoutRaw = b.ultima_zi || b.checkout || b.check_out || b.data_checkout || ''
@@ -162,6 +184,8 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
     const { aptId, codIncredere, codFallback } = matchAptFromBooking(b, aptByNota)
 
     if (!checkin || !checkout) { res.skipped++; res.logs.push({ type:'skip', msg: `${numeClient}: data lipsa` }); return }
+    // Fara nume de client = bloc de indisponibilitate in 5starDesk (ex: N33 inchis iul 2025 - dec 2026), nu rezervare
+    if (!String(b.nume || b.name || b.guest_name || '').trim()) { res.skipped++; res.logs.push({ type:'skip', msg: `⊘ ID ${idExtern} (${checkin}→${checkout}) — bloc fără nume în 5starDesk, ignorat` }); return }
     // Marcata "sari" in Sync -> De verificat: nu se mai importa/actualizeaza niciodata automat
     if (!ctx.force && idExtern && ctx.sarite.has(idExtern)) { res.skipped++; res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — sărită manual` }); return }
 
@@ -195,9 +219,25 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
     // urmatoarea trecere cea anulata o "lua inapoi" - rezervarea reala ramanea invizibila in calendar.
     const liber = (r:any) => { const ids = idsDinObs(r.observatii); return !idExternValid || !ids.length || ids.includes(idExtern) }
 
+    if (existingById.length) (res.rezolvate ||= []).push(idExtern)
+
     if (!aptId && !existingById.length) {
       res.skipped++
-      res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${[...codIncredere,...codFallback].join(',')}` })
+      const codTrimis = [...codIncredere,...codFallback].filter(c => c !== 'AB HOMES IASI').join(',')
+      // Activa, viitoare, dar 5starDesk n-are inca o camera atribuita -> nu o mai sarim in tacere,
+      // apare in "De verificat" unde ii alegi apartamentul (sau astepti sa-i dea 5starDesk camera)
+      if (statusNou !== 'anulata' && checkout >= aziISO() && idExternValid && !codIncredere.length) {
+        ;(res.deVerificat ||= []).push({
+          id5sd: idExtern, nume: numeClient, checkin, checkout, aptId: null, cod: '—', canal, telefon, nrPersoane,
+          pret: totalPret, statusNou, obs: [idExtern, b.status_rezervare].filter(Boolean).join(' | '),
+          motiv: 'fără cameră atribuită în 5starDesk', la: new Date().toISOString(), tip: 'fara_camera',
+        })
+        res.logs.push({ type:'info', msg: `⏸ ${numeClient} (${checkin}) — fără cameră în 5starDesk; alege apartamentul în „De verificat”` })
+      } else if (statusNou === 'anulata') {
+        res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — anulată (fără cameră), nu se importă` })
+      } else {
+        res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit - coduri: ${codTrimis || '—'}` })
+      }
       return
     }
 
@@ -262,16 +302,43 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
       // caz in care rezervari vechi, deja corect asociate, ar aparea brusc cu alt cod de
       // camera si ar fi mutate gresit. O nepotrivire de apartament aici e semnal de
       // verificat manual, nu de aplicat automat.
-      if (aptId && existing[0].apartament_id !== aptId) {
+      // Rezervare activa (neincheiata) mutata in 5starDesk pe alta camera -> o mutam si la noi, ca
+      // in calendar sa fie exact ca in 5starDesk (cerut direct: "sa functioneze complet in parametri"),
+      // DOAR daca apartamentul tinta e liber pe datele ei. Rezervarile incheiate nu se muta (5starDesk
+      // poate redenumi camere vechi, ex L94 -> M08), doar se semnaleaza.
+      const notaDe = (id: string) => (apts||[]).find((a:any)=>a.id===id)?.nota || null
+      const activaViitoare = statusNou !== 'anulata' && (checkout || existing[0].data_checkout) >= aziISO()
+      let mutata = false
+      if (aptId && existing[0].apartament_id !== aptId && foundById && activaViitoare) {
+        const { data: ov, error: ovErr } = await supabase.from('rezervari').select('id,nume_client')
+          .eq('apartament_id', aptId).neq('id', existing[0].id).neq('status_rezervare', 'anulata')
+          .lt('data_checkin', checkout || existing[0].data_checkout).gt('data_checkout', checkin || existing[0].data_checkin).limit(5)
+        if (!ovErr && !(ov||[]).length) {
+          updates.apartament_id = aptId
+          if (existing[0].camera_semnalata) { updates.camera_semnalata = null; updates.camera_semnalata_la = null }
+          mutata = true
+          res.logs.push({ type:'ok', msg: `↪ ${numeClient} (${checkin}) — mutată ${notaDe(existing[0].apartament_id)||'?'} → ${notaDe(aptId)}, ca în 5starDesk` })
+        }
+      }
+      if (mutata) {
+        // deja tratat mai sus
+      } else if (!aptId && foundById && statusNou !== 'anulata') {
+        // 5starDesk i-a scos camera (ex: camera data altei rezervari lungi) -> ramane unde e, dar semnalata
+        if (existing[0].camera_semnalata !== 'NEALOCAT') {
+          updates.camera_semnalata = 'NEALOCAT'
+          updates.camera_semnalata_la = new Date().toISOString()
+        }
+        res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — fără cameră în 5starDesk acum (stă încă pe ${notaDe(existing[0].apartament_id)||'?'} la noi) — vezi „Camere semnalate”` })
+      } else if (aptId && existing[0].apartament_id !== aptId) {
         // Semnalul se SALVEAZA acum (nu doar un rand de log care dispare) - cerut direct,
         // ca sa identifice singur toate discrepantele astea, la fiecare sincronizare, nu doar
         // o data, manual. Lista completa apare in Sync 5starDesk -> "Camere semnalate".
-        const codDetectat = (apts||[]).find((a:any)=>a.id===aptId)?.nota || null
+        const codDetectat = notaDe(aptId)
         if (codDetectat && codDetectat !== existing[0].camera_semnalata) {
           updates.camera_semnalata = codDetectat
           updates.camera_semnalata_la = new Date().toISOString()
         }
-        res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — camera indica ${codDetectat||'alt apartament'}, diferit de cel existent, NU s-a realocat automat (verifica manual)` })
+        res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — camera indica ${codDetectat||'alt apartament'}, ${activaViitoare?'ocupată pe aceste date':'rezervare încheiată'} — NU s-a mutat automat (vezi „Camere semnalate”)` })
       } else if (existing[0].camera_semnalata) {
         // Resincronizare care confirma iar apartamentul curent -> semnalul vechi nu mai e valabil
         updates.camera_semnalata = null
@@ -306,18 +373,12 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
       // opreste deja bucla), dar TypeScript nu poate urmari invariantul peste tot fluxul de mai sus.
       res.skipped++
       res.logs.push({ type:'skip', msg: `⚠ ${numeClient} (${checkin}): apartament negasit` })
-    } else if (!ctx.force && blocate.length) {
-      // Ambigua -> decizie manuala, nu import automat
-      const nota = (id: string) => (apts||[]).find((a:any)=>a.id===id)?.nota || '?'
-      const motiv = blocate.map((r:any) => `${r.nume_client} · ${nota(r.apartament_id)} · ${r.data_checkin}→${r.data_checkout} · ID ${idsDinObs(r.observatii).join(',')}${r.status_rezervare==='anulata'?' (anulată)':''}`).join(' | ')
-      ;(res.deVerificat ||= []).push({
-        id5sd: idExtern, nume: numeClient, checkin, checkout, aptId, cod: nota(aptId), canal, telefon, nrPersoane,
-        pret: totalPret, statusNou, obs: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | '),
-        motiv, la: new Date().toISOString(),
-      })
-      res.skipped++
-      res.logs.push({ type:'info', msg: `⏸ ${numeClient} (${checkin}, ${nota(aptId)}) — seamănă cu altă rezervare (${motiv}); de verificat manual mai jos, în „De verificat”` })
     } else {
+      // Un rand cu ALT ID 5starDesk pe acelasi apartament+date / acelasi nume+check-in e alta rezervare
+      // (acelasi client pe mai multe camere, sau slot eliberat de o anulare) -> se importa normal, separat.
+      // (Inainte asteptau decizie manuala in "De verificat" - toate s-au dovedit rezervari reale, iar
+      // cele netratate lipseau din calendar, ex. Duguleanu C64 9-10 oct.)
+      if (blocate.length) res.logs.push({ type:'info', msg: `ℹ ${numeClient} (${checkin}) — pe aceleași date există și ID ${blocate.map((r:any)=>idsDinObs(r.observatii).join(',')).join(', ')} (altă rezervare); importată separat` })
       const { error } = await supabase.from('rezervari').insert({
         apartament_id: aptId,
         canal,
@@ -336,6 +397,11 @@ async function processOneBooking(b: any, aptByNota: Record<string,string>, apts:
       })
       if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
       else {
+        if (idExternValid) {
+          const sterse = await eliminaDubluriProaspete(idExtern)
+          if (sterse) res.logs.push({ type:'info', msg: `🧹 ${numeClient} — ${sterse} dublură(i) din sincronizări paralele eliminată(e)` })
+          ;(res.rezolvate ||= []).push(idExtern)
+        }
         res.inserted++
         const aptName = (apts||[]).find((a:any)=>a.id===aptId)?.nota || aptId.slice(0,8)
         res.logs.push({ type:'ok', msg: `✓ ${numeClient} | ${checkin}→${checkout} | ${canal} | ${aptName}${telefon?' 📞':''}` })
@@ -396,7 +462,7 @@ export async function syncFivestar(dateFrom: string, dateTo: string): Promise<Sy
     for (const b of rezervariList) {
       await processOneBooking(b, aptByNota, apts||[], res, { sarite })
     }
-    await adaugaDeVerificat(res.deVerificat || [])
+    await adaugaDeVerificat(res.deVerificat || [], res.rezolvate || [])
   } catch(e:any) {
     res.errors++; res.logs.push({ type:'err', msg: 'Eroare conexiune: ' + e.message })
   }
