@@ -430,9 +430,24 @@ export default function DashboardPage() {
     setCiAziCur(dedupeByApt(ciCur0||[]))
     const primaZiLuna=format(new Date(an,luna-1,1),'yyyy-MM-dd')
     const ultimaZiLuna=format(new Date(an,luna,0),'yyyy-MM-dd')
-    // VM07 si CG40 - singurele apartamente cu comision AB
-    const {data:apComision}=await supabase.from('apartamente').select('id,nota').in('nota',['VM07','CG40'])
-    const idsComision=new Set((apComision||[]).map((a:any)=>a.id))
+    // Apartamente in administrare (ale proprietarilor), unde firma castiga DOAR comisionul - dupa tipul de
+    // comision setat in Apartamente, nu o lista fixa (era hardcodat VM07+CG40, iar Comfy & Chic, Cherry 2 si
+    // Cherry 3, adaugate ulterior, intrau integral la incasarile firmei - raportat direct: "sa fie corecte")
+    const {data:apComision}=await supabase.from('apartamente').select('id,nota,comision_tip,comision_procent,comision_fix').neq('comision_tip','fara_comision')
+    const aptComision=new Map<string,any>((apComision||[]).map((a:any)=>[a.id,a]))
+    const idsComision=new Set(aptComision.keys())
+    // Net dupa comisionul platformei (Airbnb 15% / Booking 17%, + TVA pe comision) - aceeasi formula peste tot
+    const netPlatforma=(brut:number,canal:string)=>{ const c=(canal||'').toLowerCase(); return c==='airbnb'?brut*0.85*(1-0.21*0.15):c==='booking'?brut*0.83*(1-0.21*0.17):brut }
+    // Comisionul firmei dintr-o rezervare (partea din luna) a unui apartament in administrare; partea fixa
+    // lunara (fix_lunar/mixt) se adauga separat, o data pe apartament
+    const comisionRez=(r:any,brut:number)=>{ const a=aptComision.get(r.apartament_id); if(!a) return 0; const pc=Number(a.comision_procent||0)/100
+      if(a.comision_tip==='procent_brut') return brut*pc
+      if(a.comision_tip==='fix_lunar') return 0
+      return netPlatforma(brut,r.canal)*pc }  // procent_net_platforme / procent_net_dupa_costuri (costurile nu se stiu aici) / mixt
+    const comisionFixLunar=(aptIds:Set<string>)=>[...aptIds].reduce((s,id)=>{ const a=aptComision.get(id); return s+((a&&(a.comision_tip==='fix_lunar'||a.comision_tip==='mixt'))?Number(a.comision_fix||0):0) },0)
+    // 5starDesk i-a scos camera (ex: C64 dat unei rezervari lungi) -> nu ocupa apartamentul, nu se numara
+    // la incasari/ocupare pana nu primeste iar o camera (altfel C64 avea 45 de nopti in octombrie)
+    const activaPeCamera=(r:any)=>r.camera_semnalata!=='NEALOCAT'
 
     const [
       {count:apCount},{data:rezAziCount},{data:rezLuna},
@@ -444,7 +459,7 @@ export default function DashboardPage() {
       // rezervari active ACUM (checkin<=azi, checkout>azi)
       supabase.from('rezervari').select('apartament_id').neq('status_rezervare','anulata').lte('data_checkin',todayStr).gt('data_checkout',todayStr),
       // rezervari care se suprapun cu luna curenta (checkin <= sfarsit luna SI checkout > inceput luna)
-      supabase.from('rezervari').select('suma_incasata,canal,apartament_id,data_checkin,data_checkout,nr_nopti').lte('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
+      supabase.from('rezervari').select('*').lte('data_checkin',ultimaZiLuna).gt('data_checkout',primaZiLuna).neq('status_rezervare','anulata'),
       // checkin azi
       supabase.from('rezervari').select('*,apartament:apartamente(id,nume,nota,adresa,mesaj_checkin,mesaj_checkout)').eq('data_checkin',todayStr).neq('status_rezervare','anulata').order('data_checkin'),
       // checkout azi
@@ -477,37 +492,29 @@ export default function DashboardPage() {
       if (noptiInLuna >= totalNopti) return brut
       return Math.round(brut / totalNopti * noptiInLuna * 100) / 100
     }
+    const rezLunaToate = rezLuna||[]
+    const rezLunaCam = rezLunaToate.filter(activaPeCamera)
     // incasari brute = suma pro-rata pentru rezervarile active in luna curenta
-    const inc = (rezLuna||[]).reduce((s:number,r:any) => s + proRataLuna(r), 0)
+    const inc = rezLunaCam.reduce((s:number,r:any) => s + proRataLuna(r), 0)
     // incasari nete = brut - comision platforma (Airbnb 15%+TVA, Booking 17%+TVA, direct 0%)
-    const incNet = (rezLuna||[]).reduce((s:number,r:any) => {
-      const brut = proRataLuna(r)
-      const canal = (r.canal||'').toLowerCase()
-      if(canal==='airbnb') return s + brut * 0.85 * (1 - 0.21 * 0.15) // net dupa Airbnb 15% + TVA
-      if(canal==='booking') return s + brut * 0.83 * (1 - 0.21 * 0.17) // net dupa Booking 17% + TVA
-      return s + brut
+    const incNet = rezLunaCam.reduce((s:number,r:any) => {
+      return s + netPlatforma(proRataLuna(r), r.canal)
     }, 0)
-    // comisioane AB Homes = doar VM07 si CG40 (pro-rata)
-    const rezComision=(rezLuna||[]).filter((r:any)=>idsComision.has(r.apartament_id))
-    const comAirbnb=rezComision.filter((r:any)=>r.canal==='airbnb').reduce((s:number,r:any)=>s+proRataLuna(r)*0.85*0.20,0)
-    const comBooking=rezComision.filter((r:any)=>r.canal==='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.83*0.20,0)
-    const comDirect=rezComision.filter((r:any)=>r.canal!=='airbnb'&&r.canal!=='booking').reduce((s:number,r:any)=>s+proRataLuna(r)*0.20,0)
-    const com=Math.round(comAirbnb+comBooking+comDirect)
-    // Filtrat: identic cu Calendar Sume (pro-rata overlap), minus CG40+VM07
-    const rezFiltrate=(rezLuna||[]).filter((r:any)=>!idsComision.has(r.apartament_id))
+    // comisioane firma = din toate apartamentele in administrare (pro-rata), dupa tipul/procentul lor
+    const rezComision=rezLunaCam.filter((r:any)=>idsComision.has(r.apartament_id))
+    const com=Math.round(rezComision.reduce((s:number,r:any)=>s+comisionRez(r,proRataLuna(r)),0)+comisionFixLunar(new Set(rezComision.map((r:any)=>r.apartament_id))))
+    // Filtrat: identic cu Calendar Sume (pro-rata overlap), fara apartamentele in administrare (acolo firma ia doar comisionul)
+    const rezFiltrate=rezLunaCam.filter((r:any)=>!idsComision.has(r.apartament_id))
     const filtBrut=Math.round(rezFiltrate.reduce((s:number,r:any)=>s+proRataLuna(r),0))
-    const filtNet=Math.round(rezFiltrate.reduce((s:number,r:any)=>{
-      const b=proRataLuna(r);const c=(r.canal||'').toLowerCase()
-      return c==='airbnb'?s+b*0.85*(1-0.21*0.15):c==='booking'?s+b*0.83*(1-0.21*0.17):s+b
-    },0))
+    const filtNet=Math.round(rezFiltrate.reduce((s:number,r:any)=>s+netPlatforma(proRataLuna(r),r.canal),0))
     // Grad ocupare lunar: nopti ocupate / (apartamente_cu_rezervari_in_luna * zile_luna)
     // Identic cu 5starDesk: doar apartamentele care au cel putin o rezervare in luna
     const zileLuna = new Date(an, luna, 0).getDate()
-    const apteWithRez = new Set((rezLuna||[]).map((r:any)=>r.apartament_id).filter(Boolean))
+    const apteWithRez = new Set(rezLunaCam.map((r:any)=>r.apartament_id).filter(Boolean))
     const nrApteGrad = apteWithRez.size || (apCount||1)
     const totalZileApartamente = nrApteGrad * zileLuna
     let zileOcupate = 0
-    for (const r of (rezLuna||[])) {
+    for (const r of rezLunaCam) {
       if (!r.data_checkin || !r.data_checkout) continue
       const ci = r.data_checkin < primaZiLuna ? primaZiLuna : r.data_checkin
       const co = r.data_checkout > primaZiLunaPlusUna ? primaZiLunaPlusUna : r.data_checkout
@@ -545,16 +552,25 @@ export default function DashboardPage() {
       setSabloaneGata(gMap)
     })
 
-    // Prognoza: incasari luna viitoare (rezervari confirmate cu checkin in LV)
+    // Prognoza: venitul firmei din luna viitoare, pe aceeasi baza ca "Incasari" - noptile din luna viitoare
+    // ale fiecarei rezervari (si cele lungi incepute luna asta, ex. BOLOCA 17 oct-31 dec), net de comisionul
+    // platformei pe apartamentele proprii + comisionul firmei pe cele in administrare. Inainte: doar
+    // rezervarile cu check-in in luna viitoare, integral, inclusiv cele ale proprietarilor.
     const lunaVitoare = luna===12 ? 1 : luna+1
     const anLV = luna===12 ? an+1 : an
     const primaLV = `${anLV}-${String(lunaVitoare).padStart(2,'0')}-01`
+    const primaDupaLV = format(new Date(anLV,lunaVitoare,1),'yyyy-MM-dd')
     const ultimaLV = `${anLV}-${String(lunaVitoare).padStart(2,'0')}-${new Date(anLV,lunaVitoare,0).getDate()}`
     const { data: rezLV } = await supabase.from('rezervari')
-      .select('suma_incasata')
-      .gte('data_checkin', primaLV).lte('data_checkin', ultimaLV)
+      .select('*')
+      .lte('data_checkin', ultimaLV).gt('data_checkout', primaLV)
       .neq('status_rezervare','anulata')
-    const incLV = (rezLV||[]).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0)
+    const proRataLV=(r:any)=>{ const tot=Math.max(1,Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
+      const ci=r.data_checkin<primaLV?primaLV:r.data_checkin, co=r.data_checkout>primaDupaLV?primaDupaLV:r.data_checkout
+      const n=Math.max(0,Math.round((new Date(co).getTime()-new Date(ci).getTime())/86400000)); return Number(r.suma_incasata||0)*Math.min(1,n/tot) }
+    const rezLVCam=(rezLV||[]).filter(activaPeCamera)
+    const incLV = rezLVCam.reduce((s:number,r:any)=>{ const b=proRataLV(r); return s+(idsComision.has(r.apartament_id)?comisionRez(r,b):netPlatforma(b,r.canal)) },0)
+      + comisionFixLunar(new Set(rezLVCam.filter((r:any)=>idsComision.has(r.apartament_id)).map((r:any)=>r.apartament_id)))
     // Cheltuieli luna precedenta pentru acoperire
     const prevM = now.getMonth()===0?12:now.getMonth()
     const prevY = now.getMonth()===0?now.getFullYear()-1:now.getFullYear()
@@ -588,7 +604,7 @@ export default function DashboardPage() {
     // Incasari nete per apartament - calculat din rezLuna+aptData deja incarcate
     const aptMap=Object.fromEntries((aptData||[]).map((a:any)=>[a.id,a]))
     const byApt:Record<string,{apt:any;net:number;brut:number}>={}
-    for(const r of (rezLuna||[])){
+    for(const r of rezLunaCam){
       const apt=aptMap[r.apartament_id]; if(!apt) continue
       const brut=proRataLuna(r)
       const canal=(r.canal||'').toLowerCase()
