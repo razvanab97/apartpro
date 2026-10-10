@@ -227,12 +227,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
       // Activa, viitoare, dar 5starDesk n-are inca o camera atribuita -> nu o mai sarim in tacere,
       // apare in "De verificat" unde ii alegi apartamentul (sau astepti sa-i dea 5starDesk camera)
       if (statusNou !== 'anulata' && checkout >= aziISO() && idExternValid && !codIncredere.length) {
-        ;(res.deVerificat ||= []).push({
-          id5sd: idExtern, nume: numeClient, checkin, checkout, aptId: null, cod: '—', canal, telefon, nrPersoane,
-          pret: totalPret, statusNou, obs: [idExtern, b.status_rezervare].filter(Boolean).join(' | '),
-          motiv: 'fără cameră atribuită în 5starDesk', la: new Date().toISOString(), tip: 'fara_camera',
-        })
-        res.logs.push({ type:'info', msg: `⏸ ${numeClient} (${checkin}) — fără cameră în 5starDesk; alege apartamentul în „De verificat”` })
+        res.logs.push({ type:'info', msg: `⏸ ${numeClient} (${checkin}) — nealocată în 5starDesk; o aloci din Calendar → „Nealocate”` })
       } else if (statusNou === 'anulata') {
         res.logs.push({ type:'skip', msg: `⊘ ${numeClient} (${checkin}) — anulată (fără cameră), nu se importă` })
       } else {
@@ -322,13 +317,15 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
       }
       if (mutata) {
         // deja tratat mai sus
+      } else if (!aptId && foundById && statusNou !== 'anulata' && existing[0].camera_semnalata === 'ALOCAT_MANUAL') {
+        // nealocata in 5starDesk, dar alocata de tine in aplicatie (Calendar → Nealocate) -> ramane unde ai pus-o
       } else if (!aptId && foundById && statusNou !== 'anulata') {
         // 5starDesk i-a scos camera (ex: camera data altei rezervari lungi) -> ramane unde e, dar semnalata
         if (existing[0].camera_semnalata !== 'NEALOCAT') {
           updates.camera_semnalata = 'NEALOCAT'
           updates.camera_semnalata_la = new Date().toISOString()
         }
-        res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — fără cameră în 5starDesk acum (stă încă pe ${notaDe(existing[0].apartament_id)||'?'} la noi) — vezi „Camere semnalate”` })
+        res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — nealocată în 5starDesk acum — o aloci din Calendar → „Nealocate”` })
       } else if (aptId && existing[0].apartament_id !== aptId) {
         // Semnalul se SALVEAZA acum (nu doar un rand de log care dispare) - cerut direct,
         // ca sa identifice singur toate discrepantele astea, la fiecare sincronizare, nu doar
@@ -536,4 +533,65 @@ export async function fetchOneBookingById(id: string): Promise<SyncResult> {
   }
 
   return res
+}
+
+// ── Rezervari nealocate in 5starDesk (cerut direct: "5stardesk are o sectiune unde sunt rezervari nealocate
+// apartamentelor - cum am putea face sa le aducem si pe acestea in sistem?") ──────────────────────────────
+// Lista vine LIVE din 5starDesk (orice data, inclusiv peste 1-2 ani), nu doar din fereastra sincronizarii.
+// Alocarea facuta aici NU ajunge inapoi in 5starDesk (API-ul folosit doar citeste) - acolo tot trebuie apasat
+// "Aloca o camera"; dupa asta sincronizarea o aliniaza singura (o muta daca e alt apartament si e liber).
+export type Nealocata = {
+  id5sd: string; nume: string; checkin: string; checkout: string; pret: number; canal: string; sursa: string
+  telefon: string|null; nrPersoane: number|null; statusNou: string; status5sd: string
+  rid: string|null; aptId: string|null; alocataManual: boolean
+}
+
+export async function incarcaNealocate(): Promise<Nealocata[]> {
+  const azi = aziISO()
+  const dinAzi = new Date(); dinAzi.setDate(dinAzi.getDate() - 3)
+  const panaLa = new Date(); panaLa.setFullYear(panaLa.getFullYear() + 2)
+  const resp = await fetch('/api/fivestar', { method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ actiune:'get_bookings', checkin: fmt5star(dinAzi.toISOString()), checkout: fmt5star(panaLa.toISOString()) }) })
+  const data = await resp.json()
+  const lista: any[] = Array.isArray(data) ? data : []
+  const nealocate = lista.filter(b => {
+    const st = String(b.status_rezervare||'').toLowerCase()
+    return !st.includes('anulat') && !b.tip_camera && !b.numar_camera && String(b.nume||'').trim() && parse5star(b.ultima_zi||'') >= azi
+  })
+  if (!nealocate.length) return []
+  // Ce avem deja la noi pentru fiecare (dupa ID-ul 5starDesk din observatii)
+  const ids = nealocate.map(b => String(b.id))
+  const { data: rows } = await supabase.from('rezervari').select('id,apartament_id,observatii,camera_semnalata,status_rezervare')
+    .or(ids.map(id => `observatii.ilike.%${id}%`).join(','))
+  const peId: Record<string, any> = {}
+  for (const r of rows||[]) for (const id of idsDinObs(r.observatii)) if (ids.includes(id) && r.status_rezervare !== 'anulata' && !peId[id]) peId[id] = r
+  return nealocate.map(b => {
+    const r = peId[String(b.id)]
+    const st = String(b.status_rezervare||'').toLowerCase()
+    return {
+      id5sd: String(b.id), nume: String(b.nume).trim(), checkin: parse5star(b.prima_zi), checkout: parse5star(b.ultima_zi),
+      pret: (parseFloat(b.pret_camera||'0')||0) + (parseFloat(b.pret_extra||'0')||0), canal: parseCanal(b.sursa||''), sursa: String(b.sursa||''),
+      telefon: b.telefon ? String(b.telefon) : null, nrPersoane: (Number(b.adulti)||0) + (Number(b.copii)||0) || null,
+      statusNou: st.includes('cazat') ? 'finalizata' : 'confirmata', status5sd: String(b.status_rezervare||''),
+      rid: r?.id || null, aptId: r && r.camera_semnalata === 'ALOCAT_MANUAL' ? r.apartament_id : null, alocataManual: r?.camera_semnalata === 'ALOCAT_MANUAL',
+    }
+  }).sort((a, b) => a.checkin.localeCompare(b.checkin))
+}
+
+// Aloca (sau realoca) o rezervare nealocata pe un apartament, doar in aplicatie
+export async function alocaNealocata(n: Nealocata, aptId: string): Promise<string|null> {
+  const marcaj = { camera_semnalata: 'ALOCAT_MANUAL', camera_semnalata_la: new Date().toISOString() }
+  if (n.rid) {
+    const { error } = await supabase.from('rezervari').update({ apartament_id: aptId, ...marcaj }).eq('id', n.rid)
+    return error ? error.message : null
+  }
+  const { error } = await supabase.from('rezervari').insert({
+    apartament_id: aptId, canal: n.canal, nume_client: n.nume, data_checkin: n.checkin, data_checkout: n.checkout,
+    suma_incasata: n.pret, valoare_bruta: n.pret, moneda: 'RON', telefon_client: n.telefon, nr_persoane: n.nrPersoane,
+    status_rezervare: n.statusNou, status_plata: n.pret > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat',
+    observatii: ['nealocată 5SD', n.id5sd, n.status5sd].filter(Boolean).join(' | '), ...marcaj,
+  })
+  if (error) return error.message
+  await eliminaDubluriProaspete(n.id5sd)
+  return null
 }

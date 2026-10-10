@@ -4,6 +4,7 @@ import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
 import RezervareEditor from '@/components/RezervareEditor'
+import NealocatePanel from '@/components/NealocatePanel'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
@@ -269,7 +270,9 @@ export default function CalendarPage() {
           .order('data_checkin'),
       ])
       setApts(a || [])
-      setRezAll((r as any) || [])
+      // Rezervarile ramase fara camera in 5starDesk nu ocupa apartamentul pe care stateau - apar sus, in
+      // "Nealocate", pana le aloci (altfel se suprapuneau, ex. 5 rezervari peste BOLOCA pe C64)
+      setRezAll(((r as any) || []).filter((x:any) => x.camera_semnalata !== 'NEALOCAT'))
       clearTimeout(bail)
     }catch(err){console.error('[calendar load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
@@ -522,6 +525,8 @@ export default function CalendarPage() {
           </select>
         </div>
       </div>
+
+      <NealocatePanel apts={apts} onAlocat={load}/>
 
       {/* ── Layout ── */}
       <div style={{ display:'flex', flex:1, overflow:'hidden', minHeight:0 }}>

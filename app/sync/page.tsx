@@ -209,7 +209,7 @@ export default function SyncPage() {
       const [{ data: apartamente }, { data: rez }] = await Promise.all([
         supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'),
         supabase.from('rezervari').select('id,nume_client,telefon_client,apartament_id,data_checkin,data_checkout,camera_semnalata,camera_semnalata_la,status_rezervare')
-          .not('camera_semnalata','is',null).neq('status_rezervare','anulata').order('camera_semnalata_la',{ascending:false}),
+          .not('camera_semnalata','is',null).not('camera_semnalata','in','(NEALOCAT,ALOCAT_MANUAL)').neq('status_rezervare','anulata').order('camera_semnalata_la',{ascending:false}),
       ])
       setApts(apartamente||[])
       setSemnalate(rez||[])
@@ -533,7 +533,7 @@ export default function SyncPage() {
               </button>
             </div>
             <div style={{ fontSize:11, color:'rgba(159,215,255,0.45)', marginBottom:12 }}>
-              Rezervările viitoare mutate în 5starDesk pe altă cameră se mută singure la sincronizare, dacă apartamentul e liber. Aici rămân doar cele care nu s-au putut muta (apartament ocupat pe acele date, rezervare deja încheiată) sau cărora 5starDesk le-a scos camera. Verifică pe 5starDesk, apoi ignoră sau mută.
+              Rezervările viitoare mutate în 5starDesk pe altă cameră se mută singure la sincronizare, dacă apartamentul e liber. Aici rămân doar cele care nu s-au putut muta (apartament ocupat pe acele date, rezervare deja încheiată). Rezervările fără cameră în 5starDesk sunt în Calendar → „Nealocate”. Verifică pe 5starDesk, apoi ignoră sau mută.
             </div>
             {semnalate.length===0 && !loadingSemnalate && (
               <div style={{ fontSize:12, color:'rgba(159,215,255,0.35)', textAlign:'center', padding:'10px 0' }}>Nimic de verificat momentan</div>
