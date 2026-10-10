@@ -460,6 +460,42 @@ export default function SyncPage() {
           </div>
         </div>
 
+        {/* Raw API response (for debugging) */}
+        {rawData && (
+          <div style={{ ...panel, borderColor:'rgba(245,158,11,0.2)' }}>
+            <div style={{ fontSize:12, fontWeight:600, color:'#FCD34D', marginBottom:8 }}>Răspuns brut API 5starDesk</div>
+            <pre style={{ fontSize:11, color:'rgba(159,215,255,0.6)', overflowX:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all', maxHeight:300, overflowY:'auto' }}>
+              {JSON.stringify(rawData, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        {/* Rezultatele sincronizarii - imediat sub butonul de sync (cerut direct), nu in josul paginii */}
+        {result && (
+          <div style={panel}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
+              {[
+                { l:'Total', v:result.total, c:'#FFFFFF' },
+                { l:'Importate', v:result.inserted, c:'#4ADE80' },
+                { l:'Existente', v:result.skipped, c:'#94A3B8' },
+                { l:'Erori', v:result.errors, c:result.errors>0?'#F87171':'#94A3B8' },
+              ].map(s=>(
+                <div key={s.l} style={{ background:'rgba(14,27,43,0.5)', borderRadius:8, padding:'10px', textAlign:'center' }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:s.c, fontFamily:'monospace' }}>{s.v}</div>
+                  <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)' }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:300, overflowY:'auto' }}>
+              {result.logs.map((log,i)=>(
+                <div key={i} style={{ display:'flex', gap:8, padding:'5px 10px', borderRadius:6, background:log.type==='ok'?'rgba(34,197,94,0.06)':log.type==='err'?'rgba(239,68,68,0.06)':'rgba(214,228,244,0.03)', fontSize:11, color:log.type==='ok'?'#4ADE80':log.type==='err'?'#F87171':log.type==='info'?'#7BC8FF':'rgba(159,215,255,0.5)' }}>
+                  {log.msg}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Cautare/import manual dupa ID de rezervare 5starDesk — cerut direct, ca sa poti aduce o
             rezervare anume, activa pe 5starDesk, care nu a ajuns la noi prin sincronizarea automata */}
         <div style={panel}>
@@ -540,41 +576,6 @@ export default function SyncPage() {
           </div>
         )}
 
-        {/* Raw API response (for debugging) */}
-        {rawData && (
-          <div style={{ ...panel, borderColor:'rgba(245,158,11,0.2)' }}>
-            <div style={{ fontSize:12, fontWeight:600, color:'#FCD34D', marginBottom:8 }}>Răspuns brut API 5starDesk</div>
-            <pre style={{ fontSize:11, color:'rgba(159,215,255,0.6)', overflowX:'auto', whiteSpace:'pre-wrap', wordBreak:'break-all', maxHeight:300, overflowY:'auto' }}>
-              {JSON.stringify(rawData, null, 2)}
-            </pre>
-          </div>
-        )}
-
-        {/* Results */}
-        {result && (
-          <div style={panel}>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:14 }}>
-              {[
-                { l:'Total', v:result.total, c:'#FFFFFF' },
-                { l:'Importate', v:result.inserted, c:'#4ADE80' },
-                { l:'Existente', v:result.skipped, c:'#94A3B8' },
-                { l:'Erori', v:result.errors, c:result.errors>0?'#F87171':'#94A3B8' },
-              ].map(s=>(
-                <div key={s.l} style={{ background:'rgba(14,27,43,0.5)', borderRadius:8, padding:'10px', textAlign:'center' }}>
-                  <div style={{ fontSize:20, fontWeight:700, color:s.c, fontFamily:'monospace' }}>{s.v}</div>
-                  <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)' }}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:300, overflowY:'auto' }}>
-              {result.logs.map((log,i)=>(
-                <div key={i} style={{ display:'flex', gap:8, padding:'5px 10px', borderRadius:6, background:log.type==='ok'?'rgba(34,197,94,0.06)':log.type==='err'?'rgba(239,68,68,0.06)':'rgba(214,228,244,0.03)', fontSize:11, color:log.type==='ok'?'#4ADE80':log.type==='err'?'#F87171':log.type==='info'?'#7BC8FF':'rgba(159,215,255,0.5)' }}>
-                  {log.msg}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>}
       <Toast toast={toast}/>
     </>
