@@ -12,8 +12,10 @@ Rulare:
   python3 ~/Desktop/booking_scan.py 2026-06-07 2026-06-08 airbnb
 """
 
-import json, sys, re, urllib.request
+import json, sys, re, os, urllib.request
 from datetime import date, timedelta
+
+PROFILE_DIR = os.path.expanduser('~/Desktop/.booking_scan_profile')
 
 SUPABASE_URL = "https://lsmraxevzkmupaidianv.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzbXJheGV2emttdXBhaWRpYW52Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTkwMDA5NywiZXhwIjoyMDk1NDc2MDk3fQ.CagkIVPFE6r8D1oZPoxvs3jzJDR3HSwtx0GzM0etpss"
@@ -82,6 +84,112 @@ def _extract_cards(page):
     return raw
 
 
+def _detect_total(page):
+    """Cauta numarul total de proprietati in TOATE sursele posibile de pe pagina.
+    Booking serveste variante diferite de pagina (uneori H1-ul vizibil e genericul
+    SEO "Hoteluri si proprietati in Iasi...", iar numarul real e in alt H1/element
+    sau doar in textul brut al paginii) - de aceea verificam mai multe surse, nu doar
+    primul H1."""
+    total = 0
+    # 1. TOATE H1-urile (nu doar primul) — Booking poate avea 2+ H1 pe pagina
+    try:
+        h1s = page.locator('h1').all_inner_texts()
+        for h1 in h1s:
+            print(f"  H1: {h1!r}")
+            m = re.search(r'(\d[\d.]*)\s*(?:de\s+)?propriet[aă]ț', h1, re.IGNORECASE) or \
+                re.search(r'g[aă]site?\s+(\d[\d.]*)', h1, re.IGNORECASE) or \
+                re.search(r'(\d[\d.]*)\s+(?:de\s+)?caz[aă]r', h1, re.IGNORECASE)
+            if m:
+                total = int(m.group(1).replace('.', ''))
+                print(f"  Total din H1: {total}")
+                return total
+    except:
+        pass
+    # 2. Element dedicat cu numărul de rezultate
+    for sel in [
+        '[data-testid="header-number-of-results"]',
+        '[data-testid="results-header-container"] h1',
+        '[data-testid="results-header-container"]',
+        '.sr-usp-overlay__title',
+    ]:
+        try:
+            txt = page.locator(sel).first.inner_text(timeout=2000)
+            m = re.search(r'(\d[\d.]*)', txt)
+            if m:
+                total = int(m.group(1).replace('.', ''))
+                print(f"  Total din {sel}: {total}")
+                return total
+        except:
+            pass
+    # 3. JSON embedded în pagină
+    try:
+        m = re.search(r'"nbresults":(\d+)', page.content())
+        if m:
+            total = int(m.group(1))
+            print(f"  Total din JSON: {total}")
+            return total
+    except:
+        pass
+    # 4. Fallback final: cauta textul "au fost gasite NUMAR proprietati" oriunde in textul paginii
+    try:
+        body_text = page.inner_text('body')
+        m = re.search(r'g[aă]site\s*([\d.,\s]+)\s*propriet[aă]ț', body_text, re.IGNORECASE) or \
+            re.search(r'([\d.,\s]+)\s*properties found', body_text, re.IGNORECASE)
+        if m:
+            total = int(re.sub(r'[^\d]', '', m.group(1)))
+            print(f"  Total din text brut: {total}")
+            return total
+    except:
+        pass
+    print("  ⚠ Nu am gasit numarul total de proprietati pe pagina (posibil blocaj anti-bot)")
+    return 0
+
+
+def _count_via_pagination(page, max_steps=18):
+    """Fallback cand nu gasim numarul scris explicit pe pagina: deruleaza
+    in josul rezultatelor si numara proprietatile UNICE (dupa nume) care se
+    incarca progresiv (lazy-load).
+
+    IMPORTANT — limita reala descoperita prin testare directa: pagina de
+    cautare Booking NU are paginare numerotata reala, iar &offset= in URL nu
+    avanseaza fiabil prin lista (la sortare dupa pret cu multe preturi egale,
+    ordinea se reamesteca intre cereri si "paginile" se suprapun masiv).
+    Lazy-load-ul pe o singura incarcare se plafoneaza in jur de 75-100 carduri,
+    indiferent cat de mult deruelzi - Booking nu expune restul prin aceasta
+    pagina. Deci acest numar e un MINIM confirmat, NU totalul exact (care e
+    aproape mereu mai mare, de regula 150-450 in Iasi) - mai util decat "?",
+    dar nu trateaza-l ca pe cifra exacta din H1."""
+    print("  🔢 Nu am gasit total scris — numar prin scroll (minim, nu exact)...")
+    seen = set()
+    fara_nou = 0
+    for i in range(max_steps):
+        try:
+            if page.is_closed():
+                print("  ⚠ Pagina inchisa in timpul numararii — ma opresc cu ce am numarat")
+                break
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(700)
+            titles = page.locator('[data-testid="property-card"] [data-testid="title"]').all_inner_texts()
+            nou = 0
+            for t in titles:
+                t = t.strip()
+                if t and t not in seen:
+                    seen.add(t)
+                    nou += 1
+            if nou == 0:
+                fara_nou += 1
+                if fara_nou >= 3:
+                    break
+            else:
+                fara_nou = 0
+        except Exception as e:
+            print(f"  ⚠ Numarare intrerupta la pasul {i}: {e}")
+            break
+    total = len(seen)
+    print(f"  🔢 Minim confirmat prin scroll: {total} proprietati (Booking nu a mai incarcat altele pe aceasta pagina — totalul real e probabil mai mare)")
+    return total
+
+
 def scan_booking(checkin, checkout, page):
     BASE = (
         f"https://www.booking.com/searchresults.ro.html"
@@ -103,45 +211,18 @@ def scan_booking(checkin, checkout, page):
             pass
     page.wait_for_timeout(1500)
 
-    # Total proprietati — incearca mai multe surse
-    total = 0
-    # 1. H1 vizibil ("349 proprietăți" sau "349 de proprietăți" sau "au fost găsite 349")
-    try:
-        h1 = page.locator('h1').first.inner_text()
-        print(f"  H1: {h1!r}")
-        m = re.search(r'(\d[\d.]*)\s*(?:de\s+)?proprietăț', h1, re.IGNORECASE) or \
-            re.search(r'găsite?\s+(\d[\d.]*)', h1, re.IGNORECASE) or \
-            re.search(r'(\d[\d.]*)\s+(?:de\s+)?cazăr', h1, re.IGNORECASE)
-        if m:
-            total = int(m.group(1).replace('.', ''))
-            print(f"  Total din H1: {total}")
-    except:
-        pass
-    # 2. Element dedicat cu numărul de rezultate
-    if not total:
-        for sel in [
-            '[data-testid="header-number-of-results"]',
-            '[data-testid="results-header-container"] h1',
-            '.sr-usp-overlay__title',
-        ]:
-            try:
-                txt = page.locator(sel).first.inner_text()
-                m = re.search(r'(\d[\d.]*)', txt)
-                if m:
-                    total = int(m.group(1).replace('.', ''))
-                    print(f"  Total din {sel}: {total}")
-                    break
-            except:
-                pass
-    # 3. JSON embedded în pagină
-    if not total:
+    total = _detect_total(page)
+    if not total and not page.is_closed():
+        total = _count_via_pagination(page)
+        # numararea manuala deruleaza pana la finalul lazy-load-ului — ne intoarcem
+        # sus pe pagina inainte de sortare si colectarea top-20, ca restul logicii
+        # sa continue normal de la varful paginii
         try:
-            m = re.search(r'"nbresults":(\d+)', page.content())
-            if m:
-                total = int(m.group(1))
-                print(f"  Total din JSON: {total}")
-        except:
-            pass
+            if not page.is_closed():
+                page.evaluate("window.scrollTo(0, 0)")
+                page.wait_for_timeout(1000)
+        except Exception as e:
+            print(f"  ⚠ Nu m-am putut intoarce sus pe pagina: {e}")
 
     # Incearca sort prin click pe dropdown
     sorted_ok = False
@@ -184,52 +265,67 @@ def scan_booking(checkin, checkout, page):
     raw = []
 
     # Pagina 1 — scroll pentru lazy loading
+    # Booking poate inchide tab-ul automat in mijlocul scroll-ului (anti-bot) —
+    # daca se intampla asta nu mai are rost sa continuam cu pagina 2/3 pe acest "page"
     print("  Scanez pagina 1...")
-    for step in range(10):
-        page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
-        page.wait_for_timeout(600)
-    page.evaluate("window.scrollTo(0, 0)")
-    page.wait_for_timeout(800)
-    batch1 = _extract_cards(page)
-    raw.extend(batch1)
-    print(f"    → {len(batch1)} carduri")
+    page1_ok = True
+    try:
+        for step in range(10):
+            if page.is_closed():
+                raise RuntimeError("pagina s-a inchis (probabil anti-bot Booking)")
+            page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
+            page.wait_for_timeout(600)
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(800)
+        batch1 = _extract_cards(page)
+        raw.extend(batch1)
+        print(f"    → {len(batch1)} carduri")
+    except Exception as e:
+        page1_ok = False
+        print(f"  ⚠ Pagina 1 intrerupta: {e}")
 
     # Pagina 2 (offset=25) — prinde proprietatile ieftine de pe pagina 2
-    try:
-        url2 = BASE + '&offset=25'
-        page.goto(url2, wait_until='domcontentloaded', timeout=20000)
-        page.wait_for_timeout(3000)
-        for step in range(8):
-            page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
-            page.wait_for_timeout(500)
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(600)
-        batch2 = _extract_cards(page)
-        # adauga doar cele noi
-        for r in batch2:
-            if not any(x['name'] == r['name'] for x in raw):
-                raw.append(r)
-        print(f"  Scanez pagina 2... → {len(batch2)} carduri")
-    except Exception as e:
-        print(f"  Pagina 2 skip: {e}")
+    if page1_ok and not page.is_closed():
+        try:
+            url2 = BASE + '&offset=25'
+            page.goto(url2, wait_until='domcontentloaded', timeout=20000)
+            page.wait_for_timeout(3000)
+            for step in range(8):
+                if page.is_closed():
+                    raise RuntimeError("pagina s-a inchis (probabil anti-bot Booking)")
+                page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
+                page.wait_for_timeout(500)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(600)
+            batch2 = _extract_cards(page)
+            # adauga doar cele noi
+            for r in batch2:
+                if not any(x['name'] == r['name'] for x in raw):
+                    raw.append(r)
+            print(f"  Scanez pagina 2... → {len(batch2)} carduri")
+        except Exception as e:
+            print(f"  Pagina 2 skip: {e}")
 
     # Pagina 3 (offset=50)
-    try:
-        url3 = BASE + '&offset=50'
-        page.goto(url3, wait_until='domcontentloaded', timeout=20000)
-        page.wait_for_timeout(3000)
-        for step in range(8):
-            page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
-            page.wait_for_timeout(500)
-        page.evaluate("window.scrollTo(0, 0)")
-        page.wait_for_timeout(600)
-        batch3 = _extract_cards(page)
-        for r in batch3:
-            if not any(x['name'] == r['name'] for x in raw):
-                raw.append(r)
-        print(f"  Scanez pagina 3... → {len(batch3)} carduri")
-    except Exception as e:
-        print(f"  Pagina 3 skip: {e}")
+    if page1_ok and not page.is_closed():
+        try:
+            url3 = BASE + '&offset=50'
+            page.goto(url3, wait_until='domcontentloaded', timeout=20000)
+            page.wait_for_timeout(3000)
+            for step in range(8):
+                if page.is_closed():
+                    raise RuntimeError("pagina s-a inchis (probabil anti-bot Booking)")
+                page.evaluate(f"window.scrollTo(0, {(step + 1) * 1300})")
+                page.wait_for_timeout(500)
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(600)
+            batch3 = _extract_cards(page)
+            for r in batch3:
+                if not any(x['name'] == r['name'] for x in raw):
+                    raw.append(r)
+            print(f"  Scanez pagina 3... → {len(batch3)} carduri")
+        except Exception as e:
+            print(f"  Pagina 3 skip: {e}")
 
     # Sorteaza dupa pret si ia top 20
     raw.sort(key=lambda x: x['price'])
@@ -259,58 +355,54 @@ def scan_airbnb(checkin, checkout, page):
             pass
     page.wait_for_timeout(2000)
 
-    # Total din titlu
-    total = 0
-    try:
-        content = page.content()
-        m = re.search(r'(\d+)\s*de\s*locuințe?\s*în\s*Iași', content, re.IGNORECASE) or \
-            re.search(r'(\d+)\s*locuințe?\s*în\s*Iași', content, re.IGNORECASE)
-        if m:
-            total = int(m.group(1))
-    except:
-        pass
-
-    # Extrage text complet si parseaza perechi (nume, pret)
+    # Text complet al rezultatelor
     text = page.inner_text('main') if page.locator('main').count() else page.inner_text('body')
-
-    # Pattern: "în total X L RON" apare dupa fiecare card
-    # Extractie: pentru fiecare "în total X L RON", cauta numele in liniile anterioare
     lines = [l.strip() for l in text.split('\n') if l.strip()]
 
+    # Total din titlu ("317 locuințe în Iași")
+    total = 0
+    for l in lines[:10]:
+        m = re.search(r'(\d[\d.]*)\s*(?:de\s+)?locuințe?\s+în\s+Iași', l, re.IGNORECASE)
+        if m:
+            total = int(m.group(1).replace('.', ''))
+            break
+
+    # Airbnb a schimbat formatul pretului: acum "186 lei în total" / "270 lei în total, inițial 293 lei"
+    # (cu spatiu fara-rupere intre suma si moneda), inainte "196 L RON". Acceptam ambele formate.
+    RE_PRET = re.compile(r'^(\d[\d.]*)\s*(?:lei|L\s*RON|RON)\s+în total', re.IGNORECASE)
+    RE_PRET_VECHI = re.compile(r'în total\s+(\d[\d.]*)\s*L\s*RON', re.IGNORECASE)
+    RE_META = re.compile(r'^(Fotografia|Super-gazdă|Scor mediu|\d+,\d+\s*\(\d+\)|Nou$|Cazare nouă|Gazdă|Locuință din topul|Alegerea oaspeților|în total|Afișează|\d+\s*(dormitor|pat|baie|băi|canapea)|,$|·$)', re.IGNORECASE)
+
+    # Anunturile sunt separate de "Fotografia 1 din N"; in fiecare: tipul ("Apartament în Iași"),
+    # titlul (prima linie care nu e eticheta/scor/dotari) si pretul total
+    carduri, curent = [], []
+    for l in lines:
+        if re.match(r'^Fotografia 1 din \d+', l) and curent:
+            carduri.append(curent); curent = []
+        curent.append(l)
+    if curent:
+        carduri.append(curent)
+
     entries = []
-    for i, line in enumerate(lines):
-        # Detecteaza pretul: "în total 196 L RON" sau "196 L RON în total"
-        m_pret = re.search(r'în total\s+(\d[\d.]*)\s*L\s*RON', line, re.IGNORECASE) or \
-                 re.search(r'(\d[\d.]*)\s*L\s*RON\s*în total', line, re.IGNORECASE) or \
-                 re.search(r'^(\d[\d.]*)\s*L\s*RON$', line)
-        if not m_pret:
-            continue
-
-        price = int(m_pret.group(1).replace('.', ''))
-        if not (50 < price < 5000):
-            continue
-
-        # Cauta numele — linie care contine "Apartament în" sau "Studio" sau "Hotel" sau "Locuință"
-        name = ''
-        for j in range(i-1, max(0, i-20), -1):
-            c = lines[j]
-            if re.match(r'^(Apartament|Studio|Hotel|Locuință|Cazare|Vila|Garsonieră)', c, re.IGNORECASE):
-                # Urmatoarea linie e de obicei subtitlul/descrierea
-                if j+1 < len(lines) and len(lines[j+1]) > 5 and not re.match(r'^\d|^Gazdă|^în total|^Afișează|^Scor|^Super|^Alegerea|^Nou', lines[j+1]):
-                    name = lines[j+1][:80]
-                else:
-                    name = c[:80]
+    for c in carduri:
+        price = None
+        for l in c:
+            m = RE_PRET.search(l) or RE_PRET_VECHI.search(l)
+            if m:
+                price = int(m.group(1).replace('.', ''))
                 break
-
-        if not name:
-            # Fallback: ia linia imediat inainte care nu e metadata
-            for j in range(i-1, max(0, i-5), -1):
-                c = lines[j]
-                if len(c) > 5 and not re.match(r'^\d|^Gazdă|^în total|^Afișează|^Scor|^Super|^Alegerea|^Nou|^·|^\.|^,', c):
-                    name = c[:80]
-                    break
-
-        if name and not any(e['name'] == name for e in entries):
+        if price is None or not (50 < price < 5000):
+            continue
+        tip_idx = next((i for i, l in enumerate(c) if re.search(r'\bîn\s+Iași$', l)), None)
+        name = ''
+        for l in c[(tip_idx + 1 if tip_idx is not None else 0):]:
+            if not RE_META.match(l) and len(l) > 3:
+                name = l[:80]
+                break
+        tip = c[tip_idx] if tip_idx is not None else ''
+        if len(name) < 12 and tip:          # titlu generic ("Apartament") -> adaugam tipul ca sa fie distinct
+            name = f"{tip} · {name}"[:80] if name else tip
+        if name and not any(e['name'] == name and e['price'] == price for e in entries):
             entries.append({'name': name, 'price': price})
 
     # Sorteaza dupa pret si ia top 10
@@ -376,22 +468,37 @@ def main():
     print(f"🗓 {len(date_pairs)} perioadă/perioade de scanat: {', '.join(f'{ci}→{co}' for ci, co in date_pairs)}\n")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        # Profil PERSISTENT (cookie-uri salvate intre rulari), ca un Chrome normal —
+        # nu un browser nou de fiecare data. Booking decide o singura data, la prima
+        # vizita a profilului, ce varianta de pagina iti arata (cu sau fara numarul
+        # "X proprietati gasite" scris explicit) si pastreaza acea varianta consecvent
+        # pentru profilul respectiv. Un browser nou de fiecare data (fara cookie-uri)
+        # nimerea la intamplare in oricare din variante, de unde "merge cand scanezi tu,
+        # nu merge la urmatoarea rulare" desi nimic din cod nu s-a schimbat.
+        context = p.chromium.launch_persistent_context(PROFILE_DIR, headless=False, locale='ro-RO')
 
         for checkin, checkout in date_pairs:
             if platform in ('booking', 'both'):
-                page = browser.new_page()
-                results, total = scan_booking(checkin, checkout, page)
-                page.close()
-                process_and_save('booking', checkin, checkout, results, total)
+                try:
+                    page = context.new_page()
+                    results, total = scan_booking(checkin, checkout, page)
+                    if not page.is_closed():
+                        page.close()
+                    process_and_save('booking', checkin, checkout, results, total)
+                except Exception as e:
+                    print(f"  ❌ BOOKING {checkin}→{checkout} a picat complet: {e}\n")
 
             if platform in ('airbnb', 'both'):
-                page = browser.new_page()
-                results, total = scan_airbnb(checkin, checkout, page)
-                page.close()
-                process_and_save('airbnb', checkin, checkout, results, total)
+                try:
+                    page = context.new_page()
+                    results, total = scan_airbnb(checkin, checkout, page)
+                    if not page.is_closed():
+                        page.close()
+                    process_and_save('airbnb', checkin, checkout, results, total)
+                except Exception as e:
+                    print(f"  ❌ AIRBNB {checkin}→{checkout} a picat complet: {e}\n")
 
-        browser.close()
+        context.close()
 
 if __name__ == '__main__':
     main()
