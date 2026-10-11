@@ -17,6 +17,7 @@ type Result = {
   apartamente_recomandate?: { nota: string; nume: string; motiv: string; pret_noapte?: number; pret_total?: number; scor: number }[]
   raspuns_sugerat?: string
   apartamente?: AptOferta[]
+  persoane_mentionate?: boolean
 }
 type AptOferta = {
   id: string; nota: string|null; nume: string; zona: string|null; capacitate_max: number|null; link_site: string|null; administrare: boolean
@@ -52,6 +53,39 @@ const emptyEdit = { nume_client:'', telefon:'', canal:'whatsapp', apartament_id:
 
 const panel: React.CSSProperties = { background:'rgba(214,228,244,0.06)', backdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.12)', borderRadius:14 }
 
+// ── Primul raspuns dupa analiza (cerut direct): multumim + intervalul de preturi + cerem nr. de oaspeti si
+// bugetul, ca sa-l facem pe client sa ne raspunda. Daca le-a dat deja, cerem doar ce lipseste. Text scris de
+// noi (nu de AI) - mereu acelasi ton, instant, fara cost.
+const PRET_MIN = 160, PRET_MAX = 400
+const LUNI_RO = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie']
+const LUNI_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
+function perioadaText(ci?: string, co?: string, en?: boolean) {
+  if (!ci || !co) return ''
+  const [, m1, d1] = ci.split('-').map(Number), [, m2, d2] = co.split('-').map(Number)
+  const L = en ? LUNI_EN : LUNI_RO
+  if (en) return m1 === m2 ? `${L[m1-1]} ${d1}–${d2}` : `${L[m1-1]} ${d1} – ${L[m2-1]} ${d2}`
+  return m1 === m2 ? `${d1}–${d2} ${L[m1-1]}` : `${d1} ${L[m1-1]} – ${d2} ${L[m2-1]}`
+}
+function primRaspuns(r: Result): string {
+  const en = !!r.limba && r.limba !== 'ro'
+  const prenume = String(r.nume_client || '').trim().split(' ')[0]
+  const per = perioadaText(r.data_checkin, r.data_checkout, en)
+  const areOaspeti = !!r.persoane_mentionate, areBuget = !!r.buget_per_noapte
+  if (en) {
+    const intro = `Hello${prenume ? ' ' + prenume : ''}! 😊\n\nThank you for your message and for thinking of us${per ? ` for ${per}` : ''}.`
+    if (areOaspeti && areBuget) return `${intro}\n\nWe are checking availability for ${r.nr_persoane} guests right now and will get back to you in a few minutes with the best options. 🏡`
+    const cere = !areOaspeti && !areBuget ? 'how many guests you will be and what nightly budget you would like to stay within'
+      : !areOaspeti ? 'how many guests you will be (adults and children)' : 'what nightly budget you would like to stay within'
+    return `${intro}\n\nWe have several apartments in Iași, with rates between ${PRET_MIN} and ${PRET_MAX} lei per night, and we would love to recommend the one that suits you best.\n\nCould you please let us know ${cere}?\n\nWe will get back to you right away with the best available options. 🏡`
+  }
+  const intro = `Bună ziua${prenume ? ', ' + prenume : ''}! 😊\n\nVă mulțumim pentru mesaj și pentru că v-ați gândit la noi${per ? ` pentru perioada ${per}` : ''}.`
+  if (areOaspeti && areBuget) return `${intro}\n\nVerificăm chiar acum disponibilitatea pentru ${r.nr_persoane} ${Number(r.nr_persoane) === 1 ? 'persoană' : 'persoane'} și revenim în câteva minute cu cele mai potrivite opțiuni. 🏡`
+  const cere = !areOaspeti && !areBuget ? 'câți oaspeți veți fi și în ce buget pe noapte ați dori să vă încadrați'
+    : !areOaspeti ? 'câți oaspeți veți fi (adulți și copii)' : 'în ce buget pe noapte ați dori să vă încadrați'
+  return `${intro}\n\nAvem în Iași mai multe apartamente, cu tarife între ${PRET_MIN} și ${PRET_MAX} lei pe noapte, și ne-ar plăcea să vă recomandăm varianta potrivită pentru dumneavoastră.\n\nNe puteți spune, vă rog, ${cere}?\n\nRevenim imediat cu cele mai bune opțiuni disponibile. 🏡`
+}
+const cifreTel = (t?: string | null) => String(t || '').replace(/\D/g, '').slice(-9)
+
 export default function InboxPage() {
   /* Smart Booking state */
   const [mode, setMode] = useState<'text'|'image'>('text')
@@ -65,6 +99,10 @@ export default function InboxPage() {
   const [raspuns, setRaspuns] = useState('')
   const [generand, setGenerand] = useState(false)
   const [aratOcupate, setAratOcupate] = useState(false)
+  const [primText, setPrimText] = useState('')
+  const [primCopiat, setPrimCopiat] = useState(false)
+  // cererea (posibilul client) salvata automat la analiza - "Salveaza in Inbox" o actualizeaza, nu dubleaza
+  const [cerereId, setCerereId] = useState<string|null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Inbox state */
@@ -153,7 +191,7 @@ export default function InboxPage() {
 
   async function analyze() {
     if (!text.trim() && !image) { show('error','Adaugă un mesaj sau o imagine'); return }
-    setAnalyzing(true); setResult(null); setAlese({}); setRaspuns('')
+    setAnalyzing(true); setResult(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null)
     try {
       const res = await fetch('/api/smart-booking', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -162,6 +200,8 @@ export default function InboxPage() {
       const data = await res.json()
       if (data.ok) {
         setResult(data.result)
+        setPrimText(primRaspuns(data.result))
+        salveazaPosibilClient(data.result)
         // preselectat: cea mai potrivita locatie libera, dupa scorul AI
         const top = (data.result.apartamente || []).find((a: AptOferta) => a.disponibil)
         if (top) setAlese({ [top.id]: String(top.pret_noapte || top.pret_direct_recent || '') })
@@ -188,6 +228,34 @@ export default function InboxPage() {
     setGenerand(false)
   }
 
+  // Numarul de telefon se salveaza automat ca posibil client (cerut direct) - in Inbox (cereri_rezervare),
+  // ca "Noua"; daca acelasi numar a mai scris in ultimele 30 de zile, se actualizeaza cererea lui
+  async function salveazaPosibilClient(r: Result) {
+    const cif = cifreTel(r.telefon)
+    if (cif.length < 9) return
+    const de30 = new Date(Date.now() - 30 * 86400000).toISOString()
+    const { data: vechi } = await supabase.from('cereri_rezervare').select('id,telefon,status').not('telefon','is',null).gte('created_at', de30)
+    const existent = (vechi || []).find((c: any) => cifreTel(c.telefon) === cif)
+    const payload: any = {
+      nume_client: r.nume_client || 'Client necunoscut', telefon: r.telefon, canal: r.canal || 'whatsapp',
+      data_checkin: r.data_checkin || null, data_checkout: r.data_checkout || null,
+      nr_persoane: r.persoane_mentionate ? (r.nr_persoane || null) : null,
+      mesaj: text || '[din imagine]',
+    }
+    const { data: rez, error } = existent
+      ? await supabase.from('cereri_rezervare').update(payload).eq('id', existent.id).select('id').single()
+      : await supabase.from('cereri_rezervare').insert({ ...payload, status: 'noua', prioritate: r.urgenta ? 'urgenta' : 'normala' }).select('id').single()
+    if (error) return
+    setCerereId(rez?.id || existent?.id || null)
+    show('success', existent ? '📇 Client deja cunoscut — cererea lui a fost actualizată' : '📇 Număr salvat ca posibil client în Inbox')
+    loadData()
+  }
+
+  async function primTrimis() {
+    if (cerereId) await supabase.from('cereri_rezervare').update({ status: 'contactat' }).eq('id', cerereId)
+    loadData()
+  }
+
   async function saveFromResult() {
     if (!result) return
     const aleasa = (result.apartamente || []).find(a => alese[a.id] !== undefined)
@@ -203,10 +271,12 @@ export default function InboxPage() {
       mesaj: [text || '[din imagine]', raspuns ? '\n--- Răspuns trimis ---\n' + raspuns : ''].join(''),
       status: raspuns ? 'contactat' : 'noua', prioritate: result.urgenta ? 'urgenta' : 'normala',
     }
-    const { error } = await supabase.from('cereri_rezervare').insert(payload)
+    const { error } = cerereId
+      ? await supabase.from('cereri_rezervare').update(payload).eq('id', cerereId)
+      : await supabase.from('cereri_rezervare').insert(payload)
     if (error) { show('error', error.message); return }
     show('success','Cerere salvată în inbox! ✓')
-    loadData(); setResult(null); setText(''); setImage(null); setAlese({}); setRaspuns('')
+    loadData(); setResult(null); setText(''); setImage(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null)
   }
 
   function copyRaspuns() {
@@ -343,7 +413,7 @@ export default function InboxPage() {
                       {l:'Check-in', v:result.data_checkin, c:'#FCD34D'},
                       {l:'Check-out', v:result.data_checkout, c:'#FCD34D'},
                       {l:'Nopți', v:result.nr_nopti ? result.nr_nopti+'n' : null, c:'rgba(214,228,244,0.7)'},
-                      {l:'Adulți', v:result.guests_adults ? result.guests_adults+' ad.' : null, c:'rgba(214,228,244,0.7)'},
+                      {l:'Adulți', v:result.persoane_mentionate===false ? 'nespecificat' : result.guests_adults ? result.guests_adults+' ad.' : null, c:result.persoane_mentionate===false?'#FCD34D':'rgba(214,228,244,0.7)'},
                       {l:'Copii', v:result.guests_children && result.guests_children>0 ? result.guests_children+' cop.' : null, c:'#FCD34D'},
                       {l:'Buget/n', v:result.buget_per_noapte, c:'#4ADE80'},
                       {l:'Canal', v:result.canal, c:'rgba(159,215,255,0.6)'},
@@ -374,6 +444,35 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Primul raspuns - cere nr. de oaspeti si bugetul (inainte de oferte) */}
+              {primText && (
+                <div style={{...panel,padding:14,borderColor:'rgba(37,211,102,0.3)'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:'#4ADE80'}}>💬 Primul răspuns</div>
+                      <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
+                        {result.persoane_mentionate && result.buget_per_noapte ? 'Clientul a spus deja persoanele și bugetul — îi confirmi că verifici și treci la locații.'
+                          : 'Îi mulțumești și îi ceri ' + (!result.persoane_mentionate && !result.buget_per_noapte ? 'numărul de oaspeți și bugetul' : !result.persoane_mentionate ? 'numărul de oaspeți' : 'bugetul') + ', ca să-ți răspundă; apoi alegi locațiile mai jos.'}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:6}}>
+                      <button onClick={()=>{ navigator.clipboard.writeText(primText).then(()=>{ setPrimCopiat(true); setTimeout(()=>setPrimCopiat(false),2000) }).catch(()=>{}) }}
+                        style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:6,background:primCopiat?'rgba(34,197,94,0.15)':'rgba(77,163,255,0.1)',border:`1px solid ${primCopiat?'rgba(34,197,94,0.3)':'rgba(77,163,255,0.2)'}`,color:primCopiat?'#4ADE80':'#7BC8FF',fontSize:11,cursor:'pointer'}}>
+                        {primCopiat?<><Check size={10}/> Copiat!</>:<><Copy size={10}/> Copiază</>}
+                      </button>
+                      {result.telefon && (
+                        <a href={`https://wa.me/${String(result.telefon).replace(/[^0-9]/g,'')}?text=${encodeURIComponent(primText)}`} target="_blank" rel="noreferrer" onClick={primTrimis}
+                          style={{display:'flex',alignItems:'center',gap:4,padding:'5px 12px',borderRadius:6,background:'#25D366',color:'#03250F',fontSize:11,fontWeight:700,textDecoration:'none'}}>
+                          <MessageCircle size={11}/> Trimite pe WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <textarea value={primText} onChange={e=>setPrimText(e.target.value)} rows={Math.min(14, primText.split('\n').length + 1)}
+                    style={{width:'100%',padding:'10px 12px',background:'rgba(14,27,43,0.4)',borderRadius:8,fontSize:12.5,color:'rgba(214,228,244,0.9)',lineHeight:1.6,border:'none',borderLeft:'2px solid rgba(37,211,102,0.4)',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+                </div>
+              )}
 
               <AvertismentNealocate checkin={result.data_checkin} checkout={result.data_checkout}/>
 

@@ -186,6 +186,8 @@ export async function POST(req: NextRequest) {
     '12. buget_per_noapte: bugetul mentionat (sau null)',
     '13. canal: whatsapp|airbnb|booking|email|direct (detecteaza din context)',
     '14. limba: ro|en|fr|de|other',
+    '15. persoane_mentionate: true DOAR daca mesajul spune explicit cate persoane/oaspeti/adulti/copii sunt (ex: "2 adulti", "familie cu 2 copii", "4 persoane"), altfel false',
+    '16. buget_per_noapte: DOAR daca clientul mentioneaza un buget/pret, altfel null (nu-l ghici)',
     '',
     'REGULI STRICTE:',
     '- Raspunde EXCLUSIV cu obiectul JSON valid. Nu adauga text inainte sau dupa.',
@@ -210,7 +212,7 @@ export async function POST(req: NextRequest) {
     '- Daca gasesti telefon in imagine (header WhatsApp, profil), extrage-l',
     '',
     'Format JSON cerut:',
-    '{"booking_data":{"phone_number":null,"check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","nights":1,"guests_adults":1,"guests_children":0,"total_guests":1,"preferences":[],"raw_summary":"rezumat","nume_client":null,"email":null,"buget_per_noapte":null,"canal":"whatsapp","limba":"ro"}}',
+    '{"booking_data":{"phone_number":null,"check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","nights":1,"guests_adults":1,"guests_children":0,"total_guests":1,"preferences":[],"raw_summary":"rezumat","nume_client":null,"email":null,"buget_per_noapte":null,"canal":"whatsapp","limba":"ro","persoane_mentionate":false}}',
     '',
     'Mesaj de analizat:',
     text || '(din imagine)',
@@ -238,6 +240,8 @@ export async function POST(req: NextRequest) {
       guests_adults: bd.guests_adults || 1,
       guests_children: bd.guests_children || 0,
       nights_raw: bd.nights || null,
+      // pentru primul raspuns ("cereti nr. de oaspeti si bugetul"): stim daca le-a spus clientul sau sunt implicite
+      persoane_mentionate: bd.persoane_mentionate === true || bd.persoane_mentionate === 'true',
     }
   } catch {}
 
