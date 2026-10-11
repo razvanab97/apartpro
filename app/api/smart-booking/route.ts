@@ -194,6 +194,8 @@ export async function POST(req: NextRequest) {
     '- "weekend-ul viitor" = vineri ' + dm['vineri'] + ' pana duminica ' + dm['duminica'],
     '- "azi" = ' + today + ', "maine" = ' + dm.tomorrow + ', "poimaine" = ' + dm.dayAfterTomorrow,
     '- "pe 15" = ' + dm['pe 15'] + ', "pe 20" = ' + dm['pe 20'] + ', "pe 1" = ' + dm['pe 1'],
+    '- Interval de zile: "2-5 noiembrie" / "2 - 5 nov" / "intre 2 si 5 noiembrie" = check_in 2 noiembrie, check_out 5 noiembrie (a doua zi din interval E ziua plecarii, NU adauga o zi), nights = 3',
+    '- check_out e mereu ziua plecarii; nu aduna nopti peste un interval deja dat explicit',
     '- Daca lipsesc informatii critice, seteaza null',
     '',
     'REGULI OASPETI (CRITIC - citeste cu atentie):',
