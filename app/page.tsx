@@ -218,40 +218,71 @@ export default function DashboardPage() {
   const [mesajOverrides,setMesajOverrides]=useState<Record<string,{telefon?:string;mesaj?:string}>>({})
   const [editingMesajId,setEditingMesajId]=useState<string|null>(null)
   const [mesajeActiveTab,setMesajeActiveTab]=useState<string>('toate')
-  const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>{
-    try{
-      const raw=localStorage.getItem('mesaje_trimise_'+new Date().toISOString().split('T')[0])
-      return raw?new Set(JSON.parse(raw)):new Set()
-    }catch{return new Set()}
-  })
-  const [mesajeAnulateIds,setMesajeAnulateIds]=useState<Set<string>>(()=>{
-    try{
-      const raw=localStorage.getItem('mesaje_anulate_'+new Date().toISOString().split('T')[0])
-      return raw?new Set(JSON.parse(raw)):new Set()
-    }catch{return new Set()}
-  })
-  function marcheazaMesajTrimis(id:string){
-    setMesajeSentIds(prev=>{
-      const n=new Set(prev); n.add(id)
-      try{localStorage.setItem('mesaje_trimise_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
-      return n
-    })
+  // Starea mesajelor de azi (trimis / sarit) se salveaza in BAZA (setari: "mesaje_zi_AAAA-LL-ZZ"), nu doar pe
+  // dispozitiv - cerut direct, ca telefonul si laptopul sa vada acelasi lucru. Fara migrare: o inregistrare
+  // pe zi in tabela setari existenta, {idMesaj: {s:'t'|'s', la: ISO}}. localStorage ramane doar cache
+  // (pornire instant / offline); se reciteste din baza la 20s si la deschiderea mesajelor.
+  const ziLocala=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
+  const cheieMesajeZi=()=>'mesaje_zi_'+ziLocala()
+  const citesteLocal=(k:string)=>{ try{ const raw=localStorage.getItem(k+'_'+ziLocala())||localStorage.getItem(k+'_'+new Date().toISOString().split('T')[0]); return raw?new Set<string>(JSON.parse(raw)):new Set<string>() }catch{ return new Set<string>() } }
+  const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>citesteLocal('mesaje_trimise'))
+  const [mesajeAnulateIds,setMesajeAnulateIds]=useState<Set<string>>(()=>citesteLocal('mesaje_anulate'))
+  function aplicaStare(stare:Record<string,{s:string;la?:string}>){
+    const t=new Set<string>(), sa=new Set<string>()
+    for(const [id,v] of Object.entries(stare)){ if(v?.s==='t') t.add(id); else if(v?.s==='s') sa.add(id) }
+    setMesajeSentIds(t); setMesajeAnulateIds(sa)
+    try{ localStorage.setItem('mesaje_trimise_'+ziLocala(),JSON.stringify([...t])); localStorage.setItem('mesaje_anulate_'+ziLocala(),JSON.stringify([...sa])) }catch{}
   }
-  // Ascunde mesajul din lista de azi (nu se sterge nimic din rezervare/proprietar) — cerut cu
-  // dublu-click explicit pe PC, ca sa nu dispara un mesaj din greseala la un click gresit.
+  async function citesteStareMesaje(): Promise<Record<string,{s:string;la?:string}>|null>{
+    const {data,error}=await supabase.from('setari').select('valoare').eq('cheie',cheieMesajeZi()).maybeSingle()
+    if(error) return null
+    try{ const v=JSON.parse(data?.valoare||'{}'); return v&&typeof v==='object'?v:{} }catch{ return {} }
+  }
+  // Scriere = citeste starea proaspata din baza, aplica o singura schimbare, salveaza (ca doua dispozitive
+  // care trimit aproape simultan sa nu-si stearga una alteia mesajele marcate)
+  async function salveazaStareMesaj(id:string,s:'t'|'s'|null){
+    const stare=(await citesteStareMesaje())||{}
+    if(s) stare[id]={s,la:new Date().toISOString()}; else delete stare[id]
+    await supabase.from('setari').upsert({cheie:cheieMesajeZi(),valoare:JSON.stringify(stare)},{onConflict:'cheie'})
+    aplicaStare(stare)
+  }
+  async function sincronizeazaStareMesaje(){
+    const stare=await citesteStareMesaje()
+    if(!stare) return
+    // Prima data: ce era marcat doar local pe acest dispozitiv (inainte de salvarea in baza) urca in baza
+    const loc:Record<string,{s:string;la?:string}>={}
+    citesteLocal('mesaje_trimise').forEach(id=>{ if(!stare[id]) loc[id]={s:'t'} })
+    citesteLocal('mesaje_anulate').forEach(id=>{ if(!stare[id]) loc[id]={s:'s'} })
+    let migrat=false
+    try{ migrat=localStorage.getItem('mesaje_migrat_'+ziLocala())==='1' }catch{}
+    if(!migrat&&Object.keys(loc).length){
+      const st={...stare,...loc}
+      await supabase.from('setari').upsert({cheie:cheieMesajeZi(),valoare:JSON.stringify(st)},{onConflict:'cheie'})
+      try{ localStorage.setItem('mesaje_migrat_'+ziLocala(),'1') }catch{}
+      aplicaStare(st); return
+    }
+    try{ localStorage.setItem('mesaje_migrat_'+ziLocala(),'1') }catch{}
+    aplicaStare(stare)
+  }
+  useEffect(()=>{
+    sincronizeazaStareMesaje()
+    const id=setInterval(sincronizeazaStareMesaje,20000)
+    return ()=>clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[])
+  useEffect(()=>{ if(mesajeListOpen) sincronizeazaStareMesaje() },[mesajeListOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  function marcheazaMesajTrimis(id:string){
+    setMesajeSentIds(prev=>{ const n=new Set(prev); n.add(id); return n })
+    salveazaStareMesaj(id,'t')
+  }
+  // Ascunde mesajul din lista de azi (nu se sterge nimic din rezervare/proprietar)
   function anuleazaMesaj(id:string){
-    setMesajeAnulateIds(prev=>{
-      const n=new Set(prev); n.add(id)
-      try{localStorage.setItem('mesaje_anulate_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
-      return n
-    })
+    setMesajeAnulateIds(prev=>{ const n=new Set(prev); n.add(id); return n })
+    salveazaStareMesaj(id,'s')
   }
   function restaureazaMesaj(id:string){
-    setMesajeAnulateIds(prev=>{
-      const n=new Set(prev); n.delete(id)
-      try{localStorage.setItem('mesaje_anulate_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
-      return n
-    })
+    setMesajeAnulateIds(prev=>{ const n=new Set(prev); n.delete(id); return n })
+    salveazaStareMesaj(id,null)
   }
   // Fila deschisa in "Mesaje pe rand" (si deep-link din notificare: /?mesaje=sosiri)
   const [mesajeFila,setMesajeFila]=useState<FilaMesaje>('dim')
@@ -321,26 +352,26 @@ export default function DashboardPage() {
   const ciPropMesajeTrimise = toateTrimise(ciProprietarAzi,'propci-')
   const coPropMesajeTrimise = toateTrimise(coProprietarAzi,'propco-')
 
-  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; codPlatforma?:string; canalLabel?:string; telefon:string; mesaj:string; faraTelefon?:boolean }
+  type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; codPlatforma?:string; canalLabel?:string; telefon:string; mesaj:string; faraTelefon?:boolean; apt?:string }
   const mesajeTasks: MesajTask[] = useMemo(()=>{
     const tasks: MesajTask[] = []
     checkoutAzi.forEach((r:any)=>{
       const id='co-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#C084FC',titluCategorie:'Checkout',
-        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
     })
     checkinAzi.forEach((r:any)=>{
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
-        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         codPlatforma:r.cod_rezervare_platforma||undefined,canalLabel:CANALE_LABEL[r.canal]||r.canal,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
     })
     gataCheckinsAzi.forEach((r:any)=>{
       const id='gata-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'gata',icon:'🔑',accent:'#7BC8FF',titluCategorie:'Acces',
-        nume:r.nume_client,nota:r.apartament?.nota,linie2:r.apartament?.nume,
+        nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgGataAcces(r,sabloaneGata)})
     })
     propNotif.forEach((r:any)=>{
@@ -348,19 +379,19 @@ export default function DashboardPage() {
       if(!tel) return
       const id='propn-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'prop-nou',icon:'🏠',accent:'#A78BFA',titluCategorie:'Proprietar · rezervare nouă',
-        nume:r.apartament?.proprietar?.nume||r.apartament?.nume,nota:r.apartament?.nota,linie2:`Client: ${r.nume_client}`,
+        nume:r.apartament?.proprietar?.nume||r.apartament?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Client: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgProprietar(r)})
     })
     ciProprietarAzi.forEach((r:any)=>{
       const id='propci-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
       tasks.push({id,rawId:r.id,categorie:'prop-ci',icon:'🔑',accent:'#A78BFA',titluCategorie:'Proprietar · check-in azi',
-        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,linie2:`Oaspete: ${r.nume_client} · ${r.nr_nopti||'?'} nopți`,
+        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Oaspete: ${r.nume_client} · ${r.nr_nopti||'?'} nopți`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckinProprietar(r)})
     })
     coProprietarAzi.forEach((r:any)=>{
       const id='propco-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
       tasks.push({id,rawId:r.id,categorie:'prop-co',icon:'🚪',accent:'#A78BFA',titluCategorie:'Proprietar · check-out azi',
-        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,linie2:`Oaspete: ${r.nume_client}`,
+        nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Oaspete: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
     return tasks.filter(t=>!mesajeAnulateIds.has(t.id))

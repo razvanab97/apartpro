@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 // din timp, nu in ziua sosirii). Datele si actiunile vin din Dashboard (aceleasi sabloane/override-uri).
 export type MesajRand = {
   id: string; rawId: string; categorie: string; titluCategorie: string; nume: string; nota?: string; linie2?: string
-  telefon: string; mesaj: string; faraTelefon?: boolean; trimis: boolean
+  telefon: string; mesaj: string; faraTelefon?: boolean; trimis: boolean; apt?: string
 }
 export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
 export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
@@ -130,12 +130,16 @@ export default function MesajePeRand(p: {
                 const val = numereInput[n.id] ?? ''
                 return (
                   <div key={n.id} style={{ background: '#0E1B30', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {n.nota && <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#4DA3FF', background: 'rgba(77,163,255,0.14)', borderRadius: 6, padding: '4px 6px' }}>{n.nota}</span>}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: '#E8F4FF' }}>{n.nume_client}</div>
-                        <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>sosește {fmtZi(n.data_checkin)} · {n.canal}{n.apt ? ` · ${n.apt}` : ''}</div>
+                    {(n.nota || n.apt) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#4DA3FF', color: '#04111F', borderRadius: 10, padding: '7px 10px' }}>
+                        <span>📍</span>
+                        {n.nota && <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 800 }}>{n.nota}</span>}
+                        {n.apt && <span style={{ fontSize: 13.5, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.apt}</span>}
                       </div>
+                    )}
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: '#E8F4FF' }}>{n.nume_client}</div>
+                      <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>sosește {fmtZi(n.data_checkin)} · {n.canal}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <input value={val} onChange={e => setNumereInput(x => ({ ...x, [n.id]: e.target.value }))} placeholder="Număr de telefon"
@@ -162,13 +166,25 @@ export default function MesajePeRand(p: {
             </div>
           ) : (
             <div style={{ background: '#0E1B30', border: '1px solid rgba(159,215,255,0.2)', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Locatia - cel mai vizibil element al cartonasului (cerut direct: "locatia sa aiba o culoare mai evidenta") */}
+              {(() => {
+                const eProp = fila === 'prop'
+                const numeApt = String(curent.apt || (eProp ? '' : curent.linie2) || '').trim()
+                return (curent.nota || numeApt) ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: eProp ? '#A78BFA' : '#4DA3FF', color: '#04111F', borderRadius: 12, padding: '10px 12px' }}>
+                    <span style={{ fontSize: 18 }}>📍</span>
+                    {curent.nota && <span style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 800, letterSpacing: '.02em' }}>{curent.nota}</span>}
+                    {numeApt && <span style={{ fontSize: 15, fontWeight: 800, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{numeApt}</span>}
+                    {K && <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: '#04111F', background: 'rgba(255,255,255,0.55)', borderRadius: 20, padding: '4px 9px', whiteSpace: 'nowrap' }}>{K.l}</span>}
+                  </div>
+                ) : null
+              })()}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                {curent.nota && <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: fila === 'prop' ? '#A78BFA' : '#4DA3FF', background: fila === 'prop' ? 'rgba(167,139,250,0.14)' : 'rgba(77,163,255,0.14)', borderRadius: 7, padding: '5px 7px' }}>{curent.nota}</span>}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: '#E8F4FF', lineHeight: 1.2 }}>{curent.nume}</div>
-                  {curent.linie2 && <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>{curent.linie2}</div>}
+                  {fila === 'prop' && curent.linie2 && <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>{curent.linie2}</div>}
                 </div>
-                {K && <span style={{ fontSize: 11, fontWeight: 800, color: K.c, background: K.bg, borderRadius: 20, padding: '4px 9px', whiteSpace: 'nowrap' }}>{K.l}</span>}
+                {K && !curent.nota && !curent.apt && !(fila !== 'prop' && curent.linie2) && <span style={{ fontSize: 11, fontWeight: 800, color: K.c, background: K.bg, borderRadius: 20, padding: '4px 9px', whiteSpace: 'nowrap' }}>{K.l}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, background: curent.telefon.trim() ? '#0A1424' : 'rgba(248,113,113,0.1)', border: `1px solid ${curent.telefon.trim() ? 'rgba(159,215,255,0.14)' : 'rgba(248,113,113,0.55)'}`, padding: '7px 10px' }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(159,215,255,0.5)' }}>Tel.</span>
