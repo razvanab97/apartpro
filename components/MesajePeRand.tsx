@@ -52,6 +52,7 @@ export default function MesajePeRand(p: {
   const [revId, setRevId] = useState<string | null>(null)
   // Pozitia in coada filei (cerut direct: "sa putem da next la urmatorul mesaj") - rasfoire fara sa trimiti/amani
   const [poz, setPoz] = useState<Record<string, number>>({})
+  const [subProp, setSubProp] = useState<string | null>(null)
 
   const deTrimis = (k: FilaMesaje) => p.tasks
     .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
@@ -59,13 +60,21 @@ export default function MesajePeRand(p: {
   const totalFila = (k: FilaMesaje) => p.tasks.filter(t => filaMesaj(t.categorie) === k)
   const numereRamase = p.numereLipsa.filter(n => !salvate[n.id])
   const revazut = revId ? p.tasks.find(t => t.id === revId) || null : null
-  const coada = fila === 'numere' ? [] : deTrimis(fila)
-  const idxCoada = coada.length ? Math.min(poz[fila] || 0, coada.length - 1) : 0
+  // Proprietari: sub-file separate (cerut direct: "check-in si check-out proprietari sa fie sectiuni diferite,
+  // altfel ne incurcam") - Rezervari noi / Check-in azi / Check-out azi, fiecare cu coada ei
+  const SUB_PROP: { k: string; t: string; c: string }[] = [
+    { k: 'prop-nou', t: 'Rezervări noi', c: '#A78BFA' }, { k: 'prop-ci', t: 'Check-in azi', c: '#34D399' }, { k: 'prop-co', t: 'Check-out azi', c: '#FB923C' },
+  ]
+  const nSub = (k: string) => deTrimis('prop').filter(t => t.categorie === k).length
+  const subActiv = SUB_PROP.find(x => x.k === subProp && nSub(x.k) > 0)?.k || SUB_PROP.find(x => nSub(x.k) > 0)?.k || 'prop-nou'
+  const coada = fila === 'numere' ? [] : fila === 'prop' ? deTrimis('prop').filter(t => t.categorie === subActiv) : deTrimis(fila)
+  const cheiePoz = fila === 'prop' ? 'prop:' + subActiv : fila
+  const idxCoada = coada.length ? Math.min(poz[cheiePoz] || 0, coada.length - 1) : 0
   const curent = fila === 'numere' ? null : (revazut || coada[idxCoada] || null)
   function mergiLa(d: number) {
     if (!coada.length) return
     setRevId(null); setToast(null)
-    setPoz(x => ({ ...x, [fila]: (idxCoada + d + coada.length) % coada.length }))
+    setPoz(x => ({ ...x, [cheiePoz]: (idxCoada + d + coada.length) % coada.length }))
   }
   const idxInapoi = revazut ? istoric.lastIndexOf(revazut.id) - 1 : istoric.length - 1
   const tintaInapoi = idxInapoi >= 0 ? p.tasks.find(t => t.id === istoric[idxInapoi]) || null : null
@@ -154,6 +163,19 @@ export default function MesajePeRand(p: {
 
         {/* Continut */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {fila === 'prop' && !revazut && deTrimis('prop').length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
+              {SUB_PROP.map(x => {
+                const n = nSub(x.k), on = x.k === subActiv
+                return (
+                  <button key={x.k} onClick={() => { setSubProp(x.k); setToast(null) }} disabled={!n}
+                    style={{ border: `1px solid ${on ? x.c : 'rgba(159,215,255,0.15)'}`, background: on ? x.c : 'transparent', color: on ? '#04111F' : n ? x.c : 'rgba(159,215,255,0.3)', borderRadius: 10, padding: '7px 4px', fontSize: 11.5, fontWeight: 800, cursor: n ? 'pointer' : 'default' }}>
+                    {x.t} · {n}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {fila !== 'numere' && (tintaInapoi || revazut) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {tintaInapoi && (
@@ -216,7 +238,7 @@ export default function MesajePeRand(p: {
                 const eProp = fila === 'prop'
                 const numeApt = String(curent.apt || (eProp ? '' : curent.linie2) || '').trim()
                 return (curent.nota || numeApt) ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: eProp ? '#A78BFA' : '#4DA3FF', color: '#04111F', borderRadius: 12, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: eProp ? (SUB_PROP.find(x => x.k === curent.categorie)?.c || '#A78BFA') : '#4DA3FF', color: '#04111F', borderRadius: 12, padding: '10px 12px' }}>
                     <span style={{ fontSize: 18 }}>📍</span>
                     {curent.nota && <span style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 800, letterSpacing: '.02em' }}>{curent.nota}</span>}
                     {numeApt && <span style={{ fontSize: 15, fontWeight: 800, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{numeApt}</span>}

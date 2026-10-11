@@ -112,7 +112,7 @@ function fillVars(tmpl:string, vals:{nume?:string;apartament?:string;data_checki
 }
 
 function msgCheckin(r:any, tmplGlobal?:string){
-  const apt = r.apartament?.nume || 'apartament'
+  const apt = String(r.apartament?.nume || 'apartament').trim()
   const ci  = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const nume = firstName(r.nume_client)
   // Mesajul personalizat pe apartament (setat din Editează apartament → Mesaje) are prioritate
@@ -123,7 +123,7 @@ function msgCheckin(r:any, tmplGlobal?:string){
 }
 
 function msgAcces(r:any, tmpl?:string){
-  const apt = r.apartament?.nume || 'apartament'
+  const apt = String(r.apartament?.nume || 'apartament').trim()
   const nume = firstName(r.nume_client)
   if(tmpl) return fillVars(tmpl,{nume,apartament:apt})
   return `Bună ziua, ${nume}! 🏠\n\nIată detaliile de acces pentru *${apt}*:\n\n🔑 *Cod intrare bloc:* _completați_\n🚪 *Etaj / Apartament:* _completați_\n📱 *Cutia cu cheia:* _completați_ | Cod: _completați_\n\n📍 _adresa completă_\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
@@ -133,7 +133,7 @@ function applyVars(tmpl:string, nume:string, apt:string, co:string){
   return tmpl.replace(/\{nume\}/gi,nume).replace(/\{apartament\}/gi,apt).replace(/\{data_checkout\}/gi,co).replace(/\{data\}/gi,co)
 }
 function msgCheckoutGen(r:any, sabloane:Record<string,string>){
-  const apt = r.apartament?.nume || 'apartament'
+  const apt = String(r.apartament?.nume || 'apartament').trim()
   const aptId = r.apartament?.id || ''
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const nume = firstName(r.nume_client)
@@ -144,7 +144,7 @@ function msgCheckoutGen(r:any, sabloane:Record<string,string>){
   return `Bună ziua, ${nume}! 🌅\n\nVă reamintim că astăzi, *${co}*, este ziua check-out-ului din *${apt}*.\n\n⏰ *Ora de check-out:* 11:00\n🔑 *Cheia:* vă rugăm să o lăsați în cutia de la ușă / recepție\n\nVă mulțumim că ați ales AB Homes Iași și sperăm să vă revedem curând! ⭐\nEchipa AB Homes`
 }
 function msgGataAcces(r:any, sabloane:Record<string,string>){
-  const apt = r.apartament?.nume || 'apartament'
+  const apt = String(r.apartament?.nume || 'apartament').trim()
   const aptId = r.apartament?.id || ''
   const nume = firstName(r.nume_client)
   const sablon = sabloane[aptId] || sabloane['__global__']
@@ -152,7 +152,7 @@ function msgGataAcces(r:any, sabloane:Record<string,string>){
   return `Bună ziua, ${nume}! 🏠\n\nVă las aici datele de acces pentru locația dumneavoastră de astăzi, *${apt}*.\n\nO ședere plăcută! Ne puteți contacta oricând. 😊\nEchipa AB Homes Iași`
 }
 function msgProprietar(r:any){
-  const apt = r.apartament?.nume || 'apartament'
+  const apt = String(r.apartament?.nume || 'apartament').trim()
   const ci = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const co = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const pret = pretRezervareText(r)
@@ -443,14 +443,15 @@ export default function DashboardPage() {
     try{
       const today0=aziLocal()
       const {data}=await supabase.from('rezervari')
-        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,camera_semnalata,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkin',today0)
         .neq('status_rezervare','anulata')
-      setCiProprietarAzi((data||[]).filter((r:any)=>notificaProprietar(r)))
+      // un singur mesaj pe apartament pe zi (rezervarile introduse de doua ori ar trimite proprietarului acelasi mesaj de doua ori) + fara rezervarile ramase fara camera in 5starDesk
+      setCiProprietarAzi(dedupeByApt((data||[]).filter((r:any)=>notificaProprietar(r)&&r.camera_semnalata!=='NEALOCAT')))
     }catch{}
   }
   function msgCheckinProprietar(r:any){
-    const apt = r.apartament?.nume || 'apartament'
+    const apt = String(r.apartament?.nume || 'apartament').trim()
     const propNume = firstName(r.apartament?.proprietar?.nume || '')
     const nopti = r.nr_nopti
     return `Bună ziua${propNume?', '+propNume:''}! 👋\n\nAstăzi ajunge oaspetele *${r.nume_client}* la *${apt}*, pentru *${nopti||'?'}* ${nopti===1?'noapte':'nopți'}.\n\nVă rugăm să ne anunțați când locația e pregătită pentru check-in!\n\nEchipa AB Homes Iași`
@@ -459,14 +460,15 @@ export default function DashboardPage() {
     try{
       const today0=aziLocal()
       const {data}=await supabase.from('rezervari')
-        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
+        .select('id,nume_client,data_checkin,data_checkout,nr_nopti,camera_semnalata,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkout',today0)
         .neq('status_rezervare','anulata')
-      setCoProprietarAzi((data||[]).filter((r:any)=>notificaProprietar(r)))
+      // un singur mesaj pe apartament pe zi (rezervarile introduse de doua ori ar trimite proprietarului acelasi mesaj de doua ori) + fara rezervarile ramase fara camera in 5starDesk
+      setCoProprietarAzi(dedupeByApt((data||[]).filter((r:any)=>notificaProprietar(r)&&r.camera_semnalata!=='NEALOCAT')))
     }catch{}
   }
   function msgCheckoutProprietar(r:any){
-    const apt = r.apartament?.nume || 'apartament'
+    const apt = String(r.apartament?.nume || 'apartament').trim()
     const propNume = firstName(r.apartament?.proprietar?.nume || '')
     return `Bună ziua${propNume?', '+propNume:''}! 👋\n\nAstăzi pleacă oaspetele *${r.nume_client}* de la *${apt}*.\n\nVă mulțumim!\nEchipa AB Homes Iași`
   }
