@@ -15,6 +15,12 @@ type Result = {
   rezumat?: string; observatii?: string; guests_adults?: number; guests_children?: number
   apartamente_recomandate?: { nota: string; nume: string; motiv: string; pret_noapte?: number; pret_total?: number; scor: number }[]
   raspuns_sugerat?: string
+  apartamente?: AptOferta[]
+}
+type AptOferta = {
+  id: string; nota: string|null; nume: string; zona: string|null; capacitate_max: number|null; link_site: string|null; administrare: boolean
+  disponibil: boolean; ocupat_de: string[]; capacitate_ok: boolean; pret_noapte: number; pret_booking: number|null; pret_direct_recent: number|null
+  scor: number|null; motiv: string|null
 }
 
 type Cerere = {
@@ -53,6 +59,11 @@ export default function InboxPage() {
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState<Result|null>(null)
   const [copied, setCopied] = useState(false)
+  // Locatiile alese de tine pentru oferta (apt_id -> pret/noapte editabil) + raspunsul generat pe baza lor
+  const [alese, setAlese] = useState<Record<string, string>>({})
+  const [raspuns, setRaspuns] = useState('')
+  const [generand, setGenerand] = useState(false)
+  const [aratOcupate, setAratOcupate] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Inbox state */
@@ -99,22 +110,45 @@ export default function InboxPage() {
 
   async function analyze() {
     if (!text.trim() && !image) { show('error','Adaugă un mesaj sau o imagine'); return }
-    setAnalyzing(true); setResult(null)
+    setAnalyzing(true); setResult(null); setAlese({}); setRaspuns('')
     try {
       const res = await fetch('/api/smart-booking', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ text: mode==='text' ? text : undefined, imageBase64: image?.base64, imageType: image?.type })
       })
       const data = await res.json()
-      if (data.ok) setResult(data.result)
+      if (data.ok) {
+        setResult(data.result)
+        // preselectat: cea mai potrivita locatie libera, dupa scorul AI
+        const top = (data.result.apartamente || []).find((a: AptOferta) => a.disponibil)
+        if (top) setAlese({ [top.id]: String(top.pret_noapte || top.pret_direct_recent || '') })
+      }
       else show('error','Eroare AI')
     } catch(e:any) { show('error', e.message) }
     setAnalyzing(false)
   }
 
+  async function genereazaRaspuns() {
+    if (!result) return
+    const ids = Object.keys(alese)
+    if (!ids.length) { show('error', 'Bifează cel puțin o locație'); return }
+    setGenerand(true)
+    try {
+      const res = await fetch('/api/smart-booking', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        mod: 'raspuns', mesaj_original: text,
+        date: { nume_client: result.nume_client, data_checkin: result.data_checkin, data_checkout: result.data_checkout, nr_persoane: result.nr_persoane, limba: result.limba },
+        oferte: (result.apartamente || []).filter(a => alese[a.id] !== undefined).map(a => ({ apt_id: a.id, pret_noapte: Number(alese[a.id]) || 0 })),
+      }) })
+      const data = await res.json()
+      if (data.ok) setRaspuns(data.raspuns); else show('error', data.error || 'Eroare la generare')
+    } catch (e: any) { show('error', e.message) }
+    setGenerand(false)
+  }
+
   async function saveFromResult() {
     if (!result) return
-    const apt = apts.find(a => a.nota === result.apartamente_recomandate?.[0]?.nota)
+    const aleasa = (result.apartamente || []).find(a => alese[a.id] !== undefined)
+    const apt = aleasa ? { id: aleasa.id } : apts.find(a => a.nota === result.apartamente_recomandate?.[0]?.nota)
     const payload = {
       nume_client: result.nume_client || 'Client necunoscut',
       telefon: result.telefon || null,
@@ -123,18 +157,18 @@ export default function InboxPage() {
       data_checkin: result.data_checkin || null,
       data_checkout: result.data_checkout || null,
       nr_persoane: result.nr_persoane || null,
-      mesaj: text || '[din imagine]',
-      status: 'noua', prioritate: result.urgenta ? 'urgenta' : 'normala',
+      mesaj: [text || '[din imagine]', raspuns ? '\n--- Răspuns trimis ---\n' + raspuns : ''].join(''),
+      status: raspuns ? 'contactat' : 'noua', prioritate: result.urgenta ? 'urgenta' : 'normala',
     }
     const { error } = await supabase.from('cereri_rezervare').insert(payload)
     if (error) { show('error', error.message); return }
     show('success','Cerere salvată în inbox! ✓')
-    loadData(); setResult(null); setText(''); setImage(null)
+    loadData(); setResult(null); setText(''); setImage(null); setAlese({}); setRaspuns('')
   }
 
   function copyRaspuns() {
-    if (result?.raspuns_sugerat) {
-      navigator.clipboard.writeText(result.raspuns_sugerat)
+    if (raspuns) {
+      navigator.clipboard.writeText(raspuns)
       setCopied(true); setTimeout(() => setCopied(false), 2000)
     }
   }
@@ -200,7 +234,7 @@ export default function InboxPage() {
       <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
 
         {/* ── TOP: SMART BOOKING ── */}
-        <div style={{padding:'16px 20px 0',display:'flex',flexDirection:'column',gap:12,borderBottom:'1px solid rgba(159,215,255,0.08)',paddingBottom:16}}>
+        <div style={{padding:'16px 20px 0',display:'flex',flexDirection:'column',gap:12,borderBottom:'1px solid rgba(159,215,255,0.08)',paddingBottom:16,maxHeight:result?'75vh':undefined,overflowY:'auto'}}>
 
           {/* Mode tabs */}
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -279,65 +313,107 @@ export default function InboxPage() {
                   </div>
                 </div>
 
-                {/* Right: availability + recommendations */}
+                {/* Right: disponibilitate */}
                 <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                  {result.disponibile !== undefined && (
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                      <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(34,197,94,0.2)'}}>
-                        <div style={{fontSize:20,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{result.disponibile}</div>
-                        <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✓ Disponibile</div>
-                      </div>
-                      <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(239,68,68,0.15)'}}>
-                        <div style={{fontSize:20,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{result.indisponibile}</div>
-                        <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✗ Ocupate</div>
-                      </div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                    <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(34,197,94,0.2)'}}>
+                      <div style={{fontSize:20,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{result.disponibile ?? 0}</div>
+                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✓ Libere și potrivite</div>
                     </div>
-                  )}
-                  {result.apartamente_recomandate?.map((apt,i)=>(
-                    <div key={apt.nota} style={{...panel,padding:'10px 12px',display:'flex',alignItems:'center',gap:10,borderColor:i===0?'rgba(77,163,255,0.25)':'rgba(159,215,255,0.08)',background:i===0?'rgba(77,163,255,0.08)':'rgba(214,228,244,0.04)'}}>
-                      <div style={{width:28,height:28,borderRadius:6,background:i===0?'rgba(77,163,255,0.2)':'rgba(159,215,255,0.07)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:i===0?'#4DA3FF':'rgba(159,215,255,0.4)',fontFamily:'monospace',flexShrink:0}}>#{i+1}</div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                          <span style={{fontSize:12,fontWeight:600,color:'#FFFFFF'}}>{apt.nume}</span>
-                          {apt.nota && <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontFamily:'monospace'}}>{apt.nota}</span>}
-                        </div>
-                        <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>{apt.motiv}</div>
-                        {(apt.pret_noapte || apt.pret_total) && (
-                          <div style={{display:'flex',gap:8,marginTop:3}}>
-                            {apt.pret_noapte && <span style={{fontSize:10,color:'#4ADE80'}}>{apt.pret_noapte} RON/n</span>}
-                            {apt.pret_total && <span style={{fontSize:10,color:'#FCD34D',fontWeight:600}}>{apt.pret_total} RON total</span>}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{flexShrink:0,textAlign:'center'}}>
-                        <div style={{fontSize:14,fontWeight:700,color:apt.scor>=8?'#4ADE80':apt.scor>=6?'#FCD34D':'#94A3B8',fontFamily:'monospace'}}>{apt.scor}</div>
-                        <div style={{fontSize:8,color:'rgba(159,215,255,0.3)'}}>/10</div>
-                      </div>
+                    <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(239,68,68,0.15)'}}>
+                      <div style={{fontSize:20,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{result.indisponibile ?? 0}</div>
+                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✗ Ocupate / prea mici</div>
                     </div>
-                  ))}
+                  </div>
+                  <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',lineHeight:1.5}}>
+                    Bifează mai jos locațiile pe care vrei să i le propui (poți corecta prețul/noapte), apoi „Generează răspunsul” — textul va avea prețul și link-ul de pe site pentru fiecare.
+                  </div>
                 </div>
               </div>
 
-              {/* Suggested reply + actions */}
-              {result.raspuns_sugerat && (
+              {/* Alegerea locatiilor */}
+              {(() => {
+                const lista = result.apartamente || []
+                const libere = lista.filter(a => a.disponibil)
+                const ocupate = lista.filter(a => !a.disponibil)
+                const n = result.nr_nopti || 0
+                const rand = (a: AptOferta) => {
+                  const bifat = alese[a.id] !== undefined
+                  const pret = Number(bifat ? alese[a.id] : a.pret_noapte) || 0
+                  return (
+                    <div key={a.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'8px 12px',borderRadius:9,border:`1px solid ${bifat?'rgba(77,163,255,0.45)':'rgba(159,215,255,0.1)'}`,background:bifat?'rgba(77,163,255,0.1)':'rgba(214,228,244,0.03)',opacity:a.disponibil?1:0.55}}>
+                      <input type="checkbox" checked={bifat} disabled={!a.disponibil} onChange={e=>setAlese(x=>{ const c={...x}; if(e.target.checked) c[a.id]=String(a.pret_noapte||a.pret_direct_recent||''); else delete c[a.id]; return c })} style={{width:16,height:16,cursor:a.disponibil?'pointer':'default'}}/>
+                      <div style={{flex:1,minWidth:200}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          {a.nota && <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontFamily:'monospace'}}>{a.nota}</span>}
+                          <span style={{fontSize:12,fontWeight:600,color:'#FFFFFF'}}>{a.nume}</span>
+                          <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>max {a.capacitate_max||'?'} pers{a.zona?` · ${a.zona}`:''}</span>
+                          {a.administrare && <span style={{fontSize:9,padding:'1px 5px',borderRadius:3,background:'rgba(167,139,250,0.12)',color:'#C4B5FD'}}>proprietar · comision</span>}
+                          {a.link_site ? <a href={a.link_site} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#7BC8FF'}}>🔗 site</a> : <span style={{fontSize:10,color:'#F87171'}}>fără link site</span>}
+                        </div>
+                        <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>
+                          {a.disponibil ? (a.motiv || '') : !a.capacitate_ok ? `Prea mic pentru ${result.nr_persoane} persoane` : `Ocupat: ${a.ocupat_de.join(', ')}`}
+                          {(a.pret_booking || a.pret_direct_recent) && <span style={{marginLeft:6,color:'rgba(159,215,255,0.35)'}}>{a.pret_booking?`· Booking pe aceste date: ${a.pret_booking} lei/n `:''}{a.pret_direct_recent?`· ultima vânzare directă: ${a.pret_direct_recent} lei/n`:''}</span>}
+                        </div>
+                      </div>
+                      {a.disponibil && (
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <input type="number" value={bifat ? alese[a.id] : String(a.pret_noapte||a.pret_direct_recent||'')} disabled={!bifat} onChange={e=>setAlese(x=>({...x,[a.id]:e.target.value}))}
+                            title={!a.pret_noapte ? 'Apartamentul n-are preț standard setat în Apartamente — verifică prețul' : undefined}
+                            style={{width:80,padding:'5px 7px',background:'rgba(20,38,65,0.8)',border:`1px solid ${!a.pret_noapte||(bifat&&!Number(alese[a.id]))?'rgba(248,113,113,0.6)':'rgba(100,160,255,0.2)'}`,borderRadius:6,color:'#FFFFFF',fontSize:12,outline:'none'}}/>
+                          <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>lei/n{n?` · ${(pret*n).toLocaleString('ro-RO')} total`:''}</span>
+                        </div>
+                      )}
+                      {a.scor != null && <div style={{fontSize:13,fontWeight:700,fontFamily:'monospace',color:a.scor>=8?'#4ADE80':a.scor>=6?'#FCD34D':'#94A3B8',minWidth:34,textAlign:'right'}}>{a.scor}<span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>/10</span></div>}
+                    </div>
+                  )
+                }
+                return (
+                  <div style={{...panel,padding:14,display:'flex',flexDirection:'column',gap:6}}>
+                    <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:2}}>Alege locațiile de propus ({Object.keys(alese).length} bifate)</div>
+                    {libere.length === 0 && <div style={{fontSize:12,color:'#FCD34D'}}>Nicio locație liberă și potrivită pe aceste date.</div>}
+                    {libere.map(rand)}
+                    {ocupate.length > 0 && (
+                      <button onClick={()=>setAratOcupate(v=>!v)} style={{alignSelf:'flex-start',fontSize:11,background:'none',border:'none',color:'rgba(159,215,255,0.45)',cursor:'pointer',padding:'4px 0'}}>
+                        {aratOcupate ? '▲ ascunde' : '▼ arată'} ocupate / prea mici ({ocupate.length})
+                      </button>
+                    )}
+                    {aratOcupate && ocupate.map(rand)}
+                    <div style={{display:'flex',gap:8,marginTop:6}}>
+                      <button onClick={genereazaRaspuns} disabled={generand || !Object.keys(alese).length}
+                        style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'none',background:Object.keys(alese).length?'rgba(77,163,255,0.85)':'rgba(77,163,255,0.25)',color:'#FFFFFF',fontSize:12,fontWeight:600,cursor:Object.keys(alese).length?'pointer':'default'}}>
+                        {generand ? <><Loader2 size={13} style={{animation:'spin 1s linear infinite'}}/> Generez...</> : <><Sparkles size={13}/> Generează răspunsul ({Object.keys(alese).length})</>}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Raspunsul generat - editabil */}
+              {raspuns && (
                 <div style={{...panel,padding:14}}>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,flexWrap:'wrap',gap:6}}>
                     <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'0.6px'}}>
-                      <MessageCircle size={11} style={{display:'inline',marginRight:4}}/>Răspuns sugerat
+                      <MessageCircle size={11} style={{display:'inline',marginRight:4}}/>Răspuns către client (îl poți edita)
                       {result.limba && result.limba!=='ro' && <span style={{marginLeft:8,fontSize:9,background:'rgba(245,158,11,0.15)',color:'#FCD34D',padding:'1px 5px',borderRadius:3}}>🌍 {result.limba}</span>}
                     </div>
                     <div style={{display:'flex',gap:6}}>
                       <button onClick={copyRaspuns} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:6,background:copied?'rgba(34,197,94,0.15)':'rgba(77,163,255,0.1)',border:`1px solid ${copied?'rgba(34,197,94,0.3)':'rgba(77,163,255,0.2)'}`,color:copied?'#4ADE80':'#7BC8FF',fontSize:11,cursor:'pointer'}}>
                         {copied?<><Check size={10}/> Copiat!</>:<><Copy size={10}/> Copiază</>}
                       </button>
+                      {result.telefon && (
+                        <a href={`https://wa.me/${String(result.telefon).replace(/[^0-9]/g,'')}?text=${encodeURIComponent(raspuns)}`} target="_blank" rel="noreferrer"
+                          style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:6,background:'rgba(37,211,102,0.12)',border:'1px solid rgba(37,211,102,0.3)',color:'#4ADE80',fontSize:11,textDecoration:'none'}}>
+                          <MessageCircle size={10}/> Trimite pe WhatsApp
+                        </a>
+                      )}
                       <button onClick={saveFromResult} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:6,background:'rgba(34,197,94,0.12)',border:'1px solid rgba(34,197,94,0.25)',color:'#4ADE80',fontSize:11,cursor:'pointer',fontWeight:500}}>
                         <ArrowRight size={10}/> Salvează în Inbox
                       </button>
                     </div>
                   </div>
-                  <div style={{padding:'10px 12px',background:'rgba(14,27,43,0.4)',borderRadius:8,fontSize:12,color:'rgba(214,228,244,0.8)',lineHeight:1.7,whiteSpace:'pre-wrap',borderLeft:'2px solid rgba(77,163,255,0.3)'}}>
-                    {result.raspuns_sugerat}
-                  </div>
+                  <textarea value={raspuns} onChange={e=>setRaspuns(e.target.value)} rows={Math.min(22, raspuns.split('\n').length + 2)}
+                    style={{width:'100%',padding:'10px 12px',background:'rgba(14,27,43,0.4)',borderRadius:8,fontSize:12,color:'rgba(214,228,244,0.9)',lineHeight:1.6,border:'none',borderLeft:'2px solid rgba(77,163,255,0.3)',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
                 </div>
               )}
             </div>

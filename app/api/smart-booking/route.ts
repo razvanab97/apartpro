@@ -75,14 +75,79 @@ function buildDateMap(): Record<string,string> {
   return result
 }
 
+// ── Pasul 2: raspunsul catre client, DOAR pentru locatiile alese de tine (cerut direct: "eu aleg ce
+// locatie sa-i propunem si se va genera un text la care se adauga si link-ul de pe site-ul nostru").
+// Preturile si link-urile sunt puse de cod, exact (AI-ul scrie doar salutul si incheierea, in limba
+// clientului) - ca un link sau un pret sa nu poata fi niciodata inventat/gresit de AI.
+const ETICHETE: Record<string, { noapte: string; nopti: string; total: string; detalii: string; pers: string }> = {
+  ro: { noapte: 'noapte', nopti: 'nopți', total: 'total', detalii: 'Detalii și poze', pers: 'persoane' },
+  en: { noapte: 'night', nopti: 'nights', total: 'total', detalii: 'Details & photos', pers: 'guests' },
+  fr: { noapte: 'nuit', nopti: 'nuits', total: 'total', detalii: 'Détails et photos', pers: 'personnes' },
+  de: { noapte: 'Nacht', nopti: 'Nächte', total: 'gesamt', detalii: 'Details & Fotos', pers: 'Personen' },
+  it: { noapte: 'notte', nopti: 'notti', total: 'totale', detalii: 'Dettagli e foto', pers: 'persone' },
+}
+async function genereazaRaspuns(body: any) {
+  const d = body.date || {}
+  const limba = ETICHETE[d.limba] ? d.limba : (d.limba && d.limba !== 'ro' ? 'en' : 'ro')
+  const L = ETICHETE[limba]
+  const oferte: { apt_id: string; pret_noapte: number }[] = (body.oferte || []).filter((o: any) => o?.apt_id)
+  if (!oferte.length) return { ok: false, error: 'Alege cel puțin o locație' }
+  const ids = oferte.map(o => o.apt_id)
+  const apts = await sbFetch('apartamente?select=id,nota,nume,adresa,zona,capacitate_max,link_site&id=in.(' + ids.join(',') + ')')
+  // Numele vazut de client = cel de pe site ("AB HOMES - Cuib Urban"), nu cel intern ("Mircea M08")
+  const numeSite: Record<string, string> = {}
+  await Promise.all((apts || []).filter((a: any) => a.link_site).map(async (a: any) => {
+    try {
+      const r = await fetch(a.link_site, { signal: AbortSignal.timeout(4000) })
+      const m = (await r.text()).match(/<title>\s*AB HOMES\s*[-–]\s*([^<]+?)\s*<\/title>/i)
+      if (m) numeSite[a.id] = m[1].trim()
+    } catch {}
+  }))
+  const nopti = d.data_checkin && d.data_checkout ? Math.max(1, Math.round((new Date(d.data_checkout).getTime() - new Date(d.data_checkin).getTime()) / 86400000)) : null
+  const fmtRON = (n: number) => Math.round(n).toLocaleString('ro-RO') + ' lei'
+  const blocuri = oferte.map((o, i) => {
+    const a = (apts || []).find((x: any) => x.id === o.apt_id) || {}
+    const pret = Number(o.pret_noapte) || 0
+    const linii = [
+      `${oferte.length > 1 ? (i + 1) + '. ' : ''}🏠 *${numeSite[a.id] || String(a.nume || '?').trim()}*${a.zona ? ' – ' + a.zona : ''}`,
+      pret ? `💰 ${fmtRON(pret)} / ${L.noapte}${nopti ? ` × ${nopti} ${nopti === 1 ? L.noapte : L.nopti} = *${fmtRON(pret * nopti)} ${L.total}*` : ''}` : '',
+      a.link_site ? `🔗 ${L.detalii}: ${a.link_site}` : '',
+    ].filter(Boolean)
+    return linii.join('\n')
+  })
+  const rezumatOferte = oferte.map(o => { const a = (apts || []).find((x: any) => x.id === o.apt_id) || {}; return `${numeSite[a.id] || a.nume} (${o.pret_noapte} lei/noapte)` }).join('; ')
+  const prompt = [
+    'Esti asistentul AB Homes Iasi (apartamente in regim hotelier). Scrie DOAR salutul si incheierea unui mesaj de raspuns catre un client, in limba: ' + limba + '.',
+    'Intre ele (nu le scrie tu!) vor fi inserate ofertele: ' + rezumatOferte + '.',
+    'Clientul: ' + (d.nume_client || 'necunoscut') + '; perioada ' + (d.data_checkin || '?') + ' → ' + (d.data_checkout || '?') + (nopti ? ` (${nopti} nopti)` : '') + '; ' + (d.nr_persoane || '?') + ' persoane.',
+    'Mesajul original al clientului:  + String(body.mesaj_original || ).slice(0, 1500) + ',
+    'Reguli: ton cald, profesionist, scurt (salut max 2 propozitii: multumesti si confirmi perioada si nr. de persoane; incheiere max 2 propozitii: intrebi daca vrea sa confirme rezervarea si te oferi pentru intrebari). Fara preturi, fara link-uri, fara a inventa dotari. Doar emoji Unicode standard (😊 🏠 📅 ✅), nu simboluri ◆★●►■.',
+    'Raspunde DOAR JSON: {"salut":"...","incheiere":"..."}',
+  ].join('\n')
+  let salut = '', incheiere = ''
+  try {
+    const raw = await callClaude(prompt)
+    const j = JSON.parse(raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+    salut = String(j.salut || '').trim(); incheiere = String(j.incheiere || '').trim()
+  } catch {}
+  if (!salut) salut = limba === 'ro' ? `Bună ziua${d.nume_client ? ', ' + String(d.nume_client).split(' ')[0] : ''}! 😊 Vă mulțumim pentru mesaj. Pentru perioada solicitată vă putem propune:` : `Hello${d.nume_client ? ' ' + String(d.nume_client).split(' ')[0] : ''}! 😊 Thank you for your message. For your dates we can offer:`
+  if (!incheiere) incheiere = limba === 'ro' ? 'Vă rugăm să ne spuneți dacă doriți să confirmăm rezervarea. Suntem la dispoziție pentru orice întrebare! 😊' : 'Please let us know if you would like us to confirm the booking. Happy to answer any questions! 😊'
+  return { ok: true, raspuns: [salut, blocuri.join('\n\n'), incheiere].join('\n\n') }
+}
+
 export async function POST(req: NextRequest) {
-  const { text, imageBase64, imageType } = await req.json()
+  const body = await req.json()
+  if (body.mod === 'raspuns') {
+    try { return NextResponse.json(await genereazaRaspuns(body)) }
+    catch (e: any) { return NextResponse.json({ ok: false, error: e.message }) }
+  }
+  const { text, imageBase64, imageType } = body
 
   const dm = buildDateMap()
   const today = dm.today
 
   // Get apartments
-  const apts = await sbFetch('apartamente?select=id,nota,nume,capacitate_max,pret_standard,adresa,dotari&status=eq.activ&order=nota')
+  const apts = await sbFetch('apartamente?select=id,nota,nume,capacitate_max,pret_standard,adresa,zona,dotari,link_site,comision_tip&status=eq.activ&order=nota')
 
   // Build date reference for AI
   const dateRef = [
@@ -176,83 +241,89 @@ export async function POST(req: NextRequest) {
     }
   } catch {}
 
-  // Check availability
-  let available: any[] = []
-  let unavailable: any[] = []
+  // ── Disponibilitate: TOATE apartamentele, cu motivul cand nu se pot propune ──
+  // Rezervarile ramase fara camera in 5starDesk (NEALOCAT) nu blocheaza apartamentul pe care stateau.
   const allApts = apts || []
-
+  const nopti = extracted.data_checkin && extracted.data_checkout
+    ? Math.max(1, Math.round((new Date(extracted.data_checkout).getTime() - new Date(extracted.data_checkin).getTime()) / 86400000))
+    : extracted.nights_raw || null
+  const ocupatDe: Record<string, string[]> = {}
   if (extracted.data_checkin && extracted.data_checkout) {
     const conflicts = await sbFetch(
-      'rezervari?select=apartament_id&status_rezervare=in.(confirmata,finalizata)' +
-      '&data_checkin=lt.' + extracted.data_checkout +
-      '&data_checkout=gt.' + extracted.data_checkin
+      'rezervari?select=apartament_id,nume_client,data_checkin,data_checkout,camera_semnalata&status_rezervare=neq.anulata' +
+      '&data_checkin=lt.' + extracted.data_checkout + '&data_checkout=gt.' + extracted.data_checkin
     )
-    const occupiedIds = new Set((conflicts || []).map((r: any) => r.apartament_id))
-    for (const apt of allApts) {
-      if (occupiedIds.has(apt.id)) unavailable.push(apt)
-      else available.push(apt)
+    for (const r of (Array.isArray(conflicts) ? conflicts : [])) {
+      if (r.camera_semnalata === 'NEALOCAT') continue
+      ;(ocupatDe[r.apartament_id] ||= []).push(`${r.nume_client} (${r.data_checkin}→${r.data_checkout})`)
     }
-  } else {
-    available = allApts
   }
-
-  // Filter by capacity
-  if (extracted.nr_persoane && extracted.nr_persoane > 0) {
-    available = available.filter((a: any) => !a.capacitate_max || Number(a.capacitate_max) >= Number(extracted.nr_persoane))
+  // Repere de pret: Booking pe acea data (Preturi live, ultimele 30 zile) si ultimul pret vandut direct
+  const pretBooking: Record<string, number> = {}
+  if (extracted.data_checkin) {
+    const pl = await sbFetch('preturi_live?select=apartament_id,pret_booking,oaspeti,updated_at&data_checkin=eq.' + extracted.data_checkin + '&order=updated_at.desc')
+    const prag = Date.now() - 30 * 86400000
+    for (const r of (Array.isArray(pl) ? pl : [])) if (r.pret_booking && new Date(r.updated_at).getTime() > prag && !pretBooking[r.apartament_id]) pretBooking[r.apartament_id] = Number(r.pret_booking)
   }
+  const pretDirect: Record<string, number> = {}
+  const directe = await sbFetch('rezervari?select=apartament_id,suma_incasata,data_checkin,data_checkout&canal=in.(direct,intern)&status_rezervare=neq.anulata&suma_incasata=gt.0&order=data_checkin.desc&limit=300')
+  for (const r of (Array.isArray(directe) ? directe : [])) {
+    if (pretDirect[r.apartament_id]) continue
+    const n = Math.max(1, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
+    pretDirect[r.apartament_id] = Math.round(Number(r.suma_incasata) / n)
+  }
+  const nrPers = Number(extracted.nr_persoane) || 0
+  type AptSB = { id: string; nota: string|null; nume: string; zona: string|null; adresa: string|null; capacitate_max: number|null; link_site: string|null; administrare: boolean
+    disponibil: boolean; ocupat_de: string[]; capacitate_ok: boolean; pret_noapte: number; pret_booking: number|null; pret_direct_recent: number|null; scor: number|null; motiv: string|null }
+  const lista: AptSB[] = (allApts as any[]).map((a: any) => {
+    const ocupat = ocupatDe[a.id] || []
+    const capOk = !nrPers || !a.capacitate_max || Number(a.capacitate_max) >= nrPers
+    return {
+      id: a.id, nota: a.nota, nume: a.nume, zona: a.zona, adresa: a.adresa, capacitate_max: a.capacitate_max,
+      link_site: a.link_site || null, administrare: !!a.comision_tip && a.comision_tip !== 'fara_comision',
+      disponibil: !ocupat.length && capOk, ocupat_de: ocupat, capacitate_ok: capOk,
+      pret_noapte: Number(a.pret_standard) || 0, pret_booking: pretBooking[a.id] || null, pret_direct_recent: pretDirect[a.id] || null,
+      scor: null, motiv: null,
+    }
+  })
+  const available = lista.filter(x => x.disponibil)
 
-  const nopti = extracted.data_checkin && extracted.data_checkout
-    ? Math.ceil((new Date(extracted.data_checkout).getTime() - new Date(extracted.data_checkin).getTime()) / 86400000)
-    : extracted.nights_raw || null
-
-  // Build recommendation prompt
-  const availCtx = available.length > 0
-    ? available.map((a: any) => {
-        const pret = Number(a.pret_standard) || 0
-        const total = nopti ? pret * nopti : pret
-        return '[' + (a.nota||'?') + '] ' + a.nume +
-          ' | ' + (a.capacitate_max||'?') + ' pers max' +
-          ' | ' + pret + ' RON/noapte' + (nopti ? ' = ' + total + ' RON total' : '') +
-          ' | ' + (a.adresa||'')
-      }).join('\n')
-    : 'NICIUN APARTAMENT DISPONIBIL in aceasta perioada'
-
-  const recPrompt = [
-    'Clientul ' + (extracted.nume_client || 'necunoscut') + ' cauta cazare:',
-    '- Check-in: ' + (extracted.data_checkin || 'nespecificat'),
-    '- Check-out: ' + (extracted.data_checkout || 'nespecificat'),
-    '- Nopti: ' + (nopti || 'necunoscut'),
-    '- Persoane: ' + (extracted.nr_persoane || 'nespecificat'),
-    '- Buget/noapte: ' + (extracted.buget_per_noapte || 'nespecificat'),
-    '- Preferinte: ' + (extracted.preferinte || 'nicio preferinta specifica'),
-    '',
-    'APARTAMENTE DISPONIBILE (' + available.length + '):',
-    availCtx,
-    '',
-    'Returneaza DOAR JSON:',
-    '{"apartamente_recomandate":[{"nota":"cod","nume":"nume apt","motiv":"de ce se potriveste, max 12 cuvinte","pret_noapte":0,"pret_total":0,"scor":9}],"raspuns_sugerat":"mesaj profesional catre client, in limba mesajului, mentioneaza 1-2 optiuni cu pret total, max 4 randuri","rezumat":"1 fraza scurta despre cerere"}',
-    '',
-    'Reguli:',
-    '- Recomanda maxim 3, sortate dupa scor',
-    '- Daca niciun apartament nu e disponibil, apartamente_recomandate=[] si explica in raspuns_sugerat',
-    '- Potriveste preferintele (zona, dotari, buget)',
-    '- Raspunsul sa fie in ' + (extracted.limba === 'en' ? 'engleza' : extracted.limba === 'fr' ? 'franceza' : extracted.limba === 'de' ? 'germana' : 'romana'),
-    '- IMPORTANT: Foloseste DOAR emoji Unicode standard in raspuns (ex: 😊 🏠 🔑 ✅ 📅 ⭐). NU folosi simboluri speciale non-emoji precum ◆◇★●►■ care apar ca semne de intrebare pe WhatsApp.',
-  ].join('\n')
-
-  const recRaw = await callClaude(recPrompt)
-  let recommended: any = {}
-  try { recommended = JSON.parse(recRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()) } catch {}
+  // AI: scor + motiv pentru FIECARE apartament disponibil (tu alegi apoi ce propui)
+  if (available.length) {
+    const recPrompt = [
+      'Clientul cauta cazare in Iasi: ' + (extracted.data_checkin || '?') + ' → ' + (extracted.data_checkout || '?') + (nopti ? ` (${nopti} nopti)` : '') + ', ' + (extracted.nr_persoane || '?') + ' persoane' +
+        (extracted.guests_children ? ` (din care ${extracted.guests_children} copii)` : '') + ', buget/noapte: ' + (extracted.buget_per_noapte || 'nespecificat') + ', preferinte: ' + (extracted.preferinte || 'niciuna') + '.',
+      'Mesajul clientului: """' + String(text || '(din imagine)').slice(0, 1500) + '"""',
+      '',
+      'APARTAMENTE DISPONIBILE:',
+      available.map(a => `[${a.nota || a.nume}] ${a.nume} | max ${a.capacitate_max || '?'} pers | ${a.pret_noapte} lei/noapte | zona ${a.zona || '-'} | ${a.adresa || ''}`).join('\n'),
+      '',
+      'Da un scor 1-10 de potrivire pentru FIECARE apartament de mai sus (zona, capacitate fata de nr. persoane, buget, preferinte) si un motiv de max 10 cuvinte, in romana.',
+      'Raspunde DOAR JSON: {"scoruri":[{"cod":"<codul din paranteze>","scor":8,"motiv":"..."}]}',
+    ].join('\n')
+    try {
+      const recRaw = await callClaude(recPrompt)
+      const j = JSON.parse(recRaw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+      for (const sc of (j.scoruri || [])) {
+        const t = available.find(a => (a.nota || a.nume) === sc.cod)
+        if (t) { t.scor = Number(sc.scor) || null; t.motiv = sc.motiv || null }
+      }
+    } catch {}
+  }
+  lista.sort((a, b) => (Number(b.disponibil) - Number(a.disponibil)) || ((b.scor || 0) - (a.scor || 0)) || String(a.nota || a.nume).localeCompare(String(b.nota || b.nume)))
 
   return NextResponse.json({
     ok: true,
     result: {
       ...extracted,
-      ...recommended,
+      nume_client: extracted.nome_client,
       nr_nopti: nopti,
+      apartamente: lista,
       disponibile: available.length,
-      indisponibile: unavailable.length,
-      indisponibile_apt: unavailable.map((a: any) => (a.nota||'') + ' ' + a.nume),
+      indisponibile: lista.length - available.length,
+      // compatibilitate cu pagina veche /smart-booking
+      apartamente_recomandate: available.filter(a => a.scor).slice(0, 3).map(a => ({ nota: a.nota, nume: a.nume, motiv: a.motiv, pret_noapte: a.pret_noapte, pret_total: nopti ? a.pret_noapte * nopti : null, scor: a.scor })),
     }
   })
 }
+
