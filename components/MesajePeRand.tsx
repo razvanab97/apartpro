@@ -134,8 +134,9 @@ export default function MesajePeRand(p: {
     <div className="mpr-overlay" onClick={p.onClose}>
       <style>{`
         .mpr-overlay{position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}
-        .mpr-sheet{background:#060D18;border:1px solid rgba(159,215,255,.18);border-radius:22px;width:100%;max-width:440px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+        .mpr-sheet{background:#060D18;border:1px solid rgba(159,215,255,.18);border-radius:22px;width:100%;max-width:460px;height:min(92vh,860px);display:flex;flex-direction:column;overflow:hidden}
         @media (max-width:600px){.mpr-overlay{padding:0;align-items:stretch}.mpr-sheet{max-width:none;max-height:none;height:100%;border-radius:0;border:none}}
+        .mpr-sheet>*:not(.mpr-content),.mpr-content>*:not(.mpr-card),.mpr-card>*:not(.mpr-text){flex-shrink:0}
         .mpr-tab{border:none;background:transparent;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:700;color:rgba(159,215,255,.5);display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
         .mpr-tab.on{background:#12243F;color:#E8F4FF}
       `}</style>
@@ -162,7 +163,7 @@ export default function MesajePeRand(p: {
         </div>
 
         {/* Continut */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="mpr-content" style={{ flex: 1, minHeight: 0, overflowY: fila === 'numere' || !curent ? 'auto' : 'hidden', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {fila === 'prop' && !revazut && deTrimis('prop').length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
               {SUB_PROP.map(x => {
@@ -232,7 +233,7 @@ export default function MesajePeRand(p: {
               {urmFila && <button onClick={() => setFila(urmFila.k)} style={{ border: '1px solid rgba(159,215,255,0.25)', background: 'transparent', color: '#E8F4FF', borderRadius: 12, padding: '10px 16px', fontWeight: 800, cursor: 'pointer' }}>Mergi la {urmFila.t}</button>}
             </div>
           ) : (
-            <div style={{ background: '#0E1B30', border: '1px solid rgba(159,215,255,0.2)', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="mpr-card" style={{ background: '#0E1B30', border: '1px solid rgba(159,215,255,0.2)', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minHeight: 0 }}>
               {/* Locatia - cel mai vizibil element al cartonasului (cerut direct: "locatia sa aiba o culoare mai evidenta") */}
               {(() => {
                 const eProp = fila === 'prop'
@@ -265,10 +266,10 @@ export default function MesajePeRand(p: {
                 </button>
               )}
               {editez ? (
-                <textarea value={curent.mesaj} onChange={e => p.onUpdate(curent.id, { mesaj: e.target.value })} autoFocus rows={10}
-                  style={{ width: '100%', background: '#0A1424', border: '1px solid rgba(77,163,255,0.35)', borderRadius: 12, color: '#E8F4FF', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '10px 12px', resize: 'vertical', outline: 'none' }}/>
+                <textarea className="mpr-text" value={curent.mesaj} onChange={e => p.onUpdate(curent.id, { mesaj: e.target.value })} autoFocus
+                  style={{ width: '100%', flex: 1, minHeight: 90, background: '#0A1424', border: '1px solid rgba(77,163,255,0.35)', borderRadius: 12, color: '#E8F4FF', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '10px 12px', resize: 'none', outline: 'none' }}/>
               ) : (
-                <div onClick={() => setEditez(true)} style={{ background: '#0A1424', border: '1px solid rgba(159,215,255,0.1)', borderRadius: 12, padding: '10px 12px', fontSize: 13, lineHeight: 1.6, color: 'rgba(214,228,244,0.8)', whiteSpace: 'pre-wrap', maxHeight: '38vh', overflowY: 'auto', cursor: 'text' }}>{curent.mesaj}</div>
+                <div className="mpr-text" onClick={() => setEditez(true)} style={{ background: '#0A1424', border: '1px solid rgba(159,215,255,0.1)', borderRadius: 12, padding: '10px 12px', fontSize: 13, lineHeight: 1.6, color: 'rgba(214,228,244,0.8)', whiteSpace: 'pre-wrap', flex: 1, minHeight: 90, overflowY: 'auto', cursor: 'text' }}>{curent.mesaj}</div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button onClick={() => setEditez(e => !e)} style={btn}>{editez ? '✓ Gata editarea' : '✏️ Editează'}</button>
