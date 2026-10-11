@@ -108,6 +108,48 @@ export default function InboxPage() {
     reader.readAsDataURL(file)
   }
 
+  // Lipire din clipboard (cerut direct): Ctrl/⌘+V oriunde in pagina - o imagine copiata (screenshot WhatsApp,
+  // Booking...) devine direct screenshot-ul de analizat, chiar daca erai pe „Mesaj text”; textul simplu se
+  // lipeste normal. Plus buton „Lipește din clipboard” (util pe telefon, unde nu exista Ctrl+V).
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = Array.from(e.clipboardData?.items || [])
+      const img = items.find(it => it.kind === 'file' && it.type.startsWith('image/'))
+      if (!img) return
+      const f = img.getAsFile()
+      if (!f) return
+      e.preventDefault()
+      handleImageUpload(f)
+      show('success', 'Imagine lipită din clipboard')
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  async function lipesteDinClipboard(e?: React.MouseEvent) {
+    e?.stopPropagation()
+    try {
+      const nav: any = navigator
+      if (nav.clipboard?.read) {
+        const items = await nav.clipboard.read()
+        for (const it of items) {
+          const tip = (it.types || []).find((t: string) => t.startsWith('image/'))
+          if (tip) {
+            const blob = await it.getType(tip)
+            handleImageUpload(new File([blob], 'clipboard.' + tip.split('/')[1], { type: tip }))
+            show('success', 'Imagine lipită din clipboard')
+            return
+          }
+        }
+      }
+      const t = nav.clipboard?.readText ? await nav.clipboard.readText() : ''
+      if (t && t.trim()) { setText(t); setMode('text'); show('success', 'Text lipit din clipboard'); return }
+      show('error', 'Clipboard-ul nu conține o imagine sau text')
+    } catch {
+      show('error', 'Browserul n-a permis citirea clipboard-ului — folosește Ctrl/⌘+V sau „Lipire” din meniul apăsării lungi')
+    }
+  }
+
   async function analyze() {
     if (!text.trim() && !image) { show('error','Adaugă un mesaj sau o imagine'); return }
     setAnalyzing(true); setResult(null); setAlese({}); setRaspuns('')
@@ -264,8 +306,9 @@ export default function InboxPage() {
                   <div onClick={()=>fileRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();e.dataTransfer.files[0]&&handleImageUpload(e.dataTransfer.files[0])}}
                     style={{border:'2px dashed rgba(159,215,255,0.15)',borderRadius:10,padding:'24px',textAlign:'center',cursor:'pointer',background:'rgba(214,228,244,0.03)'}}>
                     <Upload size={22} color="rgba(159,215,255,0.3)" style={{margin:'0 auto 8px'}}/>
-                    <div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Click sau drag & drop screenshot</div>
+                    <div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>Click, drag & drop sau <b style={{color:'rgba(159,215,255,0.7)'}}>Ctrl/⌘+V</b> pentru screenshot</div>
                     <div style={{fontSize:11,color:'rgba(159,215,255,0.25)',marginTop:3}}>WhatsApp · Airbnb · Booking · Email</div>
+                    <button onClick={lipesteDinClipboard} style={{marginTop:10,padding:'6px 14px',borderRadius:8,border:'1px solid rgba(77,163,255,0.4)',background:'rgba(77,163,255,0.12)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer'}}>📋 Lipește din clipboard</button>
                   </div>
                 ) : (
                   <div style={{position:'relative',display:'inline-block'}}>
