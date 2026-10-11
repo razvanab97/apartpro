@@ -46,13 +46,24 @@ export default function MesajePeRand(p: {
   const [toast, setToast] = useState<{ msg: string; undoId?: string } | null>(null)
   const [numereInput, setNumereInput] = useState<Record<string, string>>({})
   const [salvate, setSalvate] = useState<Record<string, boolean>>({})
+  // "Inapoi la ultimul mesaj" (cerut direct): istoricul mesajelor trimise / amanate in sesiunea asta;
+  // revId = mesajul revazut (poate fi deja trimis -> "Retrimite"), altfel cartonasul e capul cozii
+  const [istoric, setIstoric] = useState<string[]>([])
+  const [revId, setRevId] = useState<string | null>(null)
 
   const deTrimis = (k: FilaMesaje) => p.tasks
     .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
     .sort((a, b) => (amanate.indexOf(a.id) - amanate.indexOf(b.id)) || (ORD[a.categorie] - ORD[b.categorie]))
   const totalFila = (k: FilaMesaje) => p.tasks.filter(t => filaMesaj(t.categorie) === k)
   const numereRamase = p.numereLipsa.filter(n => !salvate[n.id])
-  const curent = fila === 'numere' ? null : deTrimis(fila)[0] || null
+  const revazut = revId ? p.tasks.find(t => t.id === revId) || null : null
+  const curent = fila === 'numere' ? null : (revazut || deTrimis(fila)[0] || null)
+  const idxInapoi = revazut ? istoric.lastIndexOf(revazut.id) - 1 : istoric.length - 1
+  const tintaInapoi = idxInapoi >= 0 ? p.tasks.find(t => t.id === istoric[idxInapoi]) || null : null
+  function inapoi() {
+    if (!tintaInapoi) return
+    setRevId(tintaInapoi.id); setFila(filaMesaj(tintaInapoi.categorie)); setToast(null)
+  }
   const total = p.tasks.length, trimise = p.tasks.filter(t => t.trimis).length
 
   // Prima fila cu ceva de facut, daca cea curenta e goala la deschidere
@@ -68,16 +79,21 @@ export default function MesajePeRand(p: {
   function trimite() {
     if (!curent || !curent.telefon.trim()) return
     window.open(p.waLink(curent.telefon, curent.mesaj), '_blank')
-    p.onTrimis(curent)
+    if (!curent.trimis) p.onTrimis(curent)
+    if (revazut) { setRevId(null); setToast({ msg: `Retrimis: ${curent.nume}` }); return }
+    setIstoric(h => [...h.filter(x => x !== curent.id), curent.id])
     setToast({ msg: `Trimis: ${curent.nume}` })
   }
   function maiTarziu() {
     if (!curent) return
+    if (revazut) { setRevId(null); setToast(null); return }   // in revizuire: "Inapoi la coada"
+    setIstoric(h => [...h.filter(x => x !== curent.id), curent.id])
     setAmanate(a => [...a.filter(x => x !== curent.id), curent.id])
     setToast({ msg: `${curent.nume} — mutat la coada filei` })
   }
   function nuAzi() {
     if (!curent) return
+    setRevId(null)
     p.onNuAzi(curent.id)
     setToast({ msg: `${curent.nume} — scos pentru azi`, undoId: curent.id })
   }
@@ -119,6 +135,16 @@ export default function MesajePeRand(p: {
 
         {/* Continut */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {fila !== 'numere' && (tintaInapoi || revazut) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {tintaInapoi && (
+                <button onClick={inapoi} style={{ border: '1px solid rgba(159,215,255,0.25)', background: '#0E1B30', color: '#E8F4FF', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                  ↩ Înapoi la ultimul mesaj · {tintaInapoi.nume}
+                </button>
+              )}
+              {revazut && <button onClick={() => setRevId(null)} style={{ ...btn, marginLeft: 'auto', color: '#7BC8FF' }}>Coada →</button>}
+            </div>
+          )}
           {fila === 'numere' ? (
             <>
               <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.55)', lineHeight: 1.5 }}>
@@ -208,7 +234,8 @@ export default function MesajePeRand(p: {
                 <button onClick={() => p.onTraduce(curent)} disabled={p.traducandId === curent.id} style={btn}>{p.traducandId === curent.id ? 'Traduc…' : '🇬🇧 Traduce'}</button>
                 <button onClick={nuAzi} style={{ ...btn, marginLeft: 'auto' }}>Nu azi</button>
               </div>
-              {deTrimis(fila).length > 1 && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', textAlign: 'center' }}>încă {deTrimis(fila).length - 1} după acesta</div>}
+              {revazut && <div style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: revazut.trimis ? '#4ADE80' : '#FCD34D' }}>{revazut.trimis ? '✓ Mesaj deja trimis — îl poți retrimite' : 'Mesaj amânat — îl poți trimite acum'}</div>}
+              {!revazut && deTrimis(fila).length > 1 && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', textAlign: 'center' }}>încă {deTrimis(fila).length - 1} după acesta</div>}
             </div>
           )}
         </div>
@@ -220,10 +247,10 @@ export default function MesajePeRand(p: {
         </div>
         {fila !== 'numere' && curent && (
           <div style={{ padding: '10px 16px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, borderTop: '1px solid rgba(159,215,255,0.08)' }}>
-            <button onClick={maiTarziu} style={{ border: '1px solid rgba(159,215,255,0.25)', background: 'transparent', color: 'rgba(214,228,244,0.8)', borderRadius: 14, padding: '13px 14px', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>Mai târziu</button>
+            <button onClick={maiTarziu} style={{ border: '1px solid rgba(159,215,255,0.25)', background: 'transparent', color: 'rgba(214,228,244,0.8)', borderRadius: 14, padding: '13px 14px', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>{revazut ? 'Înapoi la coadă' : 'Mai târziu'}</button>
             <button onClick={trimite} disabled={!curent.telefon.trim()}
               style={{ border: 'none', background: curent.telefon.trim() ? '#25D366' : 'rgba(37,211,102,0.25)', color: '#03250F', borderRadius: 14, padding: '13px 14px', fontWeight: 800, fontSize: 15, cursor: curent.telefon.trim() ? 'pointer' : 'default' }}>
-              Trimite pe WhatsApp
+              {revazut?.trimis ? 'Retrimite pe WhatsApp' : 'Trimite pe WhatsApp'}
             </button>
           </div>
         )}

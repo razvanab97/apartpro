@@ -343,7 +343,15 @@ export default function DashboardPage() {
   function toateTrimise(list:any[],idPrefix:string){
     return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id)||mesajeAnulateIds.has(idPrefix+r.id))
   }
-  const gataCheckinsAzi = checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
+  // Ora check-in-ului (15:00) schimba mesajul zilei de sosire (cerut direct): pana la 15:00 = confirmarea
+  // ("va trimitem accesul cand e gata"); de la 15:00 = datele de acces, pentru toate sosirile de azi, chiar
+  // daca staff-ul n-a marcat inca curatenia gata, iar confirmarea netrimisa nu mai are rost si iese din coada.
+  // Inainte de 15:00, accesul apare (ca pana acum) cand curatenia e marcata gata.
+  const ORA_CHECKIN = 15
+  const [oraAcum,setOraAcum]=useState(()=>new Date().getHours())
+  useEffect(()=>{ const id=setInterval(()=>setOraAcum(new Date().getHours()),30000); return ()=>clearInterval(id) },[])
+  const dupaCheckin = oraAcum>=ORA_CHECKIN
+  const gataCheckinsAzi = checkinAzi.filter((r:any)=>dupaCheckin||(r.apartament?.id&&curatenieGataIds.has(r.apartament.id)))
   // Si rezervarile FARA telefon intra in mesaje (cerut direct: Booking nu mai trimite toate numerele) -
   // apar marcate "fara numar", cu camp de completat manual, nu dispar din lista
   const coMesajeTrimise = toateTrimise(checkoutAzi,'co-')
@@ -362,6 +370,7 @@ export default function DashboardPage() {
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
     })
     checkinAzi.forEach((r:any)=>{
+      if(dupaCheckin&&!mesajeSentIds.has('ci-'+r.id)) return  // dupa 15:00: confirmarea netrimisa e inlocuita de acces
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
@@ -395,7 +404,7 @@ export default function DashboardPage() {
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
     return tasks.filter(t=>!mesajeAnulateIds.has(t.id))
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,mesajeAnulateIds])
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,mesajeAnulateIds,dupaCheckin,mesajeSentIds])
 
   // Numar adaugat manual la o rezervare fara telefon -> salvat in rezervare (o singura data,
   // apoi apare peste tot: Rezervari, Calendar, mesajele de maine etc.)
