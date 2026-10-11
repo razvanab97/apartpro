@@ -1,14 +1,14 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, normalizeWaPhone } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, aziLocal } from '@/lib/supabase'
 import { ConnectionError } from '@/components/ui'
 
 const CODE = '1111'
 const P = (n:number) => String(n).padStart(2,'0')
 const fmtDate = (d:string) => { try { const dt=new Date(d+'T12:00:00'); return `${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
 const fmtFull = (d:string) => { try { const dt=new Date(d+'T12:00:00'); const z=['Dum','Lun','Mar','Mie','Joi','Vin','Sâm']; return `${z[dt.getDay()]} ${P(dt.getDate())}.${P(dt.getMonth()+1)}` } catch { return d } }
-const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10) }
-const todayStr = () => new Date().toISOString().slice(0,10)
+const addDays = (d:string, n:number) => { const dt=new Date(d+'T12:00:00'); dt.setDate(dt.getDate()+n); return aziLocal(dt) }
+const todayStr = () => aziLocal()
 // nr_persoane vine aproape mereu 1 din sincronizarea automata (Airbnb/Booking nu trimit
 // numarul real de oaspeti prin calendarul ICS) - cand pare nesigur (<=1), folosim capacitatea
 // maxima a apartamentului ca estimare, ca sa nu se aduca mereu o singura lenjerie

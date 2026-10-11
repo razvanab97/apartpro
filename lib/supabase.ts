@@ -40,6 +40,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // deci link-ul salvat in baza de date ramane legat de domeniul de PE CARE s-a facut upload-ul
 // (ex: un URL de preview Vercel efemer). Cand acel deployment expira, link-ul da 404 permanent.
 // Aici mergem mereu direct la domeniul real Supabase, indiferent de unde se face upload-ul.
+// Data calendaristica LOCALA (Romania), "AAAA-LL-ZZ". Nu toISOString(): aia e in UTC si intre 00:00 si
+// 03:00 da ziua de IERI (bug real: dupa miezul noptii, curateniile "gata" de ieri bagau mesaje de acces
+// pentru sosirile de azi - 13 mesaje in loc de 7).
+export function aziLocal(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function getStorageUrl(bucket: string, path: string): string {
   return `${DIRECT_URL}/storage/v1/object/public/${bucket}/${path}`
 }

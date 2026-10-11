@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { supabase, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
+import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
@@ -187,15 +187,15 @@ export default function DashboardPage() {
   const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
   const [sabloaneSetari,setSabloaneSetari]=useState<Record<string,string>>({})
   const [coBannerDismissed,setCoBannerDismissed]=useState(()=>{
-    try{return localStorage.getItem('co_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+    try{return localStorage.getItem('co_banner_'+aziLocal())==='1'}catch{return false}
   })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
   const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
-    try{return localStorage.getItem('gata_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+    try{return localStorage.getItem('gata_banner_'+aziLocal())==='1'}catch{return false}
   })
   const [ciBannerDismissed,setCiBannerDismissed]=useState(()=>{
-    try{return localStorage.getItem('ci_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+    try{return localStorage.getItem('ci_banner_'+aziLocal())==='1'}catch{return false}
   })
   const [propNotif,setPropNotif]=useState<any[]>([])
   // notificare proprietar in ziua de check-in ("astazi ajunge oaspetele X") — spre deosebire
@@ -203,12 +203,12 @@ export default function DashboardPage() {
   // zilnica prin localStorage, la fel ca celelalte bannere de azi (CI/CO/GATA)
   const [ciProprietarAzi,setCiProprietarAzi]=useState<any[]>([])
   const [ciPropBannerDismissed,setCiPropBannerDismissed]=useState(()=>{
-    try{return localStorage.getItem('ci_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+    try{return localStorage.getItem('ci_prop_banner_'+aziLocal())==='1'}catch{return false}
   })
   // aceeasi idee, pentru check-out azi ("astazi pleaca oaspetele X")
   const [coProprietarAzi,setCoProprietarAzi]=useState<any[]>([])
   const [coPropBannerDismissed,setCoPropBannerDismissed]=useState(()=>{
-    try{return localStorage.getItem('co_prop_banner_'+new Date().toISOString().split('T')[0])==='1'}catch{return false}
+    try{return localStorage.getItem('co_prop_banner_'+aziLocal())==='1'}catch{return false}
   })
   // Lista unificata "Mesaje de azi" — inlocuieste cele 6 wizard-uri pas-cu-pas separate
   // (checkout/check-in/acces/cele 3 tipuri de notificare proprietar), cerut direct: o singura
@@ -224,7 +224,7 @@ export default function DashboardPage() {
   // (pornire instant / offline); se reciteste din baza la 20s si la deschiderea mesajelor.
   const ziLocala=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
   const cheieMesajeZi=()=>'mesaje_zi_'+ziLocala()
-  const citesteLocal=(k:string)=>{ try{ const raw=localStorage.getItem(k+'_'+ziLocala())||localStorage.getItem(k+'_'+new Date().toISOString().split('T')[0]); return raw?new Set<string>(JSON.parse(raw)):new Set<string>() }catch{ return new Set<string>() } }
+  const citesteLocal=(k:string)=>{ try{ const raw=localStorage.getItem(k+'_'+ziLocala())||localStorage.getItem(k+'_'+aziLocal()); return raw?new Set<string>(JSON.parse(raw)):new Set<string>() }catch{ return new Set<string>() } }
   const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>citesteLocal('mesaje_trimise'))
   const [mesajeAnulateIds,setMesajeAnulateIds]=useState<Set<string>>(()=>citesteLocal('mesaje_anulate'))
   function aplicaStare(stare:Record<string,{s:string;la?:string}>){
@@ -314,7 +314,7 @@ export default function DashboardPage() {
   // Curatenia gata se reciteste periodic, ca datele de acces sa intre singure in coada cand staff-ul termina
   useEffect(()=>{
     const id=setInterval(()=>{
-      const today0=new Date().toISOString().split('T')[0]
+      const today0=aziLocal()
       supabase.from('curatenie_status').select('apartament_id,status').eq('data',today0).eq('status','gata')
         .then(({data:cgD})=>{ if(cgD) setCuratenieGataIds(new Set(cgD.map((s:any)=>s.apartament_id))) })
     },60000)
@@ -441,7 +441,7 @@ export default function DashboardPage() {
 
   async function loadCiProprietarAzi(){
     try{
-      const today0=new Date().toISOString().split('T')[0]
+      const today0=aziLocal()
       const {data}=await supabase.from('rezervari')
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkin',today0)
@@ -457,7 +457,7 @@ export default function DashboardPage() {
   }
   async function loadCoProprietarAzi(){
     try{
-      const today0=new Date().toISOString().split('T')[0]
+      const today0=aziLocal()
       const {data}=await supabase.from('rezervari')
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .eq('data_checkout',today0)
@@ -505,7 +505,7 @@ export default function DashboardPage() {
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
     // Curatenie - PRIMUL query, independent
-    const today0=new Date().toISOString().split('T')[0]
+    const today0=aziLocal()
     const [{data:coCur0,error:e1},{data:ciCur0,error:e2}]=await Promise.all([
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkout',today0).neq('status_rezervare','anulata'),
       supabase.from('rezervari').select('id,nume_client,nr_persoane,apartament:apartamente(id,nume,nota,adresa)').eq('data_checkin',today0).neq('status_rezervare','anulata'),
@@ -607,8 +607,11 @@ export default function DashboardPage() {
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
-    setCheckinAzi(dedupeByApt(ciAzi||[]))
-    setCheckoutAzi(dedupeByApt(coAzi||[]))
+    // Rezervarile ramase fara camera in 5starDesk (NEALOCAT) nu stau de fapt pe apartamentul din baza -
+    // nu primesc mesaje cu acel apartament; le aloci intai din Calendar → "Nealocate"
+    const peCamera=(l:any[])=>l.filter((r:any)=>r.camera_semnalata!=='NEALOCAT')
+    setCheckinAzi(dedupeByApt(peCamera(ciAzi||[])))
+    setCheckoutAzi(dedupeByApt(peCamera(coAzi||[])))
     setRezervariRecente(recente||[])
     setApts(aptData||[])
     setCheltuieli(chData||[])
@@ -678,7 +681,7 @@ export default function DashboardPage() {
     const friD=new Date(nowD); friD.setDate(nowD.getDate()-diffFri); friD.setHours(0,0,0,0)
     const thuD=new Date(friD); thuD.setDate(friD.getDate()+6)
     const payFriD=new Date(friD); payFriD.setDate(friD.getDate()+7)
-    const fmtD=(d:Date)=>d.toISOString().split('T')[0]
+    const fmtD=(d:Date)=>aziLocal(d)
     const {data:bkRez}=await supabase.from('rezervari').select('valoare_bruta,suma_incasata,status_plata').eq('canal','booking').neq('status_rezervare','anulata').gte('data_checkout',fmtD(friD)).lte('data_checkout',fmtD(thuD))
     const bkNet=(bkRez||[]).reduce((s:number,r:any)=>s+Number(r.valoare_bruta||r.suma_incasata||0)*0.83,0)
     const bkKey=`booking_period_${fmtD(friD)}`

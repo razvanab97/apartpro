@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { supabase, normalizeWaPhone, numVal, numInput } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, numVal, numInput, aziLocal } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -57,7 +57,7 @@ function lunaVecina(luna: string, n: number): string {
 const lunaText = (luna: string) => { const [a, l] = luna.split('-').map(Number); return `${LUNI_RO[l - 1]} ${a}` }
 
 export default function CuratenePage() {
-  const todayIso = new Date().toISOString().split('T')[0]
+  const todayIso = aziLocal()
   const [selectedDate, setSelectedDate] = useState(todayIso)
   const [co, setCo] = useState<any[]>([])
   const [ci, setCi] = useState<any[]>([])
@@ -101,7 +101,7 @@ export default function CuratenePage() {
   const [baniForm, setBaniForm] = useState<{suma:string,motiv:string}>({suma:'',motiv:''})
   const [savingBani, setSavingBani] = useState(false)
   const [casaGenOpen, setCasaGenOpen] = useState<'incasare'|'cheltuiala'|null>(null)
-  const [casaGenForm, setCasaGenForm] = useState<{suma:string,motiv:string,data:string}>({suma:'',motiv:'',data:new Date().toISOString().split('T')[0]})
+  const [casaGenForm, setCasaGenForm] = useState<{suma:string,motiv:string,data:string}>({suma:'',motiv:'',data:aziLocal()})
   const [savingCasaGen, setSavingCasaGen] = useState(false)
   const [mesajZi, setMesajZi] = useState<{id:string,text:string}|null>(null)
   const [editingMesajZi, setEditingMesajZi] = useState(false)
@@ -360,12 +360,12 @@ export default function CuratenePage() {
     if (!suma || suma <= 0) return
     setSavingCasaGen(true)
     const { error } = await supabase.from('staff_casa').insert({
-      data: casaGenForm.data || new Date().toISOString().split('T')[0], tip, suma,
+      data: casaGenForm.data || aziLocal(), tip, suma,
       motiv: casaGenForm.motiv.trim() || (tip === 'incasare' ? 'Încasare' : 'Cheltuială'),
     })
     setSavingCasaGen(false)
     if (!error) {
-      setCasaGenForm({ suma: '', motiv: '', data: new Date().toISOString().split('T')[0] })
+      setCasaGenForm({ suma: '', motiv: '', data: aziLocal() })
       setCasaGenOpen(null)
       loadCasaLuna()
       show('success', '✓ Înregistrat în Casă staff')
@@ -603,7 +603,7 @@ export default function CuratenePage() {
   function changeDate(days:number){
     const d=new Date(selectedDate+'T12:00:00')
     d.setDate(d.getDate()+days)
-    setSelectedDate(d.toISOString().split('T')[0])
+    setSelectedDate(aziLocal(d))
   }
 
   // Locatii unificate
@@ -638,7 +638,7 @@ export default function CuratenePage() {
   }
 
   const isToday=selectedDate===todayIso
-  const isTomorrow=selectedDate===new Date(Date.now()+86400000).toISOString().split('T')[0]
+  const isTomorrow=selectedDate===aziLocal(new Date(Date.now()+86400000))
 
   // Rapoarte filtrate dupa locatiile selectate
   const filteredRapoarte = rapoarteData.map(zi=>({
@@ -1216,7 +1216,7 @@ export default function CuratenePage() {
                         background:casaGenOpen==='incasare'?'#4ADE80':'#F87171',color:'#0E1B2B',fontSize:12,fontWeight:700,cursor:'pointer',opacity:!casaGenForm.suma?0.5:1}}>
                       {savingCasaGen?'Se salvează...':'Salvează'}
                     </button>
-                    <button onClick={()=>{setCasaGenOpen(null);setCasaGenForm({suma:'',motiv:'',data:new Date().toISOString().split('T')[0]})}}
+                    <button onClick={()=>{setCasaGenOpen(null);setCasaGenForm({suma:'',motiv:'',data:aziLocal()})}}
                       style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
                       Anulează
                     </button>
