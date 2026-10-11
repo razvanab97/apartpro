@@ -121,7 +121,7 @@ async function genereazaRaspuns(body: any) {
     'Intre ele (nu le scrie tu!) vor fi inserate ofertele: ' + rezumatOferte + '.',
     'Clientul: ' + (d.nume_client || 'necunoscut') + '; perioada ' + (d.data_checkin || '?') + ' → ' + (d.data_checkout || '?') + (nopti ? ` (${nopti} nopti)` : '') + '; ' + (d.nr_persoane || '?') + ' persoane.',
     'Mesajul original al clientului:  + String(body.mesaj_original || ).slice(0, 1500) + ',
-    'Reguli: ton cald, profesionist, scurt (salut max 2 propozitii: multumesti si confirmi perioada si nr. de persoane; incheiere max 2 propozitii: intrebi daca vrea sa confirme rezervarea si te oferi pentru intrebari). Fara preturi, fara link-uri, fara a inventa dotari. Doar emoji Unicode standard (😊 🏠 📅 ✅), nu simboluri ◆★●►■.',
+    'Reguli: ton cald, profesionist, scurt; in romana te adresezi cu "dumneavoastra" si folosesti doar prenumele clientului (salut max 2 propozitii: multumesti pentru mesaj si mentionezi perioada si nr. de persoane - NU spune ca rezervarea/perioada e confirmata, e doar o oferta; incheiere max 2 propozitii: intrebi daca vrea sa confirme rezervarea si te oferi pentru intrebari). Fara preturi, fara link-uri, fara a inventa dotari. Doar emoji Unicode standard (😊 🏠 📅 ✅), nu simboluri ◆★●►■.',
     'Raspunde DOAR JSON: {"salut":"...","incheiere":"..."}',
   ].join('\n')
   let salut = '', incheiere = ''
@@ -296,16 +296,18 @@ export async function POST(req: NextRequest) {
       'Mesajul clientului: """' + String(text || '(din imagine)').slice(0, 1500) + '"""',
       '',
       'APARTAMENTE DISPONIBILE:',
-      available.map(a => `[${a.nota || a.nume}] ${a.nume} | max ${a.capacitate_max || '?'} pers | ${a.pret_noapte} lei/noapte | zona ${a.zona || '-'} | ${a.adresa || ''}`).join('\n'),
+      // coduri simple A1, A2... (numele interne pot avea spatii/diacritice si nu se potriveau inapoi - Cherry 3 ramanea fara scor)
+      available.map((a, i) => `[A${i + 1}] ${String(a.nume).trim()} | max ${a.capacitate_max || '?'} pers | ${a.pret_noapte || '?'} lei/noapte | zona ${a.zona || '-'} | ${a.adresa || ''}`).join('\n'),
       '',
       'Da un scor 1-10 de potrivire pentru FIECARE apartament de mai sus (zona, capacitate fata de nr. persoane, buget, preferinte) si un motiv de max 10 cuvinte, in romana.',
-      'Raspunde DOAR JSON: {"scoruri":[{"cod":"<codul din paranteze>","scor":8,"motiv":"..."}]}',
+      'Raspunde DOAR JSON: {"scoruri":[{"cod":"A1","scor":8,"motiv":"..."}]}  (cod = exact codul din paranteze, ex. A1)',
     ].join('\n')
     try {
       const recRaw = await callClaude(recPrompt)
       const j = JSON.parse(recRaw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
       for (const sc of (j.scoruri || [])) {
-        const t = available.find(a => (a.nota || a.nume) === sc.cod)
+        const k = String(sc.cod || '').replace(/[\[\]\s]/g, '').toUpperCase()
+        const t = /^A\d+$/.test(k) ? available[Number(k.slice(1)) - 1] : undefined
         if (t) { t.scor = Number(sc.scor) || null; t.motiv = sc.motiv || null }
       }
     } catch {}
