@@ -595,3 +595,26 @@ export async function alocaNealocata(n: Nealocata, aptId: string): Promise<strin
   await eliminaDubluriProaspete(n.id5sd)
   return null
 }
+
+// Lista nealocatelor, tinuta 5 minute in memorie - o folosesc si avertismentele de la rezervare noua
+// (Calendar, Rezervari, Smart Booking), ca sa nu ceara 5starDesk la fiecare deschidere de formular
+let _nealocateCache: { t: number; p: Promise<Nealocata[]> } | null = null
+export function nealocateCache(fortat = false): Promise<Nealocata[]> {
+  if (!fortat && _nealocateCache && Date.now() - _nealocateCache.t < 5 * 60 * 1000) return _nealocateCache.p
+  const p = incarcaNealocate().catch(() => { _nealocateCache = null; return [] as Nealocata[] })
+  _nealocateCache = { t: Date.now(), p }
+  return p
+}
+
+// Notite interne pe rezervarile nealocate (cerut direct) - in setari, {id5sd: {text, la}}, fara migrare
+export const CHEIE_NOTE_NEALOCATE = 'nealocate_note'
+export async function citesteNoteNealocate(): Promise<Record<string, { text: string; la: string }>> {
+  const { data } = await supabase.from('setari').select('valoare').eq('cheie', CHEIE_NOTE_NEALOCATE).maybeSingle()
+  try { const v = JSON.parse(data?.valoare || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} }
+}
+export async function salveazaNotaNealocata(id5sd: string, text: string): Promise<boolean> {
+  const note = await citesteNoteNealocate()   // citire proaspata, ca doua dispozitive sa nu-si stearga notitele
+  if (text.trim()) note[id5sd] = { text: text.trim(), la: new Date().toISOString() }; else delete note[id5sd]
+  const { error } = await supabase.from('setari').upsert({ cheie: CHEIE_NOTE_NEALOCATE, valoare: JSON.stringify(note) }, { onConflict: 'cheie' })
+  return !error
+}

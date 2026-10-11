@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle } from 'lucide-react'
+import AvertismentNealocate from '@/components/AvertismentNealocate'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -269,6 +270,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                   </div>
                 </div>
               </div>
+              {!editing.id && <div style={{ marginTop: 10 }}><AvertismentNealocate checkin={editing.data_checkin} checkout={editing.data_checkout} compact/></div>}
             </Group>
 
             <Group title="Oaspete">

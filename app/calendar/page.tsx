@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
 import RezervareEditor from '@/components/RezervareEditor'
 import NealocatePanel from '@/components/NealocatePanel'
+import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
@@ -847,6 +848,7 @@ export default function CalendarPage() {
                     <span style={{ fontWeight:700 }}>{nightsBetween(newRez.checkin,newRez.checkout)}</span> nopți
                   </div>
                 )}
+                <div style={{ marginBottom:10 }}><AvertismentNealocate checkin={newRez.checkin} checkout={newRez.checkout} compact/></div>
 
                 {/* Foto buletin */}
                 <div style={{ marginBottom:12 }}>

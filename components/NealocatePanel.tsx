@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { incarcaNealocate, alocaNealocata, type Nealocata } from '@/lib/syncFivestar'
+import { incarcaNealocate, alocaNealocata, citesteNoteNealocate, salveazaNotaNealocata, nealocateCache, type Nealocata } from '@/lib/syncFivestar'
 
 // Calendar → "Nealocate": rezervarile active din 5starDesk fara camera atribuita acolo (lista lor de
 // "Rezervari nealocate"), aduse live, cu apartamentele libere pe datele fiecareia si alocare dintr-un click.
@@ -20,12 +20,25 @@ export default function NealocatePanel({ apts, onAlocat }: { apts: Apt[]; onAloc
   const [alegere, setAlegere] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string|null>(null)
   const [mesaj, setMesaj] = useState<string|null>(null)
+  // Notite interne pe fiecare rezervare nealocata (cerut direct), salvate in baza, vizibile pe orice dispozitiv
+  const [note, setNote] = useState<Record<string, { text: string; la: string }>>({})
+  const [notaEdit, setNotaEdit] = useState<Record<string, string>>({})
+  const [notaSalvez, setNotaSalvez] = useState<string|null>(null)
+  async function salveazaNota(id5sd: string) {
+    setNotaSalvez(id5sd)
+    const ok = await salveazaNotaNealocata(id5sd, notaEdit[id5sd] || '')
+    setNotaSalvez(null)
+    if (!ok) { setMesaj('Eroare la salvarea notiței — încearcă din nou'); return }
+    setNote(await citesteNoteNealocate())
+    setNotaEdit(x => { const c = { ...x }; delete c[id5sd]; return c })
+  }
 
   async function load() {
     setLoading(true); setEroare(null)
     try {
-      const l = await incarcaNealocate()
-      setLista(l)
+      const [l, n] = await Promise.all([incarcaNealocate(), citesteNoteNealocate().catch(() => ({}))])
+      setLista(l); setNote(n as any)
+      nealocateCache(true)   // reimprospateaza si lista folosita de avertismentele de la rezervare noua
       if (l.length) {
         const min = l.reduce((m, x) => x.checkin < m ? x.checkin : m, l[0].checkin)
         const max = l.reduce((m, x) => x.checkout > m ? x.checkout : m, l[0].checkout)
@@ -90,6 +103,24 @@ export default function NealocatePanel({ apts, onAlocat }: { apts: Apt[]; onAloc
                     <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>
                       {fmtZi(n.checkin)} → {fmtZi(n.checkout)} · {nopti(n.checkin, n.checkout)}n · <b style={{ color:'#4ADE80' }}>{Math.round(n.pret).toLocaleString('ro-RO')} RON</b> · {n.sursa} · ID {n.id5sd}
                     </div>
+                    {notaEdit[n.id5sd] !== undefined ? (
+                      <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                        <input autoFocus value={notaEdit[n.id5sd]} onChange={e => setNotaEdit(x => ({ ...x, [n.id5sd]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') salveazaNota(n.id5sd); if (e.key === 'Escape') setNotaEdit(x => { const c = { ...x }; delete c[n.id5sd]; return c }) }}
+                          placeholder="Notă internă (ex: a confirmat pe Booking că acceptă alt apartament)"
+                          style={{ flex:1, minWidth:0, background:'rgba(20,38,65,0.9)', border:'1px solid rgba(252,211,77,0.4)', borderRadius:7, color:'#E8F4FF', fontSize:12, padding:'5px 8px', outline:'none' }}/>
+                        <button onClick={() => salveazaNota(n.id5sd)} disabled={notaSalvez === n.id5sd}
+                          style={{ padding:'5px 10px', borderRadius:7, border:'none', background:'#FCD34D', color:'#1A1400', fontSize:11, fontWeight:800, cursor:'pointer' }}>{notaSalvez === n.id5sd ? '…' : 'Salvează'}</button>
+                      </div>
+                    ) : note[n.id5sd]?.text ? (
+                      <div onClick={() => setNotaEdit(x => ({ ...x, [n.id5sd]: note[n.id5sd].text }))} title="Click ca să editezi notița"
+                        style={{ marginTop:5, fontSize:12, color:'#FCD34D', background:'rgba(252,211,77,0.08)', border:'1px solid rgba(252,211,77,0.2)', borderRadius:7, padding:'4px 8px', cursor:'pointer' }}>
+                        📝 {note[n.id5sd].text}
+                      </div>
+                    ) : (
+                      <button onClick={() => setNotaEdit(x => ({ ...x, [n.id5sd]: '' }))}
+                        style={{ marginTop:4, padding:0, border:'none', background:'none', color:'rgba(252,211,77,0.7)', fontSize:11, fontWeight:700, cursor:'pointer' }}>📝 Notă internă</button>
+                    )}
                   </div>
                   <span style={{ fontSize:11, fontWeight:600, color: n.alocataManual ? '#4ADE80' : 'rgba(252,211,77,0.85)' }}>
                     {n.alocataManual ? `✓ la noi pe ${aptAlocat?.nota || aptAlocat?.nume || '?'}` : n.rid ? 'la noi, nealocată' : 'neimportată'}

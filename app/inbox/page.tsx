@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
+import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, ImageIcon, Type, Plus, Trash2, Phone, Mail, Globe } from 'lucide-react'
 
@@ -373,6 +374,8 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
+
+              <AvertismentNealocate checkin={result.data_checkin} checkout={result.data_checkout}/>
 
               {/* Alegerea locatiilor */}
               {(() => {
