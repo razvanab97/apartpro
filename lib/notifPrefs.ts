@@ -2,6 +2,7 @@ export const CATEGORII_NOTIF = [
   { key: 'curatenie', label: 'Curățenie gata', icon: '🧹' },
   { key: 'eliberat', label: 'Eliberări apartament', icon: '🚪' },
   { key: 'task', label: 'Task-uri recurente', icon: '🔔' },
+  { key: 'acces', label: 'Acces de trimis oaspeților (curățenie gata + sosire azi)', icon: '🔑' },
 ] as const
 
 const STORAGE_KEY = 'notif_categorii'

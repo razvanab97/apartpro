@@ -1,0 +1,217 @@
+'use client'
+import { useEffect, useMemo, useState } from 'react'
+
+// "Mesaje pe rand" (cerut direct, varianta de telefon aleasa): un singur mesaj pe ecran, gata scris,
+// cu un buton mare "Trimite pe WhatsApp" care il marcheaza trimis si aduce urmatorul. File dupa
+// momentul zilei + "Numere lipsa" (rezervarile din urmatoarele zile fara telefon, ca sa le completezi
+// din timp, nu in ziua sosirii). Datele si actiunile vin din Dashboard (aceleasi sabloane/override-uri).
+export type MesajRand = {
+  id: string; rawId: string; categorie: string; titluCategorie: string; nume: string; nota?: string; linie2?: string
+  telefon: string; mesaj: string; faraTelefon?: boolean; trimis: boolean
+}
+export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
+export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
+
+const FILE: { k: FilaMesaje; t: string }[] = [
+  { k: 'dim', t: 'Dimineața' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
+]
+export const filaMesaj = (c: string): FilaMesaje => c === 'checkout' ? 'dim' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
+const ORD: Record<string, number> = { checkout: 0, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
+const KIND: Record<string, { l: string; c: string; bg: string }> = {
+  checkout: { l: 'Checkout', c: '#C084FC', bg: 'rgba(192,132,252,0.14)' },
+  checkin: { l: 'Confirmare', c: '#FCD34D', bg: 'rgba(252,211,77,0.12)' },
+  gata: { l: 'Date acces', c: '#7BC8FF', bg: 'rgba(77,163,255,0.14)' },
+}
+const fmtZi = (iso: string) => { const [, m, d] = iso.split('-').map(Number); return `${d} ${['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'][m-1]}` }
+
+export default function MesajePeRand(p: {
+  tasks: MesajRand[]
+  numereLipsa: NumarLipsa[]
+  telSugestii: Record<string, string>
+  filaInitiala?: FilaMesaje
+  traducandId: string | null
+  waLink: (tel: string, msg: string) => string
+  onTrimis: (t: MesajRand) => void
+  onNuAzi: (id: string) => void
+  onAnuleazaNuAzi: (id: string) => void
+  onUpdate: (id: string, patch: { telefon?: string; mesaj?: string }) => void
+  onTraduce: (t: MesajRand) => void
+  onSalveazaTelefon: (t: MesajRand) => void
+  onSalveazaNumar: (rezId: string, tel: string) => Promise<boolean>
+  onClose: () => void
+}) {
+  const [fila, setFila] = useState<FilaMesaje>(p.filaInitiala || 'dim')
+  const [amanate, setAmanate] = useState<string[]>([])          // "Mai tarziu" -> la coada filei
+  const [editez, setEditez] = useState(false)
+  const [toast, setToast] = useState<{ msg: string; undoId?: string } | null>(null)
+  const [numereInput, setNumereInput] = useState<Record<string, string>>({})
+  const [salvate, setSalvate] = useState<Record<string, boolean>>({})
+
+  const deTrimis = (k: FilaMesaje) => p.tasks
+    .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
+    .sort((a, b) => (amanate.indexOf(a.id) - amanate.indexOf(b.id)) || (ORD[a.categorie] - ORD[b.categorie]))
+  const totalFila = (k: FilaMesaje) => p.tasks.filter(t => filaMesaj(t.categorie) === k)
+  const numereRamase = p.numereLipsa.filter(n => !salvate[n.id])
+  const curent = fila === 'numere' ? null : deTrimis(fila)[0] || null
+  const total = p.tasks.length, trimise = p.tasks.filter(t => t.trimis).length
+
+  // Prima fila cu ceva de facut, daca cea curenta e goala la deschidere
+  useEffect(() => {
+    if (fila !== 'numere' && !deTrimis(fila).length) {
+      const urm = FILE.find(f => f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0)
+      if (urm) setFila(urm.k)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  useEffect(() => { setEditez(false) }, [curent?.id, fila])
+
+  function trimite() {
+    if (!curent || !curent.telefon.trim()) return
+    window.open(p.waLink(curent.telefon, curent.mesaj), '_blank')
+    p.onTrimis(curent)
+    setToast({ msg: `Trimis: ${curent.nume}` })
+  }
+  function maiTarziu() {
+    if (!curent) return
+    setAmanate(a => [...a.filter(x => x !== curent.id), curent.id])
+    setToast({ msg: `${curent.nume} — mutat la coada filei` })
+  }
+  function nuAzi() {
+    if (!curent) return
+    p.onNuAzi(curent.id)
+    setToast({ msg: `${curent.nume} — scos pentru azi`, undoId: curent.id })
+  }
+
+  const urmFila = FILE.find(f => f.k !== fila && (f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0))
+  const K = curent ? (KIND[curent.categorie] || { l: curent.titluCategorie.replace('Proprietar · ', ''), c: '#A78BFA', bg: 'rgba(167,139,250,0.14)' }) : null
+  const btn: React.CSSProperties = { border: 'none', background: 'transparent', color: 'rgba(159,215,255,0.55)', fontSize: 12, fontWeight: 700, padding: '6px 4px', cursor: 'pointer' }
+
+  return (
+    <div className="mpr-overlay" onClick={p.onClose}>
+      <style>{`
+        .mpr-overlay{position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+        .mpr-sheet{background:#060D18;border:1px solid rgba(159,215,255,.18);border-radius:22px;width:100%;max-width:440px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+        @media (max-width:600px){.mpr-overlay{padding:0;align-items:stretch}.mpr-sheet{max-width:none;max-height:none;height:100%;border-radius:0;border:none}}
+        .mpr-tab{border:none;background:transparent;border-radius:8px;padding:6px 2px;font-size:11.5px;font-weight:700;color:rgba(159,215,255,.5);display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
+        .mpr-tab.on{background:#12243F;color:#E8F4FF}
+      `}</style>
+      <div className="mpr-sheet" onClick={e => e.stopPropagation()}>
+        {/* Antet + file */}
+        <div style={{ padding: '14px 16px 10px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid rgba(159,215,255,0.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#E8F4FF', flex: 1 }}>Mesaje de azi</div>
+            <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>{trimise}/{total} trimise</span>
+            <button onClick={p.onClose} aria-label="Închide" style={{ ...btn, fontSize: 18, padding: '0 4px' }}>✕</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 3, background: '#0E1B30', borderRadius: 11, padding: 3 }}>
+            {FILE.map(f => {
+              const n = f.k === 'numere' ? numereRamase.length : deTrimis(f.k).length
+              const gol = f.k !== 'numere' && totalFila(f.k).length === 0
+              return (
+                <button key={f.k} className={'mpr-tab' + (fila === f.k ? ' on' : '')} onClick={() => setFila(f.k)}>
+                  {f.t}
+                  <small style={{ fontFamily: 'monospace', fontSize: 10.5, fontWeight: 600, color: n ? (f.k === 'numere' ? '#F87171' : '#FCD34D') : '#4ADE80' }}>{gol ? '—' : n ? n : '✓'}</small>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Continut */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {fila === 'numere' ? (
+            <>
+              <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.55)', lineHeight: 1.5 }}>
+                Rezervări din azi și următoarele 3 zile fără număr de telefon (Booking nu le-a trimis). Ia-le din chat-ul platformei acum, ca în ziua sosirii mesajele să fie gata. Numărul se salvează în rezervare.
+              </div>
+              {numereRamase.length === 0 && <div style={{ textAlign: 'center', padding: '30px 0', color: '#4ADE80', fontWeight: 700 }}>Toate rezervările din următoarele zile au telefon ✓</div>}
+              {numereRamase.map(n => {
+                const sug = p.telSugestii[n.nume_client]
+                const val = numereInput[n.id] ?? ''
+                return (
+                  <div key={n.id} style={{ background: '#0E1B30', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {n.nota && <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#4DA3FF', background: 'rgba(77,163,255,0.14)', borderRadius: 6, padding: '4px 6px' }}>{n.nota}</span>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: '#E8F4FF' }}>{n.nume_client}</div>
+                        <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>sosește {fmtZi(n.data_checkin)} · {n.canal}{n.apt ? ` · ${n.apt}` : ''}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input value={val} onChange={e => setNumereInput(x => ({ ...x, [n.id]: e.target.value }))} placeholder="Număr de telefon"
+                        style={{ flex: 1, minWidth: 0, background: '#0A1424', border: '1px solid rgba(159,215,255,0.18)', borderRadius: 9, color: '#E8F4FF', fontFamily: 'monospace', fontSize: 13, padding: '8px 10px', outline: 'none' }}/>
+                      <button disabled={!val.trim()} onClick={async () => { if (await p.onSalveazaNumar(n.id, val.trim())) { setSalvate(s => ({ ...s, [n.id]: true })); setToast({ msg: `Salvat: ${n.nume_client}` }) } }}
+                        style={{ border: 'none', borderRadius: 9, padding: '8px 14px', fontWeight: 800, fontSize: 12, background: val.trim() ? '#4ADE80' : 'rgba(74,222,128,0.15)', color: val.trim() ? '#03250F' : 'rgba(74,222,128,0.5)', cursor: val.trim() ? 'pointer' : 'default' }}>
+                        Salvează
+                      </button>
+                    </div>
+                    {sug && !val && (
+                      <button onClick={() => setNumereInput(x => ({ ...x, [n.id]: sug }))} style={{ ...btn, alignSelf: 'flex-start', color: '#4ADE80', padding: 0 }}>
+                        Folosește {sug} (rezervare anterioară)
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </>
+          ) : !curent ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '40px 10px' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#4ADE80' }}>{totalFila(fila).length ? 'Gata aici ✓' : 'Nimic de trimis aici azi'}</div>
+              <div style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>{urmFila ? `Mai ai la „${urmFila.t}”.` : 'Toate mesajele de azi sunt trimise.'}</div>
+              {urmFila && <button onClick={() => setFila(urmFila.k)} style={{ border: '1px solid rgba(159,215,255,0.25)', background: 'transparent', color: '#E8F4FF', borderRadius: 12, padding: '10px 16px', fontWeight: 800, cursor: 'pointer' }}>Mergi la {urmFila.t}</button>}
+            </div>
+          ) : (
+            <div style={{ background: '#0E1B30', border: '1px solid rgba(159,215,255,0.2)', borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {curent.nota && <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: fila === 'prop' ? '#A78BFA' : '#4DA3FF', background: fila === 'prop' ? 'rgba(167,139,250,0.14)' : 'rgba(77,163,255,0.14)', borderRadius: 7, padding: '5px 7px' }}>{curent.nota}</span>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: '#E8F4FF', lineHeight: 1.2 }}>{curent.nume}</div>
+                  {curent.linie2 && <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>{curent.linie2}</div>}
+                </div>
+                {K && <span style={{ fontSize: 11, fontWeight: 800, color: K.c, background: K.bg, borderRadius: 20, padding: '4px 9px', whiteSpace: 'nowrap' }}>{K.l}</span>}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, background: curent.telefon.trim() ? '#0A1424' : 'rgba(248,113,113,0.1)', border: `1px solid ${curent.telefon.trim() ? 'rgba(159,215,255,0.14)' : 'rgba(248,113,113,0.55)'}`, padding: '7px 10px' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(159,215,255,0.5)' }}>Tel.</span>
+                <input value={curent.telefon} onChange={e => p.onUpdate(curent.id, { telefon: e.target.value })} placeholder="Scrie numărul (lipsește de la platformă)"
+                  style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', color: '#E8F4FF', fontFamily: 'monospace', fontSize: 13, outline: 'none' }}/>
+                {curent.faraTelefon && curent.telefon.trim() && <button onClick={() => { p.onSalveazaTelefon(curent); setToast({ msg: 'Număr salvat în rezervare' }) }} style={{ ...btn, color: '#4ADE80', padding: 0 }}>Salvează</button>}
+              </div>
+              {curent.faraTelefon && !curent.telefon.trim() && p.telSugestii[curent.nume] && (
+                <button onClick={() => p.onUpdate(curent.id, { telefon: p.telSugestii[curent.nume] })} style={{ ...btn, alignSelf: 'flex-start', color: '#4ADE80', padding: 0 }}>
+                  Folosește {p.telSugestii[curent.nume]} (rezervare anterioară)
+                </button>
+              )}
+              {editez ? (
+                <textarea value={curent.mesaj} onChange={e => p.onUpdate(curent.id, { mesaj: e.target.value })} autoFocus rows={10}
+                  style={{ width: '100%', background: '#0A1424', border: '1px solid rgba(77,163,255,0.35)', borderRadius: 12, color: '#E8F4FF', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '10px 12px', resize: 'vertical', outline: 'none' }}/>
+              ) : (
+                <div onClick={() => setEditez(true)} style={{ background: '#0A1424', border: '1px solid rgba(159,215,255,0.1)', borderRadius: 12, padding: '10px 12px', fontSize: 13, lineHeight: 1.6, color: 'rgba(214,228,244,0.8)', whiteSpace: 'pre-wrap', maxHeight: '38vh', overflowY: 'auto', cursor: 'text' }}>{curent.mesaj}</div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button onClick={() => setEditez(e => !e)} style={btn}>{editez ? '✓ Gata editarea' : '✏️ Editează'}</button>
+                <button onClick={() => p.onTraduce(curent)} disabled={p.traducandId === curent.id} style={btn}>{p.traducandId === curent.id ? 'Traduc…' : '🇬🇧 Traduce'}</button>
+                <button onClick={nuAzi} style={{ ...btn, marginLeft: 'auto' }}>Nu azi</button>
+              </div>
+              {deTrimis(fila).length > 1 && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', textAlign: 'center' }}>încă {deTrimis(fila).length - 1} după acesta</div>}
+            </div>
+          )}
+        </div>
+
+        {/* Toast + butoane */}
+        <div style={{ minHeight: 20, textAlign: 'center', fontSize: 12, color: '#4ADE80', padding: '0 16px' }}>
+          {toast?.msg}
+          {toast?.undoId && <button onClick={() => { p.onAnuleazaNuAzi(toast.undoId!); setToast(null) }} style={{ ...btn, color: '#7BC8FF', padding: '0 0 0 6px' }}>Anulează</button>}
+        </div>
+        {fila !== 'numere' && curent && (
+          <div style={{ padding: '10px 16px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 8, borderTop: '1px solid rgba(159,215,255,0.08)' }}>
+            <button onClick={maiTarziu} style={{ border: '1px solid rgba(159,215,255,0.25)', background: 'transparent', color: 'rgba(214,228,244,0.8)', borderRadius: 14, padding: '13px 14px', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>Mai târziu</button>
+            <button onClick={trimite} disabled={!curent.telefon.trim()}
+              style={{ border: 'none', background: curent.telefon.trim() ? '#25D366' : 'rgba(37,211,102,0.25)', color: '#03250F', borderRadius: 14, padding: '13px 14px', fontWeight: 800, fontSize: 15, cursor: curent.telefon.trim() ? 'pointer' : 'default' }}>
+              Trimite pe WhatsApp
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

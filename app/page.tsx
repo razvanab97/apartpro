@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
+import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
 import Link from 'next/link'
@@ -245,6 +246,49 @@ export default function DashboardPage() {
       return n
     })
   }
+  function restaureazaMesaj(id:string){
+    setMesajeAnulateIds(prev=>{
+      const n=new Set(prev); n.delete(id)
+      try{localStorage.setItem('mesaje_anulate_'+new Date().toISOString().split('T')[0],JSON.stringify([...n]))}catch{}
+      return n
+    })
+  }
+  // Fila deschisa in "Mesaje pe rand" (si deep-link din notificare: /?mesaje=sosiri)
+  const [mesajeFila,setMesajeFila]=useState<FilaMesaje>('dim')
+  function deschideMesaje(f?:FilaMesaje){ if(f) setMesajeFila(f); setMesajeListOpen(true) }
+  useEffect(()=>{
+    try{
+      const q=new URLSearchParams(window.location.search).get('mesaje')
+      if(q&&['dim','sos','prop','numere'].includes(q)){ deschideMesaje(q as FilaMesaje); window.history.replaceState(null,'','/') }
+    }catch{}
+  },[])
+  // Rezervari din azi + urmatoarele 3 zile FARA telefon (cerut direct: sa le completam din timp,
+  // nu in ziua sosirii) - fila "Numere lipsa"
+  const [numereLipsa,setNumereLipsa]=useState<NumarLipsa[]>([])
+  async function loadNumereLipsa(){
+    const azi=new Date(); const pana=new Date(); pana.setDate(pana.getDate()+3)
+    const f=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    const {data}=await supabase.from('rezervari').select('id,nume_client,data_checkin,data_checkout,canal,camera_semnalata,apartament:apartamente(nota,nume)')
+      .is('telefon_client',null).neq('status_rezervare','anulata').gte('data_checkin',f(azi)).lte('data_checkin',f(pana)).order('data_checkin')
+    setNumereLipsa((data||[]).filter((r:any)=>r.camera_semnalata!=='NEALOCAT').map((r:any)=>({id:r.id,nume_client:r.nume_client,data_checkin:r.data_checkin,data_checkout:r.data_checkout,canal:r.canal,nota:r.apartament?.nota,apt:r.apartament?.nume})))
+  }
+  useEffect(()=>{ loadNumereLipsa() },[])
+  async function salveazaNumarRezervare(rezId:string,tel:string){
+    const {error}=await supabase.from('rezervari').update({telefon_client:tel}).eq('id',rezId)
+    if(error) return false
+    const upd=(l:any[])=>l.map((r:any)=>r.id===rezId?{...r,telefon_client:tel}:r)
+    setCheckinAzi(upd); setCheckoutAzi(upd)
+    return true
+  }
+  // Curatenia gata se reciteste periodic, ca datele de acces sa intre singure in coada cand staff-ul termina
+  useEffect(()=>{
+    const id=setInterval(()=>{
+      const today0=new Date().toISOString().split('T')[0]
+      supabase.from('curatenie_status').select('apartament_id,status').eq('data',today0).eq('status','gata')
+        .then(({data:cgD})=>{ if(cgD) setCuratenieGataIds(new Set(cgD.map((s:any)=>s.apartament_id))) })
+    },60000)
+    return ()=>clearInterval(id)
+  },[])
   function updateMesajOverride(id:string,patch:{telefon?:string;mesaj?:string}){
     setMesajOverrides(prev=>({...prev,[id]:{...prev[id],...patch}}))
   }
@@ -336,7 +380,7 @@ export default function DashboardPage() {
   const [telSugestii,setTelSugestii]=useState<Record<string,string>>({})
   useEffect(()=>{
     if(!mesajeListOpen) return
-    const nume=[...new Set(mesajeTasks.filter(t=>t.faraTelefon).map(t=>t.nume).filter(Boolean))]
+    const nume=[...new Set([...mesajeTasks.filter(t=>t.faraTelefon).map(t=>t.nume),...numereLipsa.map(n=>n.nume_client)].filter(Boolean))]
     if(!nume.length) return
     supabase.from('rezervari').select('nume_client,telefon_client,data_checkin').in('nume_client',nume)
       .not('telefon_client','is',null).order('data_checkin',{ascending:false})
@@ -786,172 +830,26 @@ export default function DashboardPage() {
 
       <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>
 
-        {/* BANNER CHECK-OUT DIMINEATA */}
+        {/* MESAJE DE AZI — o singura bara in locul celor 6 bannere (check-in, acces, checkout, proprietari);
+            deschide "Mesaje pe rand" (cerut direct: varianta de telefon, mai simplu) */}
         {(()=>{
-          const isMorning=now.getHours()>=7&&now.getHours()<11
-          const coFaraTel=checkoutAzi.filter(r=>!r.telefon_client).length
-          if(!isMorning||checkoutAzi.length===0||coBannerDismissed||coMesajeTrimise)return null
-          return(
-            <div style={{background:'rgba(192,132,252,0.08)',border:'1px solid rgba(192,132,252,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-              <div style={{fontSize:20}}>🌅</div>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#C084FC',marginBottom:2}}>
-                  {checkoutAzi.length === 1 ? '1 client pleacă azi' : `${checkoutAzi.length} clienți pleacă azi`} — trimite mesajele de checkout
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                  {checkoutAzi.map(r=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                  <MessageCircle size={13}/>Trimite mesaje ({checkoutAzi.length}){coFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {coFaraTel} fără nr.</span>}
-                </button>
-                <button onClick={()=>{setCoBannerDismissed(true);try{localStorage.setItem('co_banner_'+todayStr,'1')}catch{}}}
-                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                  Ignoră
-                </button>
-              </div>
-            </div>
+          const ramase=(f:FilaMesaje)=>mesajeTasks.filter(t=>filaMesaj(t.categorie)===f&&!mesajeSentIds.has(t.id)).length
+          const nDim=ramase('dim'), nSos=ramase('sos'), nProp=ramase('prop'), nNr=numereLipsa.length
+          const tot=nDim+nSos+nProp
+          if(!mesajeTasks.length&&!nNr) return null
+          const chip=(l:string,n:number,f:FilaMesaje,c:string)=>n>0&&(
+            <button key={f} onClick={()=>deschideMesaje(f)} style={{padding:'5px 10px',borderRadius:20,border:`1px solid ${c}55`,background:`${c}18`,color:c,fontSize:11.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{l} · {n}</button>
           )
-        })()}
-
-        {/* BANNER CHECK-IN AZI — CONFIRMARE REZERVARE */}
-        {(()=>{
-          const ciFaraTel=checkinAzi.filter((r:any)=>!r.telefon_client).length
-          if(checkinAzi.length===0||ciBannerDismissed||ciMesajeTrimise)return null
           return(
-            <div style={{background:'rgba(252,211,77,0.08)',border:'1px solid rgba(252,211,77,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-              <div style={{fontSize:20}}>👋</div>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#FCD34D',marginBottom:2}}>
-                  {checkinAzi.length === 1 ? '1 client sosește azi' : `${checkinAzi.length} clienți sosesc azi`} — trimite mesajele de confirmare
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                  {checkinAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
+            <div style={{background:tot?'rgba(37,211,102,0.07)':'rgba(214,228,244,0.04)',border:`1px solid ${tot?'rgba(37,211,102,0.35)':'rgba(159,215,255,0.12)'}`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
+              <MessageCircle size={18} color={tot?'#25D366':'rgba(159,215,255,0.4)'}/>
+              <div style={{flex:1,minWidth:150}}>
+                <div style={{fontSize:13.5,fontWeight:800,color:'#E8F4FF'}}>{tot?`${tot} ${tot===1?'mesaj':'mesaje'} de trimis azi`:'Mesajele de azi sunt trimise ✓'}</div>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginTop:6}}>
+                  {chip('Dimineața',nDim,'dim','#C084FC')}{chip('Sosiri',nSos,'sos','#FCD34D')}{chip('Proprietari',nProp,'prop','#A78BFA')}{chip('📵 Numere lipsă',nNr,'numere','#F87171')}
                 </div>
               </div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                  <MessageCircle size={13}/>Trimite mesaje ({checkinAzi.length}){ciFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {ciFaraTel} fără nr.</span>}
-                </button>
-                <button onClick={()=>{setCiBannerDismissed(true);try{localStorage.setItem('ci_banner_'+todayStr,'1')}catch{}}}
-                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                  Ignoră
-                </button>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* BANNER LOCATII GATA — DATE ACCES */}
-        {(()=>{
-          const gataCheckins=checkinAzi.filter((r:any)=>r.apartament?.id&&curatenieGataIds.has(r.apartament.id))
-          const gataFaraTel=gataCheckins.filter((r:any)=>!r.telefon_client).length
-          if(gataCheckins.length===0||gataBannerDismissed||gataMesajeTrimise)return null
-          return(
-            <div style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-              <div style={{fontSize:20}}>🔑</div>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#7BC8FF',marginBottom:2}}>
-                  {gataCheckins.length === 1 ? '1 locație pregătită' : `${gataCheckins.length} locații pregătite`} — trimite datele de acces
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                  {gataCheckins.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                  <Key size={13}/>Trimite mesaje ({gataCheckins.length}){gataFaraTel>0&&<span style={{color:'#FCA5A5',fontWeight:700}}> · {gataFaraTel} fără nr.</span>}
-                </button>
-                <button onClick={()=>{setGataBannerDismissed(true);try{localStorage.setItem('gata_banner_'+todayStr,'1')}catch{}}}
-                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                  Ignoră
-                </button>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* BANNER REZERVARI NOI — NOTIFICA PROPRIETARII */}
-        {propNotif.length>0 && (
-          <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-            <div style={{fontSize:20}}>🏠</div>
-            <div style={{flex:1,minWidth:200}}>
-              <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
-                {propNotif.length === 1 ? '1 rezervare nouă' : `${propNotif.length} rezervări noi`} — notifică proprietarii
-              </div>
-              <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                {propNotif.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
-              </div>
-            </div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-              <button onClick={()=>setMesajeListOpen(true)}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                <MessageCircle size={13}/>Trimite mesaje ({propNotif.length})
-              </button>
-              <button onClick={ignoraToateNotificarileProprietar}
-                style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                Ignoră
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* BANNER CHECK-IN AZI — ANUNTA PROPRIETARII */}
-        {(()=>{
-          if(ciProprietarAzi.length===0||ciPropBannerDismissed||ciPropMesajeTrimise)return null
-          return(
-            <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-              <div style={{fontSize:20}}>🔑</div>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
-                  {ciProprietarAzi.length === 1 ? '1 oaspete ajunge azi' : `${ciProprietarAzi.length} oaspeți ajung azi`} — anunță proprietarii
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                  {ciProprietarAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                  <MessageCircle size={13}/>Trimite mesaje ({ciProprietarAzi.length})
-                </button>
-                <button onClick={()=>{setCiPropBannerDismissed(true);try{localStorage.setItem('ci_prop_banner_'+todayStr,'1')}catch{}}}
-                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                  Ignoră
-                </button>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* BANNER CHECK-OUT AZI — ANUNTA PROPRIETARII */}
-        {(()=>{
-          if(coProprietarAzi.length===0||coPropBannerDismissed||coPropMesajeTrimise)return null
-          return(
-            <div style={{background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.35)',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,flexWrap:'wrap' as const}}>
-              <div style={{fontSize:20}}>🚪</div>
-              <div style={{flex:1,minWidth:200}}>
-                <div style={{fontSize:13,fontWeight:700,color:'#A78BFA',marginBottom:2}}>
-                  {coProprietarAzi.length === 1 ? '1 oaspete pleacă azi' : `${coProprietarAzi.length} oaspeți pleacă azi`} — anunță proprietarii
-                </div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.45)'}}>
-                  {coProprietarAzi.map((r:any)=>r.apartament?.nota||r.apartament?.nume).filter(Boolean).join(' · ')}
-                </div>
-              </div>
-              <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:8,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                  <MessageCircle size={13}/>Trimite mesaje ({coProprietarAzi.length})
-                </button>
-                <button onClick={()=>{setCoPropBannerDismissed(true);try{localStorage.setItem('co_prop_banner_'+todayStr,'1')}catch{}}}
-                  style={{padding:'8px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.4)',fontSize:12,cursor:'pointer'}}>
-                  Ignoră
-                </button>
-              </div>
+              {tot>0&&<button onClick={()=>deschideMesaje()} style={{padding:'10px 18px',borderRadius:10,border:'none',background:'#25D366',color:'#03250F',fontSize:13,fontWeight:800,cursor:'pointer'}}>Trimite pe rând</button>}
             </div>
           )
         })()}
@@ -1555,134 +1453,24 @@ export default function DashboardPage() {
       </div>
 
       {/* LISTA UNIFICATA — MESAJE DE AZI */}
-      {mesajeListOpen&&(()=>{
-        const sentCount=mesajeTasks.filter(t=>mesajeSentIds.has(t.id)).length
-        // Etichetele categoriilor prezente azi, in ordinea in care apar prima data in lista —
-        // "pagini" separate pe sectiune, cerut direct (era prea greu de urmarit totul intr-o
-        // singura lista lunga cu toate categoriile amestecate).
-        const categoriiPrezente:{k:string;icon:string;accent:string;titlu:string;count:number}[]=[]
-        mesajeTasks.forEach(t=>{
-          const ex=categoriiPrezente.find(c=>c.k===t.categorie)
-          if(ex) ex.count++
-          else categoriiPrezente.push({k:t.categorie,icon:t.icon,accent:t.accent,titlu:t.titluCategorie,count:1})
-        })
-        const tasksFiltrate = mesajeActiveTab==='toate' ? mesajeTasks : mesajeTasks.filter(t=>t.categorie===mesajeActiveTab)
-        return(
-          <div className="mesaje-overlay" style={{position:'fixed',inset:0,zIndex:1100,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={()=>setMesajeListOpen(false)}>
-            <div className="mesaje-sheet" style={{background:'rgba(11,18,32,0.98)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:16,padding:20,maxWidth:960,width:'100%',maxHeight:'88vh',display:'flex',flexDirection:'column',gap:12}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
-                <div>
-                  <div style={{fontSize:15,fontWeight:700,color:'#E8F4FF'}}>📋 Mesaje de azi</div>
-                  <div style={{fontSize:11,fontFamily:'monospace',color:'rgba(159,215,255,0.45)'}}>{sentCount}/{mesajeTasks.length} trimise</div>
-                </div>
-                <button onClick={()=>setMesajeListOpen(false)} style={{background:'transparent',border:'none',color:'rgba(159,215,255,0.4)',cursor:'pointer',fontSize:18,lineHeight:'1'}}>✕</button>
-              </div>
-              {categoriiPrezente.length>1&&(
-                <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,flexShrink:0}}>
-                  <button onClick={()=>setMesajeActiveTab('toate')}
-                    style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${mesajeActiveTab==='toate'?'rgba(159,215,255,0.4)':'rgba(159,215,255,0.12)'}`,background:mesajeActiveTab==='toate'?'rgba(159,215,255,0.12)':'transparent',color:mesajeActiveTab==='toate'?'#E8F4FF':'rgba(159,215,255,0.5)',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                    Toate ({mesajeTasks.length})
-                  </button>
-                  {categoriiPrezente.map(c=>(
-                    <button key={c.k} onClick={()=>setMesajeActiveTab(c.k)}
-                      style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${mesajeActiveTab===c.k?c.accent+'88':'rgba(159,215,255,0.12)'}`,background:mesajeActiveTab===c.k?`${c.accent}22`:'transparent',color:mesajeActiveTab===c.k?c.accent:'rgba(159,215,255,0.5)',fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' as const}}>
-                      {c.icon} {c.titlu} ({c.count})
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div style={{overflowY:'auto' as const,display:'flex',flexDirection:'column',gap:16,paddingRight:2}}>
-                {tasksFiltrate.length===0&&<div style={{padding:'30px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.3)'}}>Niciun mesaj aici 🎉</div>}
-                {tasksFiltrate.map(task=>{
-                  const sent=mesajeSentIds.has(task.id)
-                  const editing=editingMesajId===task.id
-                  return(
-                    <div className="mesaje-row" key={task.id} style={{border:`1px solid ${sent?'rgba(74,222,128,0.5)':'rgba(159,215,255,0.1)'}`,borderRadius:10,padding:'10px 14px',background:sent?'rgba(74,222,128,0.08)':'rgba(14,27,43,0.5)',transition:'background .2s, border-color .2s'}}>
-                      <div className="mesaje-row-top" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
-                        <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
-                          <span style={{fontSize:10,fontWeight:700,color:task.accent,background:`${task.accent}22`,padding:'2px 7px',borderRadius:5,whiteSpace:'nowrap' as const}}>{task.icon} {task.titluCategorie}</span>
-                          {task.nota&&<span style={{fontSize:10,fontWeight:600,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{task.nota}</span>}
-                        </div>
-                        {mesajeTraduseIds.has(task.id)&&<span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(77,163,255,0.1)',padding:'1px 6px',borderRadius:4,flexShrink:0}}>🇬🇧 EN</span>}
-                        {sent&&<span style={{fontSize:11,color:'#4ADE80',fontWeight:700,display:'flex',alignItems:'center',gap:3,flexShrink:0}}><Check size={12}/>Trimis</span>}
-                        <div className="mesaje-actions" style={{display:'flex',alignItems:'center',gap:5,marginLeft:'auto',flexShrink:0}}>
-                          <button onClick={()=>traduceMesaj(task)} disabled={translatingMesajId===task.id}
-                            title="Traduce mesajul în engleză"
-                            style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:'transparent',color:'rgba(159,215,255,0.6)',fontSize:13,cursor:translatingMesajId===task.id?'default':'pointer',opacity:translatingMesajId===task.id?0.5:1}}>
-                            {translatingMesajId===task.id?'…':'🇬🇧'}
-                          </button>
-                          <button onClick={()=>setEditingMesajId(editing?null:task.id)}
-                            title={editing?'Gata editare':'Editează text'}
-                            style={{padding:'0 10px',height:30,borderRadius:7,border:'1px solid rgba(159,215,255,0.15)',background:editing?'rgba(159,215,255,0.1)':'transparent',color:'rgba(159,215,255,0.7)',fontSize:12,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap' as const}}>
-                            {editing?'✓ Gata':'✏️ Editează'}
-                          </button>
-                          <button onDoubleClick={()=>anuleazaMesaj(task.id)}
-                            title="Dublu-click pentru a anula acest mesaj din ziua de azi"
-                            style={{width:30,height:30,borderRadius:7,border:'1px solid rgba(248,113,113,0.25)',background:'transparent',color:'rgba(248,113,113,0.65)',fontSize:12,cursor:'pointer'}}>
-                            🗑
-                          </button>
-                          {task.telefon.trim()?(
-                          <a href={waLink(task.telefon,task.mesaj)} target="_blank" rel="noreferrer" onClick={()=>trimiteMesajTask(task)}
-                            style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,height:30,padding:'0 14px',borderRadius:7,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:12,fontWeight:700,textDecoration:'none',whiteSpace:'nowrap' as const}}>
-                            <MessageCircle size={13}/>{sent?'Retrimite':'Trimite'}
-                          </a>
-                          ):(
-                          <span title="Adaugă întâi numărul de telefon"
-                            style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,height:30,padding:'0 14px',borderRadius:7,border:'1px solid rgba(159,215,255,0.12)',color:'rgba(159,215,255,0.35)',fontSize:12,fontWeight:700,whiteSpace:'nowrap' as const,cursor:'not-allowed'}}>
-                            <MessageCircle size={13}/>Trimite
-                          </span>
-                          )}
-                        </div>
-                      </div>
-                      {/* Numele clientului, centrat — cerut direct, separat de restul informatiei */}
-                      <div style={{textAlign:'center' as const,margin:'10px 0'}}>
-                        <div style={{fontSize:16,fontWeight:700,color:'#E8F4FF'}}>{task.nume}</div>
-                        {task.linie2&&<div style={{fontSize:12,color:'rgba(159,215,255,0.45)',marginTop:1}}>{task.linie2}</div>}
-                        {/* Numarul rezervarii de la platforma (Airbnb/Booking), completat in Rezervari - nu ID-ul 5starDesk */}
-                        {task.codPlatforma&&(
-                          <div style={{display:'inline-flex',alignItems:'center',gap:6,marginTop:6,padding:'3px 10px',borderRadius:999,fontSize:12,fontWeight:600,color:'#FCD34D',background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.35)'}}>
-                            <span style={{opacity:.75,fontWeight:500}}>{task.canalLabel}</span>
-                            <span style={{fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',letterSpacing:'.04em'}}># {task.codPlatforma}</span>
-                          </div>
-                        )}
-                      </div>
-                      {task.faraTelefon&&(
-                        <div style={{fontSize:11,color:'#FCA5A5',background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:6,padding:'5px 8px',marginBottom:5,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
-                          <span>⚠ Fără număr de telefon (nu a venit de la platformă) — adaugă-l manual mai jos</span>
-                          {telSugestii[task.nume]&&!task.telefon.trim()&&(
-                            <button onClick={()=>updateMesajOverride(task.id,{telefon:telSugestii[task.nume]})}
-                              style={{padding:'2px 8px',borderRadius:5,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                              Folosește {telSugestii[task.nume]} (rezervare anterioară)
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      <div className="mesaje-phone" style={{display:'flex',alignItems:'center',gap:5,width:'100%'}}>
-                        <Phone size={11} color={task.faraTelefon&&!task.telefon.trim()?'#F87171':'rgba(159,215,255,0.4)'}/>
-                        <input value={task.telefon} onChange={e=>updateMesajOverride(task.id,{telefon:e.target.value})}
-                          placeholder={task.faraTelefon?'Adaugă numărul de telefon…':''}
-                          style={{width:'100%',minWidth:0,background:'rgba(255,255,255,0.03)',border:`1px solid ${task.faraTelefon&&!task.telefon.trim()?'rgba(248,113,113,0.45)':'rgba(159,215,255,0.15)'}`,borderRadius:6,padding:'5px 7px',fontSize:11,color:'#E8F4FF',outline:'none'}}/>
-                        {task.faraTelefon&&task.telefon.trim()&&(
-                          <button onClick={()=>salveazaTelefonRezervare(task)} title="Salvează numărul în rezervare"
-                            style={{flexShrink:0,padding:'5px 9px',borderRadius:6,border:'1px solid rgba(74,222,128,0.4)',background:'rgba(74,222,128,0.1)',color:'#4ADE80',fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap' as const}}>
-                            💾 Salvează
-                          </button>
-                        )}
-                      </div>
-                      {editing?(
-                        <textarea value={task.mesaj} onChange={e=>updateMesajOverride(task.id,{mesaj:e.target.value})} rows={8} autoFocus
-                          style={{width:'100%',marginTop:8,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(159,215,255,0.2)',borderRadius:6,padding:10,fontSize:12,lineHeight:1.5,color:'#E8F4FF',fontFamily:'inherit',resize:'vertical' as const}}/>
-                      ):(
-                        <div style={{fontSize:11,lineHeight:1.4,color:'rgba(214,228,244,0.55)',whiteSpace:'pre-wrap' as const,wordBreak:'break-word' as const,margin:'6px 0 0',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical' as const,overflow:'hidden'}}>{task.mesaj}</div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      {mesajeListOpen&&(
+        <MesajePeRand
+          tasks={mesajeTasks.map(t=>({...t,trimis:mesajeSentIds.has(t.id)}))}
+          numereLipsa={numereLipsa}
+          telSugestii={telSugestii}
+          filaInitiala={mesajeFila}
+          traducandId={translatingMesajId}
+          waLink={waLink}
+          onTrimis={t=>trimiteMesajTask(mesajeTasks.find(x=>x.id===t.id)!)}
+          onNuAzi={anuleazaMesaj}
+          onAnuleazaNuAzi={restaureazaMesaj}
+          onUpdate={updateMesajOverride}
+          onTraduce={t=>traduceMesaj(t)}
+          onSalveazaTelefon={t=>salveazaTelefonRezervare(mesajeTasks.find(x=>x.id===t.id)!)}
+          onSalveazaNumar={salveazaNumarRezervare}
+          onClose={()=>setMesajeListOpen(false)}
+        />
+      )}
     </>
   )
 }

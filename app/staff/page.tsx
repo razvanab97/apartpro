@@ -361,6 +361,20 @@ export default function StaffPage() {
       if (toateGata) await inregistreazaDeplasare(aptNota, 'CANTA')
       // Mesaj WA pentru clientul care face check-in azi
       await buildWaGataInfo(aptId)
+      // Notificare catre administrator: apartamentul e gata si azi vine un oaspete -> un tap deschide
+      // direct mesajul cu datele de acces in Dashboard ("Mesaje pe rand", fila Sosiri). Categorie
+      // separata 'acces', ca staff-ul sa nu primeasca notificarile destinate administratorului.
+      const ciRez = checkins.find((c:any) => c.apartament_id === aptId)
+      const d0 = new Date(), aziLocal = `${d0.getFullYear()}-${P(d0.getMonth()+1)}-${P(d0.getDate())}`
+      if (ciRez && ciRez.data_checkin === aziLocal) {
+        const titlu = `🔑 ${aptNota} e gata — trimite accesul`
+        const corp = `${ciRez.nume_client || 'Oaspetele'} ajunge azi${ciRez.telefon_client ? '' : ' (fără telefon — completează-l)'}. Apasă ca să trimiți datele de acces.`
+        fetch('/api/push-send', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ title: titlu, body: corp, url:'/?mesaje=sos', tag:'acces-'+aptId, tip:'acces' })
+        }).catch(()=>{})
+        supabase.from('notificari').insert({ mesaj: `${titlu} (${ciRez.nume_client || ''})`, tip: 'acces', citit: false, url: '/?mesaje=sos' }).then(()=>{})
+      }
     }
 
     const msg = status==='inceput' ? `🧹 Curățenie începută — ${aptNota}` : `✅ Gata — ${aptNota} (${ora})`

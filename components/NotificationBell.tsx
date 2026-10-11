@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { CATEGORII_NOTIF, getNotifPrefs, setNotifPrefs } from '@/lib/notifPrefs'
 
 const TIP_ICON: Record<string, string> = {
+  acces: '🔑',
   curatenie: '🧹',
   eliberat: '🚪',
   task: '🔔',
