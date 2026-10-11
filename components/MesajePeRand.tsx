@@ -50,6 +50,8 @@ export default function MesajePeRand(p: {
   // revId = mesajul revazut (poate fi deja trimis -> "Retrimite"), altfel cartonasul e capul cozii
   const [istoric, setIstoric] = useState<string[]>([])
   const [revId, setRevId] = useState<string | null>(null)
+  // Pozitia in coada filei (cerut direct: "sa putem da next la urmatorul mesaj") - rasfoire fara sa trimiti/amani
+  const [poz, setPoz] = useState<Record<string, number>>({})
 
   const deTrimis = (k: FilaMesaje) => p.tasks
     .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
@@ -57,7 +59,14 @@ export default function MesajePeRand(p: {
   const totalFila = (k: FilaMesaje) => p.tasks.filter(t => filaMesaj(t.categorie) === k)
   const numereRamase = p.numereLipsa.filter(n => !salvate[n.id])
   const revazut = revId ? p.tasks.find(t => t.id === revId) || null : null
-  const curent = fila === 'numere' ? null : (revazut || deTrimis(fila)[0] || null)
+  const coada = fila === 'numere' ? [] : deTrimis(fila)
+  const idxCoada = coada.length ? Math.min(poz[fila] || 0, coada.length - 1) : 0
+  const curent = fila === 'numere' ? null : (revazut || coada[idxCoada] || null)
+  function mergiLa(d: number) {
+    if (!coada.length) return
+    setRevId(null); setToast(null)
+    setPoz(x => ({ ...x, [fila]: (idxCoada + d + coada.length) % coada.length }))
+  }
   const idxInapoi = revazut ? istoric.lastIndexOf(revazut.id) - 1 : istoric.length - 1
   const tintaInapoi = idxInapoi >= 0 ? p.tasks.find(t => t.id === istoric[idxInapoi]) || null : null
   function inapoi() {
@@ -75,6 +84,16 @@ export default function MesajePeRand(p: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => { setEditez(false) }, [curent?.id, fila])
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+      if (e.key === 'ArrowRight') { e.preventDefault(); mergiLa(1) }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); mergiLa(-1) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   function trimite() {
     if (!curent || !curent.telefon.trim()) return
@@ -235,7 +254,13 @@ export default function MesajePeRand(p: {
                 <button onClick={nuAzi} style={{ ...btn, marginLeft: 'auto' }}>Nu azi</button>
               </div>
               {revazut && <div style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: revazut.trimis ? '#4ADE80' : '#FCD34D' }}>{revazut.trimis ? '✓ Mesaj deja trimis — îl poți retrimite' : 'Mesaj amânat — îl poți trimite acum'}</div>}
-              {!revazut && deTrimis(fila).length > 1 && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', textAlign: 'center' }}>încă {deTrimis(fila).length - 1} după acesta</div>}
+              {!revazut && coada.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <button onClick={() => mergiLa(-1)} style={{ border: '1px solid rgba(159,215,255,0.22)', background: 'transparent', color: '#E8F4FF', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>‹ Anterior</button>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(159,215,255,0.55)' }}>{idxCoada + 1} / {coada.length}</span>
+                  <button onClick={() => mergiLa(1)} style={{ border: '1px solid rgba(77,163,255,0.45)', background: 'rgba(77,163,255,0.14)', color: '#7BC8FF', borderRadius: 10, padding: '8px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>Următorul ›</button>
+                </div>
+              )}
             </div>
           )}
         </div>
