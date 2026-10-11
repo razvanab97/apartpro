@@ -318,11 +318,11 @@ export default function InboxPage() {
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
                     <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(34,197,94,0.2)'}}>
                       <div style={{fontSize:20,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{result.disponibile ?? 0}</div>
-                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✓ Libere și potrivite</div>
+                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✓ Libere</div>
                     </div>
                     <div style={{...panel,padding:'10px',textAlign:'center',borderColor:'rgba(239,68,68,0.15)'}}>
                       <div style={{fontSize:20,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{result.indisponibile ?? 0}</div>
-                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✗ Ocupate / prea mici</div>
+                      <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>✗ Ocupate</div>
                     </div>
                   </div>
                   <div style={{fontSize:11,color:'rgba(159,215,255,0.45)',lineHeight:1.5}}>
@@ -352,7 +352,7 @@ export default function InboxPage() {
                           {a.link_site ? <a href={a.link_site} target="_blank" rel="noreferrer" style={{fontSize:10,color:'#7BC8FF'}}>🔗 site</a> : <span style={{fontSize:10,color:'#F87171'}}>fără link site</span>}
                         </div>
                         <div style={{fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:2}}>
-                          {a.disponibil ? (a.motiv || '') : !a.capacitate_ok ? `Prea mic pentru ${result.nr_persoane} persoane` : `Ocupat: ${a.ocupat_de.join(', ')}`}
+                          {a.disponibil ? (a.motiv || '') : `Ocupat: ${a.ocupat_de.join(', ')}`}
                           {(a.pret_booking || a.pret_direct_recent) && <span style={{marginLeft:6,color:'rgba(159,215,255,0.35)'}}>{a.pret_booking?`· Booking pe aceste date: ${a.pret_booking} lei/n `:''}{a.pret_direct_recent?`· ultima vânzare directă: ${a.pret_direct_recent} lei/n`:''}</span>}
                         </div>
                       </div>
@@ -371,11 +371,11 @@ export default function InboxPage() {
                 return (
                   <div style={{...panel,padding:14,display:'flex',flexDirection:'column',gap:6}}>
                     <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:2}}>Alege locațiile de propus ({Object.keys(alese).length} bifate)</div>
-                    {libere.length === 0 && <div style={{fontSize:12,color:'#FCD34D'}}>Nicio locație liberă și potrivită pe aceste date.</div>}
+                    {libere.length === 0 && <div style={{fontSize:12,color:'#FCD34D'}}>Nicio locație liberă pe aceste date.</div>}
                     {libere.map(rand)}
                     {ocupate.length > 0 && (
                       <button onClick={()=>setAratOcupate(v=>!v)} style={{alignSelf:'flex-start',fontSize:11,background:'none',border:'none',color:'rgba(159,215,255,0.45)',cursor:'pointer',padding:'4px 0'}}>
-                        {aratOcupate ? '▲ ascunde' : '▼ arată'} ocupate / prea mici ({ocupate.length})
+                        {aratOcupate ? '▲ ascunde' : '▼ arată'} ocupate ({ocupate.length})
                       </button>
                     )}
                     {aratOcupate && ocupate.map(rand)}

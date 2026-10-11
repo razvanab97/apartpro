@@ -281,7 +281,9 @@ export async function POST(req: NextRequest) {
     return {
       id: a.id, nota: a.nota, nume: a.nume, zona: a.zona, adresa: a.adresa, capacitate_max: a.capacitate_max,
       link_site: a.link_site || null, administrare: !!a.comision_tip && a.comision_tip !== 'fara_comision',
-      disponibil: !ocupat.length && capOk, ocupat_de: ocupat, capacitate_ok: capOk,
+      // Disponibil = doar neocupat (cerut direct: "nu seta tu prea mic - e posibil sa nu stii, doar ocupat");
+      // capacitatea ramane informativa (si conteaza la scorul AI), nu mai exclude apartamentul
+      disponibil: !ocupat.length, ocupat_de: ocupat, capacitate_ok: capOk,
       pret_noapte: Number(a.pret_standard) || 0, pret_booking: pretBooking[a.id] || null, pret_direct_recent: pretDirect[a.id] || null,
       scor: null, motiv: null,
     }
@@ -299,7 +301,8 @@ export async function POST(req: NextRequest) {
       // coduri simple A1, A2... (numele interne pot avea spatii/diacritice si nu se potriveau inapoi - Cherry 3 ramanea fara scor)
       available.map((a, i) => `[A${i + 1}] ${String(a.nume).trim()} | max ${a.capacitate_max || '?'} pers | ${a.pret_noapte || '?'} lei/noapte | zona ${a.zona || '-'} | ${a.adresa || ''}`).join('\n'),
       '',
-      'Da un scor 1-10 de potrivire pentru FIECARE apartament de mai sus (zona, capacitate fata de nr. persoane, buget, preferinte) si un motiv de max 10 cuvinte, in romana.',
+      'Da un scor 1-10 de potrivire pentru FIECARE apartament de mai sus (zona, buget, preferinte, capacitate) si un motiv de max 10 cuvinte, in romana.',
+      'Nr. de persoane poate fi estimat gresit din mesaj (ex. "2 familii") - nu penaliza puternic capacitatea; mentioneaza-o in motiv doar daca e clar insuficienta.',
       'Raspunde DOAR JSON: {"scoruri":[{"cod":"A1","scor":8,"motiv":"..."}]}  (cod = exact codul din paranteze, ex. A1)',
     ].join('\n')
     try {
