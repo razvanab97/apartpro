@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui'
 import { supabase } from '@/lib/supabase'
-import { ScanLine, X, Copy, Check, Loader2 } from 'lucide-react'
-import { fmt5star } from '@/lib/syncFivestar'
+import { ScanLine, X, Copy, Check, Loader2, Plus, Pencil } from 'lucide-react'
+import { fmt5star, parse5star } from '@/lib/syncFivestar'
+import { payloadRezervare } from '@/lib/rezervareEdit'
+import RezervareEditor from '@/components/RezervareEditor'
 import { saveAdresaExtrasa } from '@/lib/locatii-romania'
 
 // Sistemul extern (5starDesk sau orice alt PMS/ERP folosit pentru rezervări) nu are API de
@@ -15,9 +17,18 @@ type RezRaw = { nume_client:string; adulti:number; copii:number; data_checkin:st
 type CiRaw = { nume:string; cnp:string; serie:string; numar:string; judet:string; localitate:string; strada:string; telefon?:string }
 type Apt = { id:string; nota:string|null; nume:string }
 
-type RezForm = { aptId:string; nume:string; telefon:string; pret:string; cod:string; checkin:string; checkout:string; adulti:string; copii:string }
+type RezForm = { aptId:string; nume:string; telefon:string; pret:string; cod:string; checkin:string; checkout:string; adulti:string; copii:string; canal:string; moneda:string }
 type CiForm = { nume:string; cnp:string; serieNumar:string; telefon:string; judet:string; localitate:string; strada:string }
-const emptyRezForm: RezForm = { aptId:'', nume:'', telefon:'', pret:'', cod:'', checkin:'', checkout:'', adulti:'', copii:'' }
+const emptyRezForm: RezForm = { aptId:'', nume:'', telefon:'', pret:'', cod:'', checkin:'', checkout:'', adulti:'', copii:'', canal:'airbnb', moneda:'RON' }
+const CANALE_SCAN: [string, string][] = [['airbnb','Airbnb'], ['booking','Booking'], ['direct','Direct']]
+
+// Platforma dedusa din codul rezervarii: Airbnb „HMXXXXXXXX”, Booking doar cifre (ex. 6012345678)
+function canalDinCod(cod: string|null|undefined): string {
+  const c = String(cod||'').trim()
+  if (/^HM[A-Z0-9]{6,}$/i.test(c)) return 'airbnb'
+  if (/^\d{8,12}$/.test(c)) return 'booking'
+  return 'airbnb'
+}
 const emptyCiForm: CiForm = { nume:'', cnp:'', serieNumar:'', telefon:'', judet:'', localitate:'', strada:'' }
 
 function fileToBase64(file: File): Promise<string> {
@@ -77,6 +88,12 @@ export default function ScanCopyPopup() {
   const [rezForm, setRezForm] = useState<RezForm>(emptyRezForm)
   const [ciForm, setCiForm] = useState<CiForm>(emptyCiForm)
   const [hasResult, setHasResult] = useState(false)
+  // Creare rezervare direct din captura (cerut direct): verificare dubluri/suprapuneri, apoi insert
+  const [creating, setCreating] = useState(false)
+  const [createErr, setCreateErr] = useState<string | null>(null)
+  const [suprapunere, setSuprapunere] = useState<string | null>(null)
+  const [creata, setCreata] = useState<{ id: string; text: string } | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.resolve(supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'))
@@ -103,7 +120,10 @@ export default function ScanCopyPopup() {
           checkout: r.data_checkout ? fmt5star(r.data_checkout) : '',
           adulti: r.adulti != null ? String(r.adulti) : '',
           copii: r.copii != null ? String(r.copii) : '',
+          canal: canalDinCod(r.cod),
+          moneda: r.moneda || 'RON',
         })
+        setCreata(null); setCreateErr(null); setSuprapunere(null)
         setHasResult(true)
       } else {
         if (!data.success || !(data.nume || data.cnp)) { setError('Nu am putut citi datele din poză'); return }
@@ -155,10 +175,75 @@ export default function ScanCopyPopup() {
   }
 
   function switchMode(m: 'rezervare' | 'buletin') {
-    setMode(m); setError(null); setHasResult(false); setRezForm(emptyRezForm); setCiForm(emptyCiForm)
+    setMode(m); setError(null); setHasResult(false); setRezForm(emptyRezForm); setCiForm(emptyCiForm); setCreata(null); setCreateErr(null); setSuprapunere(null)
   }
 
   const selectedApt = apts.find(a => a.id === rezForm.aptId)
+
+  async function creeazaRezervare(fortat = false) {
+    setCreateErr(null)
+    const ci = parse5star(rezForm.checkin), co = parse5star(rezForm.checkout)
+    const lipsa = [!rezForm.aptId && 'apartamentul', !rezForm.nume.trim() && 'numele',
+      !/^\d{4}-\d{2}-\d{2}$/.test(ci) && 'check-in (ex. 13 Oct 2026)', !/^\d{4}-\d{2}-\d{2}$/.test(co) && 'check-out (ex. 14 Oct 2026)'].filter(Boolean)
+    if (lipsa.length) { setCreateErr(`Completează: ${lipsa.join(', ')}`); return }
+    if (co <= ci) { setCreateErr('Check-out trebuie să fie după check-in'); return }
+    setCreating(true)
+    try {
+      const cod = rezForm.cod.trim().toUpperCase()
+      // 1. Aceeasi rezervare deja in sistem (acelasi cod de la platforma) -> nu se mai creeaza
+      if (cod) {
+        const { data: dup } = await supabase.from('rezervari').select('id,nume_client,data_checkin,data_checkout')
+          .eq('cod_rezervare_platforma', cod).neq('status_rezervare', 'anulata').limit(1)
+        if (dup?.length) {
+          setCreateErr(`Există deja rezervarea cu codul ${cod}: ${dup[0].nume_client}, ${dup[0].data_checkin} → ${dup[0].data_checkout}`)
+          setCreata({ id: dup[0].id, text: `${dup[0].nume_client} · ${dup[0].data_checkin} → ${dup[0].data_checkout}` })
+          return
+        }
+      }
+      // 2. Apartamentul ocupat in perioada -> avertisment, se poate crea oricum (al doilea click)
+      if (!fortat) {
+        const { data: ocup } = await supabase.from('rezervari').select('nume_client,data_checkin,data_checkout')
+          .eq('apartament_id', rezForm.aptId).neq('status_rezervare', 'anulata').lt('data_checkin', co).gt('data_checkout', ci).limit(3)
+        if (ocup?.length) {
+          setSuprapunere(ocup.map(o => `${o.nume_client} (${o.data_checkin} → ${o.data_checkout})`).join('; '))
+          return
+        }
+      }
+      const { data: aptRows } = await supabase.from('apartamente').select('*').eq('id', rezForm.aptId)
+      const pret = Number(String(rezForm.pret).replace(',', '.')) || 0
+      const persoane = (Number(rezForm.adulti) || 0) + (Number(rezForm.copii) || 0)
+      const rez = {
+        apartament_id: rezForm.aptId,
+        proprietar_id: aptRows?.[0]?.proprietar_id || null,
+        canal: rezForm.canal,
+        nume_client: rezForm.nume.trim(),
+        telefon_client: rezForm.telefon.trim() || null,
+        data_checkin: ci,
+        data_checkout: co,
+        nr_persoane: persoane || 1,
+        valoare_bruta: pret,
+        suma_incasata: pret,
+        moneda: rezForm.moneda || 'RON',
+        cod_rezervare_platforma: cod || null,
+        status_rezervare: 'confirmata',
+        // Airbnb incaseaza oaspetele la rezervare; la Booking/direct plata se confirma ulterior
+        status_plata: rezForm.canal === 'airbnb' ? 'achitat' : 'neplatit',
+        status_decont: 'nedecontat',
+        status_facturare: 'nefacturat',
+        observatii: 'Creată din captură',
+      }
+      const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(rez, aptRows || [])).select('id').single()
+      if (error) { setCreateErr(error.message); return }
+      setSuprapunere(null)
+      setCreata({ id: data.id, text: `${rez.nume_client} · ${selectedApt?.nota || selectedApt?.nume || ''} · ${ci} → ${co}` })
+      // Paginile deschise (Calendar, Rezervari, Dashboard) se reincarca imediat
+      window.dispatchEvent(new CustomEvent('rezervari:modificate'))
+    } catch (e: any) {
+      setCreateErr('Eroare: ' + (e.message || e))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <>
@@ -244,6 +329,45 @@ export default function ScanCopyPopup() {
             <CopyRow label="Check-out" value={rezForm.checkout} onChange={v => setRezForm(f => ({ ...f, checkout: v }))} />
             <CopyRow label="Adulți" value={rezForm.adulti} onChange={v => setRezForm(f => ({ ...f, adulti: v }))} />
             <CopyRow label="Copii" value={rezForm.copii} onChange={v => setRezForm(f => ({ ...f, copii: v }))} />
+
+            {/* Creare rezervare in aplicatie, din datele de mai sus */}
+            <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid rgba(159,215,255,0.1)' }}>
+              <div style={{ fontSize: 10, color: 'rgba(159,215,255,0.4)', marginBottom: 6 }}>Canal</div>
+              <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 9, background: 'rgba(14,27,43,0.5)', border: '1px solid rgba(159,215,255,0.1)', marginBottom: 10 }}>
+                {CANALE_SCAN.map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setRezForm(f => ({ ...f, canal: k }))} style={{
+                    flex: 1, padding: '6px 8px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: rezForm.canal === k ? 700 : 500,
+                    background: rezForm.canal === k ? 'rgba(77,163,255,0.18)' : 'transparent', color: rezForm.canal === k ? '#7BC8FF' : 'rgba(159,215,255,0.45)',
+                  }}>{l}</button>
+                ))}
+              </div>
+
+              {creata ? (
+                <div style={{ padding: '10px 12px', borderRadius: 9, background: createErr ? 'rgba(245,158,11,0.08)' : 'rgba(74,222,128,0.08)', border: `1px solid ${createErr ? 'rgba(245,158,11,0.3)' : 'rgba(74,222,128,0.3)'}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: createErr ? '#FCD34D' : '#4ADE80', marginBottom: 3 }}>{createErr ? '⚠ Rezervarea există deja' : '✓ Rezervare creată'}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(214,228,244,0.8)', marginBottom: 8 }}>{creata.text}</div>
+                  <button type="button" onClick={() => setEditId(creata.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 7, border: '1px solid rgba(77,163,255,0.35)', background: 'rgba(77,163,255,0.1)', color: '#7BC8FF', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    <Pencil size={12} /> Deschide rezervarea
+                  </button>
+                </div>
+              ) : suprapunere ? (
+                <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  <div style={{ fontSize: 12, color: '#FCD34D', marginBottom: 8, lineHeight: 1.45 }}>⚠ Apartamentul e deja ocupat în perioada asta: {suprapunere}</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" onClick={() => setSuprapunere(null)} style={{ flex: 1, padding: '7px', borderRadius: 7, border: '1px solid rgba(159,215,255,0.2)', background: 'transparent', color: 'rgba(214,228,244,0.75)', fontSize: 12, cursor: 'pointer' }}>Renunță</button>
+                    <button type="button" onClick={() => creeazaRezervare(true)} disabled={creating} style={{ flex: 1, padding: '7px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.45)', background: 'rgba(245,158,11,0.15)', color: '#FCD34D', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Creează oricum</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => creeazaRezervare()} disabled={creating} style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '11px', borderRadius: 9, border: 'none',
+                  background: 'linear-gradient(135deg,#22C55E,#16A34A)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: creating ? 'wait' : 'pointer', opacity: creating ? 0.7 : 1,
+                }}>
+                  {creating ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Se creează…</> : <><Plus size={15} /> Creează rezervarea</>}
+                </button>
+              )}
+              {createErr && !creata && <div style={{ marginTop: 8, fontSize: 12, color: '#F87171' }}>{createErr}</div>}
+            </div>
           </div>
         )}
 
@@ -259,6 +383,7 @@ export default function ScanCopyPopup() {
           </div>
         )}
       </Modal>
+      {editId && <RezervareEditor rezervareId={editId} onClose={() => setEditId(null)} onSaved={() => window.dispatchEvent(new CustomEvent('rezervari:modificate'))} />}
     </>
   )
 }

@@ -222,6 +222,13 @@ export default function CalendarPage() {
   const todayYear = new Date().getFullYear()
 
   useEffect(() => { load() }, [year, month])
+  // Rezervare creata/modificata din alt loc (ex. „Preia din captură”) -> reincarcare imediata
+  useEffect(() => {
+    const f = () => { load() }
+    window.addEventListener('rezervari:modificate', f)
+    return () => window.removeEventListener('rezervari:modificate', f)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month])
   useEffect(() => {
     void supabase.from('setari').select('cheie,valoare').in('cheie',['checkin_confirmare','checkin_acces']).then(({data})=>{
       const m:Record<string,string>={}

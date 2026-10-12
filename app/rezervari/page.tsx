@@ -84,6 +84,14 @@ export default function RezervariPage() {
 
   useEffect(() => { load() }, [])
 
+  // Rezervare creata/modificata din alt loc (ex. „Preia din captură”) -> reincarcare imediata
+  useEffect(() => {
+    const f = () => { load() }
+    window.addEventListener('rezervari:modificate', f)
+    return () => window.removeEventListener('rezervari:modificate', f)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function load() {
     setLoading(true)
     setLoadError(false)

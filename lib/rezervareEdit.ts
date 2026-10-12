@@ -32,12 +32,15 @@ export function decont(editing: any, apartamente: Apartament[]) {
   return apt ? calculeazaDecont(editing, apt) : null
 }
 
-// Valideaza si salveaza (insert pentru rezervare noua, update altfel). Intoarce mesajul de eroare sau null.
-export async function salveazaRezervare(editing: any, apartamente: Apartament[]): Promise<string | null> {
+export function validareRezervare(editing: any): string | null {
   if (!editing.nume_client) return 'Completează numele clientului'
   if (!editing.data_checkin || !editing.data_checkout) return 'Completează datele'
   if (editing.data_checkout <= editing.data_checkin) return 'Data checkout trebuie să fie după check-in'
+  return null
+}
 
+// Randul gata de scris in baza de date (decontul calculat, numerele curatate, campurile calculate scoase)
+export function payloadRezervare(editing: any, apartamente: Apartament[]) {
   const apt = apartamente.find(a => a.id === editing.apartament_id)
   const c = calculeazaDecont(editing, apt || {})
   const payload = {
@@ -67,7 +70,14 @@ export async function salveazaRezervare(editing: any, apartamente: Apartament[])
     data_plata_proprietar: editing.platit_proprietar ? (editing.data_plata_proprietar || new Date().toISOString().slice(0, 10)) : null,
   }
   for (const k of ['id', 'apartament', 'proprietar', 'nr_nopti', 'created_at', 'updated_at', 'rezervare_id']) delete payload[k]
+  return payload
+}
 
+// Valideaza si salveaza (insert pentru rezervare noua, update altfel). Intoarce mesajul de eroare sau null.
+export async function salveazaRezervare(editing: any, apartamente: Apartament[]): Promise<string | null> {
+  const invalid = validareRezervare(editing)
+  if (invalid) return invalid
+  const payload = payloadRezervare(editing, apartamente)
   const { error } = editing.id
     ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
     : await supabase.from('rezervari').insert(payload)

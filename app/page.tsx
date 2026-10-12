@@ -449,6 +449,14 @@ export default function DashboardPage() {
   useEffect(()=>{loadCiProprietarAzi()},[])
   useEffect(()=>{loadCoProprietarAzi()},[])
 
+  // Rezervare creata/modificata din alt loc (ex. „Preia din captură”) -> reincarcare imediata
+  useEffect(() => {
+    const f = () => { loadData(); loadPropNotif(); loadCiProprietarAzi(); loadCoProprietarAzi() }
+    window.addEventListener('rezervari:modificate', f)
+    return () => window.removeEventListener('rezervari:modificate', f)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function loadCiProprietarAzi(){
     try{
       const today0=aziLocal()
