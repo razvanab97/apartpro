@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase, reorderAptsSubset, persistAptOrdine, getStorageUrl } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
+import FiseCheltuieli from '@/components/FiseCheltuieli'
 import { Modal, FormGroup, FormRow, Toast, useToast, ConnectionError } from '@/components/ui'
 import { Plus, Pencil, X, Check, Trash2, ChevronDown, ChevronUp, AlertCircle, RefreshCw, GripVertical, Paperclip, Link2, Loader2 } from 'lucide-react'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
@@ -208,6 +209,14 @@ export default function CheltuieliPage(){
   const [loadError,setLoadError]=useState(false)
   const [seeding,setSeeding]=useState(false)
   const [apts,setApts]=useState<any[]>([])
+  // Vizualizare: "fise" (fișe pe apartamente, implicit — cerut direct) sau "detaliat" (vizualizarea de până acum,
+  // cu plăți parțiale, mutări, atașare manuală etc.). Se ține minte pe dispozitiv.
+  const [vedere,setVedere]=useState<'fise'|'detaliat'>(()=>{ try{ return localStorage.getItem('chelt_vedere')==='detaliat'?'detaliat':'fise' }catch{ return 'fise' } })
+  useEffect(()=>{ try{ localStorage.setItem('chelt_vedere',vedere) }catch{} },[vedere])
+  const [unelteOpen,setUnelteOpen]=useState(false)
+  // bifele din fișe se salvează direct; vizualizarea detaliată se reîncarcă doar când treci pe ea
+  const dateDetaliatVechi=useRef(false)
+  useEffect(()=>{ if(vedere==='detaliat'&&dateDetaliatVechi.current){ dateDetaliatVechi.current=false; load() } },[vedere]) // eslint-disable-line react-hooks/exhaustive-deps
   const [util,setUtil]=useState<Record<string,Record<string,any>>>({})
   const [extras,setExtras]=useState<Record<string,any[]>>({})
   const [consumabile,setCons]=useState<any[]>([])
@@ -1509,23 +1518,34 @@ export default function CheltuieliPage(){
               <button onClick={()=>{setLuna(now.getMonth()+1);setAn(now.getFullYear())}}
                 style={{padding:'4px 8px',borderRadius:6,border:'1px solid rgba(77,163,255,0.2)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.7)',cursor:'pointer',fontSize:11}}>Azi</button>
             </div>
-            <button onClick={deduplicateCheltuieli} disabled={loading}
-              style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(248,113,113,0.3)',background:'rgba(248,113,113,0.08)',color:'rgba(248,113,113,0.7)',fontSize:11,cursor:'pointer',fontWeight:500}}>
-              🧹 Curăță duplicate
-            </button>
-            <button onClick={sincronizeazaFacturi} disabled={loading}
-              style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.3)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:11,cursor:'pointer',fontWeight:600,display:'flex',alignItems:'center',gap:5}}>
-              📥 Asociază facturi
-            </button>
-            <button onClick={seedDefaults} disabled={seeding||loading}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:8,fontSize:12,border:'1px solid rgba(77,163,255,0.25)',background:'rgba(77,163,255,0.08)',color:'rgba(77,163,255,0.8)',cursor:'pointer'}}>
-              <Plus size={13}/>{seeding?'Se importă...':'Import valori fixe'}
-            </button>
+            <div style={{display:'flex',background:'rgba(14,27,43,0.6)',border:'1px solid rgba(159,215,255,0.15)',borderRadius:9,padding:3,gap:2}}>
+              {([['fise','Fișe'],['detaliat','Detaliat']] as const).map(([k,l])=>(
+                <button key={k} onClick={()=>setVedere(k)}
+                  style={{padding:'5px 12px',borderRadius:7,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:vedere===k?'#7C9BFF':'transparent',color:vedere===k?'#04111F':'rgba(159,215,255,0.6)'}}>{l}</button>
+              ))}
+            </div>
+            <div style={{position:'relative'}}>
+              <button onClick={()=>setUnelteOpen(o=>!o)}
+                style={{padding:'5px 12px',borderRadius:8,border:'1px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',fontSize:14,cursor:'pointer',fontWeight:800,marginRight:44}} title="Unelte: curăță duplicate, asociază facturi, import valori fixe">⋯</button>
+              {unelteOpen&&(
+                <div onMouseLeave={()=>setUnelteOpen(false)} style={{position:'absolute',right:0,top:'calc(100% + 6px)',zIndex:30,background:'#12243F',border:'1px solid rgba(159,215,255,0.22)',borderRadius:12,padding:6,minWidth:220,boxShadow:'0 18px 50px rgba(0,0,0,.5)',display:'flex',flexDirection:'column',gap:2}}>
+                  {[
+                    {l:'🧹 Curăță duplicate',f:deduplicateCheltuieli},
+                    {l:'📥 Asociază facturi',f:sincronizeazaFacturi},
+                    {l:seeding?'Se importă...':'⬇ Import valori fixe',f:seedDefaults},
+                  ].map(x=>(
+                    <button key={x.l} onClick={()=>{setUnelteOpen(false);x.f()}} disabled={loading||seeding}
+                      style={{textAlign:'left',border:'none',background:'transparent',borderRadius:8,padding:'8px 10px',fontSize:13,color:'#E8F4FF',cursor:'pointer'}}>{x.l}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         }
       />
 
       <div style={{flex:1,overflowY:'auto',padding:'0 24px 40px'}}>
+        {vedere==='detaliat'&&<>
         {/* ── progress bar ── */}
         <div style={{...glassCard,padding:'16px 20px',marginBottom:24}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
@@ -1645,8 +1665,13 @@ export default function CheltuieliPage(){
           )
         })()}
 
+        </>}
+
         {loading?<div style={{color:'rgba(159,215,255,0.35)',fontSize:13,padding:'40px 0'}}>Se încarcă...</div>:<>
 
+          {vedere==='fise'
+            ? <FiseCheltuieli an={an} luna={luna} apts={[...abApts,...abExtraApts,...extraApts]} onChanged={()=>{ dateDetaliatVechi.current=true }}/>
+            : <>
           {/* AB Homes */}
           {abApts.length>0&&<>
             <span style={secLbl}>AB Homes — apartamente proprii</span>
@@ -1694,6 +1719,8 @@ export default function CheltuieliPage(){
               </SortableContext>
             </DndContext>
           </>}
+
+            </>}
 
           {/* separator */}
           <div style={{borderTop:'1px solid rgba(100,160,255,0.1)',margin:'20px 0'}}/>
