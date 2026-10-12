@@ -3,6 +3,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
 import UpdatesWidget from '@/components/UpdatesWidget'
+import ComutatorTema from '@/components/ComutatorTema'
 import NotificationBell from '@/components/NotificationBell'
 import PriceCalc from '@/components/PriceCalc'
 import ScanCopyPopup from '@/components/ScanCopyPopup'
@@ -101,7 +102,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
         {/* Nav */}
-        <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 8px 52px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {groups.map(g => {
             const items = navItems.filter(i => i.group === g.key)
             if (!items.length) return null
@@ -122,7 +123,10 @@ export default function Layout({ children }: { children: ReactNode }) {
             )
           })}
         </nav>
-        <div style={{ padding: '10px 14px', borderTop: '1px solid rgba(159,215,255,0.07)', fontSize: 10, color: 'rgba(159,215,255,0.25)' }}>
+        <div style={{ padding: '10px 12px 4px', borderTop: '1px solid rgba(159,215,255,0.07)' }}>
+          <ComutatorTema compact/>
+        </div>
+        <div style={{ padding: '6px 14px 10px', fontSize: 10, color: 'rgba(159,215,255,0.25)' }}>
           Razvan Abunei · Admin
         </div>
       </aside>
@@ -159,6 +163,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             display: 'flex', flexDirection: 'column', gap: 12,
             animation: 'slideIn 0.2s ease',
           }} onClick={e => e.stopPropagation()}>
+            <ComutatorTema/>
             {groups.map(g => {
               const items = navItems.filter(i => i.group === g.key)
               if (!items.length) return null
