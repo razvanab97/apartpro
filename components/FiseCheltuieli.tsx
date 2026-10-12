@@ -148,6 +148,10 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       <button key={f.apt.id} onClick={() => comutaFisa(id)} title="Deschide fișa"
         style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: '#0E1B30', border: `1px solid ${f.depasite ? 'rgba(248,113,113,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: '11px 14px', cursor: 'pointer' }}>
         <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
+        <span style={{ display: 'flex', gap: 10, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+          <span title="plătit luna aceasta" style={{ color: '#4ADE80' }}>✓ {fmt(f.pl)}</span>
+          <span title="rest de plată (inclusiv restanțe)" style={{ color: deplata ? (f.depasite ? '#F87171' : '#E8F4FF') : 'rgba(159,215,255,0.5)' }}>{deplata ? 'rest ' + fmt(deplata) : 'rest 0'}</span>
+        </span>
         <span style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>▸</span>
       </button>
     )
