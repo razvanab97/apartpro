@@ -34,6 +34,11 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const [aratInactive, setAratInactive] = useState(false)
   const [ultim, setUltim] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // fișe închise (rămâne doar numele apartamentului) — ținute minte pe dispozitiv
+  const [inchise, setInchise] = useState<string[]>([])
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem('fise_inchise') || '[]'); if (Array.isArray(v)) setInchise(v.map(String)) } catch {} }, [])
+  const salveazaInchise = (v: string[]) => { setInchise(v); try { localStorage.setItem('fise_inchise', JSON.stringify(v)) } catch {} }
+  const comutaFisa = (id: string) => salveazaInchise(inchise.includes(id) ? inchise.filter(x => x !== id) : [...inchise, id])
 
   async function load() {
     setLoading(true)
@@ -138,9 +143,17 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
 
   const fisa = (f: typeof fise[number]) => {
     const deplata = f.rest_luna + f.sumaRestante
+    const id = String(f.apt.id)
+    if (inchise.includes(id)) return (
+      <button key={f.apt.id} onClick={() => comutaFisa(id)} title="Deschide fișa"
+        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: '#0E1B30', border: `1px solid ${f.depasite ? 'rgba(248,113,113,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: '11px 14px', cursor: 'pointer' }}>
+        <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
+        <span style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>▸</span>
+      </button>
+    )
     return (
       <div key={f.apt.id} style={{ background: '#0E1B30', border: `1px solid ${f.depasite ? 'rgba(248,113,113,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 8, borderBottom: '1px solid rgba(159,215,255,0.1)', marginBottom: 4 }}>
+        <div onClick={() => comutaFisa(id)} title="Închide fișa (rămâne doar numele)" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 8, borderBottom: '1px solid rgba(159,215,255,0.1)', marginBottom: 4, cursor: 'pointer' }}>
           {ring(f.tot ? f.pl / f.tot : (f.lipsa ? 0 : 1))}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</div>
@@ -150,6 +163,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
             <div style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontWeight: 700, fontSize: 15, color: deplata ? (f.depasite ? '#F87171' : '#E8F4FF') : '#4ADE80' }}>{deplata ? fmt(deplata) + ' RON' : '✓'}</div>
             <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.5)' }}>{deplata ? 'de plătit' : f.lipsa ? 'lipsesc facturi' : 'totul plătit'}</div>
           </div>
+          <span style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>▾</span>
         </div>
         {f.sloturi.map(s => s.randuri.length
           ? s.randuri.map((r, k) => randEl(r, etichetaCat(s.cat, r.descriere) + (s.randuri.length > 1 ? ` ${k + 1}/${s.randuri.length}` : ''), f.furn[s.cat] || null, false))
@@ -193,8 +207,16 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
         {kpi('miss', String(lipsa), 'facturi lipsă', '#FCD34D', 'rgba(252,211,77,0.1)')}
         {kpi('ok', fmt(pl) + ' RON', `plătit (${tot ? Math.round(pl / tot * 100) : 0}%)`, '#4ADE80', 'rgba(74,222,128,0.1)')}
       </div>
+      {vizibile.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -4 }}>
+          {(() => { const ids = [...vizibile, ...(aratInactive ? inactiveViz : [])].map(f => String(f.apt.id)); const toateInchise = ids.every(x => inchise.includes(x)); return (
+            <button onClick={() => salveazaInchise(toateInchise ? inchise.filter(x => !ids.includes(x)) : [...new Set([...inchise, ...ids])])}
+              style={{ border: '1px solid rgba(159,215,255,0.18)', background: 'transparent', borderRadius: 10, padding: '6px 12px', fontWeight: 700, fontSize: 12, color: 'rgba(214,228,244,0.7)', cursor: 'pointer' }}>{toateInchise ? '▾ Deschide toate' : '▸ Închide toate'}</button>
+          ) })()}
+        </div>
+      )}
       {vizibile.length === 0 && <div style={{ textAlign: 'center', padding: '24px 0', color: 'rgba(159,215,255,0.45)', fontSize: 13 }}>Niciun apartament pentru filtrul ales.</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14, alignItems: 'start' }}>
         {vizibile.map(fisa)}
       </div>
       {inactiveViz.length > 0 && (
@@ -203,7 +225,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
             <span style={{ flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase', color: 'rgba(159,215,255,0.5)' }}>Apartamente inactive ({inactiveViz.length})</span>
             <button onClick={() => setAratInactive(v => !v)} style={{ border: '1px dashed rgba(159,215,255,0.25)', background: 'transparent', borderRadius: 10, padding: '6px 12px', fontWeight: 700, fontSize: 12, color: 'rgba(214,228,244,0.7)', cursor: 'pointer' }}>{aratInactive ? 'ascunde' : 'arată'}</button>
           </div>
-          {aratInactive && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14 }}>{inactiveViz.map(fisa)}</div>}
+          {aratInactive && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14, alignItems: 'start' }}>{inactiveViz.map(fisa)}</div>}
         </>
       )}
     </div>
