@@ -220,8 +220,21 @@ export async function POST(req: NextRequest) {
     text || '(din imagine)',
   ].join('\n')
 
-  const extractRaw = await callClaude(extractPrompt, imageBase64, imageType)
   let extracted: any = {}
+  if (body.date) {
+    // Cerere redeschisa din Inbox / date corectate de mana (cerut direct: „să putem redeschide și lucra în ea”):
+    // datele vin gata structurate, nu mai citim mesajul cu AI - doar recalculam disponibilitatea si scorurile
+    const d = body.date || {}
+    const pers = Number(d.nr_persoane) || 0
+    extracted = {
+      nome_client: d.nume_client || null, telefon: d.telefon || null, email: null,
+      data_checkin: d.data_checkin || null, data_checkout: d.data_checkout || null,
+      nr_persoane: pers || null, buget_per_noapte: d.buget_per_noapte || null, preferinte: d.preferinte || null,
+      canal: d.canal || 'whatsapp', limba: d.limba || 'ro', urgenta: false, observatii: null,
+      guests_adults: pers || null, guests_children: 0, nights_raw: null, persoane_mentionate: pers > 0,
+    }
+  } else {
+  const extractRaw = await callClaude(extractPrompt, imageBase64, imageType)
   try {
     const parsed = JSON.parse(extractRaw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim())
     // Handle both {booking_data:{...}} and flat {...}
@@ -246,6 +259,7 @@ export async function POST(req: NextRequest) {
       persoane_mentionate: bd.persoane_mentionate === true || bd.persoane_mentionate === 'true',
     }
   } catch {}
+  }
 
   // ── Disponibilitate: TOATE apartamentele, cu motivul cand nu se pot propune ──
   // Rezervarile ramase fara camera in 5starDesk (NEALOCAT) nu blocheaza apartamentul pe care stateau.

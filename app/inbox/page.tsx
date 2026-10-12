@@ -4,7 +4,7 @@ import { supabase, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { Button, Modal, FormGroup, FormRow, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
-import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, ImageIcon, Type, Plus, Trash2, Phone, Mail, Globe } from 'lucide-react'
+import { Sparkles, Upload, X, Copy, Check, MessageCircle, ArrowRight, Loader2, ImageIcon, Type, Plus, Trash2, Phone, Mail, Globe, Pencil, RotateCcw, Save } from 'lucide-react'
 
 /* ── TYPES ── */
 type Result = {
@@ -47,6 +47,22 @@ const CANAL_CFG: Record<string,{label:string;color:string;bg:string}> = {
   telefon: { label:'Telefon',  color:'#FCD34D', bg:'rgba(245,158,11,0.12)' },
   email:   { label:'Email',    color:'#C4B5FD', bg:'rgba(167,139,250,0.12)' },
   direct:  { label:'Direct',   color:'#94A3B8', bg:'rgba(148,163,184,0.1)' },
+}
+
+// Mesajul cererii tine: textul clientului + (optional) bugetul + raspunsurile trimise, in ordine.
+// Tabela n-are coloana de buget - il pastram ca linie „💰 Buget/noapte: …” si il citim inapoi la redeschidere.
+const SEP_RASPUNS = '\n--- Răspuns trimis ---\n'
+const RE_BUGET = /\n?💰 Buget\/noapte: ([^\n]*)/
+function despartMesaj(m?: string | null) {
+  let t = String(m || '')
+  const b = t.match(RE_BUGET); const buget = b ? b[1].trim() : ''
+  t = t.replace(RE_BUGET, '')
+  const i = t.indexOf(SEP_RASPUNS)
+  const original = (i >= 0 ? t.slice(0, i) : t).trim()
+  return { original: original === '[din imagine]' ? '' : original, istoric: i >= 0 ? t.slice(i) : '', buget }
+}
+function compuneMesaj(original: string, buget: string, istoric: string, raspunsNou?: string) {
+  return [original.trim() || '[din imagine]', buget ? '\n💰 Buget/noapte: ' + buget : '', istoric, raspunsNou ? SEP_RASPUNS + raspunsNou : ''].join('')
 }
 
 const emptyEdit = { nume_client:'', telefon:'', canal:'whatsapp', apartament_id:'', data_checkin:'', data_checkout:'', nr_persoane:2, mesaj:'', status:'noua' as const, prioritate:'normala' as const }
@@ -103,6 +119,12 @@ export default function InboxPage() {
   const [primCopiat, setPrimCopiat] = useState(false)
   // cererea (posibilul client) salvata automat la analiza - "Salveaza in Inbox" o actualizeaza, nu dubleaza
   const [cerereId, setCerereId] = useState<string|null>(null)
+  // cerere redeschisa din lista: statusul ei, raspunsurile trimise deja si datele editabile din panou
+  const [cerereStatus, setCerereStatus] = useState<Cerere['status']|null>(null)
+  const [istoric, setIstoric] = useState('')
+  const [dEdit, setDEdit] = useState<{ nume_client: string; telefon: string; data_checkin: string; data_checkout: string; nr_persoane: string; buget_per_noapte: string }>({ nume_client:'', telefon:'', data_checkin:'', data_checkout:'', nr_persoane:'', buget_per_noapte:'' })
+  const [recalc, setRecalc] = useState(false)
+  const topRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Inbox state */
@@ -191,7 +213,7 @@ export default function InboxPage() {
 
   async function analyze() {
     if (!text.trim() && !image) { show('error','Adaugă un mesaj sau o imagine'); return }
-    setAnalyzing(true); setResult(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null)
+    setAnalyzing(true); setResult(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null); setCerereStatus(null); setIstoric('')
     try {
       const res = await fetch('/api/smart-booking', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -199,7 +221,7 @@ export default function InboxPage() {
       })
       const data = await res.json()
       if (data.ok) {
-        setResult(data.result)
+        setResult(data.result); umpleDEdit(data.result)
         setPrimText(primRaspuns(data.result))
         salveazaPosibilClient(data.result)
         // preselectat: cea mai potrivita locatie libera, dupa scorul AI
@@ -209,6 +231,47 @@ export default function InboxPage() {
       else show('error','Eroare AI')
     } catch(e:any) { show('error', e.message) }
     setAnalyzing(false)
+  }
+
+  function umpleDEdit(r: Result) {
+    setDEdit({ nume_client: r.nume_client || '', telefon: r.telefon || '', data_checkin: r.data_checkin || '', data_checkout: r.data_checkout || '',
+      nr_persoane: r.persoane_mentionate === false ? '' : String(r.nr_persoane || ''), buget_per_noapte: r.buget_per_noapte ? String(r.buget_per_noapte) : '' })
+  }
+
+  // Calculeaza locatiile pe datele date (fara AI pe mesaj): la redeschidere si la „Recalculează”.
+  // Bifele si preturile tale raman pe locatiile care sunt in continuare libere.
+  async function analizeazaDate(d: typeof dEdit, pastreaza?: Record<string, string>, extra?: { text?: string; canal?: string }) {
+    if (d.data_checkin && d.data_checkout && d.data_checkout <= d.data_checkin) { show('error', 'Check-out-ul trebuie să fie după check-in'); return null }
+    setRecalc(true)
+    try {
+      const res = await fetch('/api/smart-booking', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text: extra?.text ?? text, date: { ...d, canal: extra?.canal || result?.canal, limba: result?.limba } }) })
+      const data = await res.json()
+      if (!data.ok) { show('error', data.error || 'Eroare la calcul'); return null }
+      const r: Result = data.result
+      setResult(r); umpleDEdit(r)
+      const libere = new Set((r.apartamente || []).filter(a => a.disponibil).map(a => a.id))
+      const pastrate = Object.fromEntries(Object.entries(pastreaza || {}).filter(([id]) => libere.has(id)))
+      const top = (r.apartamente || []).find(a => a.disponibil)
+      setAlese(Object.keys(pastrate).length ? pastrate : top ? { [top.id]: String(top.pret_noapte || top.pret_direct_recent || '') } : {})
+      return r
+    } catch (e: any) { show('error', e.message); return null }
+    finally { setRecalc(false) }
+  }
+
+  // Redeschide o cerere din lista in panoul de sus (cerut direct): datele ei, locatiile libere acum, apoi
+  // alegi ce propui si generezi raspunsul; la salvare se actualizeaza aceeasi cerere, cu istoricul pastrat
+  async function redeschide(c: Cerere) {
+    const m = despartMesaj(c.mesaj)
+    setMode('text'); setImage(null); setText(m.original); setIstoric(m.istoric)
+    setCerereId(c.id); setCerereStatus(c.status); setRaspuns(''); setPrimText(''); setAratOcupate(false)
+    topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); window.scrollTo({ top: 0, behavior: 'smooth' })
+    const r = await analizeazaDate({ nume_client: c.nume_client === 'Client necunoscut' ? '' : c.nume_client, telefon: c.telefon || '', data_checkin: c.data_checkin || '', data_checkout: c.data_checkout || '',
+      nr_persoane: c.nr_persoane ? String(c.nr_persoane) : '', buget_per_noapte: m.buget }, undefined, { text: m.original, canal: c.canal })
+    if (r && c.status === 'noua') setPrimText(primRaspuns(r))
+  }
+
+  function inchidePanou() {
+    setResult(null); setText(''); setImage(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null); setCerereStatus(null); setIstoric('')
   }
 
   async function genereazaRaspuns() {
@@ -234,25 +297,27 @@ export default function InboxPage() {
     const cif = cifreTel(r.telefon)
     if (cif.length < 9) return
     const de30 = new Date(Date.now() - 30 * 86400000).toISOString()
-    const { data: vechi } = await supabase.from('cereri_rezervare').select('id,telefon,status').not('telefon','is',null).gte('created_at', de30)
+    const { data: vechi } = await supabase.from('cereri_rezervare').select('id,telefon,status,mesaj').not('telefon','is',null).gte('created_at', de30)
     const existent = (vechi || []).find((c: any) => cifreTel(c.telefon) === cif)
+    const ant = despartMesaj(existent?.mesaj)
     const payload: any = {
       nume_client: r.nume_client || 'Client necunoscut', telefon: r.telefon, canal: r.canal || 'whatsapp',
       data_checkin: r.data_checkin || null, data_checkout: r.data_checkout || null,
       nr_persoane: r.persoane_mentionate ? (r.nr_persoane || null) : null,
-      mesaj: text || '[din imagine]',
+      // pentru un client deja cunoscut pastram raspunsurile trimise si bugetul de data trecuta
+      mesaj: compuneMesaj(text, r.buget_per_noapte ? String(r.buget_per_noapte) : ant.buget, ant.istoric),
     }
     const { data: rez, error } = existent
       ? await supabase.from('cereri_rezervare').update(payload).eq('id', existent.id).select('id').single()
       : await supabase.from('cereri_rezervare').insert({ ...payload, status: 'noua', prioritate: r.urgenta ? 'urgenta' : 'normala' }).select('id').single()
     if (error) return
-    setCerereId(rez?.id || existent?.id || null)
+    setCerereId(rez?.id || existent?.id || null); setCerereStatus(existent?.status || 'noua'); setIstoric(ant.istoric)
     show('success', existent ? '📇 Client deja cunoscut — cererea lui a fost actualizată' : '📇 Număr salvat ca posibil client în Inbox')
     loadData()
   }
 
   async function primTrimis() {
-    if (cerereId) await supabase.from('cereri_rezervare').update({ status: 'contactat' }).eq('id', cerereId)
+    if (cerereId) { await supabase.from('cereri_rezervare').update({ status: 'contactat' }).eq('id', cerereId); setCerereStatus('contactat') }
     loadData()
   }
 
@@ -260,23 +325,25 @@ export default function InboxPage() {
     if (!result) return
     const aleasa = (result.apartamente || []).find(a => alese[a.id] !== undefined)
     const apt = aleasa ? { id: aleasa.id } : apts.find(a => a.nota === result.apartamente_recomandate?.[0]?.nota)
-    const payload = {
-      nume_client: result.nume_client || 'Client necunoscut',
-      telefon: result.telefon || null,
+    // datele din panou (editabile) au prioritate; statusul unei cereri redeschise nu se strică
+    const payload: any = {
+      nume_client: dEdit.nume_client.trim() || result.nume_client || 'Client necunoscut',
+      telefon: dEdit.telefon.trim() || result.telefon || null,
       canal: result.canal || 'direct',
       apartament_id: apt?.id || null,
-      data_checkin: result.data_checkin || null,
-      data_checkout: result.data_checkout || null,
-      nr_persoane: result.nr_persoane || null,
-      mesaj: [text || '[din imagine]', raspuns ? '\n--- Răspuns trimis ---\n' + raspuns : ''].join(''),
-      status: raspuns ? 'contactat' : 'noua', prioritate: result.urgenta ? 'urgenta' : 'normala',
+      data_checkin: dEdit.data_checkin || result.data_checkin || null,
+      data_checkout: dEdit.data_checkout || result.data_checkout || null,
+      nr_persoane: Number(dEdit.nr_persoane) || null,
+      mesaj: compuneMesaj(text, dEdit.buget_per_noapte.trim(), istoric, raspuns),
+      status: raspuns ? (cerereStatus === 'confirmat' ? 'confirmat' : 'contactat') : (cerereStatus || 'noua'),
     }
+    if (!cerereId) payload.prioritate = result.urgenta ? 'urgenta' : 'normala'
     const { error } = cerereId
       ? await supabase.from('cereri_rezervare').update(payload).eq('id', cerereId)
       : await supabase.from('cereri_rezervare').insert(payload)
     if (error) { show('error', error.message); return }
-    show('success','Cerere salvată în inbox! ✓')
-    loadData(); setResult(null); setText(''); setImage(null); setAlese({}); setRaspuns(''); setPrimText(''); setCerereId(null)
+    show('success', cerereId ? 'Cererea a fost actualizată ✓' : 'Cerere salvată în inbox! ✓')
+    loadData(); inchidePanou()
   }
 
   function copyRaspuns() {
@@ -294,7 +361,8 @@ export default function InboxPage() {
       nume_client: editing.nume_client, telefon: editing.telefon || null,
       canal: editing.canal || 'whatsapp', apartament_id: editing.apartament_id || null,
       data_checkin: editing.data_checkin || null, data_checkout: editing.data_checkout || null,
-      nr_persoane: editing.nr_persoane || null, mesaj: editing.mesaj || null,
+      nr_persoane: editing.nr_persoane || null,
+      mesaj: editing.id ? compuneMesaj(editing.mesajOriginal || '', String(editing.buget || '').trim(), editing.istoric || '') : (editing.mesajOriginal || editing.buget ? compuneMesaj(editing.mesajOriginal || '', String(editing.buget || '').trim(), '') : null),
       status: editing.status || 'noua', prioritate: editing.prioritate || 'normala',
     }
     const { error } = editing.id
@@ -347,7 +415,7 @@ export default function InboxPage() {
       <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
 
         {/* ── TOP: SMART BOOKING ── */}
-        <div style={{padding:'16px 20px 0',display:'flex',flexDirection:'column',gap:12,borderBottom:'1px solid rgba(159,215,255,0.08)',paddingBottom:16,maxHeight:result?'75vh':undefined,overflowY:'auto'}}>
+        <div ref={topRef} style={{padding:'16px 20px 0',display:'flex',flexDirection:'column',gap:12,borderBottom:'1px solid rgba(159,215,255,0.08)',paddingBottom:16,maxHeight:result?'75vh':undefined,overflowY:'auto'}}>
 
           {/* Mode tabs */}
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -397,34 +465,64 @@ export default function InboxPage() {
           </div>
 
           {/* Result */}
+          {(result || (recalc && cerereId)) && cerereId && cerereStatus && (
+            <div style={{...panel,padding:'10px 14px',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',borderColor:'rgba(124,155,255,0.4)',background:'rgba(124,155,255,0.08)'}}>
+              <RotateCcw size={14} color="#7C9BFF"/>
+              <div style={{flex:1,minWidth:180,fontSize:12,color:'rgba(214,228,244,0.85)'}}>
+                Lucrezi pe cererea lui <b style={{color:'#FFFFFF'}}>{dEdit.nume_client || 'Client necunoscut'}</b>
+                <span style={{marginLeft:8,fontSize:10,padding:'2px 7px',borderRadius:20,background:STATUS_CFG[cerereStatus].bg,color:STATUS_CFG[cerereStatus].color}}>{STATUS_CFG[cerereStatus].icon} {STATUS_CFG[cerereStatus].label}</span>
+                {istoric && <span style={{marginLeft:8,fontSize:11,color:'rgba(159,215,255,0.5)'}}>· {istoric.split(SEP_RASPUNS).length - 1} răspuns(uri) trimise deja</span>}
+              </div>
+              <button onClick={inchidePanou} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:6,border:'1px solid rgba(159,215,255,0.2)',background:'transparent',color:'rgba(214,228,244,0.7)',fontSize:11,cursor:'pointer'}}><X size={11}/> Închide</button>
+            </div>
+          )}
+          {!result && recalc && <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'rgba(159,215,255,0.6)'}}><Loader2 size={14} style={{animation:'spin 1s linear infinite'}}/> Caut locațiile libere pe datele cererii...</div>}
           {result && (
             <div style={{display:'flex',flexDirection:'column',gap:10,animation:'fadeIn 0.2s ease'}}>
 
               {/* Availability + extracted data */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:10}}>
 
-                {/* Left: extracted */}
+                {/* Left: date editabile (cerut direct: „să le putem edita și să vedem ce putem propune după primul pas”) */}
                 <div style={{...panel,padding:14}}>
-                  <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'0.6px',marginBottom:10}}>Date extrase</div>
-                  <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                    {[
-                      {l:'Client', v:result.nume_client, c:'#FFFFFF'},
-                      {l:'Telefon', v:result.telefon, c:'#4ADE80'},
-                      {l:'Check-in', v:result.data_checkin, c:'#FCD34D'},
-                      {l:'Check-out', v:result.data_checkout, c:'#FCD34D'},
-                      {l:'Nopți', v:result.nr_nopti ? result.nr_nopti+'n' : null, c:'rgba(214,228,244,0.7)'},
-                      {l:'Adulți', v:result.persoane_mentionate===false ? 'nespecificat' : result.guests_adults ? result.guests_adults+' ad.' : null, c:result.persoane_mentionate===false?'#FCD34D':'rgba(214,228,244,0.7)'},
-                      {l:'Copii', v:result.guests_children && result.guests_children>0 ? result.guests_children+' cop.' : null, c:'#FCD34D'},
-                      {l:'Buget/n', v:result.buget_per_noapte, c:'#4ADE80'},
-                      {l:'Canal', v:result.canal, c:'rgba(159,215,255,0.6)'},
-                    ].filter(i=>i.v).map(i=>(
-                      <div key={i.l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3px 0',borderBottom:'1px solid rgba(159,215,255,0.04)'}}>
-                        <span style={{fontSize:10,color:'rgba(159,215,255,0.35)'}}>{i.l}</span>
-                        <span style={{fontSize:12,fontWeight:500,color:i.c}}>{i.v as string}</span>
-                      </div>
-                    ))}
-                    {result.preferinte && <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',marginTop:4,fontStyle:'italic'}}>"{result.preferinte}"</div>}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:10}}>
+                    <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'0.6px'}}>Datele cererii (le poți corecta)</div>
+                    <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{result.nr_nopti ? result.nr_nopti + ' nopți · ' : ''}{result.canal || ''}</span>
                   </div>
+                  {(() => {
+                    const camp = (k: keyof typeof dEdit, l: string, tip = 'text', ph = '') => (
+                      <label style={{display:'flex',flexDirection:'column',gap:3,fontSize:10,color:'rgba(159,215,255,0.45)'}}>{l}
+                        <input type={tip} value={dEdit[k]} placeholder={ph} onChange={e=>setDEdit(x=>({...x,[k]:e.target.value}))}
+                          onKeyDown={e=>{ if (e.key==='Enter') analizeazaDate(dEdit, alese) }}
+                          style={{padding:'6px 8px',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'#FFFFFF',fontSize:12,outline:'none',minWidth:0}}/>
+                      </label>
+                    )
+                    const schimbat = dEdit.data_checkin !== (result.data_checkin || '') || dEdit.data_checkout !== (result.data_checkout || '') ||
+                      dEdit.nr_persoane !== (result.persoane_mentionate === false ? '' : String(result.nr_persoane || '')) || dEdit.buget_per_noapte !== (result.buget_per_noapte ? String(result.buget_per_noapte) : '')
+                    return (
+                      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                          {camp('nume_client','Client','text','Client necunoscut')}
+                          {camp('telefon','Telefon','tel','+40...')}
+                          {camp('data_checkin','Check-in','date')}
+                          {camp('data_checkout','Check-out','date')}
+                          {camp('nr_persoane','Persoane','number','nespecificat')}
+                          {camp('buget_per_noapte','Buget / noapte','text','ex. 250 lei')}
+                        </div>
+                        {result.preferinte && <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',fontStyle:'italic'}}>"{result.preferinte}"</div>}
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                          <button onClick={()=>analizeazaDate(dEdit, alese)} disabled={recalc}
+                            style={{display:'flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,border:'none',background:schimbat?'rgba(77,163,255,0.85)':'rgba(77,163,255,0.15)',color:schimbat?'#FFFFFF':'#7BC8FF',fontSize:11.5,fontWeight:600,cursor:recalc?'wait':'pointer'}}>
+                            {recalc ? <Loader2 size={12} style={{animation:'spin 1s linear infinite'}}/> : <RotateCcw size={12}/>} Recalculează locațiile
+                          </button>
+                          <button onClick={saveFromResult} style={{display:'flex',alignItems:'center',gap:5,padding:'6px 12px',borderRadius:7,border:'1px solid rgba(34,197,94,0.3)',background:'rgba(34,197,94,0.1)',color:'#4ADE80',fontSize:11.5,fontWeight:600,cursor:'pointer'}}>
+                            <Save size={12}/> {cerereId ? 'Salvează cererea' : 'Salvează în Inbox'}
+                          </button>
+                          {schimbat && !recalc && <span style={{fontSize:10.5,color:'#FCD34D'}}>Ai modificat datele — recalculează ca să vezi locațiile libere.</span>}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* Right: disponibilitate */}
@@ -604,13 +702,19 @@ export default function InboxPage() {
                       {apt && <span>🏠 {apt.nota?`[${apt.nota}] `:''}{apt.nume}</span>}
                       {c.data_checkin && <span>📅 {c.data_checkin} → {c.data_checkout}</span>}
                       {c.nr_persoane && <span>👥 {c.nr_persoane} pers.</span>}
+                      {despartMesaj(c.mesaj).buget && <span>💰 {despartMesaj(c.mesaj).buget}/noapte</span>}
                       {c.telefon && (
                         <a href={`https://wa.me/${c.telefon.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener" style={{color:'#4ADE80',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3}}>
                           <MessageCircle size={10}/> {c.telefon}
                         </a>
                       )}
                     </div>
-                    {c.mesaj && <div style={{marginTop:5,fontSize:11,color:'rgba(159,215,255,0.35)',fontStyle:'italic',borderLeft:'2px solid rgba(159,215,255,0.08)',paddingLeft:7}}>"{c.mesaj.slice(0,120)}{c.mesaj.length>120?'...':''}"</div>}
+                    {(() => { const m = despartMesaj(c.mesaj); const nr = m.istoric ? m.istoric.split(SEP_RASPUNS).length - 1 : 0; return (m.original || nr > 0) && (
+                      <div style={{marginTop:5,fontSize:11,color:'rgba(159,215,255,0.35)',fontStyle:'italic',borderLeft:'2px solid rgba(159,215,255,0.08)',paddingLeft:7}}>
+                        {m.original ? `"${m.original.slice(0,120)}${m.original.length>120?'...':''}"` : '[din imagine]'}
+                        {nr > 0 && <span style={{fontStyle:'normal',marginLeft:6,color:'rgba(77,163,255,0.7)'}}>· {nr} răspuns{nr>1?'uri':''} trimis{nr>1?'e':''}</span>}
+                      </div>
+                    ) })()}
                   </div>
                   <div style={{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
                     {(Object.keys(STATUS_CFG) as Cerere['status'][]).filter(s=>s!==c.status).map(s=>(
@@ -619,7 +723,8 @@ export default function InboxPage() {
                     {c.status!=='confirmat'&&c.status!=='pierdut'&&(
                       <Button variant="secondary" size="sm" icon={<ArrowRight size={11}/>} onClick={()=>convertToRez(c)}>→ Rez.</Button>
                     )}
-                    <Button variant="ghost" size="sm" icon={<Plus size={11}/>} onClick={()=>{setEditing({...c});setEditOpen(true)}}/>
+                    <Button variant="secondary" size="sm" icon={<RotateCcw size={11}/>} onClick={()=>redeschide(c)} title="Redeschide sus: locațiile libere acum, propuneri și răspuns">Redeschide</Button>
+                    <Button variant="ghost" size="sm" icon={<Pencil size={11}/>} onClick={()=>{ const m = despartMesaj(c.mesaj); setEditing({...c, mesajOriginal: m.original, buget: m.buget, istoric: m.istoric}); setEditOpen(true) }} title="Editează cererea">Editează</Button>
                     <Button variant="ghost" size="sm" icon={<Trash2 size={11}/>} onClick={()=>setDeleteId(c.id)}/>
                   </div>
                 </div>
@@ -665,7 +770,13 @@ export default function InboxPage() {
             </select>
           </FormGroup>
         </FormRow>
-        <FormGroup><label>Mesaj / Notă</label><textarea value={editing.mesaj||''} onChange={e=>setEditing({...editing,mesaj:e.target.value})} rows={2} placeholder="Ce a cerut clientul..."/></FormGroup>
+        <FormGroup><label>Buget / noapte</label><input value={editing.buget||''} onChange={e=>setEditing({...editing,buget:e.target.value})} placeholder="ex. 250 lei"/></FormGroup>
+        <FormGroup><label>Mesaj / Notă</label><textarea value={editing.mesajOriginal||''} onChange={e=>setEditing({...editing,mesajOriginal:e.target.value})} rows={3} placeholder="Ce a cerut clientul..."/></FormGroup>
+        {editing.istoric && (
+          <FormGroup><label>Răspunsuri trimise ({editing.istoric.split(SEP_RASPUNS).length - 1})</label>
+            <div style={{maxHeight:140,overflowY:'auto',whiteSpace:'pre-wrap',fontSize:11.5,lineHeight:1.5,padding:'8px 10px',borderRadius:8,background:'rgba(14,27,43,0.4)',color:'rgba(214,228,244,0.75)'}}>{editing.istoric.split(SEP_RASPUNS).filter(Boolean).map((x: string) => x.trim()).join('\n\n— — —\n\n')}</div>
+          </FormGroup>
+        )}
         <div style={{display:'flex',gap:10}}>
           <Button variant="primary" onClick={saveCerere} loading={saving} style={{flex:1}}>Salvează</Button>
           <Button variant="secondary" onClick={()=>setEditOpen(false)} style={{flex:1}}>Anulează</Button>
