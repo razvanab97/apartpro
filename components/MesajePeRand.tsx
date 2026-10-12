@@ -34,6 +34,8 @@ export default function MesajePeRand(p: {
   onTrimis: (t: MesajRand) => void
   onNuAzi: (id: string) => void
   onAnuleazaNuAzi: (id: string) => void
+  trimiseOrdine?: string[]                 // mesajele trimise azi, in ordinea trimiterii (din baza)
+  onNetrimis?: (id: string) => void
   onUpdate: (id: string, patch: { telefon?: string; mesaj?: string }) => void
   onTraduce: (t: MesajRand) => void
   onSalveazaTelefon: (t: MesajRand) => void
@@ -76,8 +78,14 @@ export default function MesajePeRand(p: {
     setRevId(null); setToast(null)
     setPoz(x => ({ ...x, [cheiePoz]: (idxCoada + d + coada.length) % coada.length }))
   }
-  const idxInapoi = revazut ? istoric.lastIndexOf(revazut.id) - 1 : istoric.length - 1
-  const tintaInapoi = idxInapoi >= 0 ? p.tasks.find(t => t.id === istoric[idxInapoi]) || null : null
+  // Istoricul = mesajele trimise azi (din baza, deci si dupa inchidere/reincarcare) + ce ai amanat acum;
+  // ordinea = cand s-a trimis/amanat, ultimul la final
+  const istoricEf = (() => {
+    const tot = [...(p.trimiseOrdine || []), ...istoric]
+    return tot.filter((id, i) => tot.lastIndexOf(id) === i && p.tasks.some(t => t.id === id))
+  })()
+  const idxInapoi = revazut ? istoricEf.lastIndexOf(revazut.id) - 1 : istoricEf.length - 1
+  const tintaInapoi = idxInapoi >= 0 ? p.tasks.find(t => t.id === istoricEf[idxInapoi]) || null : null
   function inapoi() {
     if (!tintaInapoi) return
     setRevId(tintaInapoi.id); setFila(filaMesaj(tintaInapoi.categorie)); setToast(null)
@@ -181,7 +189,7 @@ export default function MesajePeRand(p: {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {tintaInapoi && (
                 <button onClick={inapoi} style={{ border: '1px solid rgba(159,215,255,0.25)', background: '#0E1B30', color: '#E8F4FF', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
-                  ↩ Înapoi la ultimul mesaj · {tintaInapoi.nume}
+                  ↩ {tintaInapoi.trimis ? 'Ultimul trimis' : 'Ultimul mesaj'} · {tintaInapoi.nume}
                 </button>
               )}
               {revazut && <button onClick={() => setRevId(null)} style={{ ...btn, marginLeft: 'auto', color: '#7BC8FF' }}>Coada →</button>}
@@ -276,7 +284,17 @@ export default function MesajePeRand(p: {
                 <button onClick={() => p.onTraduce(curent)} disabled={p.traducandId === curent.id} style={btn}>{p.traducandId === curent.id ? 'Traduc…' : '🇬🇧 Traduce'}</button>
                 <button onClick={nuAzi} style={{ ...btn, marginLeft: 'auto' }}>Nu azi</button>
               </div>
-              {revazut && <div style={{ fontSize: 12, fontWeight: 700, textAlign: 'center', color: revazut.trimis ? '#4ADE80' : '#FCD34D' }}>{revazut.trimis ? '✓ Mesaj deja trimis — îl poți retrimite' : 'Mesaj amânat — îl poți trimite acum'}</div>}
+              {revazut && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: revazut.trimis ? '#4ADE80' : '#FCD34D' }}>{revazut.trimis ? '✓ Mesaj deja trimis — îl poți retrimite' : 'Mesaj amânat — îl poți trimite acum'}</span>
+                  {revazut.trimis && p.onNetrimis && (
+                    <button onClick={() => { p.onNetrimis!(revazut.id); setRevId(null); setToast({ msg: `${revazut.nume} — înapoi în coadă, netrimis` }) }}
+                      style={{ border: '1px solid rgba(252,211,77,0.45)', background: 'rgba(252,211,77,0.1)', color: '#FCD34D', borderRadius: 8, padding: '5px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}>
+                      ↺ Marchează netrimis
+                    </button>
+                  )}
+                </div>
+              )}
               {!revazut && coada.length > 1 && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <button onClick={() => mergiLa(-1)} style={{ border: '1px solid rgba(159,215,255,0.22)', background: 'transparent', color: '#E8F4FF', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}>‹ Anterior</button>

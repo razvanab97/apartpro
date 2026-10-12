@@ -227,10 +227,13 @@ export default function DashboardPage() {
   const citesteLocal=(k:string)=>{ try{ const raw=localStorage.getItem(k+'_'+ziLocala())||localStorage.getItem(k+'_'+aziLocal()); return raw?new Set<string>(JSON.parse(raw)):new Set<string>() }catch{ return new Set<string>() } }
   const [mesajeSentIds,setMesajeSentIds]=useState<Set<string>>(()=>citesteLocal('mesaje_trimise'))
   const [mesajeAnulateIds,setMesajeAnulateIds]=useState<Set<string>>(()=>citesteLocal('mesaje_anulate'))
+  // ora la care s-a trimis fiecare mesaj azi (din baza) - pentru "↩ Inapoi la ultimul trimis" chiar si dupa
+  // inchiderea ferestrei / reincarcare, pe orice dispozitiv
+  const [trimiseLa,setTrimiseLa]=useState<Record<string,string>>({})
   function aplicaStare(stare:Record<string,{s:string;la?:string}>){
-    const t=new Set<string>(), sa=new Set<string>()
-    for(const [id,v] of Object.entries(stare)){ if(v?.s==='t') t.add(id); else if(v?.s==='s') sa.add(id) }
-    setMesajeSentIds(t); setMesajeAnulateIds(sa)
+    const t=new Set<string>(), sa=new Set<string>(), la:Record<string,string>={}
+    for(const [id,v] of Object.entries(stare)){ if(v?.s==='t'){ t.add(id); la[id]=v.la||'' } else if(v?.s==='s') sa.add(id) }
+    setMesajeSentIds(t); setMesajeAnulateIds(sa); setTrimiseLa(la)
     try{ localStorage.setItem('mesaje_trimise_'+ziLocala(),JSON.stringify([...t])); localStorage.setItem('mesaje_anulate_'+ziLocala(),JSON.stringify([...sa])) }catch{}
   }
   async function citesteStareMesaje(): Promise<Record<string,{s:string;la?:string}>|null>{
@@ -273,7 +276,14 @@ export default function DashboardPage() {
   useEffect(()=>{ if(mesajeListOpen) sincronizeazaStareMesaje() },[mesajeListOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   function marcheazaMesajTrimis(id:string){
     setMesajeSentIds(prev=>{ const n=new Set(prev); n.add(id); return n })
+    setTrimiseLa(prev=>({...prev,[id]:new Date().toISOString()}))
     salveazaStareMesaj(id,'t')
+  }
+  // "Marcheaza netrimis" - un mesaj trimis gresit revine in coada, ca sa-l corectezi si sa-l retrimiti
+  function marcheazaNetrimis(id:string){
+    setMesajeSentIds(prev=>{ const n=new Set(prev); n.delete(id); return n })
+    setTrimiseLa(prev=>{ const c={...prev}; delete c[id]; return c })
+    salveazaStareMesaj(id,null)
   }
   // Ascunde mesajul din lista de azi (nu se sterge nimic din rezervare/proprietar)
   function anuleazaMesaj(id:string){
@@ -1509,6 +1519,8 @@ export default function DashboardPage() {
           onTrimis={t=>trimiteMesajTask(mesajeTasks.find(x=>x.id===t.id)!)}
           onNuAzi={anuleazaMesaj}
           onAnuleazaNuAzi={restaureazaMesaj}
+          trimiseOrdine={Object.entries(trimiseLa).sort((a,b)=>a[1].localeCompare(b[1])).map(x=>x[0])}
+          onNetrimis={marcheazaNetrimis}
           onUpdate={updateMesajOverride}
           onTraduce={t=>traduceMesaj(t)}
           onSalveazaTelefon={t=>salveazaTelefonRezervare(mesajeTasks.find(x=>x.id===t.id)!)}
