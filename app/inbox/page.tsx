@@ -490,24 +490,27 @@ export default function InboxPage() {
                     <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>{result.nr_nopti ? result.nr_nopti + ' nopți · ' : ''}{result.canal || ''}</span>
                   </div>
                   {(() => {
-                    const camp = (k: keyof typeof dEdit, l: string, tip = 'text', ph = '') => (
-                      <label style={{display:'flex',flexDirection:'column',gap:3,fontSize:10,color:'rgba(159,215,255,0.45)'}}>{l}
-                        <input type={tip} value={dEdit[k]} placeholder={ph} onChange={e=>setDEdit(x=>({...x,[k]:e.target.value}))}
+                    // datele si nr. de oaspeti - mari si colorate, ca sa se vada dintr-o privire (cerut direct)
+                    const camp = (k: keyof typeof dEdit, l: string, tip = 'text', ph = '', accent?: string) => (
+                      <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:accent?11:10,fontWeight:accent?700:400,letterSpacing:accent?'.04em':undefined,textTransform:accent?'uppercase':undefined,color:accent||'rgba(159,215,255,0.45)'}}>{l}
+                        <input className={accent?'camp-mare':undefined} type={tip} value={dEdit[k]} placeholder={ph} onChange={e=>setDEdit(x=>({...x,[k]:e.target.value}))}
                           onKeyDown={e=>{ if (e.key==='Enter') analizeazaDate(dEdit, alese) }}
-                          style={{padding:'6px 8px',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'#FFFFFF',fontSize:12,outline:'none',minWidth:0}}/>
+                          style={accent
+                            ? {padding:'9px 12px',background:'rgba(20,38,65,0.8)',border:`2px solid ${accent}`,borderRadius:9,color:accent,fontSize:19,fontWeight:800,fontFamily:'ui-monospace,Menlo,monospace',outline:'none',minWidth:0}
+                            : {padding:'6px 8px',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:6,color:'#FFFFFF',fontSize:12,outline:'none',minWidth:0}}/>
                       </label>
                     )
                     const schimbat = dEdit.data_checkin !== (result.data_checkin || '') || dEdit.data_checkout !== (result.data_checkout || '') ||
                       dEdit.nr_persoane !== (result.persoane_mentionate === false ? '' : String(result.nr_persoane || '')) || dEdit.buget_per_noapte !== (result.buget_per_noapte ? String(result.buget_per_noapte) : '')
                     return (
                       <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))',gap:10}}>
+                          {camp('data_checkin','📅 Check-in','date','','#FCD34D')}
+                          {camp('data_checkout','📅 Check-out' + (result.nr_nopti ? ` · ${result.nr_nopti} nopți` : ''),'date','','#FCD34D')}
+                          {camp('nr_persoane','👥 Oaspeți','number','?','#7BC8FF')}
+                          {camp('buget_per_noapte','💰 Buget / noapte','text','ex. 250 lei','#4ADE80')}
                           {camp('nume_client','Client','text','Client necunoscut')}
                           {camp('telefon','Telefon','tel','+40...')}
-                          {camp('data_checkin','Check-in','date')}
-                          {camp('data_checkout','Check-out','date')}
-                          {camp('nr_persoane','Persoane','number','nespecificat')}
-                          {camp('buget_per_noapte','Buget / noapte','text','ex. 250 lei')}
                         </div>
                         {result.preferinte && <div style={{fontSize:11,color:'rgba(159,215,255,0.4)',fontStyle:'italic'}}>"{result.preferinte}"</div>}
                         <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
@@ -698,10 +701,10 @@ export default function InboxPage() {
                       <span style={{display:'inline-flex',alignItems:'center',gap:3,fontSize:10,padding:'2px 7px',borderRadius:20,background:cc.bg,color:cc.color,border:`1px solid ${cc.color}30`}}>{cc.label}</span>
                       <span style={{fontSize:10,padding:'2px 7px',borderRadius:20,background:sc.bg,color:sc.color,border:`1px solid ${sc.color}30`}}>{sc.icon} {sc.label}</span>
                     </div>
-                    <div style={{display:'flex',gap:10,flexWrap:'wrap',fontSize:11,color:'rgba(159,215,255,0.5)'}}>
+                    <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',fontSize:11,color:'rgba(159,215,255,0.5)'}}>
                       {apt && <span>🏠 {apt.nota?`[${apt.nota}] `:''}{apt.nume}</span>}
-                      {c.data_checkin && <span>📅 {c.data_checkin} → {c.data_checkout}</span>}
-                      {c.nr_persoane && <span>👥 {c.nr_persoane} pers.</span>}
+                      {c.data_checkin && <span style={{fontSize:13,fontWeight:700,color:'#FCD34D',fontFamily:'ui-monospace,Menlo,monospace'}}>📅 {c.data_checkin.split('-').reverse().join('.')} → {(c.data_checkout||'').split('-').reverse().join('.')}</span>}
+                      {c.nr_persoane && <span style={{fontSize:13,fontWeight:700,color:'#7BC8FF'}}>👥 {c.nr_persoane} pers.</span>}
                       {despartMesaj(c.mesaj).buget && <span>💰 {despartMesaj(c.mesaj).buget}/noapte</span>}
                       {c.telefon && (
                         <a href={`https://wa.me/${c.telefon.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener" style={{color:'#4ADE80',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3}}>

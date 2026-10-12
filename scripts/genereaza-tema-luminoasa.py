@@ -165,6 +165,7 @@ def main():
 {L}, {L} body {{ background:{PAGE}!important; color:{css(INK, 1)}; color-scheme:light; }}
 {L} .tema-fundal {{ display:none!important; }}
 {L} input, {L} select, {L} textarea {{ background:{CARD}!important; border-color:{css(LINE, 0.28)}!important; color:{css(INK, 1)}!important; }}
+{L} input.camp-mare {{ border-color:currentColor!important; }}
 {L} input:focus, {L} select:focus, {L} textarea:focus {{ border-color:#2563EB!important; box-shadow:0 0 0 3px rgba(37, 99, 235, 0.14)!important; }}
 {L} input::placeholder, {L} textarea::placeholder {{ color:{css(INK_MUTED, 0.5)}!important; }}
 {L} select option {{ background:#FFFFFF; color:{css(INK, 1)}; }}
