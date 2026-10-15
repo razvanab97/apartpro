@@ -73,7 +73,7 @@ const TOOLS = [
   fn('detalii_rezervare', 'Toate detaliile unei rezervări (inclusiv apartament, adresă, instrucțiuni check-in, decont).', { rezervare_id: S('id rezervare') }, ['rezervare_id']),
   fn('disponibilitate', 'Ce apartamente sunt libere / ocupate pe o perioadă (cu capacitate și preț standard).', { checkin: S('YYYY-MM-DD'), checkout: S('YYYY-MM-DD'), persoane: N('nr. oaspeți (opțional)') }, ['checkin', 'checkout']),
   fn('lista_apartamente', 'Lista apartamentelor active: cod, nume, adresă, zonă, capacitate, preț standard, link site, instrucțiuni de check-in.'),
-  fn('sabloane_mesaje', 'Șabloanele de mesaje WhatsApp salvate în Setări (confirmare check-in, date acces, reminder check-out, reminder zi anterioară, cerere review). Pornește de la ele pentru mesajele standard.'),
+  fn('sabloane_mesaje', 'Șabloanele de mesaje WhatsApp (Setări + mesajele personalizate ale apartamentului). Cu rezervare_id le întoarce DEJA completate (prenume, apartament, date) — folosește-le ca atare.', { rezervare_id: S('id rezervare (recomandat)') }),
   fn('cereri_inbox', 'Cererile de rezervare din Inbox (Smart Booking).', { status: S('noua | contactat | confirmat | pierdut | toate') }),
   fn('statistici_luna', 'Statistici pe o lună: nr. rezervări, nopți vândute, grad de ocupare, încasări, pe canale.', { an: N('ex. 2026'), luna: N('1-12') }, ['an', 'luna']),
   fn('recomandari', 'Analizează următoarele 14 zile și spune ce ar trebui făcut / îmbunătățit: rezervări fără telefon, neplătite aproape de sosire, nopți libere, cereri neatinse, nealocate.'),
@@ -165,9 +165,24 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       return (await apartamente()).map(x => ({ id: x.id, cod: x.nota, nume: curat(x.nume), adresa: x.adresa, zona: x.zona, capacitate: x.capacitate_max, pret_standard: x.pret_standard, link_site: x.link_site, instructiuni_checkin: x.instructiuni_checkin }))
     case 'sabloane_mesaje': {
       const chei: Record<string, string> = { checkin_confirmare: 'Confirmare check-in', checkin_acces: 'Date acces apartament', checkout: 'Reminder check-out (ziua plecării)', reminder_checkin: 'Reminder cu o zi înainte de sosire', review_request: 'Cerere review după plecare' }
-      const { data } = await supabase.from('setari').select('cheie,valoare').in('cheie', Object.keys(chei))
-      const out = (data || []).filter((x: any) => curat(x.valoare)).map((x: any) => ({ tip: x.cheie, descriere: chei[x.cheie], text: x.valoare }))
-      return { sabloane: out, variabile: '{nume} = prenumele clientului, {apartament}, {data_checkin}, {data_checkout}', nota: out.length < Object.keys(chei).length ? 'Unele șabloane nu sunt personalizate în Setări — pentru ele scrie tu mesajul în același stil.' : undefined }
+      const [{ data }, rz] = await Promise.all([
+        supabase.from('setari').select('cheie,valoare').in('cheie', Object.keys(chei)),
+        a.rezervare_id ? supabase.from('rezervari').select('nume_client,data_checkin,data_checkout,apartament:apartamente(nume,mesaj_checkin,mesaj_checkout)').eq('id', a.rezervare_id).maybeSingle() : Promise.resolve({ data: null }),
+      ])
+      const sab: Record<string, string> = {}
+      for (const x of data || []) if (curat(x.valoare)) sab[x.cheie] = x.valoare
+      const r: any = (rz as any).data
+      const ap: any = Array.isArray(r?.apartament) ? r.apartament[0] : r?.apartament
+      // la fel ca pe Dashboard: mesajul personalizat al apartamentului are prioritate fata de sablonul global
+      if (ap?.mesaj_checkin) sab.checkin_confirmare = ap.mesaj_checkin
+      if (ap?.mesaj_checkout) sab.checkout = ap.mesaj_checkout
+      const LUNI = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie']
+      const dl = (iso: string) => { if (!ISO.test(iso || '')) return ''; const [y, m, d] = iso.split('-'); return `${d} ${LUNI[Number(m) - 1]} ${y}` }
+      let prenume = curat(r?.nume_client).split(/\s+/)[0] || ''
+      if (prenume && prenume === prenume.toUpperCase()) prenume = prenume.charAt(0) + prenume.slice(1).toLowerCase()
+      const umple = (t: string) => !r ? t : t.replace(/\{nume\}/gi, prenume).replace(/\{apartament\}/gi, curat(ap?.nume)).replace(/\{data_checkin\}/gi, dl(r.data_checkin)).replace(/\{data_checkout\}/gi, dl(r.data_checkout)).replace(/\{data\}/gi, dl(r.data_checkout))
+      const out = Object.keys(chei).filter(k => sab[k]).map(k => ({ tip: k, descriere: chei[k], text: umple(sab[k]) }))
+      return { sabloane: out, completate: !!r, variabile: r ? undefined : '{nume} = prenumele clientului, {apartament}, {data_checkin}, {data_checkout}', nota: out.length < Object.keys(chei).length ? 'Unele șabloane nu sunt personalizate — pentru ele scrie tu mesajul în același stil.' : undefined }
     }
     case 'cereri_inbox': {
       let q = supabase.from('cereri_rezervare').select('id,nume_client,telefon,canal,data_checkin,data_checkout,nr_persoane,mesaj,status,created_at').order('created_at', { ascending: false }).limit(25)
@@ -327,7 +342,7 @@ REGULI:
 1. Nu ghici date din sistem — folosește întotdeauna uneltele (rezervări, disponibilitate, apartamente, statistici). Poți chema mai multe unelte la rând.
 2. Pentru orice schimbare (rezervare nouă, anulare, mutare, modificare, task) folosești uneltele propune_* — ele afișează un card pe care utilizatorul îl CONFIRMĂ. Nu spune niciodată că ai făcut o schimbare; spune „Ți-am pregătit … — confirmă mai jos”.
 3. Dacă o căutare găsește mai multe rezervări potrivite, întreabă care (dă variantele scurt) înainte de a propune ceva. Dacă lipsesc date esențiale (apartament, perioadă, nume), întreabă.
-4. Când trimitem ceva clientului / proprietarului, scrii mesajul și îl afișezi cu arata_mesaj (telefonul din rezervare). Pentru mesajele standard (confirmare, date de acces, reminder, check-out, review) pornește ÎNTOTDEAUNA de la șabloanele din Setări (sabloane_mesaje) și completează variabilele cu datele rezervării; adaptează doar ce cere situația. Mesajele: profesionale, empatice, plăcute, cu emoji-uri moderate, semnate „Echipa AB Homes Iași”; în limba clientului dacă e străin (traduci șablonul). Nu inventa coduri de acces: dacă șablonul are locuri „_completați_” și apartamentul are instrucțiuni de check-in, completează din ele; altfel lasă-le și spune-i utilizatorului să le completeze în card.
+4. Când trimitem ceva clientului / proprietarului, scrii mesajul și îl afișezi cu arata_mesaj (telefonul din rezervare). Pentru mesajele standard (confirmare, date de acces, reminder, check-out, review) pornește ÎNTOTDEAUNA de la sabloane_mesaje cu rezervare_id — textul vine deja completat; păstrează-l (inclusiv salutul cu prenumele) și adaptează doar ce cere situația. Mesajele: profesionale, empatice, plăcute, cu emoji-uri moderate, semnate „Echipa AB Homes Iași”; în limba clientului dacă e străin (traduci șablonul). Nu inventa coduri de acces: dacă șablonul are locuri „_completați_” și apartamentul are instrucțiuni de check-in, completează din ele; altfel lasă-le și spune-i utilizatorului să le completeze în card.
 5. Pentru confirmarea oficială (poză / PDF) folosește arata_confirmare_client.
 6. Rezervările „din_5stardesk” se modifică și în 5starDesk — amintește asta când le muți / anulezi.
 7. Când pomenești o rezervare, scrie-o ca [[rez:ID|Nume client · cod apt · date]] — devine buton care o deschide.
