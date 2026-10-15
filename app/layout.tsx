@@ -32,6 +32,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
         {/* tema aleasa (inchis / deschis) aplicata inainte de afisare, ca sa nu clipeasca */}
         <script dangerouslySetInnerHTML={{ __html: "try{var t=localStorage.getItem('tema');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark')}catch(e){document.documentElement.setAttribute('data-theme','dark')}" }}/>
+        {/* tema deschisa: culorile inline traduse o singura data pe element (rapid si in Safari) - vezi scripts/genereaza-tema-luminoasa.py */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/tema-luminoasa.js"/>
       </head>
       <body style={{background:'#060E1A'}}>
         <div className="tema-fundal" style={{position:'fixed',inset:0,zIndex:-2,background:'linear-gradient(160deg,#040C18 0%,#071220 40%,#0A1828 100%)'}}/>

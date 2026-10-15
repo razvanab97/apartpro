@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react'
 
 // Tema aplicatiei (cerut direct: "format de light - alb cremos, sa pot alege intre inchis si deschis, pentru
 // tot proiectul"). Se tine minte pe dispozitiv; se aplica pe <html data-theme> inainte de afisare (script din
-// app/layout.tsx), iar culorile luminoase vin din app/tema-luminoasa.css.
+// app/layout.tsx); culorile luminoase: CSS de baza (app/tema-luminoasa.css) + traducerea culorilor inline (public/tema-luminoasa.js).
 export function aplicaTema(t: 'dark' | 'light') {
   document.documentElement.setAttribute('data-theme', t)
+  ;(window as any).__temaLuminoasa?.(t === 'light')
   try { localStorage.setItem('tema', t) } catch {}
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', t === 'light' ? '#F6F1E7' : '#0A1628')

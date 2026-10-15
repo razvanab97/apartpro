@@ -10,7 +10,7 @@ Regulile se potrivesc pe atributul style serializat de browser (ex. "color: rgb(
 
 Ruleaza din nou dupa ce apar culori noi in cod:   python3 scripts/genereaza-tema-luminoasa.py
 """
-import os, re, colorsys
+import os, re, colorsys, json
 
 RAD = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIRS = ['app', 'components', 'lib']
@@ -112,54 +112,57 @@ def intunecat(rgb):
     return (round(r * 255), round(g * 255), round(b * 255))
 
 
+def cheie(r, g, b, a):
+    """Cheia culorii, aceeasi ca in public/tema-luminoasa.js: r,g,b,alfa*1000."""
+    return f'{r},{g},{b},{round(min(a, 1.0) * 1000)}'
+
+
 def main():
+    # Inainte: ~10.000 de selectori [style*="culoare"] in CSS. Safari ii verifica pe toti la fiecare element la
+    # fiecare schimbare (7–15 s pe pagina Rezervari -> aplicatia „se bloca”). Acum: un tabel culoare -> culoare,
+    # aplicat o singura data pe fiecare element de public/tema-luminoasa.js, doar pe tema deschisa.
     culori = gaseste_culori()
-    reg = []
-    alb_texte = []
-    for (r, g, b, a), brute in sorted(culori.items()):
+    text, fundal, chenar, alb_pe_accent = {}, {}, {}, []
+    for (r, g, b, a) in sorted(culori):
         rgb = (r, g, b)
-        t = ser(r, g, b, a)
+        k = cheie(r, g, b, a)
         c = clasa(rgb)
-        forme_n = [t]                      # normalizat de browser (cu spatii)
-        forme_b = sorted(brute)            # exact ca in cod (randare pe server)
-        sel_text = ', '.join([f'{L} [style^="color: {x}"], {L} [style*="; color: {x}"]' for x in forme_n] +
-                             [f'{L} [style^="color:{x}"], {L} [style*=";color:{x}"]' for x in forme_b])
-        sel_bg = ', '.join([f'{L} [style*="background: {x}"], {L} [style*="background-color: {x}"]' for x in forme_n] +
-                           [f'{L} [style*="background:{x}"], {L} [style*="background-color:{x}"]' for x in forme_b])
-        sel_border = ', '.join([f'{L} [style*="solid {x}"], {L} [style*="dashed {x}"], {L} [style*="border-color: {x}"], {L} [style*="border-color:{x}"]' for x in forme_n + forme_b])
         # TEXT
         if c == 'light':
-            reg.append(f'{sel_text}{{color:{css(INK, max(0.78, a))}!important}}')
-            alb_texte.extend([('n', t)] + [('b', x) for x in brute])
+            text[k] = css(INK, max(0.78, a))
         elif c == 'muted':
-            reg.append(f'{sel_text}{{color:{css(INK_MUTED, min(0.92, max(0.55, a * 1.25)))}!important}}')
+            text[k] = css(INK_MUTED, min(0.92, max(0.55, a * 1.25)))
         elif c == 'accent':
-            reg.append(f'{sel_text}{{color:{css(ACCENT_TEXT[rgb], max(0.85, a))}!important}}')
+            text[k] = css(ACCENT_TEXT[rgb], max(0.85, a))
         elif c == 'accent-other' and lum(rgb) > 0.45:
-            reg.append(f'{sel_text}{{color:{css(intunecat(rgb), max(0.85, a))}!important}}')
+            text[k] = css(intunecat(rgb), max(0.85, a))
         # FUNDAL
         if rgb in BG_SOLID and a >= 0.85:
-            reg.append(f'{sel_bg}{{background:{css(BG_SOLID[rgb], a)}!important}}')
+            fundal[k] = css(BG_SOLID[rgb], a)
         elif c == 'dark':
-            reg.append(f'{sel_bg}{{background:{CARD if a >= 0.5 else "rgba(255, 253, 248, 0.65)"}!important}}')
+            fundal[k] = CARD if a >= 0.5 else 'rgba(255, 253, 248, 0.65)'
         elif c in ('light', 'muted'):
-            reg.append(f'{sel_bg}{{background:{css(LINE, min(0.12, max(0.035, a * 0.8)))}!important}}')
+            fundal[k] = css(LINE, min(0.12, max(0.035, a * 0.8)))
         # CHENARE
         if c in ('dark', 'light', 'muted', 'mid'):
-            reg.append(f'{sel_border}{{border-color:{css(LINE, min(0.32, max(0.12, a * 1.1)))}!important}}')
-    # textul alb pe butoane cu fundal de accent plin ramane alb
-    for (r, g, b, a), brute in culori.items():
-        if (r, g, b) in ACCENT_SOLID_RGB and a >= 0.6:
-            bgs = [('n', ser(r, g, b, a))] + [('b', x) for x in brute]
-            sels = []
-            for kb, bg in bgs:
-                for kt, t in alb_texte:
-                    if kb != kt:
-                        continue
-                    sp = ' ' if kb == 'n' else ''
-                    sels.append(f'{L} [style*="background:{sp}{bg}"][style*="color:{sp}{t}"]')
-            if sels:
-                reg.append(', '.join(sels) + '{color:#FFFFFF!important}')
+            chenar[k] = css(LINE, min(0.32, max(0.12, a * 1.1)))
+        # textul alb pe butoane cu fundal de accent plin ramane alb
+        if rgb in ACCENT_SOLID_RGB and a >= 0.6:
+            alb_pe_accent.append(k)
+    harta = {'t': text, 'b': fundal, 'c': chenar, 'w': {k: 1 for k in alb_pe_accent}}
+    # clase Tailwind cu culoare fixa (ex. bg-[#161b27] pe tabele) - selectori pe clasa, rapizi
+    clase = set()
+    for d in DIRS:
+        for root, _, files in os.walk(os.path.join(RAD, d)):
+            for f in files:
+                if f.endswith(('.tsx', '.ts')):
+                    clase |= set(re.findall(r'\b(bg|text|border)-\[#([0-9A-Fa-f]{6})\]', open(os.path.join(root, f), encoding='utf-8', errors='ignore').read()))
+    reguli_clase = []
+    for tip, hx in sorted(clase):
+        k = cheie(int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16), 1.0)
+        prop, tab = {'bg': ('background-color', fundal), 'text': ('color', text), 'border': ('border-color', chenar)}[tip]
+        if k in tab:
+            reguli_clase.append(f'{L} .{tip}-\\[\\#{hx}\\] {{ {prop}:{tab[k]}!important; }}')
 
     baza = f'''/* GENERAT de scripts/genereaza-tema-luminoasa.py — nu edita manual; ruleaza scriptul din nou. */
 {L}, {L} body {{ background:{PAGE}!important; color:{css(INK, 1)}; color-scheme:light; }}
@@ -181,8 +184,61 @@ def main():
 {L} svg text {{ fill:{css(INK, 1)}!important; }}
 '''
     out = os.path.join(RAD, 'app', 'tema-luminoasa.css')
-    open(out, 'w').write(baza + '\n'.join(reg) + '\n')
-    print(f'{len(culori)} culori, {len(reg)} reguli -> {out} ({os.path.getsize(out)//1024} KB)')
+    open(out, 'w').write(baza + '\n'.join(reguli_clase) + '\n')
+    js = os.path.join(RAD, 'public', 'tema-luminoasa.js')
+    open(js, 'w').write(RUNTIME.replace('__HARTA__', json.dumps(harta, separators=(',', ':'))))
+    print(f'{len(culori)} culori -> {out} ({os.path.getsize(out)//1024} KB) + {js} ({os.path.getsize(js)//1024} KB; '
+          f'text {len(text)}, fundal {len(fundal)}, chenar {len(chenar)})')
+
+
+RUNTIME = r"""/* GENERAT de scripts/genereaza-tema-luminoasa.py — nu edita manual. Tema luminoasa: traduce culorile inline
+   (style="color/background/border") prin tabelul de mai jos, o singura data pe element + la fiecare schimbare. */
+(function () {
+  var H = __HARTA__, on = false, scriu = false;
+  var RE = /rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,\/]+([\d.]+)(%?))?\s*\)/;
+  function k(v) { var m = RE.exec(v || ''); if (!m) return null; var a = m[4] == null ? 1 : parseFloat(m[4]) / (m[5] ? 100 : 1); return m[1] + ',' + m[2] + ',' + m[3] + ',' + Math.round(Math.min(a, 1) * 1000); }
+  var LAT = ['border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color', 'outline-color'];
+  function seteaza(el, rec, p, v) {
+    var s = el.style, cur = s.getPropertyValue(p);
+    if (rec[p] && cur === rec[p].v) return;
+    var o = cur, pr = s.getPropertyPriority(p);
+    s.setProperty(p, v, 'important');
+    // retinem valoarea asa cum o raporteaza browserul (normalizata), ca sa o recunoastem la restaurare
+    rec[p] = { o: o, pr: pr, v: s.getPropertyValue(p) };
+  }
+  function proc(el) {
+    var s = el.style; if (!s || !s.length) return;
+    var rec = el.__tema || {}, cur;
+    // valoare scrisa de noi (neschimbata de React) -> nimic de facut
+    var bg = s.getPropertyValue('background-color'), bk = (rec['background-color'] && bg === rec['background-color'].v) ? k(rec['background-color'].o) : k(bg);
+    cur = s.getPropertyValue('color');
+    if (!(rec.color && cur === rec.color.v)) { var ck = k(cur); if (ck && H.t[ck] && !(H.w[bk] && ck.indexOf('255,255,255,') === 0)) seteaza(el, rec, 'color', H.t[ck]); }
+    if (!(rec['background-color'] && bg === rec['background-color'].v)) { var b2 = k(bg); if (b2 && H.b[b2]) seteaza(el, rec, 'background-color', H.b[b2]); }
+    for (var i = 0; i < LAT.length; i++) { var p = LAT[i]; cur = s.getPropertyValue(p); if (rec[p] && cur === rec[p].v) continue; var c2 = k(cur); if (c2 && H.c[c2]) seteaza(el, rec, p, H.c[c2]); }
+    for (var x in rec) { el.__tema = rec; break; }
+  }
+  function procArbore(n) { if (n.nodeType !== 1) return; if (n.hasAttribute('style')) proc(n); var l = n.querySelectorAll('[style]'); for (var i = 0; i < l.length; i++) proc(l[i]); }
+  var obs = new MutationObserver(function (ms) {
+    if (!on || scriu) return; scriu = true;
+    try {
+      for (var i = 0; i < ms.length; i++) { var m = ms[i]; if (m.type === 'attributes') proc(m.target); else for (var j = 0; j < m.addedNodes.length; j++) procArbore(m.addedNodes[j]); }
+    } finally { obs.takeRecords(); scriu = false; }
+  });
+  function restaureaza() {
+    var l = document.querySelectorAll('[style]');
+    for (var i = 0; i < l.length; i++) { var el = l[i], rec = el.__tema; if (!rec) continue;
+      for (var p in rec) { if (el.style.getPropertyValue(p) === rec[p].v) { if (rec[p].o) el.style.setProperty(p, rec[p].o, rec[p].pr); else el.style.removeProperty(p); } }
+      el.__tema = null; }
+  }
+  window.__temaLuminoasa = function (pornit) {
+    if (pornit === on) return; on = pornit;
+    if (on) { scriu = true; try { if (document.body) procArbore(document.body); } finally { scriu = false; }
+      obs.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] }); }
+    else { obs.disconnect(); restaureaza(); }
+  };
+  try { if (document.documentElement.getAttribute('data-theme') === 'light' || localStorage.getItem('tema') === 'light') window.__temaLuminoasa(true); } catch (e) {}
+})();
+"""
 
 
 if __name__ == '__main__':
