@@ -92,33 +92,68 @@ export default function RezervariPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Incarcare rapida (cerut direct: „să încarce rezervările de luna trecută, luna curentă și cele viitoare, în rest
+  // doar la nevoie”): la deschidere vin doar cele care se termina din 1 ale lunii trecute incoace (+ toate cele
+  // „de facturat”, ca sectiunea Facturare sa ramana completa). Cele mai vechi vin cand le ceri: data „de la” mai
+  // veche, cautare dupa nume / telefon (cauta in tot istoricul) sau butonul „Încarcă și mai vechi”.
+  // Inainte se incarcau toate (~2.100) si pagina avea ~98.000 de elemente -> ~11 secunde.
+  const deLa = useMemo(() => { const d = new Date(), l = new Date(d.getFullYear(), d.getMonth() - 1, 1); return `${l.getFullYear()}-${String(l.getMonth() + 1).padStart(2, '0')}-01` }, [])
+  const [vechiIncarcate, setVechiIncarcate] = useState(false)
+  const [incarcVechi, setIncarcVechi] = useState(false)
+  const SELECT_LISTA = '*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix,proprietar:proprietari(id,nume,telefon)), proprietar:proprietari(id,nume)'
+  // Supabase intoarce maxim 1000 de randuri pe cerere - se incarca pe pagini pana la capat
+  const pePagini = async (filtru: (q: any) => any) => {
+    const PAGINA = 1000, rez: any[] = []
+    for (let de = 0; ; de += PAGINA) {
+      const { data, error } = await filtru(supabase.from('rezervari').select(SELECT_LISTA)).order('data_checkin', { ascending: false }).order('id').range(de, de + PAGINA - 1)
+      if (error) throw error
+      rez.push(...(data || []))
+      if (!data || data.length < PAGINA) return rez
+    }
+  }
+  const imbina = (a: any[], b: any[]) => { const m = new Map(a.map(r => [r.id, r])); for (const r of b) m.set(r.id, r); return Array.from(m.values()) }
+
   async function load() {
     setLoading(true)
     setLoadError(false)
     const bail=setTimeout(()=>{ setLoading(false); setLoadError(true) },20000)
     try{
-      // Supabase intoarce maxim 1000 de randuri pe cerere - bug gasit: cu 2.099 rezervari, cele cu
-      // check-in inainte de ~27.03.2026 nu apareau deloc. Se incarca pe pagini pana la capat.
-      const toateRez = async () => {
-        const PAGINA = 1000, rez: any[] = []
-        for (let de = 0; ; de += PAGINA) {
-          const { data, error } = await supabase.from('rezervari').select('*, apartament:apartamente(id,nume,comision_tip,comision_procent,comision_fix,proprietar:proprietari(id,nume,telefon)), proprietar:proprietari(id,nume)')
-            .order('data_checkin', { ascending: false }).order('id').range(de, de + PAGINA - 1)
-          if (error) throw error
-          rez.push(...(data || []))
-          if (!data || data.length < PAGINA) return rez
-        }
-      }
-      const [rez, { data: apt }] = await Promise.all([
-        toateRez(),
+      const [recente, deFact, { data: apt }] = await Promise.all([
+        vechiIncarcate ? pePagini(q => q) : pePagini(q => q.gte('data_checkout', deLa)),
+        vechiIncarcate ? Promise.resolve([]) : pePagini(q => q.lt('data_checkout', deLa).eq('status_facturare', 'de_facturat')),
         supabase.from('apartamente').select('*, proprietar:proprietari(id,nume)').eq('status','activ').order('nume'),
       ])
-      setRezervari(rez)
+      setRezervari(imbina(recente, deFact))
       setApartamente((apt as Apartament[])||[])
       clearTimeout(bail)
     }catch(err){console.error('[rezervari load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
+
+  async function incarcaVechi() {
+    if (vechiIncarcate || incarcVechi) return
+    setIncarcVechi(true)
+    try { const vechi = await pePagini(q => q.lt('data_checkout', deLa)); setRezervari(prev => imbina(prev, vechi)); setVechiIncarcate(true) }
+    catch (err) { console.error('[rezervari vechi]', err); show('error', 'Nu am putut încărca rezervările mai vechi') }
+    setIncarcVechi(false)
+  }
+  // data „de la” mai veche decat ce e incarcat -> aducem automat si istoricul
+  useEffect(() => { if (dateFrom && dateFrom < deLa) incarcaVechi() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom])
+  // cautare dupa nume / telefon -> cautam si in istoric (doar potrivirile, nu tot istoricul)
+  useEffect(() => {
+    const t = searchNume.trim()
+    if (vechiIncarcate || t.length < 3) return
+    const id = setTimeout(async () => {
+      const sigur = t.replace(/[%,()*]/g, ' ').trim(), cif = t.replace(/[^0-9]/g, '')
+      const ors = [`nume_client.ilike.%${sigur}%`]
+      if (cif.length >= 4) ors.push(`telefon_client.ilike.%${cif}%`)
+      const { data } = await supabase.from('rezervari').select(SELECT_LISTA).lt('data_checkout', deLa).or(ors.join(',')).order('data_checkin', { ascending: false }).limit(300)
+      if (data?.length) setRezervari(prev => imbina(prev, data))
+    }, 350)
+    return () => clearTimeout(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchNume, vechiIncarcate])
 
   function openNew() { setEditing({...emptyRez}); setOpen(true) }
   function openEdit(r: any) { setEditing({...r}); setOpen(true) }
@@ -142,6 +177,10 @@ export default function RezervariPage() {
     show('success','Rezervare ștearsă'); setDeleteId(null); load()
   }
 
+  // afisam primele 300 de rezultate (randarea a ~2.000 de randuri dura ~10 s); filtrele / selectia lucreaza pe toate
+  const PAS_AFISARE = 300
+  const [limitaAfisare, setLimitaAfisare] = useState(PAS_AFISARE)
+  useEffect(() => { setLimitaAfisare(PAS_AFISARE) }, [filterCanal, filterStatus, filterApt, searchNume, dateFrom, dateTo, sortCrescator])
   const filtered = rezervari.filter(r => {
     if (filterCanal && r.canal !== filterCanal) return false
     if (filterStatus && r.status_rezervare !== filterStatus) return false
@@ -223,7 +262,7 @@ export default function RezervariPage() {
 
   return (
     <>
-      <PageHeader title="Rezervări" subtitle={`${rezervari.length} rezervări totale`}
+      <PageHeader title="Rezervări" subtitle={vechiIncarcate ? `${rezervari.length} rezervări totale` : `${rezervari.length} rezervări · din ${LUNI[Number(deLa.slice(5, 7))]} ${deLa.slice(0, 4)} încoace`}
         actions={
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             {selected.size > 0 && (
@@ -246,6 +285,15 @@ export default function RezervariPage() {
           </div>
         } />
       <div className="p-6" style={{ overflowY:"auto" }}>
+        {/* Ce e incarcat: luna trecuta + curenta + viitoare; istoricul la cerere */}
+        {!vechiIncarcate && (
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12,padding:'8px 12px',borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)',fontSize:12,color:'rgba(159,215,255,0.7)'}}>
+            <span style={{flex:1,minWidth:200}}>Afișez rezervările din <b style={{color:'#E8F4FF'}}>{LUNI[Number(deLa.slice(5, 7))]} {deLa.slice(0, 4)}</b> încoace (luna trecută, cea curentă și cele viitoare). Căutarea după nume / telefon caută și în istoric.</span>
+            <button onClick={incarcaVechi} disabled={incarcVechi} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.35)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:incarcVechi?'wait':'pointer'}}>
+              {incarcVechi ? 'Se încarcă…' : 'Încarcă și mai vechi'}
+            </button>
+          </div>
+        )}
         {/* Filtre */}
         <div className="flex flex-wrap gap-3 mb-5">
           <input
@@ -364,7 +412,7 @@ export default function RezervariPage() {
                   <th>Sumă</th><th>Proprietar</th><th>Status</th><th>Plată</th><th>Decont</th><th>Facturare</th><th></th>
                 </tr></thead>
                 <tbody>
-                  {filtered.map(r => (
+                  {filtered.slice(0, limitaAfisare).map(r => (
                     <tr key={r.id} onClick={() => openEdit(r)} style={{background: selected.has(r.id) ? 'rgba(77,163,255,0.08)' : undefined}}>
                       <td style={{paddingRight:0,width:36}} onClick={e=>e.stopPropagation()}>
                         <input type="checkbox"
@@ -448,6 +496,12 @@ export default function RezervariPage() {
                   ))}
                 </tbody>
               </table>
+              {filtered.length > limitaAfisare && (
+                <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,padding:'14px 0',fontSize:12,color:'rgba(159,215,255,0.6)'}}>
+                  Afișate {limitaAfisare} din {filtered.length}
+                  <button onClick={()=>setLimitaAfisare(l=>l+PAS_AFISARE)} style={{padding:'7px 14px',borderRadius:8,border:'1px solid rgba(77,163,255,0.35)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer'}}>Arată încă {Math.min(PAS_AFISARE, filtered.length - limitaAfisare)}</button>
+                </div>
+              )}
             </div>
           )}
         </div>
