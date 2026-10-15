@@ -11,6 +11,32 @@ const supabaseUrl = typeof window !== 'undefined'
 
 // Retry automat cu timeout per-cerere: o blocare tranzitorie de retea/proxy se repara
 // singura (2 reincercari) inainte ca pagina sa afiseze vreo eroare catre utilizator.
+// Observatorul (components/Observator.tsx, cerut direct: „AI-ul să citească și să urmărească tot ce facem în ERP”)
+// afla de fiecare scriere in baza de date: tabel, operatie, campuri (valorile doar pentru statusuri / canal).
+const CAMPURI_CU_VALOARE = /^(status_|status$|canal$|camera_semnalata$|prioritate$|platit_proprietar$|tip$|categorie$)/
+function semnaleazaScriere(input: RequestInfo | URL, init: RequestInit | undefined, status: number) {
+  try {
+    if (typeof window === 'undefined') return
+    const metoda = (init?.method || 'GET').toUpperCase()
+    if (!['POST', 'PATCH', 'DELETE', 'PUT'].includes(metoda)) return
+    const url = new URL(String(typeof input === 'string' || input instanceof URL ? input : input.url), window.location.origin)
+    const m = /\/rest\/v1\/([a-z0-9_]+)/i.exec(url.pathname)
+    if (!m || m[1] === 'jurnal_activitate') return
+    let corp: any = null
+    try { corp = typeof init?.body === 'string' ? JSON.parse(init.body) : null } catch {}
+    const rand = Array.isArray(corp) ? corp[0] : corp
+    const valori: Record<string, any> = {}
+    if (rand && typeof rand === 'object') for (const k of Object.keys(rand)) if (CAMPURI_CU_VALOARE.test(k) && (typeof rand[k] !== 'object' || rand[k] === null)) valori[k] = rand[k]
+    const filtru: Record<string, string> = {}
+    url.searchParams.forEach((v, k) => { if (!['select', 'on_conflict', 'columns'].includes(k)) filtru[k] = v.slice(0, 80) })
+    const op = metoda === 'DELETE' ? 'stergere' : metoda === 'PATCH' ? 'modificare' : (url.searchParams.get('on_conflict') || /merge-duplicates/.test(String(init?.headers instanceof Headers ? init.headers.get('Prefer') : ((init?.headers as any)?.Prefer || (init?.headers as any)?.prefer || '')))) ? 'salvare' : 'adaugare'
+    window.dispatchEvent(new CustomEvent('observator:scriere', { detail: {
+      tabel: m[1], op, ok: status < 400, status, nr: Array.isArray(corp) ? corp.length : 1,
+      campuri: rand && typeof rand === 'object' ? Object.keys(rand).slice(0, 40) : [], valori, filtru,
+    } }))
+  } catch {}
+}
+
 async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const ATTEMPTS = 3
   const TIMEOUT_MS = 5000
@@ -21,6 +47,7 @@ async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit): Pro
     try {
       const res = await fetch(input, { ...init, signal: controller.signal })
       clearTimeout(timer)
+      semnaleazaScriere(input, init, res.status)
       return res
     } catch (err) {
       clearTimeout(timer)

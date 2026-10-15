@@ -164,6 +164,7 @@ export default function Agent() {
     setInput('')
     const nou: Msg[] = [...msgs, { role: 'user', content: t, ts: Date.now() }]
     setMsgs(nou); setLoading(true)
+    window.dispatchEvent(new CustomEvent('observator:eveniment', { detail: { tip: 'agent', tinta: t.slice(0, 300), detalii: { context: ctx?.rezervare_nume || null } } }))
     try {
       // istoricul pentru AI: textul + starea cardurilor (ca sa stie ce s-a confirmat / renuntat)
       const mesaje = nou.map(m => ({ role: m.role, content: m.content + (m.cards?.length ? '\n' + m.cards.map(c => `[card ${c.tip}${c.actiune ? ' ' + c.actiune : ''}: ${c.titlu || ''} — ${c.stare || 'afișat'}${c.info ? ' · ' + c.info : ''}]`).join('\n') : '') }))

@@ -5,6 +5,7 @@ import Chatbot from '@/components/Chatbot'
 import UpdatesWidget from '@/components/UpdatesWidget'
 import ComutatorTema from '@/components/ComutatorTema'
 import Agent from '@/components/Agent'
+import Observator from '@/components/Observator'
 import NotificationBell from '@/components/NotificationBell'
 import PriceCalc from '@/components/PriceCalc'
 import ScanCopyPopup from '@/components/ScanCopyPopup'
@@ -221,6 +222,8 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* admin: Asistentul AB Homes (agent cu acces la date + actiuni cu confirmare); staff: chatbotul simplu */}
       {isStaff ? <Chatbot/> : <Agent/>}
+      {/* observa tot ce se face in aplicatie (jurnal_activitate) - doar observare */}
+      <Observator/>
       <UpdatesWidget/>
       <NotificationBell/>
       <PriceCalc/>

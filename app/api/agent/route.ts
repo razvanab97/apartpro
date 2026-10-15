@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { agregaActivitate } from '@/lib/analizaActivitate'
 
 // ── Asistent AB Homes (cerut direct: „un agent personal care să vadă tot ce se întâmplă în platformă,
 // cu care să putem vorbi ca într-un chat, să facem / anulăm / mutăm rezervări și să pregătească mesaje”).
@@ -73,6 +74,7 @@ const TOOLS = [
   fn('detalii_rezervare', 'Toate detaliile unei rezervări (inclusiv apartament, adresă, instrucțiuni check-in, decont).', { rezervare_id: S('id rezervare') }, ['rezervare_id']),
   fn('disponibilitate', 'Ce apartamente sunt libere / ocupate pe o perioadă (cu capacitate și preț standard).', { checkin: S('YYYY-MM-DD'), checkout: S('YYYY-MM-DD'), persoane: N('nr. oaspeți (opțional)') }, ['checkin', 'checkout']),
   fn('lista_apartamente', 'Lista apartamentelor active: cod, nume, adresă, zonă, capacitate, preț standard, link site, instrucțiuni de check-in.'),
+  fn('analiza_activitate', 'Jurnalul de activitate al aplicației (observatorul): ce pagini se folosesc și cât timp, ce butoane, ce scrieri în baza de date (tabel / operație / statusuri), WhatsApp-uri trimise, ore active, secvențe de pași repetate, întrebări către asistent, erori, sincronizări. Folosește-l DOAR când utilizatorul întreabă despre cum lucrează / ce se poate automatiza.', { zile: N('câte zile în urmă, implicit 7'), rol: S('admin | staff | toate (implicit toate)') }),
   fn('sabloane_mesaje', 'Șabloanele de mesaje WhatsApp (Setări + mesajele personalizate ale apartamentului). Cu rezervare_id le întoarce DEJA completate (prenume, apartament, date) — folosește-le ca atare.', { rezervare_id: S('id rezervare (recomandat)') }),
   fn('cereri_inbox', 'Cererile de rezervare din Inbox (Smart Booking).', { status: S('noua | contactat | confirmat | pierdut | toate') }),
   fn('statistici_luna', 'Statistici pe o lună: nr. rezervări, nopți vândute, grad de ocupare, încasări, pe canale.', { an: N('ex. 2026'), luna: N('1-12') }, ['an', 'luna']),
@@ -163,6 +165,20 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
     }
     case 'lista_apartamente':
       return (await apartamente()).map(x => ({ id: x.id, cod: x.nota, nume: curat(x.nume), adresa: x.adresa, zona: x.zona, capacitate: x.capacitate_max, pret_standard: x.pret_standard, link_site: x.link_site, instructiuni_checkin: x.instructiuni_checkin }))
+    case 'analiza_activitate': {
+      const zile = Math.min(Math.max(Number(a.zile) || 7, 1), 90)
+      const de = new Date(Date.now() - zile * 86400000).toISOString()
+      const ev: any[] = []
+      for (let i = 0; i < 10; i++) {
+        let q = supabase.from('jurnal_activitate').select('created_at,sesiune,rol,dispozitiv,tip,pagina,tinta,detalii').gte('created_at', de).order('created_at').range(i * 1000, i * 1000 + 999)
+        if (a.rol && a.rol !== 'toate') q = q.eq('rol', a.rol)
+        const { data, error } = await q
+        if (error) return { eroare: /does not exist|schema cache|relation/i.test(error.message) ? 'Jurnalul de activitate nu e încă activ (tabela jurnal_activitate nu a fost creată).' : error.message }
+        ev.push(...(data || [])); if (!data || data.length < 1000) break
+      }
+      if (!ev.length) return { mesaj: `Nicio activitate înregistrată în ultimele ${zile} zile.` }
+      return agregaActivitate(ev, zile)
+    }
     case 'sabloane_mesaje': {
       const chei: Record<string, string> = { checkin_confirmare: 'Confirmare check-in', checkin_acces: 'Date acces apartament', checkout: 'Reminder check-out (ziua plecării)', reminder_checkin: 'Reminder cu o zi înainte de sosire', review_request: 'Cerere review după plecare' }
       const [{ data }, rz] = await Promise.all([
@@ -347,7 +363,8 @@ REGULI:
 6. Rezervările „din_5stardesk” se modifică și în 5starDesk — amintește asta când le muți / anulezi.
 7. Când pomenești o rezervare, scrie-o ca [[rez:ID|Nume client · cod apt · date]] — devine buton care o deschide.
 8. Răspunsuri scurte, cu liste când ajută. Sume în RON cu separator de mii. Datele în format „16 oct.”.
-9. Când ești întrebat ce se poate îmbunătăți, folosește recomandari + situatia_zilei și dă pași concreți, ordonați după impact.`
+9. Când ești întrebat ce se poate îmbunătăți, folosește recomandari + situatia_zilei și dă pași concreți, ordonați după impact.
+10. Aplicația are un jurnal de activitate (analiza_activitate) — momentan DOAR pentru observare. Nu-l pomeni și nu propune automatizări din proprie inițiativă; folosește-l doar când utilizatorul întreabă cum lucrează echipa, ce se repetă sau ce s-ar putea automatiza — atunci dă exemple concrete din date (secvențe repetate, butoane folosite des, ore, mesaje), cu impactul estimat.`
 }
 
 async function apelOpenAI(body: any) {

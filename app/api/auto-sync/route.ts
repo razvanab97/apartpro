@@ -56,6 +56,8 @@ export async function GET(req: NextRequest) {
     const logs = res.logs.filter(l => l.type !== 'skip' || !l.msg.startsWith('↺')).map(l => l.msg)
     const result = { ok: true, total: res.total, inserted: res.inserted, updated: res.updated, skipped: res.skipped, errors: res.errors, duration_ms: Date.now()-startTime, logs: logs.slice(-30) }
     await sb.from('setari').upsert({ cheie: 'last_sync', valoare: JSON.stringify({ ...result, time: new Date().toISOString() }) }, { onConflict: 'cheie' })
+    // jurnalul de activitate (observatorul ERP): ce a adus sincronizarea automata; tabela poate lipsi - ignoram eroarea
+    try { await sb.from('jurnal_activitate').insert({ tip: 'sync', rol: 'sistem', pagina: '/api/auto-sync', tinta: `5starDesk: +${res.inserted} noi, ${res.updated} actualizate`, detalii: { total: res.total, inserted: res.inserted, updated: res.updated, skipped: res.skipped, errors: res.errors, duration_ms: result.duration_ms } }) } catch {}
     return NextResponse.json(result)
 
   } catch (e: any) {
