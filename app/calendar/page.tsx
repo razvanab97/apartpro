@@ -139,6 +139,8 @@ export default function CalendarPage() {
   const [selApt, setSelApt]     = useState('')
   const [viewMode, setViewMode] = useState<'rez'|'sume'>('rez')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
+  // asistentul stie ce rezervare ai deschis in calendar
+  useEffect(()=>{ if(tooltip?.rez?.id) window.dispatchEvent(new CustomEvent('agent:context',{detail:{rezervare_id:tooltip.rez.id,rezervare_nume:`${tooltip.rez.nume_client||''} · ${tooltip.rez.data_checkin} → ${tooltip.rez.data_checkout}`}})) },[tooltip?.rez?.id])
   const [calcSel, setCalcSel]   = useState<Map<string,Rez>>(new Map())
   const [selectedDay, setSelectedDay] = useState<number|null>(null)
 

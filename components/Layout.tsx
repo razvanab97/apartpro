@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Chatbot from '@/components/Chatbot'
 import UpdatesWidget from '@/components/UpdatesWidget'
 import ComutatorTema from '@/components/ComutatorTema'
+import Agent from '@/components/Agent'
 import NotificationBell from '@/components/NotificationBell'
 import PriceCalc from '@/components/PriceCalc'
 import ScanCopyPopup from '@/components/ScanCopyPopup'
@@ -218,7 +219,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         </button>
       </nav>}
 
-      <Chatbot/>
+      {/* admin: Asistentul AB Homes (agent cu acces la date + actiuni cu confirmare); staff: chatbotul simplu */}
+      {isStaff ? <Chatbot/> : <Agent/>}
       <UpdatesWidget/>
       <NotificationBell/>
       <PriceCalc/>

@@ -128,6 +128,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
   const [showCosturi, setShowCosturi] = useState(false)
   const [confirmare, setConfirmare] = useState(false)
+  // asistentul stie ce rezervare e deschisa pe ecran („mut-o pe N32”)
+  useEffect(() => { if (open && editing?.id) window.dispatchEvent(new CustomEvent('agent:context', { detail: { rezervare_id: editing.id, rezervare_nume: `${editing.nume_client || ''} · ${editing.data_checkin || ''} → ${editing.data_checkout || ''}` } })) }, [open, editing?.id])
   const [showComision, setShowComision] = useState(false)
   const [original, setOriginal] = useState<any>(null)
   // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
