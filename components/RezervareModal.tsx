@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
+import ConfirmareClient from '@/components/ConfirmareClient'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -126,6 +127,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const totalCosturi = COSTURI.reduce((s, [k]) => s + (Number(editing?.[k]) || 0), 0)
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
   const [showCosturi, setShowCosturi] = useState(false)
+  const [confirmare, setConfirmare] = useState(false)
   const [showComision, setShowComision] = useState(false)
   const [original, setOriginal] = useState<any>(null)
   // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
@@ -428,12 +430,18 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         {/* ── Subsol ── */}
         <footer className="rz-foot">
           <span className="rz-hint">Esc închide · ⌘S salvează</span>
+          {/* confirmare pentru client (poza / PDF) - doar pentru rezervari salvate */}
+          {editing.id && (
+            <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
+              style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
+          )}
           <button type="button" className="rz-btn" onClick={onClose} style={{ padding: '10px 18px' }}>Anulează</button>
           <button type="button" className="rz-btn rz-btn-primary" onClick={onSave} disabled={saving}>
             {saving ? <><Loader2 size={14} className="rz-spin" /> Se salvează…</> : 'Salvează rezervarea'}
           </button>
         </footer>
       </div>
+      {confirmare && <ConfirmareClient rezervare={editing} apt={apartamente.find(a => a.id === editing.apartament_id) || editing.apartament || null} onClose={() => setConfirmare(false)} />}
     </div>
   )
 }
