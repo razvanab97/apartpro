@@ -4,6 +4,7 @@ import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
 import RezervareEditor from '@/components/RezervareEditor'
+import ConfirmareClient from '@/components/ConfirmareClient'
 import NealocatePanel from '@/components/NealocatePanel'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
@@ -203,6 +204,7 @@ export default function CalendarPage() {
   // Editarea deschide formularul complet (acelasi ca in Rezervari) - inainte era un editor separat,
   // simplificat, iar butonul lui ramanea sub marginea ecranului in cardul rezervarii
   const [editId, setEditId] = useState<string|null>(null)
+  const [confirmareId, setConfirmareId] = useState<string|null>(null)
   const [sablonRez, setSablonRez] = useState<any>(null)
   const [ciPreview, setCiPreview] = useState<string|null>(null)
   const [scanningCI, setScanningCI] = useState(false)
@@ -1054,6 +1056,13 @@ Echipa AB Homes Iași`)}
               📋 Mesaj confirmare (dată, perioadă, sumă)
             </a>
           )}
+          {/* confirmarea premium (poza / PDF) si din fereastra rapida a calendarului - cerut direct */}
+          {tooltip.rez.id&&(
+            <button type="button" onClick={()=>{ setConfirmareId(tooltip.rez.id); setTooltip(null) }}
+              style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,width:'100%',padding:'7px',marginBottom:10,borderRadius:7,border:'1px solid rgba(56,189,248,0.35)',background:'linear-gradient(135deg,rgba(37,99,235,0.14),rgba(124,58,237,0.14))',color:'#7DD3FC',fontSize:12,fontWeight:700,cursor:'pointer' }}>
+              ✦ Confirmare client (poză / PDF)
+            </button>
+          )}
 
           {tooltip.rez.observatii&&(
             <div style={{ marginBottom:14,padding:'8px 10px',background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.15)',borderRadius:7 }}>
@@ -1076,6 +1085,7 @@ Echipa AB Homes Iași`)}
         </div>
       )}
 
+      {confirmareId&&<ConfirmareClient rezervareId={confirmareId} onClose={()=>setConfirmareId(null)}/>}
       {/* Editare - formularul complet de rezervare (comun cu pagina Rezervari) */}
       {editId&&(
         <RezervareEditor rezervareId={editId} onClose={()=>setEditId(null)} onSaved={load}
