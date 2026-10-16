@@ -32,6 +32,19 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const [loading, setLoading] = useState(true)
   const [filtru, setFiltru] = useState<'toate' | 'rest' | 'late' | 'miss' | 'ok'>('toate')
   const [aratInactive, setAratInactive] = useState(false)
+  // apartamente inactive / personale ale caror cheltuieli le urmarim totusi ca pe cele active (cerut direct:
+  // „Urban Oasis, Canta și R99 — ultimele 2 sunt personale, dar trebuie să avem cheltuielile și evidența plăților”)
+  const CHEIE_URMARITE = 'cheltuieli_inactive_urmarite'
+  const [urmarite, setUrmarite] = useState<string[]>([])
+  useEffect(() => {
+    Promise.resolve(supabase.from('setari').select('valoare').eq('cheie', CHEIE_URMARITE).maybeSingle())
+      .then(({ data }) => { try { const v = JSON.parse(data?.valoare || '[]'); if (Array.isArray(v)) setUrmarite(v.map(String)) } catch {} }).catch(() => {})
+  }, [])
+  async function comutaUrmarit(id: string) {
+    const nou = urmarite.includes(id) ? urmarite.filter(x => x !== id) : [...urmarite, id]
+    setUrmarite(nou)
+    await supabase.from('setari').upsert({ cheie: CHEIE_URMARITE, valoare: JSON.stringify(nou) }, { onConflict: 'cheie' })
+  }
   const [ultim, setUltim] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   // fișe închise (rămâne doar numele apartamentului) — ținute minte pe dispozitiv
@@ -94,9 +107,10 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       const restanteDeplata = rest.filter(r => !platit(r))
       const sumaRestante = restanteDeplata.reduce((s, r) => s + Number(r.valoare), 0)
       depasite += restanteDeplata.length
-      return { apt, sloturi, rest, furn, tot, pl, rest_luna: tot - pl, depasite, lipsa, sumaRestante, inactiv: apt.status === 'inactiv' }
+      const urmarit = apt.status === 'inactiv' && urmarite.includes(String(apt.id))
+      return { apt, sloturi, rest, furn, tot, pl, rest_luna: tot - pl, depasite, lipsa, sumaRestante, inactiv: apt.status === 'inactiv' && !urmarit, urmarit }
     })
-  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta])
+  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta, urmarite])
 
   const active = fise.filter(f => !f.inactiv && (f.sloturi.length || f.rest.length))
   const inactive = fise.filter(f => f.inactiv && (f.sloturi.some(s => s.randuri.length) || f.rest.some(r => r.status === 'nevalidat')))
@@ -161,7 +175,16 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
           {ring(f.tot ? f.pl / f.tot : (f.lipsa ? 0 : 1))}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</div>
-            <div style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, fontWeight: 700, color: 'rgba(159,215,255,0.5)' }}>{f.apt.nota || ''}{f.inactiv ? ' · inactiv' : ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, fontWeight: 700, color: 'rgba(159,215,255,0.5)' }}>
+              {f.apt.nota || ''}{f.inactiv ? ' · inactiv' : f.urmarit ? (f.apt.nota ? ' · ' : '') + 'inactiv' : ''}
+              {f.urmarit && <span style={{ whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 10, padding: '1px 7px', borderRadius: 20, background: 'rgba(196,181,253,0.12)', border: '1px solid rgba(196,181,253,0.3)', color: '#C4B5FD' }}>urmărit</span>}
+              {(f.inactiv || f.urmarit) && (
+                <button onClick={e => { e.stopPropagation(); comutaUrmarit(String(f.apt.id)) }} title={f.urmarit ? 'Scoate din cheltuielile urmărite (revine la „Apartamente inactive”)' : 'Urmărește cheltuielile acestui apartament ca pe cele active'}
+                  style={{ whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 10, padding: '1px 7px', borderRadius: 20, border: '1px dashed rgba(159,215,255,0.3)', background: 'transparent', color: 'rgba(159,215,255,0.7)', cursor: 'pointer' }}>
+                  {f.urmarit ? '✕' : '+ urmărește'}
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontWeight: 700, fontSize: 15, color: deplata ? (f.depasite ? '#F87171' : '#E8F4FF') : '#4ADE80' }}>{deplata ? fmt(deplata) + ' RON' : '✓'}</div>
