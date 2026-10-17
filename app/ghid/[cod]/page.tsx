@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import GhidView from '@/components/GhidView'
-import { aptDupaCod, citesteGhid, type Ghid } from '@/lib/ghid'
+import { ghidNou, type Ghid } from '@/lib/ghid'
 
 // Pagina publica a ghidului de check-in pentru oaspeti: /ghid/<COD> (ex. /ghid/GS08). Fara meniul aplicatiei.
 export default function GhidPublic() {
@@ -16,8 +16,9 @@ export default function GhidPublic() {
   useEffect(() => {
     let viu = true
     ;(async () => {
-      const apt = await aptDupaCod(String(cod || ''))
-      const ghid = apt ? await citesteGhid(apt.id) : null
+      // doar ghidul acesta, prin ruta dedicata (pe adresa oaspetilor nu exista alt acces la date)
+      let apt: { id: string; nume: string } | null = null, ghid: Ghid | null = null
+      try { const r = await fetch(`/api/ghid/${encodeURIComponent(String(cod || ''))}`, { cache: 'no-store' }); const j = await r.json(); if (j.ok) { apt = j.apt; ghid = { ...ghidNou(), ...j.ghid } } } catch {}
       if (apt) setAptId(apt.id)
       if (!viu) return
       if (ghid) { setG(ghid); setStare('gata'); document.title = `${ghid.titlu || apt?.nume} — AB Homes` } else setStare('lipsa')

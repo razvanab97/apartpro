@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
-import { codLink } from '@/lib/ghid'
+import { linkGhid } from '@/lib/ghid'
 import { Copy, Check, ExternalLink, Pencil, Plus, Loader2 } from 'lucide-react'
 
 // Lista ghidurilor de check-in pe apartamente: care au ghid, cand a fost modificat, linkul pentru oaspeti.
@@ -28,14 +28,13 @@ export default function Ghiduri() {
       setApts(((a || []) as Apt[]).sort((x, y) => Number(!!m[y.id]) - Number(!!m[x.id]) || Number(x.status === 'inactiv') - Number(y.status === 'inactiv')))
     })()
   }, [])
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://apartpro.work'
   return (
     <>
       <PageHeader title="Ghiduri check-in" subtitle="Pagina pentru oaspeți cu pașii de acces, poze și video — câte una pe apartament" />
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12, alignItems: 'start' }}>
         {!apts && <div style={{ color: 'rgba(159,215,255,0.6)', display: 'flex', gap: 8, alignItems: 'center' }}><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Se încarcă…</div>}
         {apts?.map(a => {
-          const i = info[a.id], link = `${origin}/ghid/${codLink(a)}`
+          const i = info[a.id], link = linkGhid(a)
           return (
             <div key={a.id} style={{ background: 'rgba(14,27,48,0.6)', border: `1px solid ${i ? 'rgba(255,138,61,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, opacity: a.status === 'inactiv' && !i ? 0.6 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

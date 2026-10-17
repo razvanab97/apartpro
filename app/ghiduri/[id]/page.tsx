@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PageHeader } from '@/components/Layout'
 import GhidView from '@/components/GhidView'
-import { citesteGhid, salveazaGhid, ghidNou, aptDupaCod, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
+import { citesteGhid, salveazaGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
 import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film } from 'lucide-react'
 
 // Editorul ghidului de check-in (cerut direct: „o modalitate de modificare text și de adăugat alte poze”).
@@ -68,7 +68,7 @@ export default function EditorGhid() {
   const k = (base: string): string => `${base}_${l}`
   const gv = (base: string): string => (g as any)[k(base)] || ''
   const pv = (p: Pas, base: string): string => (p as any)[k(base)] || ''
-  const link = `${typeof window !== 'undefined' ? window.location.origin : 'https://apartpro.work'}/ghid/${codLink(apt)}`
+  const link = linkGhid(apt)
 
   async function adaugaMedia(i: number, files: FileList | File[]) {
     const lista = Array.from(files)

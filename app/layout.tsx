@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import './tema-luminoasa.css'
 import Layout from '@/components/Layout'
+import { headers } from 'next/headers'
 
 export const metadata: Metadata = {
   title: 'ApartPro — AB Homes Iași',
@@ -25,7 +26,9 @@ export const metadata: Metadata = {
   themeColor: '#0A1628',
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // pe adresa oaspetilor (ghid.abhomesiasi.ro) nu se incarca deloc interfata de admin (meniu, asistent, sincronizari)
+  const oaspete = ((await headers()).get('host') || '').split(':')[0].toLowerCase() === 'ghid.abhomesiasi.ro'
   return (
     <html lang="ro" suppressHydrationWarning>
       <head>
@@ -41,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="tema-fundal" style={{position:'fixed',top:'-15%',right:'-5%',width:'50%',height:'65%',zIndex:-1,background:'radial-gradient(ellipse,rgba(77,163,255,0.13) 0%,transparent 68%)',pointerEvents:'none'}}/>
         <div className="tema-fundal" style={{position:'fixed',bottom:'-20%',left:'-8%',width:'45%',height:'55%',zIndex:-1,background:'radial-gradient(ellipse,rgba(37,99,235,0.10) 0%,transparent 68%)',pointerEvents:'none'}}/>
         <div className="tema-fundal" style={{position:'fixed',top:'35%',left:'30%',width:'40%',height:'40%',zIndex:-1,background:'radial-gradient(ellipse,rgba(159,215,255,0.05) 0%,transparent 70%)',pointerEvents:'none'}}/>
-        <Layout>{children}</Layout>
+        {oaspete ? children : <Layout>{children}</Layout>}
       </body>
     </html>
   )
