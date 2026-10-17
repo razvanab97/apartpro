@@ -1,4 +1,5 @@
 'use client'
+import { GHID_BAZA } from '@/lib/gazdeGhid'
 import { useEffect, useState } from 'react'
 import { supabase, Apartament, Proprietar, reorderAptsSubset, persistAptOrdine, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
@@ -463,7 +464,7 @@ export default function ApartamentePage() {
                 <a href={`/ghiduri/${selected.id}`} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(255,138,61,0.12)', color:'#FF8A3D', border:'1px solid rgba(255,138,61,0.35)', textDecoration:'none', flex:1, fontWeight:700 }}>
                   ✏️ Ghid check-in (editează)
                 </a>
-                <CopyBtn text={`https://ghid.abhomesiasi.ro/${(selected as any).nota || selected.id}`}/>
+                <CopyBtn text={`${GHID_BAZA}/${(selected as any).nota || selected.id}`}/>
               </div>
               {((selected as any).airbnb_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>

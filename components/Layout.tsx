@@ -6,6 +6,7 @@ import UpdatesWidget from '@/components/UpdatesWidget'
 import ComutatorTema from '@/components/ComutatorTema'
 import Agent from '@/components/Agent'
 import Observator from '@/components/Observator'
+import { eGazdaGhid } from '@/lib/gazdeGhid'
 import NotificationBell from '@/components/NotificationBell'
 import PriceCalc from '@/components/PriceCalc'
 import ScanCopyPopup from '@/components/ScanCopyPopup'
@@ -70,7 +71,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function bgSync() {
       try {
-        if (localStorage.getItem('sync_auto') !== '1' || location.pathname.startsWith('/ghid/') || location.hostname === 'ghid.abhomesiasi.ro') return
+        if (localStorage.getItem('sync_auto') !== '1' || location.pathname.startsWith('/ghid/') || eGazdaGhid(location.hostname)) return
         const last = parseInt(localStorage.getItem('sync_last') || '0')
         if (last && Date.now() - last < 1790000) return
         localStorage.setItem('sync_last', Date.now().toString())

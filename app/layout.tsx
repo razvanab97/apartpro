@@ -3,6 +3,7 @@ import './globals.css'
 import './tema-luminoasa.css'
 import Layout from '@/components/Layout'
 import { headers } from 'next/headers'
+import { eGazdaGhid } from '@/lib/gazdeGhid'
 
 export const metadata: Metadata = {
   title: 'ApartPro — AB Homes Iași',
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // pe adresa oaspetilor (ghid.abhomesiasi.ro) nu se incarca deloc interfata de admin (meniu, asistent, sincronizari)
-  const oaspete = ((await headers()).get('host') || '').split(':')[0].toLowerCase() === 'ghid.abhomesiasi.ro'
+  const oaspete = eGazdaGhid((await headers()).get('host'))
   return (
     <html lang="ro" suppressHydrationWarning>
       <head>

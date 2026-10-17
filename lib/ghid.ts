@@ -64,7 +64,8 @@ export async function aptDupaCod(cod: string) {
 
 export const codLink = (a: { id: string; nota: string | null }) => a.nota || a.id
 // linkul trimis oaspetilor - pe adresa lor dedicata (fara apartpro.work, care e sistemul intern)
-export const GHID_BAZA = 'https://ghid.abhomesiasi.ro'
+import { GHID_BAZA } from '@/lib/gazdeGhid'
+export { GHID_BAZA }
 export const linkGhid = (a: { id: string; nota: string | null }) => `${GHID_BAZA}/${codLink(a)}`
 
 // Incarcare poza / video: pozele se micsoreaza in browser (max 1800 px, JPEG) ca pagina sa se deschida repede pe telefon

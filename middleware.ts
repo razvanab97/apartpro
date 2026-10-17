@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eGazdaGhid } from '@/lib/gazdeGhid'
 
 // Adresa pentru oaspeti (cerut direct: „să nu apară apartpro.work în link, ca poate ajunge în sistemul nostru dacă
 // șterge terminația”). Pe ea se servesc DOAR ghidurile: ghid.abhomesiasi.ro/GS08 -> pagina ghidului; orice alta
 // pagina (Dashboard, rezervari, /admin, proxy-ul bazei de date...) nu exista acolo.
-const GAZDE_GHID = ['ghid.abhomesiasi.ro']
 const STATIC_PERMIS = /^\/(_next\/|favicon\.ico$|manifest\.json$|tema-luminoasa\.js$|logo\.jpg$|icon-\d+\.png$|api\/ghid\/[^/]+$)/
 
 function gazdaOaspeti(req: NextRequest) {
@@ -23,8 +23,7 @@ function gazdaOaspeti(req: NextRequest) {
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
-  const gazda = (req.headers.get('host') || '').split(':')[0].toLowerCase()
-  if (GAZDE_GHID.includes(gazda)) return gazdaOaspeti(req)
+  if (eGazdaGhid(req.headers.get('host'))) return gazdaOaspeti(req)
 
   const res = NextResponse.next()
   // Safari pastreaza in cache de disc paginile vechi mai agresiv decat Chrome,
