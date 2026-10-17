@@ -194,6 +194,8 @@ def main():
 RUNTIME = r"""/* GENERAT de scripts/genereaza-tema-luminoasa.py — nu edita manual. Tema luminoasa: traduce culorile inline
    (style="color/background/border") prin tabelul de mai jos, o singura data pe element + la fiecare schimbare. */
 (function () {
+  // ghidul public pentru oaspeti (/ghid/...) are stilul lui - tema aplicatiei nu se aplica acolo
+  if (/^\/ghid\//.test(location.pathname)) { window.__temaLuminoasa = function () {}; return; }
   var H = __HARTA__, on = false, scriu = false;
   var RE = /rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,\/]+([\d.]+)(%?))?\s*\)/;
   function k(v) { var m = RE.exec(v || ''); if (!m) return null; var a = m[4] == null ? 1 : parseFloat(m[4]) / (m[5] ? 100 : 1); return m[1] + ',' + m[2] + ',' + m[3] + ',' + Math.round(Math.min(a, 1) * 1000); }

@@ -15,7 +15,7 @@ import {
   LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
   Upload, RefreshCw, CalendarDays, Menu, X, ChevronRight
-, Zap, Megaphone } from 'lucide-react'
+, Zap, Megaphone, MapPin } from 'lucide-react'
 
 const navItems = [
   { href: '/',            icon: LayoutDashboard, label: 'Dashboard',      group: 'P', bottom: true },
@@ -26,6 +26,7 @@ const navItems = [
   { href: '/sabloane',    icon: FileText, label: 'Șabloane mesaje', group: 'O', bottom: true },
   { href: '/marketing',   icon: Megaphone,       label: 'Generator Marketing', group: 'O', bottom: false },
   { href: '/curatenie',   icon: Zap,         label: 'Curățenie',      group: 'O', bottom: true },
+  { href: '/ghiduri',     icon: MapPin,      label: 'Ghiduri check-in', group: 'O', bottom: false },
   { href: '/apartamente', icon: Building2,       label: 'Apartamente',    group: 'P', bottom: false },
   { href: '/proprietari', icon: Users,           label: 'Proprietari',    group: 'P', bottom: false },
   { href: '/sync',        icon: RefreshCw,       label: 'Sync 5starDesk', group: 'P', bottom: false },
@@ -88,6 +89,8 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   const bottomItems = navItems.filter(i => i.bottom)
   const isStaff = pathname === '/staff'
+  // ghidul de check-in pentru oaspeti (/ghid/<COD>) e o pagina publica: fara meniu, asistent sau observator
+  if (pathname?.startsWith('/ghid/')) return <>{children}</>
 
   return (
     <div style={{ display: 'flex', height: '100dvh', overflow: 'auto', position: 'relative' }}>
