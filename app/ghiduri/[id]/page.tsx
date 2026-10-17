@@ -1,10 +1,9 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import GhidView from '@/components/GhidView'
-import { citesteGhid, salveazaGhid, ghidNou, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
+import { citesteGhid, salveazaGhid, ghidNou, aptDupaCod, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
 import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film } from 'lucide-react'
 
 // Editorul ghidului de check-in (cerut direct: „o modalitate de modificare text și de adăugat alte poze”).
@@ -35,9 +34,11 @@ export default function EditorGhid() {
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase.from('apartamente').select('id,nota,nume,adresa').eq('id', id).maybeSingle()
+      // /ghiduri/<id> sau /ghiduri/<COD> (ex. GS08 - vine din scurtatura /ghid/GS08/admin)
+      const data = await aptDupaCod(String(id))
+      if (!data) { setApt({ id: '', nota: null, nume: 'Apartament negăsit', adresa: null }); setG(ghidNou()); return }
       setApt(data as Apt)
-      const ghid = await citesteGhid(String(id))
+      const ghid = await citesteGhid(data.id)
       setG(ghid || { ...ghidNou(String(data?.nume || '')), sub_ro: data?.adresa || '' })
     })()
   }, [id])
@@ -49,11 +50,12 @@ export default function EditorGhid() {
     setStare('modificat')
     const t = setTimeout(async () => {
       setStare('salvez')
-      const err = await salveazaGhid(String(id), g)
+      if (!apt?.id) return
+      const err = await salveazaGhid(apt.id, g)
       if (err) { setStare('eroare'); setEroare(err) } else { setStare('salvat'); setEroare(null) }
     }, 1000)
     return () => clearTimeout(t)
-  }, [g, id])
+  }, [g, id, apt?.id])
   useEffect(() => {
     const f = (e: BeforeUnloadEvent) => { if (stare !== 'salvat') { e.preventDefault(); e.returnValue = '' } }
     window.addEventListener('beforeunload', f); return () => window.removeEventListener('beforeunload', f)
