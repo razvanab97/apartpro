@@ -7,7 +7,8 @@ import { supabase, getStorageUrl } from '@/lib/supabase'
 
 export type Media = { tip: 'img' | 'video'; url: string; ro: string; en: string }
 export type Pas = { titlu_ro: string; titlu_en: string; text_ro: string; text_en: string; nota_ro: string; nota_en: string
-  link_url: string; link_ro: string; link_en: string; media: Media[] }
+  link_url: string; link_ro: string; link_en: string; media: Media[]
+  copiaza?: string }  // text cu buton „Copiază” (ex. strada si numarul)
 export type Acces = { ro: string; en: string; valoare: string; cod: boolean }
 export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string }
 export type Ghid = {
@@ -17,7 +18,7 @@ export type Ghid = {
   actualizat?: string
 }
 
-export const pasGol = (): Pas => ({ titlu_ro: '', titlu_en: '', text_ro: '', text_en: '', nota_ro: '', nota_en: '', link_url: '', link_ro: '', link_en: '', media: [] })
+export const pasGol = (): Pas => ({ titlu_ro: '', titlu_en: '', text_ro: '', text_en: '', nota_ro: '', nota_en: '', link_url: '', link_ro: '', link_en: '', media: [], copiaza: '' })
 
 export function ghidNou(nume = ''): Ghid {
   return {

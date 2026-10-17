@@ -47,6 +47,8 @@ const CSS = `
 .gh-step h3{margin:2px 0 6px;font-size:22px;line-height:1.25;font-weight:700;color:var(--ink);text-wrap:balance}
 .gh-step p{margin:0 0 12px;color:var(--dim);max-width:62ch;white-space:pre-line}
 .gh-call{margin:0 0 12px;padding:10px 14px;border-radius:14px;border:1px solid rgba(255,102,0,.35);background:var(--accs);color:var(--ink);font-size:14.5px;white-space:pre-line}
+.gh-cp{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--line2);background:rgba(10,8,6,.45)}
+.gh-cp span{min-width:0;font-weight:700;color:var(--ink);font-size:15.5px;overflow-wrap:anywhere}
 .gh-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:50px;background:var(--acc);color:#fff;font-weight:700;font-size:14.5px;text-decoration:none;box-shadow:0 8px 20px rgba(255,102,0,.3)}
 .gh-btn:hover{background:var(--accd)}
 .gh-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;align-items:center}
@@ -138,6 +140,7 @@ export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?:
               <div>
                 <h3>{t(p.titlu_ro, p.titlu_en) || '…'}</h3>
                 {t(p.text_ro, p.text_en) && <p>{t(p.text_ro, p.text_en)}</p>}
+                {p.copiaza?.trim() && <div className="gh-cp"><span>{p.copiaza}</span>{btnCopy('p' + i, p.copiaza)}</div>}
                 {t(p.nota_ro, p.nota_en) && <p className="gh-call">{t(p.nota_ro, p.nota_en)}</p>}
                 {p.link_url && <div className="gh-row"><a className="gh-btn" href={p.link_url} target="_blank" rel="noopener noreferrer">{t(p.link_ro, p.link_en) || p.link_url}</a></div>}
                 {p.media.length > 0 && (
