@@ -194,10 +194,13 @@ export default function DashboardPage() {
   // apartamente marcate „Eliberat” azi in Curatenie -> reminderul de check-out al oaspetelui iese singur din mesaje
   // (cerut direct: „nu mai avem de ce să-l trimitem dacă s-a eliberat”)
   const [eliberateIds,setEliberateIds]=useState<Set<string>>(new Set())
+  // starea curateniei azi pe apartament (Sosiri: gata -> primul, in ordinea orei)
+  const [curatenieAzi,setCuratenieAzi]=useState<Record<string,{status:string;ora?:string|null}>>({})
   const aplicaCuratenie=(rows:any[]|null)=>{ if(!rows) return
     setCuratenieGataIds(new Set(rows.filter((s:any)=>s.status==='gata').map((s:any)=>s.apartament_id)))
-    setEliberateIds(new Set(rows.filter((s:any)=>s.eliberat).map((s:any)=>s.apartament_id))) }
-  const citesteCuratenie=()=>supabase.from('curatenie_status').select('apartament_id,status,eliberat').eq('data',aziLocal()).then(({data})=>aplicaCuratenie(data))
+    setEliberateIds(new Set(rows.filter((s:any)=>s.eliberat).map((s:any)=>s.apartament_id)))
+    setCuratenieAzi(Object.fromEntries(rows.map((s:any)=>[s.apartament_id,{status:s.status,ora:s.ora_gata||null}]))) }
+  const citesteCuratenie=()=>supabase.from('curatenie_status').select('apartament_id,status,eliberat,ora_gata').eq('data',aziLocal()).then(({data})=>aplicaCuratenie(data))
   const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('gata_banner_'+aziLocal())==='1'}catch{return false}
   })
@@ -1529,7 +1532,8 @@ export default function DashboardPage() {
       {/* LISTA UNIFICATA — MESAJE DE AZI */}
       {mesajeListOpen&&(
         <MesajePeRand
-          tasks={mesajeTasks.map(t=>({...t,trimis:mesajeSentIds.has(t.id)}))}
+          tasks={mesajeTasks.map(t=>{ const r=(t.categorie==='checkin'||t.categorie==='gata')?checkinAzi.find((x:any)=>x.id===t.rawId):null; const aid=r?.apartament?.id
+            return {...t,trimis:mesajeSentIds.has(t.id),curatenie:r?(curatenieAzi[aid]||{status:'neinceput'}):undefined} })}
           numereLipsa={numereLipsa}
           telSugestii={telSugestii}
           filaInitiala={mesajeFila}

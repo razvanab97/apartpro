@@ -8,6 +8,8 @@ import { useEffect, useMemo, useState } from 'react'
 export type MesajRand = {
   id: string; rawId: string; categorie: string; titluCategorie: string; nume: string; nota?: string; linie2?: string
   telefon: string; mesaj: string; faraTelefon?: boolean; trimis: boolean; apt?: string
+  // starea curateniei azi la apartament (Sosiri): gata -> mesajul urca primul, in ordinea orei la care s-a terminat
+  curatenie?: { status: string; ora?: string | null }
 }
 export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
 export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
@@ -63,9 +65,13 @@ export default function MesajePeRand(p: {
   const [confirmSterge, setConfirmSterge] = useState(false)
   const [aratSterse, setAratSterse] = useState(false)
 
+  // Sosiri (cerut direct: „să apară în ordine, după curățenie — dacă e gata la apartamentul X, acela să apară primul”):
+  // intai apartamentele cu curatenia gata, in ordinea orei la care s-a terminat; apoi cele in lucru; apoi restul
+  const rangCur = (t: MesajRand) => t.curatenie?.status === 'gata' ? 0 : t.curatenie?.status === 'inceput' ? 1 : 2
+  const ordineCuratenie = (a: MesajRand, b: MesajRand) => (rangCur(a) - rangCur(b)) || (rangCur(a) === 0 ? (String(a.curatenie?.ora || '99').localeCompare(String(b.curatenie?.ora || '99')) || String(a.rawId).localeCompare(String(b.rawId)) || (a.categorie === 'gata' ? -1 : b.categorie === 'gata' ? 1 : 0)) : 0)  // curatenie gata: intai datele de acces
   const deTrimis = (k: FilaMesaje) => p.tasks
     .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
-    .sort((a, b) => (amanate.indexOf(a.id) - amanate.indexOf(b.id)) || (ORD[a.categorie] - ORD[b.categorie]))
+    .sort((a, b) => (amanate.indexOf(a.id) - amanate.indexOf(b.id)) || (k === 'sos' ? ordineCuratenie(a, b) : 0) || (ORD[a.categorie] - ORD[b.categorie]))
   const totalFila = (k: FilaMesaje) => p.tasks.filter(t => filaMesaj(t.categorie) === k)
   const numereRamase = p.numereLipsa.filter(n => !salvate[n.id])
   const revazut = revId ? p.tasks.find(t => t.id === revId) || null : null
@@ -281,6 +287,12 @@ export default function MesajePeRand(p: {
                   <div style={{ fontWeight: 800, fontSize: 16, color: '#E8F4FF', lineHeight: 1.2 }}>{curent.nume}</div>
                   {fila === 'prop' && curent.linie2 && <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)' }}>{curent.linie2}</div>}
                 </div>
+                {fila === 'sos' && curent.curatenie && (() => {
+                  const st = curent.curatenie.status
+                  const [txt, c, bg] = st === 'gata' ? [`🧹 Curățenie gata${curent.curatenie.ora ? ' · ' + curent.curatenie.ora.slice(0, 5) : ''}`, '#4ADE80', 'rgba(74,222,128,0.14)']
+                    : st === 'inceput' ? ['🧹 Curățenie în lucru', '#FCD34D', 'rgba(252,211,77,0.14)'] : [st === 'anulat' ? '🧹 Fără curățenie azi' : '🧹 Curățenie neîncepută', 'rgba(159,215,255,0.6)', 'rgba(159,215,255,0.08)']
+                  return <span style={{ fontSize: 11.5, fontWeight: 800, color: c, background: bg, borderRadius: 20, padding: '4px 10px', whiteSpace: 'nowrap' }}>{txt}</span>
+                })()}
                 {K && !curent.nota && !curent.apt && !(fila !== 'prop' && curent.linie2) && <span style={{ fontSize: 11, fontWeight: 800, color: K.c, background: K.bg, borderRadius: 20, padding: '4px 9px', whiteSpace: 'nowrap' }}>{K.l}</span>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 10, background: curent.telefon.trim() ? '#0A1424' : 'rgba(248,113,113,0.1)', border: `1px solid ${curent.telefon.trim() ? 'rgba(159,215,255,0.14)' : 'rgba(248,113,113,0.55)'}`, padding: '7px 10px' }}>
