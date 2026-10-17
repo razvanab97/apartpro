@@ -458,6 +458,13 @@ export default function ApartamentePage() {
 
             {/* Links */}
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {/* ghidul de check-in pentru oaspeti (pagina /ghid/<COD>) - editare direct de aici */}
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <a href={`/ghiduri/${selected.id}`} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, padding:'5px 10px', borderRadius:6, background:'rgba(255,138,61,0.12)', color:'#FF8A3D', border:'1px solid rgba(255,138,61,0.35)', textDecoration:'none', flex:1, fontWeight:700 }}>
+                  ✏️ Ghid check-in (editează)
+                </a>
+                <CopyBtn text={`https://apartpro.work/ghid/${(selected as any).nota || selected.id}`}/>
+              </div>
               {((selected as any).airbnb_links as string[]||[]).filter(Boolean).map((lnk:string,i:number)=>(
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:6 }}>
                   <a href={withToday(lnk, lnk.includes('airbnb') ? 'airbnb' : 'booking')} target="_blank" rel="noopener" style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, color:'#F87171', textDecoration:'none' }}>

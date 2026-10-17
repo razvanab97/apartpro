@@ -31,10 +31,11 @@ const CSS = `
 .gh-badge .k{color:var(--faint);font-weight:600}
 .gh-quick{border:1px solid var(--line2);background:var(--panel2);border-radius:24px;padding:18px;backdrop-filter:blur(8px);margin-bottom:38px}
 .gh-quick h2{margin:0 0 12px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);font-weight:700}
-.gh-qgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.gh-qgrid{display:flex;flex-direction:column;gap:8px}
 .gh-q{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:16px;border:1px solid var(--line);background:rgba(10,8,6,.45)}
 .gh-q .l{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
-.gh-q .v{display:block;font-family:var(--mono);font-weight:600;font-size:19px;color:var(--ink);letter-spacing:.04em;word-break:break-all}
+.gh-q>span{min-width:0}
+.gh-q .v{display:block;font-family:var(--mono);font-weight:600;font-size:19px;color:var(--ink);letter-spacing:.04em;overflow-wrap:anywhere}
 .gh-q.cod .v{font-size:28px;color:var(--acc);letter-spacing:.18em}
 .gh-copy{flex-shrink:0;border:1px solid var(--line2);background:transparent;color:var(--ink);border-radius:50px;padding:7px 12px;font:700 12px/1 var(--body);cursor:pointer}
 .gh-copy:hover{background:var(--acc);border-color:var(--acc);color:#fff}
