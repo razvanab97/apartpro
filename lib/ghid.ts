@@ -1,4 +1,4 @@
-import { supabase, getStorageUrl } from '@/lib/supabase'
+import { supabase, getStorageUrl, incarcaDirect } from '@/lib/supabase'
 
 // Ghidul de check-in pentru oaspeti (cerut direct: „mesajele de check-in de pe WhatsApp, într-un link, cu poze și
 // video, puse în ordinea corectă” + „o modalitate de modificare text și de adăugat alte poze”).
@@ -84,14 +84,19 @@ async function micsoreaza(file: File): Promise<Blob> {
 
 export const LIMITA_VIDEO_MB = 50
 
-export async function incarcaMedia(cod: string, file: File): Promise<{ media?: Media; eroare?: string }> {
-  const video = file.type.startsWith('video/')
-  if (!video && !file.type.startsWith('image/')) return { eroare: `${file.name}: doar poze sau videoclipuri` }
+const EXT_VIDEO: Record<string, string> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp' }
+
+export async function incarcaMedia(cod: string, file: File, onProgres?: (pct: number) => void): Promise<{ media?: Media; eroare?: string }> {
+  // unele browsere (ex. Safari, fisiere din WhatsApp) nu dau tipul fisierului -> il deducem din extensie
+  const extFisier = (file.name.split('.').pop() || '').toLowerCase()
+  const tipVideo = file.type.startsWith('video/') ? file.type : EXT_VIDEO[extFisier] || ''
+  const video = !!tipVideo
+  if (!video && !file.type.startsWith('image/') && !/^(jpe?g|png|webp|heic|gif)$/.test(extFisier)) return { eroare: `${file.name}: doar poze sau videoclipuri` }
   if (video && file.size > LIMITA_VIDEO_MB * 1024 * 1024) return { eroare: `${file.name}: videoclipul are ${Math.round(file.size / 1048576)} MB — limita e ${LIMITA_VIDEO_MB} MB (trimite-l din WhatsApp pe calculator sau scurtează-l)` }
   const blob = video ? file : await micsoreaza(file)
-  const ext = video ? (file.name.split('.').pop() || 'mp4').toLowerCase() : 'jpg'
+  const ext = video ? (EXT_VIDEO[extFisier] ? extFisier : 'mp4') : 'jpg'
   const path = `ghiduri/${cod.toLowerCase().replace(/[^a-z0-9-]/g, '')}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`
-  const { error } = await supabase.storage.from('Facturi').upload(path, blob, { contentType: video ? file.type : 'image/jpeg', upsert: false })
-  if (error) return { eroare: `${file.name}: ${error.message}` }
+  const eroare = await incarcaDirect('Facturi', path, blob, video ? tipVideo : (blob.type || 'image/jpeg'), onProgres)
+  if (eroare) return { eroare: `${file.name}: ${eroare}` }
   return { media: { tip: video ? 'video' : 'img', url: getStorageUrl('Facturi', path), ro: '', en: '' } }
 }

@@ -27,6 +27,7 @@ export default function EditorGhid() {
   const [stare, setStare] = useState<'salvat' | 'modificat' | 'salvez' | 'eroare'>('salvat')
   const [eroare, setEroare] = useState<string | null>(null)
   const [incarc, setIncarc] = useState<Record<number, number>>({})
+  const [progres, setProgres] = useState<Record<number, number>>({})
   const [traduc, setTraduc] = useState<string | null>(null)
   const [vedere, setVedere] = useState<'edit' | 'preview'>('edit')
   const [copiat, setCopiat] = useState(false)
@@ -76,7 +77,8 @@ export default function EditorGhid() {
     setIncarc(x => ({ ...x, [i]: (x[i] || 0) + lista.length }))
     const erori: string[] = []
     for (const f of lista) {
-      const r = await incarcaMedia(codLink(apt!), f)
+      setProgres(x => ({ ...x, [i]: 0 }))
+      const r = await incarcaMedia(codLink(apt!), f, pct => setProgres(x => ({ ...x, [i]: pct })))
       if (r.media) setG(x => x ? { ...x, pasi: x.pasi.map((s, j) => j === i ? { ...s, media: [...s.media, r.media!] } : s) } : x)
       else if (r.eroare) erori.push(r.eroare)
       setIncarc(x => ({ ...x, [i]: Math.max(0, (x[i] || 1) - 1) }))
@@ -194,8 +196,8 @@ export default function EditorGhid() {
               </div>
             ))}
             <label style={{ minHeight: 120, borderRadius: 10, border: '1.5px dashed rgba(255,138,61,0.5)', background: 'rgba(255,138,61,0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', color: '#FF8A3D', fontSize: 12, fontWeight: 700, textAlign: 'center', padding: 8 }}>
-              {incarc[i] ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Se încarcă {incarc[i]}…</> : <><Upload size={18} /> Adaugă poze / video<span style={{ fontWeight: 500, color: 'rgba(255,138,61,0.7)', fontSize: 11 }}>sau trage fișierele aici · video max {LIMITA_VIDEO_MB} MB</span></>}
-              <input type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) adaugaMedia(i, e.target.files); e.target.value = '' }} />
+              {incarc[i] ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Se încarcă{incarc[i] > 1 ? ` (${incarc[i]} fișiere)` : ''}… {progres[i] ?? 0}%<span style={{ width: '80%', height: 5, borderRadius: 3, background: 'rgba(255,138,61,0.2)', overflow: 'hidden' }}><span style={{ display: 'block', height: '100%', width: `${progres[i] ?? 0}%`, background: '#FF8A3D', transition: 'width .2s' }} /></span></> : <><Upload size={18} /> Adaugă poze / video<span style={{ fontWeight: 500, color: 'rgba(255,138,61,0.7)', fontSize: 11 }}>sau trage fișierele aici · video max {LIMITA_VIDEO_MB} MB</span></>}
+              <input type="file" accept="image/*,video/*,.mp4,.mov,.m4v,.webm" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) adaugaMedia(i, e.target.files); e.target.value = '' }} />
             </label>
           </div>
         </div>

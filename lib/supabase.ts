@@ -74,6 +74,29 @@ export function aziLocal(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Incarcare DIRECT in storage (nu prin proxy-ul /api/supa): functiile Vercel accepta maxim 4,5 MB pe cerere, deci
+// un video de pe telefon nu trecea prin proxy (cerut direct: „nu pot adăuga video-ul mp4”). Cu progres (0-100).
+export function incarcaDirect(bucket: string, path: string, fisier: Blob, contentType: string, onProgres?: (pct: number) => void): Promise<string | null> {
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${DIRECT_URL}/storage/v1/object/${bucket}/${path.split('/').map(encodeURIComponent).join('/')}`)
+    xhr.setRequestHeader('apikey', supabaseAnonKey)
+    xhr.setRequestHeader('Authorization', 'Bearer ' + supabaseAnonKey)
+    xhr.setRequestHeader('Content-Type', contentType || 'application/octet-stream')
+    xhr.setRequestHeader('x-upsert', 'false')
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onProgres) onProgres(Math.round(e.loaded / e.total * 100)) }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(null)
+      let m = xhr.responseText || ('HTTP ' + xhr.status)
+      try { const j = JSON.parse(xhr.responseText); m = j.message || j.error || m } catch {}
+      if (xhr.status === 413 || /maximum allowed size|too large|exceeded/i.test(m)) m = 'fișierul e prea mare pentru stocare (limita proiectului Supabase)'
+      resolve(m)
+    }
+    xhr.onerror = () => resolve('conexiunea s-a întrerupt în timpul încărcării — încearcă din nou')
+    xhr.send(fisier)
+  })
+}
+
 export function getStorageUrl(bucket: string, path: string): string {
   return `${DIRECT_URL}/storage/v1/object/public/${bucket}/${path}`
 }
