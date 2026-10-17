@@ -388,7 +388,9 @@ export default function DashboardPage() {
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
     })
     checkinAzi.forEach((r:any)=>{
-      if(dupaCheckin&&!mesajeSentIds.has('ci-'+r.id)) return  // dupa 15:00: confirmarea netrimisa e inlocuita de acces
+      // dupa 15:00 SAU cu curatenia gata: confirmarea netrimisa nu mai are rost, ramane doar mesajul cu datele de acces
+      // (cerut direct: „n-are sens să apară ambele”)
+      if((dupaCheckin||(r.apartament?.id&&curatenieGataIds.has(r.apartament.id)))&&!mesajeSentIds.has('ci-'+r.id)) return
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
