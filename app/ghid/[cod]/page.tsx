@@ -22,7 +22,7 @@ export default function GhidPublic() {
   if (stare === 'gata' && g) return <div style={{ minHeight: '100dvh', background: '#120d0a' }}><GhidView g={g} /></div>
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: '#120d0a', color: '#a9a89f', fontFamily: 'system-ui,sans-serif', fontSize: 15, padding: 24, textAlign: 'center' }}>
-      {stare === 'incarc' ? 'Se încarcă ghidul… / Loading the guide…' : 'Ghidul nu a fost găsit. Scrieți-ne pe WhatsApp: +40 749 558 705'}
+      {stare === 'incarc' ? 'Se încarcă ghidul… / Loading the guide…' : 'Ghidul nu a fost găsit. Scrieți-ne pe WhatsApp: +40 712 290 109'}
     </div>
   )
 }

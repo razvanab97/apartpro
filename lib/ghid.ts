@@ -37,7 +37,7 @@ export function ghidNou(nume = ''): Ghid {
       { eticheta_ro: 'gunoi', eticheta_en: 'trash', text_ro: 'La plecare, aruncați gunoiul sau, cel puțin, strângeți-l corespunzător.', text_en: 'When leaving, take out the trash or at least bag it properly.' },
       { eticheta_ro: '11:00', eticheta_en: '11:00', text_ro: 'Check-out-ul se face până la ora 11:00. Lăsați cheia înapoi în locker.', text_en: 'Check-out is by 11:00. Please put the key back in the locker.' },
     ],
-    telefon: '+40 749 558 705', final_ro: 'Echipa AB Homes vă dorește un sejur plăcut!', final_en: 'The AB Homes team wishes you a pleasant stay!', fundal: '',
+    telefon: '+40 712 290 109', final_ro: 'Echipa AB Homes vă dorește un sejur plăcut!', final_en: 'The AB Homes team wishes you a pleasant stay!', fundal: '',
   }
 }
 
