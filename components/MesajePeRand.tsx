@@ -34,6 +34,8 @@ export default function MesajePeRand(p: {
   onTrimis: (t: MesajRand) => void
   onNuAzi: (id: string) => void
   onAnuleazaNuAzi: (id: string) => void
+  // mesajele scoase azi: sterse de tine (se pot readuce) sau scoase automat (apartament eliberat in Curatenie)
+  sterse?: { id: string; nume: string; nota?: string; apt?: string; titluCategorie: string; motiv: 'sters' | 'eliberat' }[]
   trimiseOrdine?: string[]                 // mesajele trimise azi, in ordinea trimiterii (din baza)
   onNetrimis?: (id: string) => void
   onUpdate: (id: string, patch: { telefon?: string; mesaj?: string }) => void
@@ -58,6 +60,8 @@ export default function MesajePeRand(p: {
   // Mesajul tocmai trimis ramane pe ecran ("✓ Trimis") pana apesi "Urmatorul" (cerut direct: "sa dispara
   // mesajul dupa ce dam la urmatorul, pana atunci sa ramana pe loc") - poti verifica / retrimite
   const [tinut, setTinut] = useState<string | null>(null)
+  const [confirmSterge, setConfirmSterge] = useState(false)
+  const [aratSterse, setAratSterse] = useState(false)
 
   const deTrimis = (k: FilaMesaje) => p.tasks
     .filter(t => !t.trimis && filaMesaj(t.categorie) === k)
@@ -77,6 +81,7 @@ export default function MesajePeRand(p: {
   const idxCoada = coada.length ? Math.min(poz[cheiePoz] || 0, coada.length - 1) : 0
   const tinutTask = tinut ? p.tasks.find(t => t.id === tinut) || null : null
   const curent = fila === 'numere' ? null : (revazut || tinutTask || coada[idxCoada] || null)
+  useEffect(() => { setConfirmSterge(false) }, [curent?.id])
   function mergiLa(d: number) {
     setRevId(null); setToast(null)
     if (tinutTask) {
@@ -141,11 +146,13 @@ export default function MesajePeRand(p: {
     setAmanate(a => [...a.filter(x => x !== curent.id), curent.id])
     setToast({ msg: `${curent.nume} — mutat la coada filei` })
   }
+  // „Șterge mesajul” (cerut direct: „să apară și șterge mesaj pentru un oaspete, dacă nu mai trebuie trimis”) -
+  // scos din coada de azi pe toate dispozitivele (salvat in baza); se poate readuce din „Șterse azi”
   function nuAzi() {
     if (!curent) return
-    setRevId(null)
+    setRevId(null); setConfirmSterge(false)
     p.onNuAzi(curent.id)
-    setToast({ msg: `${curent.nume} — scos pentru azi`, undoId: curent.id })
+    setToast({ msg: `${curent.nume} — mesaj șters pentru azi`, undoId: curent.id })
   }
 
   const urmFila = FILE.find(f => f.k !== fila && (f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0))
@@ -296,7 +303,16 @@ export default function MesajePeRand(p: {
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button onClick={() => setEditez(e => !e)} style={btn}>{editez ? '✓ Gata editarea' : '✏️ Editează'}</button>
                 <button onClick={() => p.onTraduce(curent)} disabled={p.traducandId === curent.id} style={btn}>{p.traducandId === curent.id ? 'Traduc…' : '🇬🇧 Traduce'}</button>
-                <button onClick={nuAzi} style={{ ...btn, marginLeft: 'auto' }}>Nu azi</button>
+                {!(revazut?.trimis || tinutTask) && (confirmSterge ? (
+                  <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#F87171' }}>
+                    Ștergi mesajul?
+                    <button onClick={nuAzi} style={{ border: 'none', background: '#EF4444', color: '#FFFFFF', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Da, șterge</button>
+                    <button onClick={() => setConfirmSterge(false)} style={{ ...btn, padding: '5px 6px' }}>Nu</button>
+                  </span>
+                ) : (
+                  <button onClick={() => setConfirmSterge(true)} title="Nu mai trebuie trimis azi — îl scoate din coadă (se poate readuce din „Șterse azi”)"
+                    style={{ ...btn, marginLeft: 'auto', color: '#F87171' }}>🗑 Șterge mesajul</button>
+                ))}
               </div>
               {revazut && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -320,6 +336,29 @@ export default function MesajePeRand(p: {
             </div>
           )}
         </div>
+
+        {/* Șterse azi: cele sterse de tine (cu „Readu”) + cele scoase automat (apartament eliberat) */}
+        {(p.sterse?.length || 0) > 0 && (
+          <div style={{ padding: '0 16px 4px' }}>
+            <button onClick={() => setAratSterse(v => !v)} style={{ ...btn, fontSize: 11.5, color: 'rgba(159,215,255,0.6)', padding: '4px 0' }}>
+              🗑 Șterse azi ({p.sterse!.length}) {aratSterse ? '▴' : '▾'}
+            </button>
+            {aratSterse && (
+              <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                {p.sterse!.map(x => (
+                  <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 9, background: 'rgba(159,215,255,0.05)', border: '1px solid rgba(159,215,255,0.08)', fontSize: 12 }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(214,228,244,0.85)' }}>
+                      <b>{x.nume}</b> <span style={{ color: 'rgba(159,215,255,0.5)' }}>· {x.titluCategorie}{x.nota ? ' · ' + x.nota : ''}</span>
+                    </span>
+                    {x.motiv === 'eliberat'
+                      ? <span title="Apartamentul e marcat „Eliberat” în Curățenie — reminderul de check-out nu mai e necesar. Revine singur dacă debifezi." style={{ fontSize: 11, fontWeight: 700, color: '#4ADE80', whiteSpace: 'nowrap' }}>🚪 eliberat</span>
+                      : <button onClick={() => { p.onAnuleazaNuAzi(x.id); setToast({ msg: `${x.nume} — readus în coadă` }) }} style={{ ...btn, color: '#7BC8FF', padding: 0, whiteSpace: 'nowrap' }}>↺ Readu</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Toast + butoane */}
         <div style={{ minHeight: 20, textAlign: 'center', fontSize: 12, color: '#4ADE80', padding: '0 16px' }}>

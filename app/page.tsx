@@ -191,6 +191,13 @@ export default function DashboardPage() {
   })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
+  // apartamente marcate „Eliberat” azi in Curatenie -> reminderul de check-out al oaspetelui iese singur din mesaje
+  // (cerut direct: „nu mai avem de ce să-l trimitem dacă s-a eliberat”)
+  const [eliberateIds,setEliberateIds]=useState<Set<string>>(new Set())
+  const aplicaCuratenie=(rows:any[]|null)=>{ if(!rows) return
+    setCuratenieGataIds(new Set(rows.filter((s:any)=>s.status==='gata').map((s:any)=>s.apartament_id)))
+    setEliberateIds(new Set(rows.filter((s:any)=>s.eliberat).map((s:any)=>s.apartament_id))) }
+  const citesteCuratenie=()=>supabase.from('curatenie_status').select('apartament_id,status,eliberat').eq('data',aziLocal()).then(({data})=>aplicaCuratenie(data))
   const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('gata_banner_'+aziLocal())==='1'}catch{return false}
   })
@@ -273,7 +280,7 @@ export default function DashboardPage() {
     return ()=>clearInterval(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[])
-  useEffect(()=>{ if(mesajeListOpen) sincronizeazaStareMesaje() },[mesajeListOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ if(mesajeListOpen){ sincronizeazaStareMesaje(); citesteCuratenie() } },[mesajeListOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   function marcheazaMesajTrimis(id:string){
     setMesajeSentIds(prev=>{ const n=new Set(prev); n.add(id); return n })
     setTrimiseLa(prev=>({...prev,[id]:new Date().toISOString()}))
@@ -324,9 +331,7 @@ export default function DashboardPage() {
   // Curatenia gata se reciteste periodic, ca datele de acces sa intre singure in coada cand staff-ul termina
   useEffect(()=>{
     const id=setInterval(()=>{
-      const today0=aziLocal()
-      supabase.from('curatenie_status').select('apartament_id,status').eq('data',today0).eq('status','gata')
-        .then(({data:cgD})=>{ if(cgD) setCuratenieGataIds(new Set(cgD.map((s:any)=>s.apartament_id))) })
+      citesteCuratenie()
     },60000)
     return ()=>clearInterval(id)
   },[])
@@ -351,7 +356,7 @@ export default function DashboardPage() {
   // "Rezolvat" = trimis SAU anulat — altfel un banner cu mesaje doar anulate (nu trimise)
   // ramanea vizibil la nesfarsit, fiindca nimic nu ajungea vreodata in mesajeSentIds.
   function toateTrimise(list:any[],idPrefix:string){
-    return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id)||mesajeAnulateIds.has(idPrefix+r.id))
+    return list.length>0 && list.every((r:any)=>mesajeSentIds.has(idPrefix+r.id)||mesajeAnulateIds.has(idPrefix+r.id)||(idPrefix==='co-'&&eliberateIds.has(r.apartament?.id)))
   }
   // Ora check-in-ului (15:00) schimba mesajul zilei de sosire (cerut direct): pana la 15:00 = confirmarea
   // ("va trimitem accesul cand e gata"); de la 15:00 = datele de acces, pentru toate sosirile de azi, chiar
@@ -371,7 +376,7 @@ export default function DashboardPage() {
   const coPropMesajeTrimise = toateTrimise(coProprietarAzi,'propco-')
 
   type MesajTask = { id:string; rawId:string; categorie:string; icon:string; accent:string; titluCategorie:string; nume:string; nota?:string; linie2?:string; codPlatforma?:string; canalLabel?:string; telefon:string; mesaj:string; faraTelefon?:boolean; apt?:string }
-  const mesajeTasks: MesajTask[] = useMemo(()=>{
+  const mesajeTasksToate: MesajTask[] = useMemo(()=>{
     const tasks: MesajTask[] = []
     checkoutAzi.forEach((r:any)=>{
       const id='co-'+r.id, ov=mesajOverrides[id]
@@ -413,8 +418,15 @@ export default function DashboardPage() {
         nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Oaspete: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
-    return tasks.filter(t=>!mesajeAnulateIds.has(t.id))
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,mesajeAnulateIds,dupaCheckin,mesajeSentIds])
+    return tasks
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,dupaCheckin,mesajeSentIds])
+  // reminder de check-out pentru un apartament deja eliberat (si netrimis) -> scos automat
+  const eliberatAuto=(t:MesajTask)=>t.categorie==='checkout'&&!mesajeSentIds.has(t.id)&&!!checkoutAzi.find((r:any)=>r.id===t.rawId&&eliberateIds.has(r.apartament?.id))
+  const mesajeTasks = useMemo(()=>mesajeTasksToate.filter(t=>!mesajeAnulateIds.has(t.id)&&!eliberatAuto(t)),
+    [mesajeTasksToate,mesajeAnulateIds,eliberateIds,mesajeSentIds,checkoutAzi]) // eslint-disable-line react-hooks/exhaustive-deps
+  // „Șterse azi” in fereastra de mesaje: sterse de tine (se pot readuce) + scoase automat (apartament eliberat)
+  const mesajeSterse = useMemo(()=>mesajeTasksToate.filter(t=>mesajeAnulateIds.has(t.id)||eliberatAuto(t)).map(t=>({id:t.id,nume:t.nume,nota:t.nota,apt:t.apt,titluCategorie:t.titluCategorie,motiv:(mesajeAnulateIds.has(t.id)?'sters':'eliberat') as 'sters'|'eliberat'})),
+    [mesajeTasksToate,mesajeAnulateIds,eliberateIds,mesajeSentIds,checkoutAzi]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Numar adaugat manual la o rezervare fara telefon -> salvat in rezervare (o singura data,
   // apoi apare peste tot: Rezervari, Calendar, mesajele de maine etc.)
@@ -650,9 +662,7 @@ export default function DashboardPage() {
       setSabloaneCO(coMap)
     })
     // curatenie gata azi + sabloane mesaj acces — non-blocking
-    void supabase.from('curatenie_status').select('apartament_id,status').eq('data',today0).eq('status','gata').then(({data:cgD})=>{
-      setCuratenieGataIds(new Set((cgD||[]).map((s:any)=>s.apartament_id)))
-    })
+    void citesteCuratenie()
     void supabase.from('sabloane_mesaje').select('apartament_id,text').eq('tip','gata_curatenie').then(({data:sgD})=>{
       const gMap:Record<string,string>={}
       ;(sgD||[]).forEach((s:any)=>{ if(s.text) gMap[s.apartament_id||'__global__']=s.text })
@@ -826,7 +836,8 @@ export default function DashboardPage() {
     function statusOrButton(idPrefix:string, href:string, icon:React.ReactNode, label:string, btnColor:string, btnBg:string){
       const id=idPrefix+r.id
       if(mesajeSentIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(74,222,128,0.4)','rgba(74,222,128,0.08)'),color:'#4ADE80',cursor:'default'}}><Check size={12}/>Trimis</span>
-      if(mesajeAnulateIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(248,113,113,0.3)','rgba(248,113,113,0.06)'),color:'rgba(248,113,113,0.55)',cursor:'default'}}>✕ Anulat</span>
+      if(mesajeAnulateIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(248,113,113,0.3)','rgba(248,113,113,0.06)'),color:'rgba(248,113,113,0.55)',cursor:'default'}}>✕ Șters</span>
+      if(idPrefix==='co-'&&eliberateIds.has(r.apartament?.id)) return <span key={idPrefix} title="Apartamentul e marcat eliberat în Curățenie — reminderul nu mai e necesar" style={{...waBtn('rgba(74,222,128,0.3)','rgba(74,222,128,0.06)'),color:'rgba(74,222,128,0.75)',cursor:'default'}}>🚪 Eliberat</span>
       return <a key={idPrefix} href={href} target="_blank" rel="noreferrer" onClick={()=>marcheazaMesajTrimis(id)} style={waBtn(btnColor,btnBg)}>{icon}{label}</a>
     }
     return(
@@ -1527,6 +1538,7 @@ export default function DashboardPage() {
           onTrimis={t=>trimiteMesajTask(mesajeTasks.find(x=>x.id===t.id)!)}
           onNuAzi={anuleazaMesaj}
           onAnuleazaNuAzi={restaureazaMesaj}
+          sterse={mesajeSterse}
           trimiseOrdine={Object.entries(trimiseLa).sort((a,b)=>a[1].localeCompare(b[1])).map(x=>x[0])}
           onNetrimis={marcheazaNetrimis}
           onUpdate={updateMesajOverride}
