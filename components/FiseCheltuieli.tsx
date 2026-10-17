@@ -17,7 +17,10 @@ const lunaDe = (d: string) => { const p = d.split('-'); return `${LUNI_S[+p[1] -
 const furnizorDin = (descriere?: string | null) => { const s = String(descriere || ''); return s.includes('—') ? s.split('—').pop()!.trim() : '' }
 const etichetaCat = (c: string, descriere?: string | null) => CAT[c] || String(descriere || c).split('—')[0].trim() || c
 
-type Rand = { id: string; apartament_id: string; categorie: string; descriere: string | null; valoare: number; status: string; data: string; fisier_url: string | null }
+type Rand = { id: string; apartament_id: string; categorie: string; descriere: string | null; valoare: number; status: string; data: string; fisier_url: string | null; created_at?: string | null; data_scadenta?: string | null; data_plata?: string | null }
+// scadenta: campul dedicat daca e completat, altfel data platii (la facturi = scadenta de pe factura, la chirie / asociatie = 1 ale lunii)
+const scad = (r: Rand) => r.data_scadenta || r.data
+const ziDin = (iso?: string | null) => iso ? zi(iso.slice(0, 10)) : ''
 type Apt = { id: string; nota: string | null; nume: string; status?: string }
 
 export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: number; luna: number; apts: Apt[]; onChanged?: () => void }) {
@@ -32,6 +35,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const [loading, setLoading] = useState(true)
   const [filtru, setFiltru] = useState<'toate' | 'rest' | 'late' | 'miss' | 'ok'>('toate')
   const [aratInactive, setAratInactive] = useState(false)
+  const [ultime, setUltime] = useState<Record<string, { plata?: string; adaugare?: string }>>({})
   // apartamente inactive / personale ale caror cheltuieli le urmarim totusi ca pe cele active (cerut direct:
   // „Urban Oasis, Canta și R99 — ultimele 2 sunt personale, dar trebuie să avem cheltuielile și evidența plăților”)
   const CHEIE_URMARITE = 'cheltuieli_inactive_urmarite'
@@ -56,7 +60,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   async function load() {
     setLoading(true)
     const dIst = aziLocal(new Date(an, luna - 4, 1))
-    const sel = 'id,apartament_id,categorie,descriere,valoare,status,data,fisier_url'
+    const sel = 'id,apartament_id,categorie,descriere,valoare,status,data,fisier_url,created_at,data_scadenta,data_plata'
     const [{ data: a }, { data: r }, { data: h }] = await Promise.all([
       supabase.from('cheltuieli').select(sel).not('apartament_id', 'is', null).gte('data', start).lte('data', sfarsit),
       supabase.from('cheltuieli').select(sel).not('apartament_id', 'is', null).eq('status', 'nevalidat').lt('data', start).gt('valoare', 0).order('data'),
@@ -64,6 +68,16 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
     ])
     setLuna0((a || []) as any); setRestante((r || []) as any); setIstoric((h || []) as any)
     setLoading(false)
+    // ultima plata / ultima adaugare pe apartament, indiferent de luna randului (ex. restantele din ian-apr platite azi)
+    const de6 = aziLocal(new Date(Date.now() - 183 * 86400000))
+    const [{ data: pl }, { data: ad }] = await Promise.all([
+      supabase.from('cheltuieli').select('apartament_id,data_plata').not('apartament_id', 'is', null).gte('data_plata', de6).order('data_plata', { ascending: false }).limit(1000),
+      supabase.from('cheltuieli').select('apartament_id,created_at').not('apartament_id', 'is', null).gte('created_at', de6).order('created_at', { ascending: false }).limit(1000),
+    ])
+    const ult: Record<string, { plata?: string; adaugare?: string }> = {}
+    for (const x of pl || []) if (!ult[x.apartament_id]?.plata) (ult[x.apartament_id] ||= {}).plata = x.data_plata
+    for (const x of ad || []) if (!ult[x.apartament_id]?.adaugare) (ult[x.apartament_id] ||= {}).adaugare = x.created_at
+    setUltime(ult)
   }
   useEffect(() => { load() }, [an, luna]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -74,7 +88,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
     const { error } = await supabase.from('cheltuieli').update(upd).eq('id', r.id)
     setBusy(null)
     if (error) return
-    const f = (l: Rand[]) => l.map(x => x.id === r.id ? { ...x, status: upd.status } : x)
+    const f = (l: Rand[]) => l.map(x => x.id === r.id ? { ...x, status: upd.status, data_plata: upd.data_plata } : x)
     setLuna0(f); setRestante(f)
     setUltim(plateste ? r.id : null)
     onChanged?.()
@@ -102,15 +116,22 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       let tot = 0, pl = 0, depasite = 0, lipsa = 0
       for (const s of sloturi) {
         if (!s.randuri.length) { if (lunaCurentaSauTrecuta) lipsa++; continue }
-        for (const r of s.randuri) { tot += Number(r.valoare); if (platit(r)) pl += Number(r.valoare); else if (r.data < azi) depasite++ }
+        for (const r of s.randuri) { tot += Number(r.valoare); if (platit(r)) pl += Number(r.valoare); else if (scad(r) < azi) depasite++ }
       }
       const restanteDeplata = rest.filter(r => !platit(r))
       const sumaRestante = restanteDeplata.reduce((s, r) => s + Number(r.valoare), 0)
       depasite += restanteDeplata.length
       const urmarit = apt.status === 'inactiv' && urmarite.includes(String(apt.id))
-      return { apt, sloturi, rest, furn, tot, pl, rest_luna: tot - pl, depasite, lipsa, sumaRestante, inactiv: apt.status === 'inactiv' && !urmarit, urmarit }
+      // evidenta pe apartament (cerut direct: „când au fost ultimele adăugate, când au fost plătite, și scadența — cel mai important”)
+      const toate = [...ale, ...rest, ...ist]
+      const neplatite = [...ale, ...rest].filter(r => !platit(r))
+      const urmScad = neplatite.map(scad).sort()[0] || null
+      const urmViitoare = neplatite.map(scad).filter(d => d >= azi).sort()[0] || null
+      const ultimaPlata = [ultime[apt.id]?.plata || '', ...toate.map(r => r.data_plata || '')].filter(Boolean).sort().pop() || null
+      const ultimaAdaugare = [ultime[apt.id]?.adaugare || '', ...toate.map(r => r.created_at || '')].filter(Boolean).sort().pop() || null
+      return { apt, sloturi, rest, furn, tot, pl, rest_luna: tot - pl, depasite, lipsa, sumaRestante, inactiv: apt.status === 'inactiv' && !urmarit, urmarit, urmScad, urmViitoare, ultimaPlata, ultimaAdaugare }
     })
-  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta, urmarite])
+  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta, urmarite, ultime])
 
   const active = fise.filter(f => !f.inactiv && (f.sloturi.length || f.rest.length))
   const inactive = fise.filter(f => f.inactiv && (f.sloturi.some(s => s.randuri.length) || f.rest.some(r => r.status === 'nevalidat')))
@@ -133,7 +154,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
 
   const randEl = (r: Rand, eticheta: string, sub: string | null, restanta: boolean) => {
     const platit = ['validat', 'platit'].includes(r.status)
-    const late = !platit && (restanta || r.data < azi)
+    const late = !platit && (restanta || scad(r) < azi)
     return (
       <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '30px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 6px', borderRadius: 12, background: late ? 'rgba(248,113,113,0.12)' : 'transparent', opacity: platit ? 0.5 : 1, transition: 'opacity .2s' }}>
         <button onClick={() => comuta(r)} disabled={busy === r.id} aria-label={platit ? 'Plătit — apasă ca să anulezi' : 'Marchează plătit'}
@@ -146,11 +167,29 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
             {r.fisier_url && <a href={r.fisier_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Deschide factura" style={{ marginLeft: 6, fontSize: 12, textDecoration: 'none' }}>📎</a>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: late ? '#F87171' : 'rgba(159,215,255,0.5)' }}>
-            {sub ? sub + ' · ' : ''}{platit ? 'plătit' : restanta ? `restanță din ${lunaDe(r.data)}` : late ? `depășit · ${zi(r.data)}` : `scadent ${zi(r.data)}`}
+            {sub ? sub + ' · ' : ''}{platit ? `plătit${r.data_plata ? ' ' + ziDin(r.data_plata) : ''}` : restanta ? `restanță din ${lunaDe(r.data)} · scadent ${zi(scad(r))}` : late ? `depășit · scadent ${zi(scad(r))}` : `scadent ${zi(scad(r))}`}
+            {r.created_at && <span style={{ marginLeft: 6, fontWeight: 500, color: 'rgba(159,215,255,0.38)' }}>· adăugat {ziDin(r.created_at)}</span>}
             {ultim === r.id && <button onClick={() => comuta({ ...r, status: 'validat' })} style={{ marginLeft: 6, border: 'none', background: 'none', color: '#7BC8FF', fontSize: 11, fontWeight: 700, padding: 0, cursor: 'pointer' }}>Anulează</button>}
           </div>
         </div>
         <span style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontWeight: 700, fontSize: 13.5, color: '#E8F4FF', whiteSpace: 'nowrap' }}>{fmt(Number(r.valoare))}</span>
+      </div>
+    )
+  }
+
+  // rezumatul de date al apartamentului: urmatoarea scadenta (cea mai importanta), ultima plata, ultima adaugare
+  const rezumatDate = (f: typeof fise[number], compact = false) => {
+    const dep = f.urmScad && f.urmScad < azi
+    const zile = f.urmScad ? Math.round((new Date(f.urmScad + 'T12:00:00').getTime() - new Date(azi + 'T12:00:00').getTime()) / 86400000) : null
+    const cand = zile == null ? '' : zile < 0 ? `de ${-zile} ${-zile === 1 ? 'zi' : 'zile'}` : zile === 0 ? 'azi' : zile === 1 ? 'mâine' : `în ${zile} zile`
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: compact ? 8 : 10, fontSize: compact ? 11 : 11.5, fontWeight: 600, color: 'rgba(159,215,255,0.55)' }}>
+        <span style={{ color: f.urmScad ? (dep ? '#F87171' : '#FCD34D') : '#4ADE80', fontWeight: 800 }}>
+          {f.urmScad ? `📅 ${dep ? 'scadență depășită' : 'scadență'} ${zi(f.urmScad)}${cand ? ' (' + cand + ')' : ''}` : '📅 nimic de plătit'}
+        </span>
+        {dep && f.urmViitoare && <span style={{ color: '#FCD34D', fontWeight: 700 }}>următoarea {zi(f.urmViitoare)}</span>}
+        {f.ultimaPlata && <span>✓ ultima plată {ziDin(f.ultimaPlata)}</span>}
+        {f.ultimaAdaugare && <span>＋ adăugat {ziDin(f.ultimaAdaugare)}</span>}
       </div>
     )
   }
@@ -161,7 +200,10 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
     if (inchise.includes(id)) return (
       <button key={f.apt.id} onClick={() => comutaFisa(id)} title="Deschide fișa"
         style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: '#0E1B30', border: `1px solid ${f.depasite ? 'rgba(248,113,113,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: '11px 14px', cursor: 'pointer' }}>
-        <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
+          {rezumatDate(f, true)}
+        </span>
         <span style={{ display: 'flex', gap: 10, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
           <span title="plătit luna aceasta" style={{ color: '#4ADE80' }}>✓ {fmt(f.pl)}</span>
           <span title="rest de plată (inclusiv restanțe)" style={{ color: deplata ? (f.depasite ? '#F87171' : '#E8F4FF') : 'rgba(159,215,255,0.5)' }}>{deplata ? 'rest ' + fmt(deplata) : 'rest 0'}</span>
@@ -192,6 +234,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
           </div>
           <span style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>▾</span>
         </div>
+        <div style={{ padding: '2px 4px 8px' }}>{rezumatDate(f)}</div>
         {f.sloturi.map(s => s.randuri.length
           ? s.randuri.map((r, k) => randEl(r, etichetaCat(s.cat, r.descriere) + (s.randuri.length > 1 ? ` ${k + 1}/${s.randuri.length}` : ''), f.furn[s.cat] || null, false))
           : lunaCurentaSauTrecuta ? (
