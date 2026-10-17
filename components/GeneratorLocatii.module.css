@@ -1,0 +1,136 @@
+.workspace {
+  --loc-surface: #171b22;
+  --loc-subtle: #1e242d;
+  --loc-line: #303843;
+  --loc-text: #f0f3f6;
+  --loc-muted: #9ba7b5;
+  --loc-accent: #7bd9bd;
+  --loc-accent-bg: #17372f;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 22px 24px 96px;
+  color: var(--loc-text);
+  letter-spacing: 0;
+}
+
+:global(html[data-theme='light']) .workspace {
+  --loc-surface: #fff;
+  --loc-subtle: #f3f6f8;
+  --loc-line: #d5dde2;
+  --loc-text: #1b2931;
+  --loc-muted: #5e6e78;
+  --loc-accent: #14745b;
+  --loc-accent-bg: #e8f5ee;
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--loc-line);
+}
+
+.countyField { flex: 1 1 240px; max-width: 400px; min-width: 0; }
+.countyField label, .batchField legend { margin-bottom: 8px; color: var(--loc-muted); font-size: 12px; font-weight: 500; }
+.selectWrap { position: relative; }
+.selectWrap > svg { position: absolute; top: 13px; left: 12px; color: var(--loc-accent); z-index: 1; pointer-events: none; }
+.selectWrap select {
+  width: 100%; min-width: 0; height: 44px; padding: 0 32px 0 38px; border: 1px solid var(--loc-line);
+  border-radius: 6px; background: var(--loc-surface); color: var(--loc-text); font-size: 13px;
+  backdrop-filter: none; -webkit-backdrop-filter: none; cursor: pointer;
+}
+.selectWrap option { background: var(--loc-surface); color: var(--loc-text); }
+.batchField { border: 0; min-width: 0; }
+.segments { display: flex; height: 44px; border: 1px solid var(--loc-line); border-radius: 6px; padding: 3px; gap: 3px; background: var(--loc-surface); }
+.segments button { width: 42px; border: 0; border-radius: 4px; background: transparent; color: var(--loc-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.segments button[aria-pressed='true'] { background: var(--loc-accent-bg); color: var(--loc-accent); font-weight: 700; }
+
+.workspace button { font-family: inherit; transition: background .15s, border-color .15s, color .15s; }
+.workspace button:disabled, .workspace select:disabled { opacity: .4; cursor: not-allowed; }
+.workspace button:focus-visible, .workspace select:focus-visible { outline: 2px solid var(--loc-accent); outline-offset: 3px; }
+.generateButton, .copyButton, .usedButton, .resetButton, .confirmButton { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.generateButton { min-height: 44px; padding: 10px 18px; border: 1px solid #5b94ef; background: #306bc5; color: white; }
+.generateButton:hover:not(:disabled) { background: #3b7ad9; }
+.summary { position: relative; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 20px 0 24px; padding-bottom: 16px; }
+.summaryText { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; color: var(--loc-muted); font-size: 12px; }
+.summaryText strong { color: var(--loc-text); font-weight: 650; font-variant-numeric: tabular-nums; }
+.scope { color: var(--loc-accent); font-weight: 650; }
+.muted, .globalCount { color: var(--loc-muted); }
+.globalCount { border-left: 1px solid var(--loc-line); padding-left: 20px; }
+.historyActions { display: flex; align-items: center; gap: 6px; }
+.resetButton { min-height: 34px; padding: 6px 9px; color: var(--loc-muted); border: 1px solid transparent; background: transparent; }
+.resetButton:hover:not(:disabled) { background: var(--loc-subtle); border-color: var(--loc-line); }
+.progress { position: absolute; bottom: 0; left: 0; width: 100%; height: 3px; border: 0; border-radius: 0; background: var(--loc-line); appearance: none; accent-color: var(--loc-accent); }
+.progress::-webkit-progress-bar { background: var(--loc-line); }
+.progress::-webkit-progress-value { background: var(--loc-accent); }
+.progress::-moz-progress-bar { background: var(--loc-accent); }
+
+.confirmation { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0 18px; margin-top: -8px; font-size: 13px; color: var(--loc-muted); }
+.confirmButton { background: var(--loc-accent-bg); color: var(--loc-accent); border: 1px solid var(--loc-accent); padding: 8px 12px; }
+.columns { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.standard, .manual { min-width: 0; }
+.manual { border-left: 1px solid var(--loc-line); padding-left: 24px; }
+.sectionHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.sectionHeader h2 { font-size: 14px; font-weight: 650; }
+.sectionHeader > span { font-size: 10px; color: var(--loc-muted); }
+.sectionHeader > svg { color: var(--loc-accent); }
+.countyToolbar { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 14px; }
+.countyToolbar .countyField { max-width: none; }
+.countyToolbar > button { height: 44px; }
+.countySummary { margin-bottom: 14px; color: var(--loc-muted); font-size: 12px; }
+.countySummary strong { color: var(--loc-accent); }
+.countyEmpty { padding: 16px 0; color: var(--loc-muted); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.card { min-width: 0; border: 1px solid var(--loc-line); background: var(--loc-surface); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.cardHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 18px 0; }
+.cardIndex { font-size: 12px; color: var(--loc-muted); font-variant-numeric: tabular-nums; }
+.region { display: inline-flex; align-items: center; gap: 6px; color: var(--loc-muted); font-size: 11px; }
+.region > span { width: 6px; height: 6px; border-radius: 50%; background: #e2b66c; }
+.region[data-region='moldova'] > span { background: #70cdb2; }
+.region[data-region='bucuresti'] > span { background: #78a6ec; }
+.locality { padding: 10px 18px 12px; font-size: 19px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.fields { padding: 0 18px; flex: 1; }
+.field { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--loc-line); padding: 12px 0; }
+.field > div { min-width: 0; }
+.field dt { font-size: 11px; font-weight: 400; color: var(--loc-muted); margin-bottom: 4px; }
+.field dd { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; line-height: 1.6; }
+.iconButton { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex-shrink: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--loc-muted); cursor: pointer; }
+.iconButton:hover:not(:disabled) { background: var(--loc-subtle); border-color: var(--loc-line); color: var(--loc-text); }
+.iconButton[data-copied='true'] { color: var(--loc-accent); background: var(--loc-accent-bg); }
+.cardActions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--loc-line); padding: 12px 16px; }
+.copyButton, .usedButton { min-height: 36px; padding: 8px 10px; white-space: nowrap; }
+.copyButton { background: transparent; border: 1px solid var(--loc-line); color: var(--loc-text); }
+.copyButton:hover { background: var(--loc-subtle); }
+.usedButton { background: var(--loc-accent-bg); border: 1px solid transparent; color: var(--loc-accent); }
+.usedButton:hover { border-color: var(--loc-accent); }
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 64px 20px; text-align: center; color: var(--loc-muted); }
+.empty > svg { color: var(--loc-accent); }
+.empty h2 { max-width: 440px; font-size: 18px; line-height: 1.5; color: var(--loc-text); }
+.empty p { font-size: 13px; }
+.spinner { animation: spin 1s linear infinite; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (max-width: 640px) {
+  .workspace { padding: 18px 16px 120px; }
+  .toolbar { gap: 14px 12px; }
+  .countyField { max-width: none; flex-basis: 100%; }
+  .generateButton { flex: 1; }
+  .summary { margin: 18px 0 20px; }
+  .summaryText { width: 100%; gap: 8px 14px; }
+  .scope { flex-basis: 100%; }
+  .globalCount { border: 0; padding: 0; }
+  .historyActions { margin-left: auto; }
+  .grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .iconButton { width: 40px; height: 40px; }
+  .copyButton, .usedButton { min-height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) { .workspace button { transition: none; } }
+
+@media (max-width: 1100px) {
+  .columns { grid-template-columns: minmax(0, 1fr); }
+  .manual { grid-row: 1; border-left: 0; border-bottom: 1px solid var(--loc-line); padding: 0 0 24px; }
+}

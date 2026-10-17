@@ -3,8 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase, getStorageUrl, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast } from '@/components/ui'
-import { Upload, Trash2, Plus, Send } from 'lucide-react'
-import { generateBatch, generateOne, getTotal, loadExtraLocs, type AdresaCard } from '@/lib/locatii-romania'
+import { Upload, Trash2, Plus, Send, Files, MapPin, MessagesSquare } from 'lucide-react'
+import GeneratorLocatii from '@/components/GeneratorLocatii'
 
 const _mpad = (n:number) => String(n).padStart(2,'0')
 const _mfmt = (d:string) => { try { const dt=new Date(d); return `${_mpad(dt.getDate())}.${_mpad(dt.getMonth()+1)}.${dt.getFullYear()}` } catch { return d } }
@@ -208,150 +208,6 @@ const TIPURI = [
   { k: 'altele', l: '💬 Altele', color: '#A78BFA' },
 ]
 
-const REGION_BADGE: Record<string,{label:string;color:string;bg:string}> = {
-  bucuresti: { label:'București', color:'#FCD34D', bg:'rgba(252,211,77,0.1)' },
-  moldova:   { label:'Moldova',   color:'#7BC8FF', bg:'rgba(123,200,255,0.1)' },
-  alte:      { label:'România',   color:'rgba(159,215,255,0.4)', bg:'rgba(159,215,255,0.06)' },
-}
-
-function GeneratorLocatiiContent() {
-  const [usedSet, setUsedSet] = useState<Set<number>>(() => {
-    try { const s=localStorage.getItem('loc_used_v1'); return s ? new Set(JSON.parse(s) as number[]) : new Set() }
-    catch { return new Set() }
-  })
-  const [batch, setBatch] = useState<AdresaCard[]>([])
-  const [copiedKey, setCopiedKey] = useState<string|null>(null)
-  const [total, setTotal] = useState(getTotal())
-
-  useEffect(() => { loadExtraLocs().then(() => { setTotal(getTotal()); setBatch(generateBatch(usedSet,4)) }) }, [])
-
-  function saveUsed(s: Set<number>) {
-    try { localStorage.setItem('loc_used_v1', JSON.stringify([...s])) } catch {}
-  }
-
-  function copy(text: string, key: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedKey(key)
-      setTimeout(()=>setCopiedKey(k=>k===key?null:k), 1400)
-    })
-  }
-
-  function dismiss(card: AdresaCard) {
-    const newUsed = new Set(usedSet); newUsed.add(card.idx); saveUsed(newUsed); setUsedSet(newUsed)
-    setBatch(prev => {
-      const pos = prev.findIndex(b=>b.idx===card.idx)
-      const rest = prev.filter(b=>b.idx!==card.idx)
-      const taken = new Set([...newUsed, ...rest.map(b=>b.idx)])
-      const next = generateOne(taken)
-      if (!next) return rest
-      const r=[...rest]; r.splice(pos,0,next); return r
-    })
-  }
-
-  function reset() {
-    const empty = new Set<number>(); saveUsed(empty); setUsedSet(empty)
-    setBatch(generateBatch(empty,4))
-  }
-
-  const remaining = total - usedSet.size
-  const allDone = batch.length===0
-
-  const lbl: React.CSSProperties = { fontSize:10, fontWeight:700, color:'rgba(159,215,255,0.3)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4 }
-  const val: React.CSSProperties = { fontSize:13, fontWeight:600, color:'#E8F4FF', flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }
-  const cpyBtn = (copied:boolean): React.CSSProperties => ({
-    padding:'3px 8px', borderRadius:5, flexShrink:0,
-    border:`1px solid ${copied?'rgba(74,222,128,0.45)':'rgba(100,160,255,0.18)'}`,
-    background:copied?'rgba(74,222,128,0.1)':'rgba(100,160,255,0.05)',
-    color:copied?'#4ADE80':'rgba(159,215,255,0.4)', fontSize:10, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap'
-  })
-
-  return (
-    <div style={{flex:1, overflowY:'auto', padding:'0 20px 40px'}}>
-
-      {/* Bara de status */}
-      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', margin:'14px 0 16px', gap:12}}>
-        <div style={{display:'flex', alignItems:'center', gap:16}}>
-          <div style={{fontSize:12, color:'rgba(159,215,255,0.35)'}}>
-            10% București · 60% Moldova · 30% restul României
-          </div>
-          <div style={{fontSize:12, fontWeight:600, color: remaining<20?'rgba(251,146,60,0.8)':'rgba(159,215,255,0.5)'}}>
-            {usedSet.size}/{total} folosite · {remaining} rămase
-          </div>
-        </div>
-        <button onClick={reset}
-          style={{padding:'7px 16px', borderRadius:8, border:'1px solid rgba(251,146,60,0.3)',
-            background:'rgba(251,146,60,0.06)', color:'rgba(251,146,60,0.7)', fontSize:11, fontWeight:700, cursor:'pointer'}}>
-          Resetează toate
-        </button>
-      </div>
-
-      {/* Toate epuizate */}
-      {allDone ? (
-        <div style={{display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-          padding:'60px 20px', gap:16, background:'rgba(11,18,36,0.6)', borderRadius:16,
-          border:'1px solid rgba(100,160,255,0.1)'}}>
-          <div style={{fontSize:36}}>🎉</div>
-          <div style={{fontSize:16, fontWeight:700, color:'#E8F4FF'}}>Toate adresele au fost folosite</div>
-          <div style={{fontSize:12, color:'rgba(159,215,255,0.4)'}}>Ai epuizat cele {total} adrese din baza de date.</div>
-          <button onClick={reset}
-            style={{padding:'10px 28px', borderRadius:10, border:'none',
-              background:'linear-gradient(135deg,#4DA3FF,#3B82F6)', color:'#fff',
-              fontSize:13, fontWeight:700, cursor:'pointer'}}>
-            🔄 Resetează și reia de la capăt
-          </button>
-        </div>
-      ) : (
-        /* Grid 4 pe orizontală */
-        <div style={{display:'flex', gap:12, alignItems:'stretch'}}>
-          {batch.map((a) => {
-            const badge = REGION_BADGE[a.region]
-            const ck = (f:string) => `${a.idx}-${f}`
-            return (
-              <div key={a.idx} style={{flex:1, minWidth:0, background:'rgba(11,18,36,0.8)',
-                border:'1px solid rgba(100,160,255,0.12)', borderRadius:14,
-                display:'flex', flexDirection:'column'}}>
-
-                {/* Header card */}
-                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between',
-                  padding:'10px 12px 8px', borderBottom:'1px solid rgba(100,160,255,0.07)'}}>
-                  <span style={{fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:5,
-                    background:badge.bg, color:badge.color, letterSpacing:'.06em'}}>
-                    📍 {badge.label}
-                  </span>
-                  <button onClick={()=>dismiss(a)} title="Marchează ca folosit"
-                    style={{padding:'3px 8px', borderRadius:5, border:'1px solid rgba(74,222,128,0.25)',
-                      background:'rgba(74,222,128,0.07)', color:'rgba(74,222,128,0.6)',
-                      fontSize:10, fontWeight:700, cursor:'pointer'}}>
-                    ✓ Folosit
-                  </button>
-                </div>
-
-                {/* Câmpuri */}
-                <div style={{padding:'12px 12px 14px', display:'flex', flexDirection:'column', gap:10, flex:1}}>
-                  {([
-                    {key:'judet',      label:'Județ / Sector', value:a.judet},
-                    {key:'localitate', label:'Localitate',      value:a.localitate},
-                    {key:'adresa',     label:'Adresă',          value:a.adresa},
-                  ] as const).map(f=>(
-                    <div key={f.key}>
-                      <div style={lbl}>{f.label}</div>
-                      <div style={{display:'flex', alignItems:'center', gap:6}}>
-                        <div style={val}>{f.value}</div>
-                        <button style={cpyBtn(copiedKey===ck(f.key))} onClick={()=>copy(f.value,ck(f.key))}>
-                          {copiedKey===ck(f.key)?'✓':'📋'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export default function SabloanePage() {
   const [mainTab, setMainTab] = useState<'sabloane'|'mesaje'|'locatii'>('sabloane')
@@ -427,6 +283,7 @@ export default function SabloanePage() {
   const glassCard = { background:'rgba(11,18,36,0.7)', border:'1px solid rgba(100,160,255,0.12)', borderRadius:14 }
 
   const tabStyle = (a: boolean): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 7,
     padding: '8px 18px', borderRadius: '8px 8px 0 0', cursor: 'pointer', fontSize: 13, fontWeight: 600, border: 'none',
     background: a ? 'rgba(77,163,255,0.15)' : 'transparent',
     color: a ? '#4DA3FF' : 'rgba(159,215,255,0.5)',
@@ -435,14 +292,14 @@ export default function SabloanePage() {
 
   return (
     <>
-      <PageHeader title="Șabloane Mesaje" subtitle="Mesaje prestabilite și mesaje în masă WhatsApp"/>
-      <div style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
-        <button style={tabStyle(mainTab==='sabloane')} onClick={()=>setMainTab('sabloane')}>📋 Șabloane</button>
-        <button style={tabStyle(mainTab==='mesaje')} onClick={()=>setMainTab('mesaje')}>📨 Mesaje în masă</button>
-        <button style={tabStyle(mainTab==='locatii')} onClick={()=>setMainTab('locatii')}>📍 Generator Locații</button>
+      <PageHeader title={mainTab === 'locatii' ? 'Generator de locații' : 'Șabloane Mesaje'} subtitle={mainTab === 'locatii' ? undefined : 'Mesaje prestabilite și mesaje în masă WhatsApp'}/>
+      <div role="tablist" aria-label="Șabloane și generatoare" style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)', flexWrap:'wrap'}}>
+        <button role="tab" aria-selected={mainTab==='sabloane'} style={tabStyle(mainTab==='sabloane')} onClick={()=>setMainTab('sabloane')}><Files size={14} aria-hidden="true"/> Șabloane</button>
+        <button role="tab" aria-selected={mainTab==='mesaje'} style={tabStyle(mainTab==='mesaje')} onClick={()=>setMainTab('mesaje')}><MessagesSquare size={14} aria-hidden="true"/> Mesaje în masă</button>
+        <button role="tab" aria-selected={mainTab==='locatii'} style={tabStyle(mainTab==='locatii')} onClick={()=>setMainTab('locatii')}><MapPin size={14} aria-hidden="true"/> Generator Locații</button>
       </div>
       {mainTab==='mesaje' && <MesajeMasaContent/>}
-      {mainTab==='locatii' && <GeneratorLocatiiContent/>}
+      {mainTab==='locatii' && <GeneratorLocatii/>}
       {mainTab==='sabloane' && <div style={{flex:1, overflowY:'auto', padding:'0 20px 40px'}}>
 
         {/* Selector apartament */}

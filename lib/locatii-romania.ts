@@ -288,9 +288,24 @@ export function setExtraLocs(list: LocExtra[]) { EXTRA = list }
 function allLocs(): Loc[] { return [...LOCS, ...EXTRA] }
 
 const MOLDOVA_JUDETE = new Set(['Iași','Bacău','Neamț','Suceava','Galați','Vaslui','Vrancea','Botoșani'])
+const COUNTY_NAMES: Record<string, string> = {
+  AB: 'Alba', AR: 'Arad', AG: 'Argeș', BC: 'Bacău', BH: 'Bihor', BN: 'Bistrița-Năsăud',
+  BT: 'Botoșani', BV: 'Brașov', BR: 'Brăila', B: 'București', BZ: 'Buzău', CS: 'Caraș-Severin',
+  CL: 'Călărași', CJ: 'Cluj', CT: 'Constanța', CV: 'Covasna', DB: 'Dâmbovița', DJ: 'Dolj',
+  GL: 'Galați', GR: 'Giurgiu', GJ: 'Gorj', HR: 'Harghita', HD: 'Hunedoara', IL: 'Ialomița',
+  IS: 'Iași', IF: 'Ilfov', MM: 'Maramureș', MH: 'Mehedinți', MS: 'Mureș', NT: 'Neamț',
+  OT: 'Olt', PH: 'Prahova', SM: 'Satu Mare', SJ: 'Sălaj', SB: 'Sibiu', SV: 'Suceava',
+  TR: 'Teleorman', TM: 'Timiș', TL: 'Tulcea', VS: 'Vaslui', VL: 'Vâlcea', VN: 'Vrancea',
+}
+
+function countyLabel(judet: string): string {
+  const key = normalizeCounty(judet)
+  return Object.values(COUNTY_NAMES).find(name => normalizeCounty(name) === key) || judet.trim()
+}
+
 export function inferRegion(judet: string): Loc['region'] {
-  const j = (judet||'').trim()
-  if (/^sector/i.test(j) || j==='București') return 'bucuresti'
+  const j = countyLabel(judet || '')
+  if (normalizeCounty(j) === 'bucuresti') return 'bucuresti'
   if (MOLDOVA_JUDETE.has(j)) return 'moldova'
   return 'alte'
 }
@@ -303,11 +318,47 @@ export async function saveAdresaExtrasa(judet: string, localitate: string, strad
 export async function loadExtraLocs() {
   try {
     const { data } = await supabase.from('adrese_extrase').select('id,judet,localitate,strada').order('created_at', { ascending: true })
-    setExtraLocs((data || []).map((r: any) => ({ id: r.id, judet: r.judet, localitate: r.localitate, strada: r.strada, region: inferRegion(r.judet) })))
+    setExtraLocs((data || []).map((r: Pick<LocExtra, 'id' | 'judet' | 'localitate' | 'strada'>) => ({ id: r.id, judet: r.judet, localitate: r.localitate, strada: r.strada, region: inferRegion(r.judet) })))
   } catch {}
 }
 
-export function getTotal(): number { return LOCS.length + EXTRA.length }
+function normalizeCounty(judet: string): string {
+  const normalized = judet.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    .replace(/^jud(?:etul|et|\.)?\s+/, '')
+  const name = COUNTY_NAMES[normalized.toUpperCase()]
+  if (name) return normalizeCounty(name)
+  return /^sector\s*[1-6]$/.test(normalized) || normalized === 'bucuresti' ? 'bucuresti' : normalized
+}
+
+function matchesCounty(loc: Loc, judet?: string): boolean {
+  return !judet || normalizeCounty(loc.judet) === normalizeCounty(judet)
+}
+
+export function getTotal(judet?: string): number {
+  return allLocs().filter(loc => matchesCounty(loc, judet)).length
+}
+
+export function getCountyOptions(used: ReadonlySet<number> = new Set()) {
+  const counties = new Map<string, { judet: string; total: number; remaining: number }>()
+  allLocs().forEach((loc, idx) => {
+    const key = normalizeCounty(loc.judet)
+    const county = counties.get(key) || { judet: countyLabel(loc.judet), total: 0, remaining: 0 }
+    county.total++
+    if (!used.has(idx)) county.remaining++
+    counties.set(key, county)
+  })
+  return [...counties.values()].sort((a, b) => a.judet.localeCompare(b.judet, 'ro'))
+}
+
+export function getRemaining(used: ReadonlySet<number>, judet?: string): number {
+  return allLocs().filter((loc, idx) => matchesCounty(loc, judet) && !used.has(idx)).length
+}
+
+export function resetUsed(used: ReadonlySet<number>, judet?: string): Set<number> {
+  if (!judet) return new Set()
+  const locs = allLocs()
+  return new Set([...used].filter(idx => !locs[idx] || !matchesCounty(locs[idx], judet)))
+}
 
 function regionIndexes(locs: Loc[]) {
   return {
@@ -324,11 +375,13 @@ function pickUnused(pool: number[], used: Set<number>): number|null {
   return av.length ? av[Math.floor(Math.random()*av.length)] : null
 }
 
-export function generateOne(used: Set<number>): AdresaCard|null {
+export function generateOne(used: Set<number>, judet?: string): AdresaCard|null {
   const locs = allLocs()
   const { bucuresti: IDX_BUC, moldova: IDX_MOL, alte: IDX_ALT } = regionIndexes(locs)
   const r = Math.random()*100
-  const order = r<10 ? [IDX_BUC,IDX_MOL,IDX_ALT] : r<70 ? [IDX_MOL,IDX_ALT,IDX_BUC] : [IDX_ALT,IDX_MOL,IDX_BUC]
+  const order = judet
+    ? [locs.flatMap((loc, idx) => matchesCounty(loc, judet) ? [idx] : [])]
+    : r<10 ? [IDX_BUC,IDX_MOL,IDX_ALT] : r<70 ? [IDX_MOL,IDX_ALT,IDX_BUC] : [IDX_ALT,IDX_MOL,IDX_BUC]
   let idx: number|null = null
   for (const pool of order) { idx=pickUnused(pool,used); if(idx!==null) break }
   if (idx===null) return null
@@ -336,14 +389,14 @@ export function generateOne(used: Set<number>): AdresaCard|null {
   // Adresele reale extrase (idx >= LOCS.length) au deja numărul exact în strada — nu se mai
   // inventează unul random peste ele, doar peste cele din pool-ul static de bază.
   const adresa = idx < LOCS.length ? `${loc.strada} ${String(Math.floor(Math.random()*149)+1)}` : loc.strada
-  return { idx, judet:loc.judet, localitate:loc.localitate, adresa, region:loc.region }
+  return { idx, judet:/^sector/i.test(loc.judet.trim()) ? loc.judet : countyLabel(loc.judet), localitate:loc.localitate, adresa, region:loc.region }
 }
 
-export function generateBatch(used: Set<number>, n=4): AdresaCard[] {
+export function generateBatch(used: Set<number>, n=4, judet?: string): AdresaCard[] {
   const res: AdresaCard[] = []
   const tmp = new Set(used)
   for (let i=0;i<n;i++) {
-    const c=generateOne(tmp)
+    const c=generateOne(tmp, judet)
     if(!c) break
     res.push(c); tmp.add(c.idx)
   }
