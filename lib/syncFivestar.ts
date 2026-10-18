@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, corecteazaTelefon } from '@/lib/supabase'
 
 export type SyncResult = {
   total: number
@@ -169,7 +169,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
     const checkout = checkoutRaw ? parse5star(checkoutRaw) : null
     const numeClient = b.nume || b.name || b.guest_name || '—'
     const canal = parseCanal(b.sursa || b.canal || b.source || '')
-    const telefon = b.telefon || b.phone || null
+    const telefon = corecteazaTelefon(b.telefon || b.phone || null)
     const nrPersoane = (Number(b.adulti) || 0) + (Number(b.copii) || 0) || null
     const pret = parseFloat(b.pret_camera || b.price || b.total || '0') || 0
     const pretExtra = parseFloat(b.pret_extra || '0') || 0
@@ -571,7 +571,7 @@ export async function incarcaNealocate(): Promise<Nealocata[]> {
     return {
       id5sd: String(b.id), nume: String(b.nume).trim(), checkin: parse5star(b.prima_zi), checkout: parse5star(b.ultima_zi),
       pret: (parseFloat(b.pret_camera||'0')||0) + (parseFloat(b.pret_extra||'0')||0), canal: parseCanal(b.sursa||''), sursa: String(b.sursa||''),
-      telefon: b.telefon ? String(b.telefon) : null, nrPersoane: (Number(b.adulti)||0) + (Number(b.copii)||0) || null,
+      telefon: b.telefon ? corecteazaTelefon(String(b.telefon)) : null, nrPersoane: (Number(b.adulti)||0) + (Number(b.copii)||0) || null,
       statusNou: st.includes('cazat') ? 'finalizata' : 'confirmata', status5sd: String(b.status_rezervare||''),
       rid: r?.id || null, aptId: r && r.camera_semnalata === 'ALOCAT_MANUAL' ? r.apartament_id : null, alocataManual: r?.camera_semnalata === 'ALOCAT_MANUAL',
     }

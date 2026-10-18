@@ -246,8 +246,21 @@ export function numInput(raw: string, fallback: number = 0): number | '' {
 
 // prefixul 40 se adauga DOAR la numere mobile romanesti reale (07xxxxxxxx, 10 cifre) -
 // orice alt numar de 10 cifre care incepe cu 0 (ex. mobil strain scris local) ramane neatins
+// Numerele straine primite cu +40 in fata (ex. +40 491624953644 = numar german +49…) - cerut direct: „scoate +40 de la
+// numere când nu sunt de România”. Un numar romanesc are exact 9 cifre dupa 40 (7xx / 2xx / 3xx); altfel 40 e lipit gresit.
+export function corecteazaTelefon(tel: string | null | undefined): string | null {
+  if (!tel) return tel ?? null
+  const t = String(tel).trim(), d = t.replace(/\D/g, '')
+  if (!d.startsWith('40') || d.length < 6) return t
+  const rest = d.slice(2)
+  if (/^[237]\d{8}$/.test(rest)) return t                      // romanesc corect
+  if (/^0[237]\d{8}$/.test(rest)) return '+40' + rest.slice(1)   // +40 0746… -> +40 746…
+  if (/^40[237]\d{8}$/.test(rest)) return '+' + rest             // +40 40729… (dublat)
+  return '+' + rest                                              // strain: fara +40
+}
+
 export function normalizeWaPhone(phone: string): string {
-  const clean = (phone || '').replace(/\D/g, '')
+  const clean = (corecteazaTelefon(phone) || '').replace(/\D/g, '')
   if (clean.startsWith('00')) return clean.slice(2)
   if (clean.length === 10 && clean.startsWith('07')) return '4' + clean
   return clean
