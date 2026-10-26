@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, type ReactNode } from 'react'
-import { CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
+import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import ConfirmareClient from '@/components/ConfirmareClient'
@@ -128,6 +128,25 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
   const [showCosturi, setShowCosturi] = useState(false)
   const [confirmare, setConfirmare] = useState(false)
+  // telefonul proprietarului apartamentului (pentru „Confirmare proprietar”, cerut direct)
+  const [telProp, setTelProp] = useState<{ nume: string; tel: string | null } | null>(null)  // null = apartament fara proprietar
+  useEffect(() => {
+    if (!open || !editing?.apartament_id) { setTelProp(null); return }
+    const din = editing?.apartament?.id === editing.apartament_id ? editing.apartament?.proprietar : null
+    if (din?.telefon) { setTelProp({ nume: din.nume || '', tel: din.telefon }); return }
+    setTelProp(null)
+    let viu = true
+    Promise.resolve(supabase.from('apartamente').select('proprietar:proprietari(nume,telefon)').eq('id', editing.apartament_id).maybeSingle())
+      .then(({ data }) => { const p: any = (data as any)?.proprietar; if (viu) setTelProp(p ? { nume: p.nume || '', tel: p.telefon || null } : null) }).catch(() => {})
+    return () => { viu = false }
+  }, [open, editing?.apartament_id, editing?.apartament?.proprietar?.telefon]) // eslint-disable-line react-hooks/exhaustive-deps
+  const msgPropietar = () => {
+    const apt = String(apartamente.find(a => a.id === editing.apartament_id)?.nume || editing.apartament?.nume || 'apartament').trim()
+    const zi = (d?: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' }) : ''
+    const n = editing.data_checkin && editing.data_checkout ? Math.max(1, Math.round((new Date(editing.data_checkout).getTime() - new Date(editing.data_checkin).getTime()) / 86400000)) : '?'
+    const pret = pretRezervareText(editing)
+    return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${zi(editing.data_checkin)} → ${zi(editing.data_checkout)} (${n} nopți), ${editing.nr_persoane || '?'} persoane.\nClient: ${editing.nume_client || ''}${pret ? `\nPreț: ${pret}` : ''}`
+  }
   // asistentul stie ce rezervare e deschisa pe ecran („mut-o pe N32”)
   useEffect(() => { if (open && editing?.id) window.dispatchEvent(new CustomEvent('agent:context', { detail: { rezervare_id: editing.id, rezervare_nume: `${editing.nume_client || ''} · ${editing.data_checkin || ''} → ${editing.data_checkout || ''}` } })) }, [open, editing?.id])
   const [showComision, setShowComision] = useState(false)
@@ -433,6 +452,13 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         <footer className="rz-foot">
           <span className="rz-hint">Esc închide · ⌘S salvează</span>
           {/* confirmare pentru client (poza / PDF) - doar pentru rezervari salvate */}
+          {editing.apartament_id && telProp && (
+            telProp.tel
+              ? <a className="rz-btn" href={`https://wa.me/${normalizeWaPhone(telProp.tel!)}?text=${encodeURIComponent(msgPropietar())}`} target="_blank" rel="noreferrer"
+                  title={`Trimite proprietarului (${telProp.nume}) confirmarea rezervării pe WhatsApp`}
+                  style={{ padding: '10px 16px', borderColor: 'rgba(74,222,128,0.45)', color: '#4ADE80', background: 'rgba(74,222,128,0.08)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🏠 Confirmare proprietar</a>
+              : <span className="rz-btn" title={`${telProp.nume || 'Proprietarul'} nu are telefon salvat — completează-l în Proprietari`} style={{ padding: '10px 16px', opacity: 0.45, cursor: 'default' }}>🏠 Proprietar fără telefon</span>
+          )}
           {editing.id && (
             <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
               style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
