@@ -145,7 +145,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     const zi = (d?: string) => d ? new Date(d + 'T12:00:00').toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' }) : ''
     const n = editing.data_checkin && editing.data_checkout ? Math.max(1, Math.round((new Date(editing.data_checkout).getTime() - new Date(editing.data_checkin).getTime()) / 86400000)) : '?'
     const pret = pretRezervareText(editing)
-    return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${zi(editing.data_checkin)} → ${zi(editing.data_checkout)} (${n} nopți), ${editing.nr_persoane || '?'} persoane.\nClient: ${editing.nume_client || ''}${pret ? `\nPreț: ${pret}` : ''}`
+    return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${zi(editing.data_checkin)} → ${zi(editing.data_checkout)} (${n} nopți), ${editing.nr_persoane || '?'} persoane.\nClient: ${editing.nume_client || ''}${editing.canal ? `\nPlatformă: ${CANALE_LABEL[editing.canal] || editing.canal}` : ''}${pret ? `\nPreț: ${pret}` : ''}`
   }
   // asistentul stie ce rezervare e deschisa pe ecran („mut-o pe N32”)
   useEffect(() => { if (open && editing?.id) window.dispatchEvent(new CustomEvent('agent:context', { detail: { rezervare_id: editing.id, rezervare_nume: `${editing.nume_client || ''} · ${editing.data_checkin || ''} → ${editing.data_checkout || ''}` } })) }, [open, editing?.id])

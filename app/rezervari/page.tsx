@@ -70,7 +70,7 @@ export default function RezervariPage() {
   function waLinkProprietar(r: any): string {
     const nr = normalizeWaPhone(r.apartament?.proprietar?.telefon || '')
     const pret = pretRezervareText(r)
-    const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${pret?`\nPreț: ${pret}`:''}`
+    const msg = `🏠 Rezervare nouă — ${r.apartament?.nume||'—'}\n\nS-a rezervat pentru data de ${r.data_checkin} → ${r.data_checkout} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${r.canal?`\nPlatformă: ${CANALE_LABEL[r.canal]||r.canal}`:''}${pret?`\nPreț: ${pret}`:''}`
     return `https://wa.me/${nr}?text=${encodeURIComponent(msg)}`
   }
 

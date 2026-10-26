@@ -156,7 +156,8 @@ function msgProprietar(r:any){
   const ci = r.data_checkin ? format(new Date(r.data_checkin),'dd MMMM yyyy',{locale:ro}) : ''
   const co = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const pret = pretRezervareText(r)
-  return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${ci} → ${co} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${pret?`\nPreț: ${pret}`:''}`
+  const platforma = CANALE_LABEL[r.canal] || r.canal || ''
+  return `🏠 Rezervare nouă — ${apt}\n\nS-a rezervat pentru data de ${ci} → ${co} (${r.nr_nopti||'?'} nopți), ${r.nr_persoane||'?'} persoane.\nClient: ${r.nume_client}${platforma?`\nPlatformă: ${platforma}`:''}${pret?`\nPreț: ${pret}`:''}`
 }
 
 /* ══════════════════════════════════════════════════════════════════════════ */
