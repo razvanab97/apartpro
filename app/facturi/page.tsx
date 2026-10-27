@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
+import AptPicker, { citesteFirme } from '@/components/AptPicker'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
@@ -92,6 +93,9 @@ export default function FacturiPage() {
   const [apts, setApts] = useState<any[]>([])
   const dndSensorsArh = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [savedFacturi, setSavedFacturi] = useState<any[]>([])
+  // firma fiecarui apartament - arhiva e impartita pe sectiuni ca in Apartamente (cerut direct)
+  const [firme, setFirme] = useState<Record<string, string>>({})
+  useEffect(() => { citesteFirme().then(setFirme) }, [])
   // id cheltuiala -> celelalte inregistrari care par aceeasi factura
   const dubluriArhiva = useMemo(() => {
     const m: Record<string, any[]> = {}
@@ -777,16 +781,8 @@ export default function FacturiPage() {
                       {/* apartament selector - vizibil si la eroare pentru corectare */}
                       {!f.processing && f.status !== 'salvat' && (
                         <div style={{ flexShrink:0 }}>
-                          <select
-                            value={f.apartament_id || ''}
-                            onChange={e => setFacturi(list => list.map(x => x.id===f.id ? {...x, apartament_id: e.target.value||null} : x))}
-                            style={{ background: f.status==='eroare' ? 'rgba(40,20,20,0.9)' : 'rgba(20,38,65,0.8)', border:`1px solid ${f.status==='eroare'?'rgba(248,113,113,0.4)':'rgba(100,160,255,0.2)'}`, borderRadius:7, color:'rgba(159,215,255,0.7)', fontSize:12, padding:'6px 10px', outline:'none', maxWidth:160 }}
-                          >
-                            <option value="">— Selectează apartament —</option>
-                            {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
-                            {apts.filter((a:any)=>a.status!=='activ').length>0&&<option disabled>── Alte locații ──</option>}
-                            {[...apts].filter((a:any)=>a.status!=='activ').sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=><option key={a.id} value={a.id}>{a.nota||a.nume}</option>)}
-                          </select>
+                          <AptPicker apts={apts as any} value={f.apartament_id} eroare={f.status==='eroare'} style={{ minWidth:190 }}
+                            onChange={id => setFacturi(list => list.map(x => x.id===f.id ? {...x, apartament_id: id} : x))} />
                         </div>
                       )}
 
@@ -893,13 +889,14 @@ export default function FacturiPage() {
           // iar facturile fara apartament asociat raman mereu la final
           const aptOrderIndex: Record<string, number> = {}
           apts.forEach((a:any, idx:number) => { aptOrderIndex[a.id] = idx })
-          const groupedEntries = Object.entries(grouped).sort(([aId], [bId]) => {
-            if (aId === '__fara__') return 1
-            if (bId === '__fara__') return -1
-            const ai = aptOrderIndex[aId] ?? Infinity
-            const bi = aptOrderIndex[bId] ?? Infinity
-            return ai - bi
-          })
+          void aptOrderIndex
+          // sectiuni pe firme, ca in Apartamente (cerut direct): Privat, ABXHOMES, AB Homes Invest, fara firma; alfabetic
+          const ORD_FIRME = ['Privat', 'ABXHOMES', 'AB HOMES INVEST SRL']
+          const rangFirma = (id: string) => { if (id === '__fara__') return 99; const f = firme[id] || ''; const i = ORD_FIRME.indexOf(f); return i >= 0 ? i : f ? 50 : 90 }
+          const numeApt = (id: string) => { const a = apts.find((x:any) => x.id === id); return String(a?.nume || '').trim() }
+          const groupedEntries = Object.entries(grouped).sort(([aId], [bId]) => (rangFirma(aId) - rangFirma(bId)) || (firme[aId]||'').localeCompare(firme[bId]||'') || numeApt(aId).localeCompare(numeApt(bId), 'ro'))
+          const titluSectiune = (id: string) => id === '__fara__' ? 'Fără apartament' : firme[id] === 'Privat' ? 'Privat' : firme[id] === 'ABXHOMES' ? 'AB Homes · ABXHOMES' : firme[id] === 'AB HOMES INVEST SRL' ? 'AB Homes Invest SRL' : firme[id] || 'Fără firmă setată'
+          const culoareSectiune = (id: string) => firme[id] === 'Privat' ? '#C4B5FD' : firme[id] === 'ABXHOMES' ? '#7BC8FF' : firme[id] === 'AB HOMES INVEST SRL' ? '#3DDC97' : '#55688A'
           const sortableGroupIds = groupedEntries.filter(([id])=>id!=='__fara__').map(([id])=>id)
           function moveGroup(aptId: string, dir: -1|1){
             const oldIndex = sortableGroupIds.indexOf(aptId)
@@ -942,18 +939,26 @@ export default function FacturiPage() {
               <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                 <DndContext sensors={dndSensorsArh} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
                 <SortableContext items={sortableGroupIds} strategy={rectSortingStrategy}>
-                {groupedEntries.map(([aptId, items]) => {
+                {groupedEntries.map(([aptId, items], gi) => {
+                  const sectiuneNoua = gi === 0 || titluSectiune(groupedEntries[gi-1][0]) !== titluSectiune(aptId)
+                  const nrSectiune = groupedEntries.filter(([id]) => titluSectiune(id) === titluSectiune(aptId)).length
                   const apt = apts.find(a => a.id === aptId)
                   const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
                   const total = items.reduce((s,i) => s + Number(i.valoare), 0)
                   const isFara = aptId === '__fara__'
                   const groupIdx = sortableGroupIds.indexOf(aptId)
                   return (
-                    <SortableAptGroup key={aptId} id={aptId} disabled={isFara}>
+                    <div key={aptId} style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {sectiuneNoua && (
+                      <div style={{ display:'flex', alignItems:'center', gap:12, margin:gi===0?'0 0 2px':'14px 0 2px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:culoareSectiune(aptId) }}>
+                        {titluSectiune(aptId)} · {nrSectiune}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/>
+                      </div>
+                    )}
+                    <SortableAptGroup id={aptId} disabled={true}>
                     {dragHandle=>(
-                    <div style={{ ...glassCard, overflow:'hidden' }}>
+                    <div style={{ overflow:'hidden', borderRadius:16, background:'linear-gradient(180deg,#101C2F,#0B1422)', border:'1px solid rgba(148,190,255,0.09)' }}>
                       {/* Header apartament */}
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 16px', background:'rgba(11,18,32,0.5)', borderBottom:'1px solid rgba(100,160,255,0.1)' }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'rgba(255,255,255,0.02)', borderBottom:'1px solid rgba(148,190,255,0.09)' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                           {dragHandle && (
                             <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} title="Trage pentru a reordona"
@@ -961,7 +966,7 @@ export default function FacturiPage() {
                               <GripVertical size={14}/>
                             </button>
                           )}
-                          {!isFara && (
+                          {false && !isFara && (
                             <div style={{ display:'flex', flexDirection:'column' as const, gap:1 }}>
                               <button onClick={()=>moveGroup(aptId,-1)} disabled={groupIdx<=0} title="Mută mai sus"
                                 style={{ width:16, height:14, display:'flex', alignItems:'center', justifyContent:'center', background:'none', border:'none', padding:0, cursor:groupIdx<=0?'default':'pointer', color: groupIdx<=0?'rgba(159,215,255,0.12)':'rgba(159,215,255,0.4)' }}>
@@ -973,9 +978,9 @@ export default function FacturiPage() {
                               </button>
                             </div>
                           )}
-                          {apt?.nota && <span style={{ fontSize:11, fontWeight:600, color:'var(--accent-blue)', background:'rgba(77,163,255,0.12)', padding:'2px 8px', borderRadius:5 }}>{apt.nota}</span>}
-                          <span style={{ fontSize:13, fontWeight:600, color:'#E8F4FF' }}>{aptLabel}</span>
-                          <span style={{ fontSize:11, color:'rgba(159,215,255,0.4)' }}>{items.length} facturi</span>
+                          {apt?.nota && <span style={{ fontFamily:'ui-monospace,Menlo,monospace', fontWeight:700, fontSize:13, color:'#4DA3FF', letterSpacing:'.06em' }}>{apt.nota}</span>}
+                          <span style={{ fontSize:15, fontWeight:700, color:'#E6EEF9' }}>{apt ? String(apt.nume).trim() : aptLabel}</span>
+                          <span style={{ fontSize:12, color:'#55688A' }}>{items.length} facturi</span>
                         </div>
                         <span style={{ fontSize:13, fontWeight:600, color:'#FCD34D', fontFamily:'monospace' }}>{total.toLocaleString('ro-RO')} RON</span>
                       </div>
@@ -1037,6 +1042,7 @@ export default function FacturiPage() {
                     </div>
                     )}
                     </SortableAptGroup>
+                    </div>
                   )
                 })}
                 </SortableContext>
@@ -1062,13 +1068,8 @@ export default function FacturiPage() {
             {/* Apartament */}
             <div style={{ marginBottom:12 }}>
               <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Apartament</div>
-              <select value={editArchivaForm.apartament_id} onChange={e=>setEditArchivaForm(f=>({...f,apartament_id:e.target.value}))}
-                style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none' }}>
-                <option value="">— Fără apartament —</option>
-                {[...apts].sort((a:any,b:any)=>(a.nota||a.nume||'').localeCompare(b.nota||b.nume||'')).map((a:any)=>(
-                  <option key={a.id} value={a.id}>{a.nota ? `[${a.nota}] ` : ''}{a.nume}{a.status!=='activ'?' ⚠':''}</option>
-                ))}
-              </select>
+              <AptPicker apts={apts as any} value={editArchivaForm.apartament_id} placeholder="— Fără apartament —" style={{ width:'100%' }}
+                onChange={id=>setEditArchivaForm(f=>({...f,apartament_id:id||''}))} />
             </div>
             {/* Categorie */}
             <div style={{ marginBottom:12 }}>
