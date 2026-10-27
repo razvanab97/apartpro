@@ -20,9 +20,9 @@ const PLATFORME = [
   { key: 'site',     label: 'Site',     comPct: 0,    hasPaymentFee: false },
 ]
 
-// Valoarea rezervarii: totalul (valoarea bruta) sau, daca e mai mare / singura completata, suma incasata -
-// inainte se folosea doar „încasat”, deci rezervarile cu plata la sosire / avans apareau cu 0 sau cu suma partiala
-function valoareRez(r: any): number { return Math.max(Number(r?.valoare_bruta) || 0, Number(r?.suma_incasata) || 0) }
+// Valoarea rezervarii in raport = suma incasata, la fel ca in Calendar (cerut direct: totalul trebuie sa fie ca in
+// calculatorul din Calendar). Rezervarile fara suma completata apar cu 0 - se completeaza in rezervare.
+function valoareRez(r: any): number { return Number(r?.suma_incasata) || 0 }
 
 function calcComision(brut: number, canal: string) {
   const p = PLATFORME.find(x => x.key === canal) || { comPct: 0, hasPaymentFee: false }

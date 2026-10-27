@@ -262,6 +262,9 @@ export default function ApartamentePage() {
   const [search, setSearch] = useState('')
   // starea de azi pe apartament (cine e cazat, urmatoarea sosire) + filtrul de sus
   const [ocupare, setOcupare] = useState<Record<string, { acum?: any; urm?: any }>>({})
+  // firma fiecarui apartament (aceeasi lista ca in Cheltuieli → Fișe; setari „apartamente_firma”)
+  const [firme, setFirme] = useState<Record<string,string>>({})
+  useEffect(()=>{ Promise.resolve(supabase.from('setari').select('valoare').eq('cheie','apartamente_firma').maybeSingle()).then(({data})=>{ try{ const v=JSON.parse(data?.valoare||'{}'); if(v&&typeof v==='object') setFirme(v) }catch{} }).catch(()=>{}) },[])
   const [filtruStare, setFiltruStare] = useState<'toate'|'ocupat'|'liber'|'inactiv'>('toate')
   const aziStr = (() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` })()
   const { toast, show } = useToast()
@@ -386,6 +389,15 @@ export default function ApartamentePage() {
   const myApts = vizibile.filter(a=>a.nota)
   const otherApts = vizibile.filter(a=>!a.nota)
   const active = apartamente.filter(a=>a.status==='activ')
+  const firmaApt = (a:any) => firme[a.id] || ''
+  const alfa = (x:any, y:any) => (Number(x.status!=='activ') - Number(y.status!=='activ')) || String(x.nume).trim().localeCompare(String(y.nume).trim(), 'ro')
+  const grupuriFirma = ([
+    { cheie:'Privat', titlu:'Privat', culoare:'#C4B5FD' },
+    { cheie:'ABXHOMES', titlu:'AB Homes · ABXHOMES', culoare:'#7BC8FF' },
+    { cheie:'AB HOMES INVEST SRL', titlu:'AB Homes Invest SRL', culoare:'#3DDC97' },
+    ...[...new Set(Object.values(firme))].filter(f => !['Privat','ABXHOMES','AB HOMES INVEST SRL'].includes(f)).map(f => ({ cheie:f, titlu:f, culoare:'#7BC8FF' })),
+    { cheie:'', titlu:'Fără firmă setată', culoare:'#55688A' },
+  ]).map(g => ({ ...g, lista: vizibile.filter((a:any) => firmaApt(a) === g.cheie).sort(alfa) })).filter(g => g.lista.length)
   const nOcupate = active.filter(a=>ocupare[a.id]?.acum).length
   const nCheckin = active.filter(a=>ocupare[a.id]?.urm?.data_checkin===aziStr || ocupare[a.id]?.acum?.data_checkin===aziStr).length
   const nCheckout = active.filter(a=>ocupare[a.id]?.acum?.data_checkout===aziStr).length
@@ -430,38 +442,17 @@ export default function ApartamentePage() {
             <EmptyState icon={<Building2 size={40}/>} title="Niciun apartament" action={<Button variant="primary" icon={<Plus size={13}/>} onClick={openNew}>Adaugă</Button>}/>
           ) : (
             <>
-              {myApts.length>0 && (
-                <div style={{ flexShrink:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 0 12px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:'#55688A' }}>AB Homes · {myApts.length}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/></div>
-                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'my')}>
-                    <SortableContext items={myApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:12 }}>
-                        {myApts.map((a:any)=>(
-                          <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
-                            {dragHandle=><MiniCard a={a} oc={ocupare[a.id]} azi={aziStr} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
-                          </SortableApt>
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
+              {/* grupate pe firme (cerut direct: „în 3 secțiuni: privat, AB Homes și AB Homes Invest”), alfabetic */}
+              {grupuriFirma.map(g => (
+                <div key={g.cheie} style={{ flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 0 12px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:g.culoare }}>{g.titlu} · {g.lista.length}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/></div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:12 }}>
+                    {g.lista.map((a:any)=>(
+                      <div key={a.id}><MiniCard a={a} oc={ocupare[a.id]} azi={aziStr} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} onToggle={toggleAptStatus}/></div>
+                    ))}
+                  </div>
                 </div>
-              )}
-              {otherApts.length>0 && (
-                <div style={{ flexShrink:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 0 12px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:'#55688A' }}>Alte locații · {otherApts.length}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/></div>
-                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'other')}>
-                    <SortableContext items={otherApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:12 }}>
-                        {otherApts.map((a:any)=>(
-                          <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
-                            {dragHandle=><MiniCard a={a} oc={ocupare[a.id]} azi={aziStr} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
-                          </SortableApt>
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                </div>
-              )}
+              ))}
             </>
           )}
         </div>
@@ -476,6 +467,10 @@ export default function ApartamentePage() {
                 <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5 }}>
                   {selected.nota && <span style={{ background:'rgba(77,163,255,0.18)', border:'1px solid rgba(77,163,255,0.3)', borderRadius:5, padding:'2px 8px', fontSize:11, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace' }}>{selected.nota}</span>}
                   <span style={{ fontSize:10, padding:'2px 7px', borderRadius:20, background:`${SC[selected.status]||'#94A3B8'}18`, color:SC[selected.status]||'#94A3B8', border:`1px solid ${SC[selected.status]||'#94A3B8'}28` }}>{selected.status}</span>
+                  <select value={firme[selected.id]||''} title="Firma pe care e apartamentul" onChange={async e=>{ const nou={...firme}; if(e.target.value) nou[selected.id]=e.target.value; else delete nou[selected.id]; setFirme(nou); await supabase.from('setari').upsert({cheie:'apartamente_firma',valoare:JSON.stringify(nou)},{onConflict:'cheie'}) }}
+                    style={{ fontSize:10.5, fontWeight:700, padding:'2px 6px', borderRadius:20, width:'auto', background:'transparent', border:'1px solid rgba(148,190,255,0.25)', color:'#B9C7DA' }}>
+                    <option value="">fără firmă</option><option value="Privat">Privat</option><option value="ABXHOMES">ABXHOMES</option><option value="AB HOMES INVEST SRL">AB HOMES INVEST SRL</option>
+                  </select>
                 </div>
                 <div style={{ fontSize:15, fontWeight:700, color:'#FFFFFF', letterSpacing:-0.2, marginBottom:4 }}>{selected.nume}</div>
                 <div style={{ display:'flex', alignItems:'center', gap:3, fontSize:11, color:'rgba(159,215,255,0.45)' }}>
