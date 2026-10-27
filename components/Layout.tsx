@@ -6,6 +6,7 @@ import UpdatesWidget from '@/components/UpdatesWidget'
 import ComutatorTema from '@/components/ComutatorTema'
 import Agent from '@/components/Agent'
 import Observator from '@/components/Observator'
+import AlertaNealocate from '@/components/AlertaNealocate'
 import { eGazdaGhid } from '@/lib/gazdeGhid'
 import NotificationBell from '@/components/NotificationBell'
 import PriceCalc from '@/components/PriceCalc'
@@ -227,6 +228,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* admin: Asistentul AB Homes (agent cu acces la date + actiuni cu confirmare); staff: chatbotul simplu */}
       {isStaff ? <Chatbot/> : <Agent/>}
+      {!isStaff && <AlertaNealocate/>}
       {/* observa tot ce se face in aplicatie (jurnal_activitate) - doar observare */}
       <Observator/>
       <UpdatesWidget/>
