@@ -14,7 +14,15 @@ const PLATFORME = [
   { key: 'direct',   label: 'Direct',   comPct: 0,    hasPaymentFee: false },
   { key: 'whatsapp', label: 'WhatsApp', comPct: 0,    hasPaymentFee: false },
   { key: 'telefon',  label: 'Telefon',  comPct: 0,    hasPaymentFee: false },
+  // rezervarile directe venite din 5starDesk (ABH-…) au canalul „intern” - lipseau din raport (raportat direct:
+  // „nu e pentru toată luna și nu sunt toate sumele”)
+  { key: 'intern',   label: 'Direct 5starDesk', comPct: 0, hasPaymentFee: false },
+  { key: 'site',     label: 'Site',     comPct: 0,    hasPaymentFee: false },
 ]
+
+// Valoarea rezervarii: totalul (valoarea bruta) sau, daca e mai mare / singura completata, suma incasata -
+// inainte se folosea doar „încasat”, deci rezervarile cu plata la sosire / avans apareau cu 0 sau cu suma partiala
+function valoareRez(r: any): number { return Math.max(Number(r?.valoare_bruta) || 0, Number(r?.suma_incasata) || 0) }
 
 function calcComision(brut: number, canal: string) {
   const p = PLATFORME.find(x => x.key === canal) || { comPct: 0, hasPaymentFee: false }
@@ -27,7 +35,7 @@ function calcComision(brut: number, canal: string) {
 function calcProRata(r: any, periodStart: string, periodEnd: string): number {
   const checkin = r.data_checkin
   const checkout = r.data_checkout
-  const brut = Number(r.suma_incasata || 0)
+  const brut = valoareRez(r)
   const nopti = Number(r.nr_nopti || 1)
   if (nopti === 0) return brut
 
@@ -68,7 +76,7 @@ function CanalBadge({ canal }: { canal: string }) {
 
 function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string }) {
   const [open, setOpen] = useState(false)
-  const brutTotal = Number(r.suma_incasata || 0)
+  const brutTotal = valoareRez(r)
   const nopti = Number(r.nr_nopti || 1)
   const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : brutTotal
   const isProRata = brut !== brutTotal && brutTotal > 0
@@ -135,7 +143,7 @@ export default function RapoartePage() {
   const [anStart, setAnStart] = useState(new Date().getFullYear())
   const [lunaEnd, setLunaEnd] = useState(new Date().getMonth() + 1)
   const [anEnd, setAnEnd] = useState(new Date().getFullYear())
-  const [selectedPlatforme, setSelectedPlatforme] = useState<string[]>(['airbnb','booking','direct','whatsapp','telefon'])
+  const [selectedPlatforme, setSelectedPlatforme] = useState<string[]>(PLATFORME.map(p => p.key))
   const [tipRaport, setTipRaport] = useState<'cu_comision'|'fara_comision'>('cu_comision')
   const [comisionAB, setComisionAB] = useState<number|''>(20)
   const [rezervari, setRezervari] = useState<any[]>([])
@@ -202,7 +210,7 @@ export default function RapoartePage() {
     let total = 0
     while (true) {
       let q = supabase.from('rezervari')
-        .select('data_checkin,data_checkout,suma_incasata,nr_nopti,nr_persoane,canal,apartament_id')
+        .select('data_checkin,data_checkout,suma_incasata,valoare_bruta,nr_nopti,nr_persoane,canal,apartament_id')
         .gte('data_checkout', '2025-08-01')
         .lte('data_checkout', `${an+1}-12-31`)
         .neq('status_rezervare', 'anulata')
@@ -217,7 +225,7 @@ export default function RapoartePage() {
 
       for (const r of data) {
         if (!r.data_checkin || !r.data_checkout) continue
-        const brut = Number(r.suma_incasata || 0)
+        const brut = valoareRez(r)
         if (brut <= 0) continue
 
         const canal = (r.canal||'').toLowerCase()
@@ -309,7 +317,7 @@ export default function RapoartePage() {
 
   const totals = rezervari.reduce((acc, r) => {
     // Use pro-rata for reservations that span across period boundary
-    const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : Number(r.suma_incasata || 0)
+    const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
     const { com, tva, total } = calcComision(brut, r.canal)
     const net = brut - total
     const comAB = tipRaport === 'cu_comision' ? net * ((Number(comisionAB)||0) / 100) : 0
@@ -345,7 +353,7 @@ export default function RapoartePage() {
         : ['Client','Perioadă','N','Canal','Apt','Brut','Com.Platf','Net Platf','Net Final']
 
       const rows = rezervari.map(r => {
-        const brut = Number(r.suma_incasata||0)
+        const brut = valoareRez(r)
         const { total } = calcComision(brut, r.canal)
         const net = brut - total
         const comAB = tipRaport === 'cu_comision' ? net*((Number(comisionAB)||0)/100) : 0
@@ -771,8 +779,8 @@ export default function RapoartePage() {
             // Per platform breakdown
             const byPlatform = PLATFORME.map(p => {
               const rezP = rezervari.filter(r => r.canal === p.key || (p.key==='direct' && ['direct','whatsapp','telefon','site'].includes(r.canal)))
-              const brut = rezP.reduce((s,r)=>s+Number(r.suma_incasata||0),0)
-              const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(Number(r.suma_incasata||0),r.canal); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
+              const brut = rezP.reduce((s,r)=>s+valoareRez(r),0)
+              const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(valoareRez(r),r.canal); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
               return { ...p, brut, com, tva, total, nr: rezP.length }
             }).filter(p => p.nr > 0)
 
@@ -799,7 +807,7 @@ export default function RapoartePage() {
                   map.set(aptId, { apt, airbnb:0, airbnbN:0, booking:0, bookingN:0, privat:0, privatN:0 })
                 }
                 const e = map.get(aptId)!
-                const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : Number(r.suma_incasata||0)
+                const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
                 const grup = CANAL_GRUP[r.canal] || 'privat'
                 e[grup] += brut
                 e[`${grup}N` as 'airbnbN'|'bookingN'|'privatN'] += 1
