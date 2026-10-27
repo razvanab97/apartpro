@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
@@ -71,6 +71,20 @@ function validNr(nr?: string | null): string {
   return s && s.toLowerCase() !== 'null' ? s : ''
 }
 
+// Dubluri (cerut direct: „dacă avem vreo factură care se dublează, să ni se menționeze în aplicație”).
+// Aceeasi factura = acelasi numar de factura (din nota „Factură <nr> | <perioadă>”), sau acelasi furnizor + aceeasi
+// suma + aceeasi perioada pe acelasi apartament.
+const nrDinNota = (nota?: string | null) => { const m = /Factur[aă]\s+([^|]+?)\s*(\||$)/i.exec(nota || ''); const n = (m?.[1] || '').trim(); return /\d{4,}/.test(n) && !/\.(pdf|jpe?g|png)$/i.test(n) ? n.replace(/\s+/g, '') : '' }
+const perioadaDinNota = (nota?: string | null) => String(nota || '').split('|')[1]?.trim().toLowerCase() || ''
+const furnizorDin = (d?: string | null) => String(d || '').split('—').pop()!.toLowerCase().replace(/[^a-z0-9]/g, '')
+function suntDubluri(a: { nr: string; apt: string | null; fz: string; val: number; per: string }, b: { nr: string; apt: string | null; fz: string; val: number; per: string }) {
+  // acelasi numar: dublura daca e pe acelasi apartament sau cu aceeasi suma (o factura Urbica impartita pe mai multe
+  // apartamente are acelasi numar dar sume diferite - nu e dublura)
+  if (a.nr && b.nr) return a.nr === b.nr && (a.apt === b.apt || Math.abs(a.val - b.val) < 0.01)
+  return !!a.apt && a.apt === b.apt && !!a.fz && a.fz === b.fz && Math.abs(a.val - b.val) < 0.01 && !!a.per && a.per === b.per
+}
+const cheieArhiva = (s: any) => ({ nr: nrDinNota(s.nota), apt: s.apartament_id, fz: furnizorDin(s.descriere), val: Number(s.valoare) || 0, per: perioadaDinNota(s.nota) })
+
 export default function FacturiPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
@@ -78,6 +92,20 @@ export default function FacturiPage() {
   const [apts, setApts] = useState<any[]>([])
   const dndSensorsArh = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const [savedFacturi, setSavedFacturi] = useState<any[]>([])
+  // id cheltuiala -> celelalte inregistrari care par aceeasi factura
+  const dubluriArhiva = useMemo(() => {
+    const m: Record<string, any[]> = {}
+    const k = savedFacturi.map(cheieArhiva)
+    for (let i = 0; i < savedFacturi.length; i++) for (let j = i + 1; j < savedFacturi.length; j++)
+      if (suntDubluri(k[i], k[j])) { (m[savedFacturi[i].id] ||= []).push(savedFacturi[j]); (m[savedFacturi[j].id] ||= []).push(savedFacturi[i]) }
+    return m
+  }, [savedFacturi])
+  // factura tocmai procesata care exista deja in arhiva
+  const dublaDe = (f: Factura) => {
+    const a = { nr: validNr(f.nr_factura).replace(/\s+/g, ''), apt: f.apartament_id, fz: String(f.furnizor || '').toLowerCase().replace(/[^a-z0-9]/g, ''), val: Number(f.suma_totala) || 0, per: String(f.perioada || '').trim().toLowerCase() }
+    if (!/\d{4,}/.test(a.nr)) a.nr = ''
+    return savedFacturi.find(s => s.id !== f.cheltuiala_id && suntDubluri(a, cheieArhiva(s))) || null
+  }
   const [loadingArchiva, setLoadingArchiva] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -703,6 +731,10 @@ export default function FacturiPage() {
                               <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{f.furnizor}</span>
                               {validNr(f.nr_factura) && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>#{validNr(f.nr_factura)}</span>}
                             </div>
+                            {!f.processing && (() => { const d = dublaDe(f); if (!d) return null; const ap = apts.find((x:any)=>x.id===d.apartament_id)
+                              return <div style={{ fontSize:12, fontWeight:700, color:'#F87171', marginBottom:4, padding:'5px 10px', borderRadius:8, background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.35)', width:'fit-content' }}>
+                                ⚠ Posibilă dublură — există deja în arhivă: {d.descriere} · {Number(d.valoare).toLocaleString('ro-RO')} RON · {ap?.nota || ap?.nume || 'fără apartament'} · {d.data}{f.status==='salvat' ? ' — șterge una dintre ele' : ' — verifică înainte să salvezi'}
+                              </div> })()}
                             {f._aptConflict && (
                               <div style={{ fontSize:12, color:'#F87171', marginBottom:4 }}>⚠ {f._aptConflict}</div>
                             )}
@@ -892,6 +924,7 @@ export default function FacturiPage() {
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, gap:10, flexWrap:'wrap' as const }}>
                 <div style={{ fontSize:11, fontWeight:500, color:'rgba(159,215,255,0.45)', textTransform:'uppercase', letterSpacing:'.08em' }}>
                   Arhivă facturi — {savedFacturi.length} total
+                  {Object.keys(dubluriArhiva).length > 0 && <span style={{ marginLeft:10, textTransform:'none', letterSpacing:0, fontWeight:700, color:'#F87171' }}>⚠ {Object.keys(dubluriArhiva).length} facturi par dublate — marcate mai jos</span>}
                 </div>
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                   <input
@@ -952,6 +985,10 @@ export default function FacturiPage() {
                           <div>
                             <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' as const }}>
                               <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{f.descriere}</div>
+                              {dubluriArhiva[f.id] && (
+                                <span title={'Pare aceeași factură cu: ' + dubluriArhiva[f.id].map((d:any)=>`${d.descriere} · ${Number(d.valoare).toLocaleString('ro-RO')} RON · ${d.data}`).join('; ')}
+                                  style={{ fontSize:9.5, fontWeight:800, padding:'1px 7px', borderRadius:4, background:'rgba(248,113,113,0.14)', color:'#F87171', border:'1px solid rgba(248,113,113,0.4)' }}>⚠ DUBLURĂ{dubluriArhiva[f.id].some((d:any)=>d.apartament_id!==f.apartament_id) ? ' (alt apartament)' : ''}</span>
+                              )}
                               {CATEGORIE_ARHIVA[f.categorie] && (
                                 <span style={{ fontSize:9, fontWeight:600, padding:'1px 6px', borderRadius:4, background:`${CATEGORIE_ARHIVA[f.categorie].color}18`, color:CATEGORIE_ARHIVA[f.categorie].color, border:`1px solid ${CATEGORIE_ARHIVA[f.categorie].color}40`, textTransform:'uppercase' as const, letterSpacing:'.03em' }}>
                                   {CATEGORIE_ARHIVA[f.categorie].label}
