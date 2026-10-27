@@ -260,9 +260,14 @@ export default function ApartamentePage() {
   const [deleteId, setDeleteId] = useState<string|null>(null)
   const [deleting, setDeleting] = useState(false)
   const [search, setSearch] = useState('')
+  // starea de azi pe apartament (cine e cazat, urmatoarea sosire) + filtrul de sus
+  const [ocupare, setOcupare] = useState<Record<string, { acum?: any; urm?: any }>>({})
+  const [filtruStare, setFiltruStare] = useState<'toate'|'ocupat'|'liber'|'inactiv'>('toate')
+  const aziStr = (() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` })()
   const { toast, show } = useToast()
 
   useEffect(()=>{ load() },[])
+  useEffect(()=>{ const k=(e:KeyboardEvent)=>{ if(e.key==='Escape' && !editOpen) setSelectedId(null) }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k) },[editOpen])
 
   async function load() {
     setLoading(true)
@@ -276,6 +281,17 @@ export default function ApartamentePage() {
       setApartamente((apt as Apartament[])||[])
       setProprietari((prop as Proprietar[])||[])
       clearTimeout(bail)
+      const peste30 = (() => { const d = new Date(); d.setDate(d.getDate()+30); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` })()
+      const { data: rz } = await supabase.from('rezervari').select('apartament_id,nume_client,data_checkin,data_checkout,camera_semnalata')
+        .neq('status_rezervare','anulata').gte('data_checkout', aziStr).lte('data_checkin', peste30).order('data_checkin')
+      const oc: Record<string, { acum?: any; urm?: any }> = {}
+      for (const r of rz||[]) {
+        if (r.camera_semnalata === 'NEALOCAT') continue
+        const o = (oc[r.apartament_id] ||= {})
+        if (r.data_checkin <= aziStr && r.data_checkout > aziStr) o.acum = o.acum || r
+        else if (r.data_checkin >= aziStr && !o.urm && !(r.data_checkin === aziStr && o.acum)) o.urm = r
+      }
+      setOcupare(oc)
     }catch(err){console.error('[apartamente load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
   }
@@ -365,8 +381,14 @@ export default function ApartamentePage() {
   }
 
   const filtered = apartamente.filter(a=> !search || a.nume.toLowerCase().includes(search.toLowerCase()) || (a.nota||'').toLowerCase().includes(search.toLowerCase()) || a.adresa.toLowerCase().includes(search.toLowerCase()))
-  const myApts = filtered.filter(a=>a.nota)
-  const otherApts = filtered.filter(a=>!a.nota)
+  const stareApt = (a:any): 'ocupat'|'liber'|'inactiv' => a.status !== 'activ' ? 'inactiv' : ocupare[a.id]?.acum ? 'ocupat' : 'liber'
+  const vizibile = filtered.filter(a => filtruStare === 'toate' || stareApt(a) === filtruStare)
+  const myApts = vizibile.filter(a=>a.nota)
+  const otherApts = vizibile.filter(a=>!a.nota)
+  const active = apartamente.filter(a=>a.status==='activ')
+  const nOcupate = active.filter(a=>ocupare[a.id]?.acum).length
+  const nCheckin = active.filter(a=>ocupare[a.id]?.urm?.data_checkin===aziStr || ocupare[a.id]?.acum?.data_checkin===aziStr).length
+  const nCheckout = active.filter(a=>ocupare[a.id]?.acum?.data_checkout===aziStr).length
   const selected = apartamente.find(a=>a.id===selectedId) as any
 
   if(loading) return (<><PageHeader title="Apartamente"/><PageLoading/></>)
@@ -374,32 +396,49 @@ export default function ApartamentePage() {
 
   return (
     <>
-      <PageHeader title="Apartamente" subtitle={`${apartamente.length} locații`}
+      <PageHeader title="Apartamente" subtitle={`${apartamente.length} locații · ocupare azi ${active.length ? Math.round(nOcupate/active.length*100) : 0}%`}
         actions={
           <div style={{ display:'flex', gap:8 }}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Caută..." style={{ width:180, padding:'6px 12px', fontSize:12 }}/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Caută cod, nume, stradă" style={{ width:200, padding:'6px 12px', fontSize:12 }}/>
             <Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Nou</Button>
           </div>
         }
       />
 
-      <div className={`apt-split${selected?' has-selected':''}`} style={{ display:'grid', gridTemplateColumns: selected ? '1fr 340px' : '1fr', flex:1, minHeight:0 }}>
+      <div className="apt-split" style={{ display:'grid', gridTemplateColumns:'1fr', flex:1, minHeight:0 }}>
 
         {/* LEFT — list */}
-        <div className="apt-list-col" style={{ overflowY:'auto', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
+        <div className="apt-list-col" style={{ overflowY:'auto', padding:'16px 18px 40px', display:'flex', flexDirection:'column', gap:14 }}>
+          {/* cifrele zilei */}
+          <div className="apt-kpis" style={{ flexShrink:0, display:'grid', gridTemplateColumns:'repeat(5,minmax(0,1fr))', gap:1, background:'rgba(148,190,255,0.09)', border:'1px solid rgba(148,190,255,0.09)', borderRadius:14, overflow:'hidden' }}>
+            {([[active.length,'active'],[nOcupate,'ocupate acum'],[active.length-nOcupate,'libere acum'],[nCheckin,'check-in azi'],[nCheckout,'check-out azi']] as [number,string][]).map(([n,l])=>(
+              <div key={l} style={{ background:'#0B1422', padding:'12px 16px' }}>
+                <div style={{ fontSize:22, fontWeight:700, color:'#E6EEF9', fontVariantNumeric:'tabular-nums' }}>{n}</div>
+                <div style={{ fontSize:10.5, color:'#8EA3BF', letterSpacing:'.06em', textTransform:'uppercase' }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {/* filtre */}
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', flexShrink:0 }}>
+            {([['toate','Toate',apartamente.length],['ocupat','Ocupate',nOcupate],['liber','Libere',active.length-nOcupate],['inactiv','Inactive',apartamente.length-active.length]] as [typeof filtruStare,string,number][]).map(([k,l,n])=>(
+              <button key={k} onClick={()=>setFiltruStare(k)} style={{ height:30, padding:'0 13px', borderRadius:999, border:`1px solid ${filtruStare===k?'#E6EEF9':'rgba(148,190,255,0.18)'}`, background:filtruStare===k?'#E6EEF9':'transparent', color:filtruStare===k?'#07101D':'#8EA3BF', fontSize:12.5, fontWeight:600, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:7 }}>
+                {l}<span style={{ fontFamily:'ui-monospace,Menlo,monospace', fontSize:11, opacity:.7 }}>{n}</span>
+              </button>
+            ))}
+          </div>
           {apartamente.length===0 ? (
             <EmptyState icon={<Building2 size={40}/>} title="Niciun apartament" action={<Button variant="primary" icon={<Plus size={13}/>} onClick={openNew}>Adaugă</Button>}/>
           ) : (
             <>
               {myApts.length>0 && (
-                <div>
-                  <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>AB Homes · {myApts.length}</div>
+                <div style={{ flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 0 12px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:'#55688A' }}>AB Homes · {myApts.length}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/></div>
                   <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'my')}>
                     <SortableContext items={myApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:12 }}>
                         {myApts.map((a:any)=>(
                           <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
-                            {dragHandle=><MiniCard a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
+                            {dragHandle=><MiniCard a={a} oc={ocupare[a.id]} azi={aziStr} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
                           </SortableApt>
                         ))}
                       </div>
@@ -408,14 +447,14 @@ export default function ApartamentePage() {
                 </div>
               )}
               {otherApts.length>0 && (
-                <div>
-                  <div style={{ fontSize:9, fontWeight:600, color:'rgba(159,215,255,0.25)', textTransform:'uppercase', letterSpacing:'1px', marginBottom:6, paddingLeft:2 }}>Alte locații · {otherApts.length}</div>
+                <div style={{ flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'10px 0 12px', fontSize:11, fontWeight:700, letterSpacing:'.14em', textTransform:'uppercase', color:'#55688A' }}>Alte locații · {otherApts.length}<span style={{ flex:1, height:1, background:'rgba(148,190,255,0.09)' }}/></div>
                   <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={e=>handleDragEnd(e,'other')}>
                     <SortableContext items={otherApts.map((a:any)=>a.id)} strategy={rectSortingStrategy}>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:6 }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:12 }}>
                         {otherApts.map((a:any)=>(
                           <SortableApt key={a.id} a={a} disabled={!!search.trim()}>
-                            {dragHandle=><MiniCard a={a} selected={selectedId===a.id} onClick={()=>setSelectedId(selectedId===a.id?null:a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
+                            {dragHandle=><MiniCard a={a} oc={ocupare[a.id]} azi={aziStr} selected={selectedId===a.id} onClick={()=>setSelectedId(a.id)} onToggle={toggleAptStatus} dragHandle={dragHandle}/>}
                           </SortableApt>
                         ))}
                       </div>
@@ -429,7 +468,8 @@ export default function ApartamentePage() {
 
         {/* RIGHT — detail panel */}
         {selected && (
-          <div style={{ borderLeft:'1px solid rgba(159,215,255,0.1)', background:'rgba(14,27,43,0.5)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', overflowY:'auto', padding:'18px 18px 24px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div className="apt-pop" onClick={()=>setSelectedId(null)} style={{ position:'fixed', inset:0, zIndex:45, background:'rgba(3,7,15,0.62)', backdropFilter:'blur(4px)', WebkitBackdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:'min(520px,100%)', maxHeight:'calc(100dvh - 32px)', background:'linear-gradient(180deg,#101C2F,#0B1422)', border:'1px solid rgba(148,190,255,0.18)', borderRadius:20, boxShadow:'0 30px 80px rgba(0,0,0,0.55)', overflowY:'auto', padding:'20px 20px 22px', display:'flex', flexDirection:'column', gap:14 }}>
             {/* Header */}
             <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
               <div>
@@ -571,6 +611,7 @@ export default function ApartamentePage() {
               <Button variant="primary" size="sm" icon={<Edit2 size={12}/>} onClick={()=>openEdit(selected as Apartament)} style={{ flex:1 }}>Editează</Button>
               <Button variant="danger" size="sm" icon={<Trash2 size={12}/>} onClick={()=>setDeleteId(selected.id)}>Șterge</Button>
             </div>
+          </div>
           </div>
         )}
       </div>
@@ -768,9 +809,12 @@ export default function ApartamentePage() {
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={del} loading={deleting} title="Șterge apartament" message="Sigur vrei să ștergi?"/>
       <Toast toast={toast}/>
       <style>{`
+        .apt-card:hover { border-color: rgba(148,190,255,0.22) !important; transform: translateY(-2px); }
         @media (max-width: 760px) {
-          .apt-split.has-selected { grid-template-columns: 1fr !important; }
-          .apt-split.has-selected .apt-list-col { display: none !important; }
+          .apt-kpis { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
+          .apt-kpis > div:nth-child(n+4) { display: none; }
+          .apt-pop { align-items: flex-end !important; padding: 0 !important; }
+          .apt-pop > div { width: 100% !important; border-radius: 20px 20px 0 0 !important; max-height: 92dvh !important; }
         }
       `}</style>
     </>
@@ -792,75 +836,68 @@ function SortableApt({ a, disabled, children }: { a:any; disabled?:boolean; chil
   )
 }
 
-function MiniCard({ a, selected, onClick, onToggle, dragHandle }: { a:any; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void; dragHandle?: { attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void } }) {
-  const sc = SC[a.status]||'#94A3B8'
+const fmtZi = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' })
+
+// Cardul apartamentului (cerut direct: „futurist, premium, dar minimalist”): cod + nume, starea de azi, capacitate /
+// pret / proprietar, linkuri (click = copiaza), codul de locker ascuns (click = arata + copiaza). Click pe card = detalii.
+function MiniCard({ a, oc, azi, selected, onClick, onToggle, dragHandle }: { a:any; oc?: { acum?: any; urm?: any }; azi: string; selected:boolean; onClick:()=>void; onToggle?:(id:string,s:string)=>void; dragHandle?: { attributes:any; listeners:any; setActivatorNodeRef:(el:HTMLElement|null)=>void } }) {
+  const [cod, setCod] = useState(false)
+  const [copiat, setCopiat] = useState<string|null>(null)
   const isActiv = a.status === 'activ'
-  const cp = (e:React.MouseEvent, text:string) => { e.stopPropagation(); navigator.clipboard.writeText(text).catch(()=>{}) }
-  const hasLinks = a.link_site||a.link_booking||a.link_airbnb
+  const cp = (e:React.MouseEvent, text:string, k:string) => { e.stopPropagation(); navigator.clipboard.writeText(text).then(()=>{ setCopiat(k); setTimeout(()=>setCopiat(x=>x===k?null:x),1200) }).catch(()=>{}) }
+  const booking = ((a.booking_links as string[])||[]).filter(Boolean)[0]
+  const links: [string,string,string|undefined][] = [['S','Site',a.link_site],['M','Google Maps',a.link_booking],['A','Airbnb',a.link_airbnb],['B','Booking',booking]]
+  const stare = !isActiv ? 'inactiv' : oc?.acum ? 'ocupat' : 'liber'
+  const dot = stare === 'ocupat' ? '#3DDC97' : stare === 'liber' ? '#4DA3FF' : '#475569'
   return (
-    <div style={{ padding:'10px 12px', background: selected?'rgba(77,163,255,0.12)':'rgba(214,228,244,0.04)', border: selected?'1px solid rgba(77,163,255,0.35)':'1px solid rgba(159,215,255,0.08)', borderRadius:9, transition:'all 0.12s', borderLeft:'3px solid '+(selected?'#4DA3FF':sc+'50'), opacity:isActiv?1:0.5 }}>
-      {/* Header row */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+    <div onClick={onClick} className="apt-card" style={{ position:'relative', display:'flex', flexDirection:'column', gap:12, padding:16, borderRadius:16, cursor:'pointer',
+      background:'linear-gradient(180deg,#101C2F,#0B1422)', border:`1px solid ${selected?'rgba(77,163,255,0.5)':'rgba(148,190,255,0.09)'}`, opacity:isActiv?1:0.5, transition:'border-color .2s, transform .2s' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
         {dragHandle && (
-          <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} onClick={e=>e.stopPropagation()} title="Trage pentru a reordona" style={{ flexShrink:0, display:'flex', alignItems:'center', background:'none', border:'none', padding:0, cursor:'grab', color:'rgba(159,215,255,0.3)', touchAction:'none' }}>
-            <GripVertical size={12}/>
+          <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} onClick={e=>e.stopPropagation()} title="Trage pentru a reordona" style={{ flexShrink:0, display:'flex', alignItems:'center', background:'none', border:'none', padding:'2px 0 0', cursor:'grab', color:'rgba(148,190,255,0.25)', touchAction:'none' }}>
+            <GripVertical size={13}/>
           </button>
         )}
-        <div onClick={onClick} style={{ display:'flex', alignItems:'center', gap:6, flex:1, cursor:'pointer', minWidth:0 }}>
-          {a.nota && <span style={{ fontSize:10, fontWeight:700, color:'#4DA3FF', fontFamily:'monospace', background:'rgba(77,163,255,0.12)', padding:'1px 6px', borderRadius:4, flexShrink:0 }}>{a.nota}</span>}
-          <span style={{ fontSize:11, fontWeight:600, color:'#FFFFFF', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nume}</span>
+        {a.nota && <span style={{ fontFamily:'ui-monospace,Menlo,monospace', fontWeight:700, fontSize:13, color:'#4DA3FF', letterSpacing:'.06em', paddingTop:1, minWidth:42 }}>{a.nota}</span>}
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:15, fontWeight:700, color:'#E6EEF9', lineHeight:1.25, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{String(a.nume||'').trim()}</div>
+          {a.adresa && <div style={{ marginTop:3, fontSize:12, color:'#55688A', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{a.adresa}</div>}
         </div>
-        <button onClick={e=>{e.stopPropagation();onToggle?.(a.id,isActiv?'inactiv':'activ')}} title={isActiv?'Dezactivează':'Activează'} style={{ flexShrink:0, width:28, height:16, borderRadius:8, background:isActiv?'rgba(74,222,128,0.2)':'rgba(159,215,255,0.07)', border:'1px solid '+(isActiv?'rgba(74,222,128,0.4)':'rgba(159,215,255,0.15)'), cursor:'pointer', position:'relative', padding:0 }}>
-          <div style={{ position:'absolute', top:2, left:isActiv?12:2, width:10, height:10, borderRadius:'50%', background:isActiv?'#4ADE80':'rgba(159,215,255,0.3)', transition:'all .2s' }}/>
+        <button onClick={e=>{e.stopPropagation();onToggle?.(a.id,isActiv?'inactiv':'activ')}} title={isActiv?'Dezactivează':'Activează'} style={{ flexShrink:0, width:30, height:18, borderRadius:999, background:isActiv?'rgba(61,220,151,0.22)':'rgba(148,163,184,0.18)', border:'none', cursor:'pointer', position:'relative', padding:0, marginTop:2 }}>
+          <span style={{ position:'absolute', top:3, left:isActiv?15:3, width:12, height:12, borderRadius:'50%', background:isActiv?'#3DDC97':'#475569', transition:'left .2s' }}/>
         </button>
       </div>
-      {/* Adresa + copy */}
-      {a.adresa && (
-        <div style={{ display:'flex', alignItems:'center', gap:3, marginBottom:5 }}>
-          <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{a.adresa}</span>
-          <button onClick={e=>cp(e,a.adresa)} style={{ background:'none', border:'none', cursor:'pointer', padding:'1px 3px', color:'rgba(159,215,255,0.3)', flexShrink:0, display:'flex', alignItems:'center' }}>
-            <Copy size={9}/>
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 11px', borderRadius:10, background:'rgba(255,255,255,0.025)', border:'1px solid rgba(148,190,255,0.09)', fontSize:12.5, minWidth:0 }}>
+        <span style={{ width:7, height:7, borderRadius:'50%', background:dot, boxShadow:stare==='ocupat'?'0 0 10px #3DDC97':undefined, flexShrink:0 }}/>
+        {stare === 'ocupat' ? <>
+          <b style={{ color:'#E6EEF9' }}>Ocupat</b><span style={{ color:'#B9C7DA', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>· {oc!.acum.nume_client}</span>
+          <span style={{ marginLeft:'auto', color:'#8EA3BF', fontFamily:'ui-monospace,Menlo,monospace', fontSize:11.5, whiteSpace:'nowrap' }}>{oc!.acum.data_checkout===azi?'pleacă azi':'până '+fmtZi(oc!.acum.data_checkout)}</span>
+        </> : stare === 'liber' ? <>
+          <b style={{ color:'#E6EEF9' }}>Liber</b>
+          {oc?.urm ? <><span style={{ color:'#B9C7DA', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>· {oc.urm.nume_client}</span>
+            <span style={{ marginLeft:'auto', color:'#8EA3BF', fontFamily:'ui-monospace,Menlo,monospace', fontSize:11.5, whiteSpace:'nowrap' }}>{oc.urm.data_checkin===azi?'sosește azi':'din '+fmtZi(oc.urm.data_checkin)}</span></>
+            : <span style={{ marginLeft:'auto', color:'#8EA3BF', fontSize:11.5 }}>fără rezervări</span>}
+        </> : <b style={{ color:'#8EA3BF' }}>Inactiv</b>}
+      </div>
+      <div style={{ display:'flex', gap:14, fontSize:12, color:'#8EA3BF', fontVariantNumeric:'tabular-nums', flexWrap:'wrap' }}>
+        {a.capacitate_max ? <span><b style={{ color:'#E6EEF9' }}>{a.capacitate_max}</b> pers</span> : null}
+        {a.nr_camere ? <span><b style={{ color:'#E6EEF9' }}>{a.nr_camere}</b> cam</span> : null}
+        {a.pret_standard ? <span><b style={{ color:'#E6EEF9' }}>{a.pret_standard}</b> lei/n</span> : null}
+        {a.proprietar?.nume ? <span title="Proprietar">{String(a.proprietar.nume).trim().split(' ')[0]}</span> : null}
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:6, paddingTop:12, borderTop:'1px solid rgba(148,190,255,0.09)' }}>
+        {links.map(([t,titlu,url])=>(
+          <button key={t} disabled={!url} onClick={e=>url&&cp(e,url,t)} title={url?`${titlu} — click copiază linkul`:`${titlu} — lipsește`}
+            style={{ width:30, height:30, display:'grid', placeItems:'center', borderRadius:8, border:`1px solid ${copiat===t?'#3DDC97':'rgba(148,190,255,0.18)'}`, background:'transparent', color:copiat===t?'#3DDC97':'#8EA3BF', fontFamily:'ui-monospace,Menlo,monospace', fontWeight:700, fontSize:10.5, cursor:url?'pointer':'default', opacity:url?1:0.25 }}>
+            {copiat===t?'✓':t}
           </button>
-        </div>
-      )}
-      {/* Cod locker */}
-      {a.cod_locker && (
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5, padding:'3px 8px', borderRadius:6, background:'rgba(252,211,77,0.1)', border:'1px solid rgba(252,211,77,0.25)', width:'fit-content' }}>
-          <span style={{ fontSize:10 }}>🔒</span>
-          <span style={{ fontSize:12, fontWeight:700, color:'#FCD34D', fontFamily:'monospace', letterSpacing:1 }}>{a.cod_locker}</span>
-          <button onClick={e=>cp(e,a.cod_locker)} style={{ background:'none', border:'none', cursor:'pointer', padding:0, color:'rgba(252,211,77,0.5)', display:'flex', alignItems:'center' }}>
-            <Copy size={9}/>
+        ))}
+        {a.cod_locker && (
+          <button onClick={e=>{ e.stopPropagation(); if (cod) cp(e,a.cod_locker,'cod'); else setCod(true) }} title={cod?'Click copiază codul':'Cod locker — click ca să-l vezi'}
+            style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:7, height:30, padding:'0 10px', borderRadius:8, border:`1px solid ${copiat==='cod'?'#3DDC97':'rgba(245,184,75,0.28)'}`, background:'rgba(245,184,75,0.06)', color:copiat==='cod'?'#3DDC97':'#F5B84B', fontFamily:'ui-monospace,Menlo,monospace', fontWeight:700, fontSize:12.5, letterSpacing:'.14em', cursor:'pointer' }}>
+            <span style={{ fontSize:11 }}>🔒</span>{copiat==='cod' ? 'copiat' : cod ? a.cod_locker : '••••'}
           </button>
-        </div>
-      )}
-      {/* Links copy row */}
-      {hasLinks && (
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-          {a.link_site && (
-            <button onClick={e=>cp(e,a.link_site)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(77,163,255,0.2)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', fontSize:9, cursor:'pointer', fontWeight:600 }}>
-              <Copy size={8}/> Site
-            </button>
-          )}
-          {a.link_booking && (
-            <button onClick={e=>cp(e,a.link_booking)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(252,211,77,0.2)', background:'rgba(252,211,77,0.08)', color:'#FCD34D', fontSize:9, cursor:'pointer', fontWeight:600 }}>
-              <Copy size={8}/> Maps
-            </button>
-          )}
-          {a.link_airbnb && (
-            <button onClick={e=>cp(e,a.link_airbnb)} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(239,68,68,0.2)', background:'rgba(239,68,68,0.08)', color:'#F87171', fontSize:9, cursor:'pointer', fontWeight:600 }}>
-              <Copy size={8}/> Airbnb
-            </button>
-          )}
-          {((a.booking_links as string[])||[]).filter(Boolean)[0] && (
-            <button onClick={e=>cp(e,((a.booking_links as string[])||[]).filter(Boolean)[0])} style={{ display:'flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:5, border:'1px solid rgba(96,165,250,0.2)', background:'rgba(96,165,250,0.08)', color:'#60A5FA', fontSize:9, cursor:'pointer', fontWeight:600 }}>
-              <Copy size={8}/> Booking
-            </button>
-          )}
-        </div>
-      )}
-      {/* Click to expand */}
-      <div onClick={onClick} style={{ cursor:'pointer', marginTop:5, textAlign:'center', fontSize:9, color:'rgba(159,215,255,0.25)' }}>
-        {selected ? '▲ inchide' : '▼ detalii'}
+        )}
       </div>
     </div>
   )
