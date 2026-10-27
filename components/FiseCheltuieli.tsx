@@ -35,6 +35,19 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const [loading, setLoading] = useState(true)
   const [filtru, setFiltru] = useState<'toate' | 'rest' | 'late' | 'miss' | 'ok'>('toate')
   const [aratInactive, setAratInactive] = useState(false)
+  // firma pe care e fiecare apartament (cerut direct: „ordonate alfabetic și pe firme / privat”) - setari „apartamente_firma”
+  const CHEIE_FIRME = 'apartamente_firma'
+  const FIRME = ['ABXHOMES', 'AB HOMES INVEST SRL', 'Privat']
+  const [firme, setFirme] = useState<Record<string, string>>({})
+  useEffect(() => {
+    Promise.resolve(supabase.from('setari').select('valoare').eq('cheie', CHEIE_FIRME).maybeSingle())
+      .then(({ data }) => { try { const v = JSON.parse(data?.valoare || '{}'); if (v && typeof v === 'object') setFirme(v) } catch {} }).catch(() => {})
+  }, [])
+  async function schimbaFirma(aptId: string, firma: string) {
+    const nou = { ...firme }; if (firma) nou[aptId] = firma; else delete nou[aptId]
+    setFirme(nou)
+    await supabase.from('setari').upsert({ cheie: CHEIE_FIRME, valoare: JSON.stringify(nou) }, { onConflict: 'cheie' })
+  }
   const [ultime, setUltime] = useState<Record<string, { plata?: string; adaugare?: string }>>({})
   // apartamente inactive / personale ale caror cheltuieli le urmarim totusi ca pe cele active (cerut direct:
   // „Urban Oasis, Canta și R99 — ultimele 2 sunt personale, dar trebuie să avem cheltuielile și evidența plăților”)
@@ -220,6 +233,11 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 11.5, fontWeight: 700, color: 'rgba(159,215,255,0.5)' }}>
               {f.apt.nota || ''}{f.inactiv ? ' · inactiv' : f.urmarit ? (f.apt.nota ? ' · ' : '') + 'inactiv' : ''}
               {f.urmarit && <span style={{ whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 10, padding: '1px 7px', borderRadius: 20, background: 'rgba(196,181,253,0.12)', border: '1px solid rgba(196,181,253,0.3)', color: '#C4B5FD' }}>urmărit</span>}
+              <select value={firme[String(f.apt.id)] || ''} onClick={e => e.stopPropagation()} onChange={e => schimbaFirma(String(f.apt.id), e.target.value)} title="Firma pe care e apartamentul"
+                style={{ fontFamily: 'inherit', fontSize: 10, fontWeight: 700, padding: '1px 4px', borderRadius: 6, border: '1px solid rgba(159,215,255,0.2)', background: 'transparent', color: 'rgba(159,215,255,0.75)', width: 'auto', maxWidth: 140 }}>
+                <option value="">fără firmă</option>
+                {[...new Set([...FIRME, ...Object.values(firme)])].map(x => <option key={x} value={x}>{x}</option>)}
+              </select>
               {(f.inactiv || f.urmarit) && (
                 <button onClick={e => { e.stopPropagation(); comutaUrmarit(String(f.apt.id)) }} title={f.urmarit ? 'Scoate din cheltuielile urmărite (revine la „Apartamente inactive”)' : 'Urmărește cheltuielile acestui apartament ca pe cele active'}
                   style={{ whiteSpace: 'nowrap', fontFamily: 'inherit', fontSize: 10, padding: '1px 7px', borderRadius: 20, border: '1px dashed rgba(159,215,255,0.3)', background: 'transparent', color: 'rgba(159,215,255,0.7)', cursor: 'pointer' }}>
@@ -267,8 +285,13 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   )
 
   if (loading) return <div style={{ color: 'rgba(159,215,255,0.35)', fontSize: 13, padding: '40px 0' }}>Se încarcă fișele...</div>
-  const vizibile = active.filter(trece).sort((a, b) => (b.depasite - a.depasite) || ((b.rest_luna + b.sumaRestante) - (a.rest_luna + a.sumaRestante)) || (b.lipsa - a.lipsa))
-  const inactiveViz = inactive.filter(trece)
+  const alfabetic = (a: typeof fise[number], b: typeof fise[number]) => String(a.apt.nume).trim().localeCompare(String(b.apt.nume).trim(), 'ro')
+  const vizibile = active.filter(trece).sort(alfabetic)
+  const firmaDe = (f: typeof fise[number]) => firme[String(f.apt.id)] || ''
+  const grupuri = [...new Set(vizibile.map(firmaDe))]
+    .sort((x, y) => !x ? 1 : !y ? -1 : x.localeCompare(y, 'ro'))
+    .map(firma => ({ firma, lista: vizibile.filter(f => firmaDe(f) === firma) }))
+  const inactiveViz = inactive.filter(trece).sort(alfabetic)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
@@ -286,9 +309,18 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
         </div>
       )}
       {vizibile.length === 0 && <div style={{ textAlign: 'center', padding: '24px 0', color: 'rgba(159,215,255,0.45)', fontSize: 13 }}>Niciun apartament pentru filtrul ales.</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14, alignItems: 'start' }}>
-        {vizibile.map(fisa)}
-      </div>
+      {grupuri.map(g => (
+        <div key={g.firma || '-'} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: g.firma === 'Privat' ? '#C4B5FD' : g.firma ? '#7BC8FF' : 'rgba(159,215,255,0.45)' }}>
+            {g.firma || 'Fără firmă setată'} · {g.lista.length}
+            {(() => { const rest = g.lista.reduce((s, f) => s + f.rest_luna + f.sumaRestante, 0); return rest > 0 ? <span style={{ fontFamily: 'ui-monospace,Menlo,monospace', letterSpacing: 0, color: '#F87171' }}>de plătit {fmt(rest)} RON</span> : null })()}
+            <span style={{ flex: 1, height: 1, background: 'rgba(159,215,255,0.1)' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(310px,1fr))', gap: 14, alignItems: 'start' }}>
+            {g.lista.map(fisa)}
+          </div>
+        </div>
+      ))}
       {inactiveViz.length > 0 && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
