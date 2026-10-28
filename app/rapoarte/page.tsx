@@ -75,7 +75,7 @@ function CanalBadge({ canal }: { canal: string }) {
   return <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:5, fontSize:10, fontWeight:600, fontFamily:'monospace', ...(s[canal] || s.direct) }}>{l[canal] || canal}</span>
 }
 
-function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string }) {
+function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd, showAptCol }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string; showAptCol: boolean }) {
   const [open, setOpen] = useState(false)
   const brutTotal = valoareRez(r)
   const nopti = Number(r.nr_nopti || 1)
@@ -94,7 +94,7 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r:
         <td style={{ padding:'9px 12px', fontSize:11, color:'rgba(159,215,255,0.55)', fontFamily:'monospace', whiteSpace:'nowrap' }}>{r.data_checkin} → {r.data_checkout}</td>
         <td style={{ padding:'9px 12px', textAlign:'center', fontSize:11, color:'rgba(214,228,244,0.6)' }}>{r.nr_nopti}</td>
         <td style={{ padding:'9px 12px' }}><CanalBadge canal={r.canal}/></td>
-        {r.apartament && <td style={{ padding:'9px 12px', fontSize:11, color:'rgba(159,215,255,0.5)' }}>{r.apartament.nota ? `[${r.apartament.nota}]` : r.apartament.nume}</td>}
+        {showAptCol && <td style={{ padding:'9px 12px', fontSize:11, color:'rgba(159,215,255,0.5)' }}>{r.apartament ? (r.apartament.nota ? `[${r.apartament.nota}]` : r.apartament.nume) : '—'}</td>}
         <td style={{ padding:'9px 12px', fontFamily:'monospace', fontWeight:600, color:'#FFFFFF', textAlign:'right' }}>
           {fmt(brut)}
           {isProRata && <span title={`${proRataPct}% din ${fmt(brutTotal)} RON total`} style={{ display:'block', fontSize:9, color:'rgba(245,158,11,0.7)', fontFamily:'sans-serif' }}>{proRataPct}% pro-rată</span>}
@@ -110,7 +110,7 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd }: { r:
       </tr>
       {open && (
         <tr>
-          <td colSpan={tipRaport === 'cu_comision' ? 11 : 10} style={{ padding:'0 12px 10px 36px', background:'rgba(77,163,255,0.03)' }}>
+          <td colSpan={(tipRaport === 'cu_comision' ? 11 : 10) - (showAptCol ? 0 : 1)} style={{ padding:'0 12px 10px 36px', background:'rgba(77,163,255,0.03)' }}>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, paddingTop:8 }}>
               {[
                 { l:'Brut', v:fmt(brut)+' RON', c:'#FFFFFF' },
@@ -753,7 +753,7 @@ export default function RapoartePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={Number(comisionAB)||0} periodStart={periodStart} periodEnd={periodEnd}/>)}
+                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={Number(comisionAB)||0} periodStart={periodStart} periodEnd={periodEnd} showAptCol={showAptCol}/>)}
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'rgba(14,27,43,0.5)' }}>

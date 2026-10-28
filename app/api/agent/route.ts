@@ -225,6 +225,13 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
         return sc ? sc - (cifre(c) && !cifre(n) ? 10 : 0) : c.split(' ').filter(w => w.length > 3 && !/^\d+$/.test(w) && d.includes(w)).length * 15
       }))
       const best = lista.map(x => ({ x, s: scor(norm(x.nume), norm(x.descriere)) })).sort((p, q) => q.s - p.s)[0]
+      // apartamente care nu sunt pe site, dar au link propriu salvat in Apartamente (ex. R7 B101 → r7-101-galerie.vercel.app);
+      // linkurile vechi abhomesiasi.ro/apN(.html) nu conteaza - dau 404
+      const linkPropriu = apt?.link_site && !/abhomesiasi\.ro\/ap\d+(\.html)?\/?$/i.test(apt.link_site) ? apt.link_site : null
+      if ((!best || best.s < 15) && linkPropriu) {
+        const u = urlPermis(linkPropriu), pg = u ? await descarca(u).catch(() => null) : null
+        return { apartament_din_baza: etApt(apt), link: linkPropriu, nota: 'Nu e pe www.abhomesiasi.ro — link propriu salvat în Apartamente.', text_pagina: pg?.ok ? textDinHtml(pg.html).slice(0, 3000) : '' }
+      }
       if (!best || best.s < 15) return { negasit: `Nu am găsit „${a.apartament}” pe site.`, apartamente_site: lista.map(x => ({ nume: x.nume, link: x.link })) }
       const pg = await descarca(new URL(best.x.link))
       const text = textDinHtml(pg.html).replace(/Alte apartamente[\s\S]*$/i, '').slice(0, 5000)
