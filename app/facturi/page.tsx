@@ -116,6 +116,10 @@ export default function FacturiPage() {
   const [preview, setPreview] = useState<Factura | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [searchArchiva, setSearchArchiva] = useState<string>('')
+  // arhiva: fiecare apartament e strans implicit, se deschide la click (cerut direct); se tine minte pe dispozitiv
+  const [arhDeschise, setArhDeschise] = useState<string[]>([])
+  useEffect(() => { try { const v = JSON.parse(localStorage.getItem('arhiva_deschise') || '[]'); if (Array.isArray(v)) setArhDeschise(v) } catch {} }, [])
+  const comutaArh = (id: string) => setArhDeschise(prev => { const n = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; try { localStorage.setItem('arhiva_deschise', JSON.stringify(n)) } catch {}; return n })
   const [syncingAll, setSyncingAll] = useState(false)
   const [editArchiva, setEditArchiva] = useState<any>(null)
   const [editArchivaForm, setEditArchivaForm] = useState({apartament_id:'',valoare:'',status:'nevalidat',data:'',categorie:'alte'})
@@ -924,6 +928,10 @@ export default function FacturiPage() {
                   {Object.keys(dubluriArhiva).length > 0 && <span style={{ marginLeft:10, textTransform:'none', letterSpacing:0, fontWeight:700, color:'#F87171' }}>⚠ {Object.keys(dubluriArhiva).length} facturi par dublate — marcate mai jos</span>}
                 </div>
                 <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  {(() => { const ids = groupedEntries.map(([id]) => id); const toate = ids.every(id => arhDeschise.includes(id)); return (
+                    <button onClick={()=>{ const n = toate ? arhDeschise.filter(x=>!ids.includes(x)) : [...new Set([...arhDeschise, ...ids])]; setArhDeschise(n); try{ localStorage.setItem('arhiva_deschise', JSON.stringify(n)) }catch{} }}
+                      style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(148,190,255,0.2)', background:'transparent', color:'#B9C7DA', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap' }}>{toate ? '▸ Strânge toate' : '▾ Deschide toate'}</button>
+                  ) })()}
                   <input
                     value={searchArchiva}
                     onChange={e=>setSearchArchiva(e.target.value)}
@@ -946,6 +954,7 @@ export default function FacturiPage() {
                   const aptLabel = apt ? (apt.nota ? `[${apt.nota}] ${apt.nume}` : apt.nume) : 'Fără apartament'
                   const total = items.reduce((s,i) => s + Number(i.valoare), 0)
                   const isFara = aptId === '__fara__'
+                  const deschis = !!searchArchiva.trim() || arhDeschise.includes(aptId)
                   const groupIdx = sortableGroupIds.indexOf(aptId)
                   return (
                     <div key={aptId} style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -958,7 +967,7 @@ export default function FacturiPage() {
                     {dragHandle=>(
                     <div style={{ overflow:'hidden', borderRadius:16, background:'linear-gradient(180deg,#101C2F,#0B1422)', border:'1px solid rgba(148,190,255,0.09)' }}>
                       {/* Header apartament */}
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'rgba(255,255,255,0.02)', borderBottom:'1px solid rgba(148,190,255,0.09)' }}>
+                      <div onClick={()=>comutaArh(aptId)} title={deschis?'Strânge':'Arată facturile'} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', background:'rgba(255,255,255,0.02)', borderBottom: deschis ? '1px solid rgba(148,190,255,0.09)' : 'none', cursor:'pointer', userSelect:'none' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                           {dragHandle && (
                             <button ref={dragHandle.setActivatorNodeRef} {...dragHandle.attributes} {...dragHandle.listeners} title="Trage pentru a reordona"
@@ -982,10 +991,15 @@ export default function FacturiPage() {
                           <span style={{ fontSize:15, fontWeight:700, color:'#E6EEF9' }}>{apt ? String(apt.nume).trim() : aptLabel}</span>
                           <span style={{ fontSize:12, color:'#55688A' }}>{items.length} facturi</span>
                         </div>
-                        <span style={{ fontSize:13, fontWeight:600, color:'#FCD34D', fontFamily:'monospace' }}>{total.toLocaleString('ro-RO')} RON</span>
+                        <span style={{ display:'flex', alignItems:'center', gap:12 }}>
+                          {(() => { const nep = items.filter((x:any)=>x.status!=='validat'&&x.status!=='platit').length; return nep ? <span style={{ fontSize:11.5, fontWeight:700, color:'#FCD34D' }}>{nep} neachitate</span> : null })()}
+                          {items.some((x:any)=>dubluriArhiva[x.id]) && <span style={{ fontSize:11.5, fontWeight:800, color:'#F87171' }}>⚠ dublură</span>}
+                          <span style={{ fontSize:13, fontWeight:600, color:'#FCD34D', fontFamily:'monospace' }}>{total.toLocaleString('ro-RO')} RON</span>
+                          <span style={{ color:'#8EA3BF', fontSize:12, transform: deschis ? 'rotate(90deg)' : 'none', transition:'transform .15s' }}>▸</span>
+                        </span>
                       </div>
                       {/* Randuri facturi */}
-                      {items.map((f,i) => (
+                      {deschis && items.map((f,i) => (
                         <div key={f.id} style={{ display:'grid', gridTemplateColumns:'1fr 100px 110px 90px auto', padding:'10px 16px', borderBottom: i<items.length-1?'1px solid rgba(100,160,255,0.05)':'none', alignItems:'center', gap:10 }}>
                           <div>
                             <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' as const }}>
