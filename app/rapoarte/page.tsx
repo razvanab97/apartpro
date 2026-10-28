@@ -75,7 +75,7 @@ function CanalBadge({ canal }: { canal: string }) {
   return <span style={{ display:'inline-block', padding:'2px 8px', borderRadius:5, fontSize:10, fontWeight:600, fontFamily:'monospace', ...(s[canal] || s.direct) }}>{l[canal] || canal}</span>
 }
 
-function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd, showAptCol }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string; showAptCol: boolean }) {
+function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd, showAptCol, inclus, onInclus }: { r: any; tipRaport: 'cu_comision'|'fara_comision'; comisionAB: number; periodStart: string; periodEnd: string; showAptCol: boolean; inclus: boolean; onInclus: (v: boolean) => void }) {
   const [open, setOpen] = useState(false)
   const brutTotal = valoareRez(r)
   const nopti = Number(r.nr_nopti || 1)
@@ -89,8 +89,14 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd, showAp
 
   return (
     <>
-      <tr onClick={() => setOpen(!open)} style={{ cursor:'pointer', background: open ? 'rgba(77,163,255,0.05)' : 'transparent' }}>
-        <td style={{ padding:'9px 12px', fontSize:12, fontWeight:500, color:'#FFFFFF', whiteSpace:'nowrap' }}>{r.nume_client}</td>
+      <tr onClick={() => setOpen(!open)} data-rez-raport={inclus ? 'inclus' : 'exclus'} style={{ cursor:'pointer', background: open ? 'rgba(77,163,255,0.05)' : 'transparent', opacity: inclus ? 1 : 0.38 }}>
+        <td style={{ padding:'9px 12px', fontSize:12, fontWeight:500, color:'#FFFFFF', whiteSpace:'nowrap' }}>
+          <label onClick={e=>e.stopPropagation()} title={inclus ? 'Inclusă în raport — debifează ca să n-o mai numere' : 'Exclusă din raport — bifează ca s-o numere'} style={{ display:'inline-flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+            <input type="checkbox" checked={inclus} onChange={e=>onInclus(e.target.checked)} style={{ width:15, height:15, accentColor:'#4DA3FF', cursor:'pointer' }}/>
+            <span style={{ textDecoration: inclus ? 'none' : 'line-through' }}>{r.nume_client}</span>
+          </label>
+          {!inclus && <span style={{ display:'block', fontSize:9, color:'#FCD34D', marginLeft:23 }}>exclusă din raport</span>}
+        </td>
         <td style={{ padding:'9px 12px', fontSize:11, color:'rgba(159,215,255,0.55)', fontFamily:'monospace', whiteSpace:'nowrap' }}>{r.data_checkin} → {r.data_checkout}</td>
         <td style={{ padding:'9px 12px', textAlign:'center', fontSize:11, color:'rgba(214,228,244,0.6)' }}>{r.nr_nopti}</td>
         <td style={{ padding:'9px 12px' }}><CanalBadge canal={r.canal}/></td>
@@ -148,6 +154,10 @@ export default function RapoartePage() {
   const [tipRaport, setTipRaport] = useState<'cu_comision'|'fara_comision'>('cu_comision')
   const [comisionAB, setComisionAB] = useState<number|''>(20)
   const [rezervari, setRezervari] = useState<any[]>([])
+  // rezervari bifate / debifate din raport (cerut direct: „să putem bifa sau debifa ca o rezervare să apară sau nu în raport”)
+  // - salvate in setari (raport_rezervari_excluse), ca alegerea sa ramana si data viitoare / pe alt dispozitiv
+  const [excluse, setExcluse] = useState<Set<string>>(new Set())
+  const rezIncluse = rezervari.filter(r => !excluse.has(r.id))
   const [generated, setGenerated] = useState(false)
   const [periodStart, setPeriodStart] = useState('')
   const [periodEnd, setPeriodEnd] = useState('')
@@ -190,6 +200,20 @@ export default function RapoartePage() {
       (err) => console.error('[rapoarte apartamente]', err)
     )
   }, [])
+
+  useEffect(() => {
+    supabase.from('setari').select('valoare').eq('cheie','raport_rezervari_excluse').maybeSingle().then(({ data }) => {
+      try { const v = JSON.parse(data?.valoare || '[]'); if (Array.isArray(v)) setExcluse(new Set(v)) } catch {}
+    }, () => {})
+  }, [])
+  function setInclus(id: string, inclus: boolean) {
+    setExcluse(prev => {
+      const n = new Set(prev); inclus ? n.delete(id) : n.add(id)
+      supabase.from('setari').upsert({ cheie:'raport_rezervari_excluse', valoare: JSON.stringify(Array.from(n)) }, { onConflict:'cheie' })
+        .then(({ error }) => { if (error) show('error', 'Nu s-a putut salva: ' + error.message) })
+      return n
+    })
+  }
 
   useEffect(() => {
     if (pageView === 'evolutie' && graficeData.length === 0 && !graficeLoading) loadGrafice()
@@ -327,7 +351,7 @@ export default function RapoartePage() {
     setLoading(false)
   }
 
-  const totals = rezervari.reduce((acc, r) => {
+  const totals = rezIncluse.reduce((acc, r) => {
     // Use pro-rata for reservations that span across period boundary
     const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
     const { com, tva, total } = calcComision(brut, r.canal)
@@ -364,7 +388,7 @@ export default function RapoartePage() {
         ? ['Client','Perioadă','N','Canal','Apt','Brut','Com.Platf','Net Platf',`Com.AB ${comisionAB}%`,'Net Final']
         : ['Client','Perioadă','N','Canal','Apt','Brut','Com.Platf','Net Platf','Net Final']
 
-      const rows = rezervari.map(r => {
+      const rows = rezIncluse.map(r => {
         const brut = valoareRez(r)
         const { total } = calcComision(brut, r.canal)
         const net = brut - total
@@ -721,7 +745,7 @@ export default function RapoartePage() {
         {generated && (
           <div style={{ display:'grid', gridTemplateColumns: tipRaport==='cu_comision' ? 'repeat(6,1fr)' : 'repeat(5,1fr)', gap:8 }}>
             {[
-              { label:'Total brut', value:fmt(totals.brut), color:'#FFFFFF', sub:`${rezervari.length} rez.` },
+              { label:'Total brut', value:fmt(totals.brut), color:'#FFFFFF', sub:`${rezIncluse.length} rez.${rezIncluse.length!==rezervari.length?` · ${rezervari.length-rezIncluse.length} exclusă(e)`:''}` },
               { label:'Medie / zi', value: totals.totalNopti>0 ? fmt(Math.round(totals.brut/totals.totalNopti*100)/100)+' RON' : '—', color:'rgba(159,215,255,0.8)', sub:`${totals.totalNopti} nopți totale` },
               { label:'Com. platforme + TVA', value:`-${fmt(totals.platforma)}`, color:'#F87171', sub:'Airbnb 15% / Booking 17% + TVA 21%' },
               { label:'Net după platforme', value:fmt(totals.netPlatforme), color:'#FCD34D', sub:'baza de calcul' },
@@ -753,11 +777,11 @@ export default function RapoartePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={Number(comisionAB)||0} periodStart={periodStart} periodEnd={periodEnd} showAptCol={showAptCol}/>)}
+                    {rezervari.map((r,i) => <RezervareRow key={r.id||i} r={r} tipRaport={tipRaport} comisionAB={Number(comisionAB)||0} periodStart={periodStart} periodEnd={periodEnd} showAptCol={showAptCol} inclus={!excluse.has(r.id)} onInclus={v=>setInclus(r.id, v)}/>)}
                   </tbody>
                   <tfoot>
                     <tr style={{ background:'rgba(14,27,43,0.5)' }}>
-                      <td colSpan={showAptCol?4:3} style={{ padding:'10px 12px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>TOTAL — {rezervari.length} rez. · {totals.totalNopti} nopți</td>
+                      <td colSpan={showAptCol?4:3} style={{ padding:'10px 12px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>TOTAL — {rezIncluse.length} rez. · {totals.totalNopti} nopți</td>
                       <td/>
                       <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'#FFFFFF', textAlign:'right' }}>{fmt(totals.brut)}</td>
                       <td style={{ padding:'10px 12px', fontFamily:'monospace', fontWeight:700, color:'rgba(159,215,255,0.7)', textAlign:'right' }}>
@@ -790,7 +814,7 @@ export default function RapoartePage() {
           {activeTab === 'fiscal' && (() => {
             // Per platform breakdown
             const byPlatform = PLATFORME.map(p => {
-              const rezP = rezervari.filter(r => r.canal === p.key || (p.key==='direct' && ['direct','whatsapp','telefon','site'].includes(r.canal)))
+              const rezP = rezIncluse.filter(r => r.canal === p.key || (p.key==='direct' && ['direct','whatsapp','telefon','site'].includes(r.canal)))
               const brut = rezP.reduce((s,r)=>s+valoareRez(r),0)
               const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(valoareRez(r),r.canal); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
               return { ...p, brut, com, tva, total, nr: rezP.length }
@@ -809,7 +833,7 @@ export default function RapoartePage() {
             const CANAL_GRUP: Record<string,'airbnb'|'booking'|'privat'> = { airbnb:'airbnb', booking:'booking' }
             const perLocatie = (() => {
               const map = new Map<string, { apt:any; airbnb:number; airbnbN:number; booking:number; bookingN:number; privat:number; privatN:number }>()
-              for (const r of rezervari) {
+              for (const r of rezIncluse) {
                 const aptId = r.apartament_id
                 if (!map.has(aptId)) {
                   // r.apartament vine din join-ul rezervari->apartamente (doar id/nume/nota) — nu
@@ -941,7 +965,7 @@ export default function RapoartePage() {
                     <tfoot>
                       <tr style={{ background:'rgba(14,27,43,0.4)' }}>
                         <td style={{ padding:'10px 14px', fontSize:12, fontWeight:700, color:'rgba(159,215,255,0.6)' }}>TOTAL</td>
-                        <td style={{ padding:'10px 14px', fontSize:12, color:'rgba(214,228,244,0.6)' }}>{rezervari.length}</td>
+                        <td style={{ padding:'10px 14px', fontSize:12, color:'rgba(214,228,244,0.6)' }}>{rezIncluse.length}</td>
                         <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#FFFFFF', textAlign:'right' }}>{fmt(totalBrut)}</td>
                         <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totalCom)}</td>
                         <td style={{ padding:'10px 14px', fontFamily:'monospace', fontWeight:700, color:'#F87171', textAlign:'right' }}>-{fmt(totalTVA)}</td>
