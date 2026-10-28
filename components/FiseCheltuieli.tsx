@@ -237,20 +237,41 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const fisa = (f: typeof fise[number]) => {
     const deplata = f.rest_luna + f.sumaRestante
     const id = String(f.apt.id)
-    if (inchise.includes(id)) return (
-      <button key={f.apt.id} onClick={() => comutaFisa(id)} title="Deschide fișa"
-        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: '#0E1B30', border: `1px solid ${f.depasite ? chenarRosu(f.rest_luna + f.sumaRestante) : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: '11px 14px', cursor: 'pointer' }}>
-        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <span style={{ fontWeight: 800, fontSize: 14, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
-          {rezumatDate(f, true)}
-        </span>
-        <span style={{ display: 'flex', gap: 10, fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
-          <span title="plătit luna aceasta" style={{ color: '#4ADE80' }}>✓ {fmt(f.pl)}</span>
-          <span title="rest de plată (inclusiv restanțe)" style={{ color: deplata ? (f.depasite ? rosu(deplata) : '#E8F4FF') : 'rgba(159,215,255,0.5)' }}>{deplata ? 'rest ' + fmt(deplata) : 'rest 0'}</span>
-        </span>
-        <span style={{ fontSize: 13, color: 'rgba(159,215,255,0.5)' }}>▸</span>
-      </button>
-    )
+    if (inchise.includes(id)) {
+      // fisa inchisa, aerisita (cerut direct: „mai aerisită, cu mai mult sens”): nume + rest mare, bara de plata,
+      // un singur rand de stare (cel mai important) si ultima plata; „adăugat” ramane doar pe fisa deschisa
+      const total = f.tot + f.sumaRestante, pctPl = total > 0 ? Math.min(1, f.pl / total) : 1
+      const dep = !!f.urmScad && f.urmScad < azi
+      const zileD = f.urmScad ? Math.round((new Date(f.urmScad + 'T12:00:00').getTime() - new Date(azi + 'T12:00:00').getTime()) / 86400000) : 0
+      const stare = !deplata ? { t: f.lipsa ? `lipsesc ${f.lipsa} facturi` : 'totul plătit', c: f.lipsa ? '#FCD34D' : '#4ADE80' }
+        : dep ? { t: `depășit din ${zi(f.urmScad!)} · ${-zileD} ${-zileD === 1 ? 'zi' : 'zile'}`, c: rosu(deplata) }
+        : f.urmScad ? { t: `scadent ${zi(f.urmScad)}${zileD === 0 ? ' · azi' : zileD === 1 ? ' · mâine' : ` · în ${zileD} zile`}`, c: '#FCD34D' }
+        : { t: 'de plătit', c: '#E8F4FF' }
+      return (
+        <button key={f.apt.id} onClick={() => comutaFisa(id)} title="Deschide fișa"
+          style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', textAlign: 'left', background: 'linear-gradient(180deg,#101C2F,#0B1422)', border: `1px solid ${f.depasite ? chenarRosu(deplata) : 'rgba(148,190,255,0.1)'}`, borderRadius: 16, padding: '16px 18px', cursor: 'pointer' }}>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 10, width: '100%' }}>
+            <span style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 15, color: '#E8F4FF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.apt.nume}</span>
+            <span style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontWeight: 700, fontSize: 17, whiteSpace: 'nowrap', color: deplata ? (f.depasite ? rosu(deplata) : '#E8F4FF') : '#4ADE80' }}>
+              {deplata ? fmt(deplata) : '✓'}{deplata ? <span style={{ fontSize: 11, opacity: 0.7, marginLeft: 3 }}>RON</span> : null}
+            </span>
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 5, width: '100%' }}>
+            <span style={{ height: 4, borderRadius: 3, background: 'rgba(148,190,255,0.1)', overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', width: `${Math.round(pctPl * 100)}%`, background: pctPl >= 1 ? '#4ADE80' : 'linear-gradient(90deg,#3DDC97,#4DA3FF)', borderRadius: 3 }} />
+            </span>
+            <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: '#8EA3BF', fontVariantNumeric: 'tabular-nums' }}>
+              <span>plătit {fmt(f.pl)} RON</span>{total > 0 && <span>{Math.round(pctPl * 100)}%</span>}
+            </span>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', fontSize: 12, fontWeight: 700 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: stare.c, flexShrink: 0 }} />
+            <span style={{ color: stare.c, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stare.t}</span>
+            {f.ultimaPlata && <span style={{ fontWeight: 500, color: '#55688A', whiteSpace: 'nowrap' }}>ultima plată {ziDin(f.ultimaPlata)}</span>}
+          </span>
+        </button>
+      )
+    }
     return (
       <div key={f.apt.id} style={{ background: '#0E1B30', border: `1px solid ${f.depasite ? chenarRosu(f.rest_luna + f.sumaRestante) : 'rgba(159,215,255,0.12)'}`, borderRadius: 18, padding: 14, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div onClick={() => comutaFisa(id)} title="Închide fișa (rămâne doar numele)" style={{ display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 8, borderBottom: '1px solid rgba(159,215,255,0.1)', marginBottom: 4, cursor: 'pointer' }}>
@@ -361,7 +382,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       )}
       {vizibile.length === 0 && <div style={{ textAlign: 'center', padding: '24px 0', color: 'rgba(159,215,255,0.45)', fontSize: 13 }}>Niciun apartament pentru filtrul ales.</div>}
       {grupuri.map(g => (
-        <div key={g.firma || '-'} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div key={g.firma || '-'} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11.5, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: g.firma === 'Privat' ? '#C4B5FD' : g.firma ? '#7BC8FF' : 'rgba(159,215,255,0.45)' }}>
             {g.firma || 'Fără firmă setată'} · {g.lista.length}
             {(() => { const rest = g.lista.reduce((s, f) => s + f.rest_luna + f.sumaRestante, 0); return rest > 0 ? <span style={{ fontFamily: 'ui-monospace,Menlo,monospace', letterSpacing: 0, color: '#F87171' }}>de plătit {fmt(rest)} RON</span> : null })()}
