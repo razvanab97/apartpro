@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase, numVal, numInput } from '@/lib/supabase'
+import { citesteTaxe, curateniiTaxate } from '@/lib/taxeCuratenie'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { FileText, Download, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
@@ -155,6 +156,8 @@ export default function RapoartePage() {
   // Calculator state - ridicat din CalculatorDecontat pentru PDF export
   const [calcContabilitate, setCalcContabilitate] = useState<number|''>(0)
   const [calcCuratenie, setCalcCuratenie] = useState<number|''>(0)
+  // curateniile finalizate taxate automat (ex. Cherry 3, 75 RON / curatenie) - vezi lib/taxeCuratenie.ts
+  const [curatenieAuto, setCuratenieAuto] = useState<{ n:number; total:number; text:string }|null>(null)
   const [calcLenjerii, setCalcLenjerii] = useState<number|''>(0)
   const [calcPromovare, setCalcPromovare] = useState<number|''>(0)
   const [calcIncasatCash, setCalcIncasatCash] = useState<number|''>(0)
@@ -307,8 +310,17 @@ export default function RapoartePage() {
 
     if (selectedApts.length > 0) q = q.in('apartament_id', selectedApts)
 
-    const { data } = await q
+    // taxa de curatenie se completeaza automat doar intr-un raport pentru UN proprietar (toate locatiile alese
+    // au acelasi proprietar) - intr-un raport cu toate locatiile n-ar avea sens sa scada curatenia Cherry 3
+    const propr = new Set(selectedApts.map(id => apartamente.find(a => a.id === id)?.proprietar_id || id))
+    const [{ data }, taxe] = await Promise.all([q, selectedApts.length && propr.size === 1 ? citesteTaxe().then(cfg => curateniiTaxate(start, end, cfg, selectedApts)) : Promise.resolve([])])
     setRezervari(data || [])
+    if (taxe.length) {
+      const total = taxe.reduce((s, t) => s + t.suma, 0)
+      const sume = Array.from(new Set(taxe.map(t => t.suma)))
+      setCuratenieAuto({ n: taxe.length, total, text: sume.length === 1 ? `${taxe.length} × ${fmt(sume[0])} RON` : `${taxe.length} curățenii` })
+      setCalcCuratenie(Math.round(total * 100) / 100)
+    } else if (curatenieAuto) { setCuratenieAuto(null); setCalcCuratenie(0) }
     setPeriodStart(start)
     setPeriodEnd(end)
     setGenerated(true)
@@ -396,7 +408,7 @@ export default function RapoartePage() {
       let totalScaz = 0; let totalAdd = 0
       const fixedItems: [string,number][] = [
         ['Contabilitate', Number(calcContabilitate)||0],
-        ['Curatenie', Number(calcCuratenie)||0],
+        [curatenieAuto && Number(calcCuratenie)===curatenieAuto.total ? `Curatenie (${curatenieAuto.text.replace('×','x').replace('ă','a').replace('ț','t')})` : 'Curatenie', Number(calcCuratenie)||0],
         ['Lenjerii', Number(calcLenjerii)||0],
         ['Promovare', Number(calcPromovare)||0],
         ['Chirie platita', Number(calcChirie)||0],
@@ -1005,6 +1017,7 @@ export default function RapoartePage() {
               perioada={`${periodStart} — ${periodEnd}`}
               contabilitate={calcContabilitate} setContabilitate={setCalcContabilitate}
               curatenie={calcCuratenie} setCuratenie={setCalcCuratenie}
+              curatenieNota={curatenieAuto ? `auto: ${curatenieAuto.text} finalizate${Number(calcCuratenie)!==curatenieAuto.total?` = ${fmt(curatenieAuto.total)} (modificat manual)`:''}` : ''}
               lenjerii={calcLenjerii} setLenjerii={setCalcLenjerii}
               promovare={calcPromovare} setPromovare={setCalcPromovare}
               incasatCash={calcIncasatCash} setIncasatCash={setCalcIncasatCash}
@@ -1018,10 +1031,10 @@ export default function RapoartePage() {
   )
 }
 
-function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitate, curatenie, setCuratenie, lenjerii, setLenjerii, promovare, setPromovare, incasatCash, setIncasatCash, chirie, setChirie, altelinii, setAltelinii }: {
+function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitate, curatenie, setCuratenie, curatenieNota, lenjerii, setLenjerii, promovare, setPromovare, incasatCash, setIncasatCash, chirie, setChirie, altelinii, setAltelinii }: {
   netFinal: number; perioada: string
   contabilitate:number|''; setContabilitate:(v:number|'')=>void
-  curatenie:number|''; setCuratenie:(v:number|'')=>void
+  curatenie:number|''; setCuratenie:(v:number|'')=>void; curatenieNota?:string
   lenjerii:number|''; setLenjerii:(v:number|'')=>void
   promovare:number|''; setPromovare:(v:number|'')=>void
   incasatCash:number|''; setIncasatCash:(v:number|'')=>void
@@ -1102,6 +1115,7 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
                 <div style={{ fontSize:10, color:'rgba(159,215,255,0.4)', marginBottom:4, textTransform:'uppercase', letterSpacing:'.05em' }}>{label}</div>
                 <input type="number" min={0} value={numVal(val,0)} placeholder="0"
                   onChange={e=>setter(numInput(e.target.value,0))} style={inp}/>
+                {label==='Curățenie'&&curatenieNota&&<div style={{ fontSize:10, color:'#4ADE80', marginTop:4 }}>🧹 {curatenieNota}</div>}
               </div>
             ))}
           </div>

@@ -5,6 +5,8 @@ import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
+import RaportTaxeCuratenie from '@/components/RaportTaxeCuratenie'
+import { stergeCuratenieGata } from '@/lib/taxeCuratenie'
 import { ro } from 'date-fns/locale'
 
 function nrLen(p:number){ if(p<=2) return 1; if(p<=4) return 2; if(p<=6) return 3; return 4 }
@@ -68,7 +70,7 @@ export default function CuratenePage() {
   const [staffStatus, setStaffStatus] = useState<Record<string,any>>({})
   const [eliberat, setEliberat] = useState<Set<string>>(new Set())
   const [oraSpeciala, setOraSpeciala] = useState<Record<string,{co_tarziu:string,ci_devreme:string}>>({})
-  const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'|'rapoarte'>('curatenie')
+  const [activeTab, setActiveTab] = useState<'curatenie'|'probleme'|'rapoarte'|'taxe'>('curatenie')
   const [probleme, setProbleme] = useState<any[]>([])
   const [newProblema, setNewProblema] = useState({apartament_id:'',titlu:'',descriere:'',prioritate:'normal'})
   const [showAddProblema, setShowAddProblema] = useState(false)
@@ -674,7 +676,7 @@ export default function CuratenePage() {
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid rgba(100,160,255,0.1)',background:'rgba(8,15,30,0.8)'}}>
-        {[{k:'curatenie',l:'🧹 Curățenie'},{k:'probleme',l:'🔧 Probleme'},{k:'rapoarte',l:'📊 Rapoarte'}].map(t=>(
+        {[{k:'curatenie',l:'🧹 Curățenie'},{k:'probleme',l:'🔧 Probleme'},{k:'rapoarte',l:'📊 Rapoarte'},{k:'taxe',l:'💶 Taxe'}].map(t=>(
           <button key={t.k} onClick={()=>{ setActiveTab(t.k as any); if(t.k==='probleme') loadProbleme(); if(t.k==='rapoarte') loadRapoarte() }}
             style={{flex:1,padding:'11px 8px',border:'none',background:'transparent',color:activeTab===t.k?'#7BC8FF':'rgba(159,215,255,0.4)',fontSize:13,fontWeight:600,cursor:'pointer',borderBottom:`2px solid ${activeTab===t.k?'#7BC8FF':'transparent'}`,transition:'all .15s'}}>
             {t.l}
@@ -882,6 +884,8 @@ export default function CuratenePage() {
               {(st?.status==='gata'||st?.status==='inceput'||special)&&(
                 <div style={{padding:'0 14px 8px',display:'flex',gap:6,flexWrap:'wrap' as const}}>
                   {st?.status==='gata'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(74,222,128,0.15)',border:'1px solid rgba(74,222,128,0.3)',color:'#4ADE80'}}>✅ Gata {st.ora_gata||''}</span>}
+                  {st?.status==='gata'&&<button onClick={async()=>{ if(!window.confirm(`Ștergi curățenia finalizată la ${apt?.nume||apt?.nota||''}?`)) return; const e=await stergeCuratenieGata(apt.id, selectedDate); if(e) show('error',e); else loadStaffStatus() }}
+                    title="Șterge curățenia finalizată" style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.3)',color:'#F87171',cursor:'pointer'}}>🗑 Șterge</button>}
                   {st?.status==='inceput'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.3)',color:'#FB923C'}}>🧹 Început {st.ora_inceput||''}</span>}
                   {special==='anulat'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(248,113,113,0.15)',border:'1px solid rgba(248,113,113,0.3)',color:'#F87171'}}>✕ Anulat</span>}
                   {special==='doar_lenjerie'&&<span style={{fontSize:11,padding:'3px 9px',borderRadius:20,fontWeight:600,background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.3)',color:'#A78BFA'}}>🛏 Doar lenjerie</span>}
@@ -1123,6 +1127,8 @@ export default function CuratenePage() {
           )
         })}
       </div>}
+
+      {activeTab==='taxe'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 90px'}}><RaportTaxeCuratenie/></div>}
 
       {/* ── TAB RAPOARTE ── */}
       {activeTab==='rapoarte'&&<div style={{flex:1,overflowY:'auto',padding:'14px 16px 90px'}}>
