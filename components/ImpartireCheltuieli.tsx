@@ -25,6 +25,17 @@ export default function ImpartireCheltuieli({ aptId }: { aptId: string }) {
   const [edit, setEdit] = useState(false)
   const [txt, setTxt] = useState('')
   const cheie = 'impartire_' + aptId
+  // „Aduce facturile noi” (cerut direct): reciteste din Cheltuieli si spune ce s-a schimbat
+  const [aduc, setAduc] = useState<string | null>(null)
+  async function aduceFacturi() {
+    setAduc('Se aduc…')
+    const { data: r } = await supabase.from('cheltuieli').select('data,categorie,valoare,status').eq('apartament_id', aptId).order('data', { ascending: false }).limit(500)
+    const nou = (r || []) as Rand[]
+    const dif = nou.length - randuri.length
+    setRanduri(nou)
+    setAduc(dif > 0 ? `✓ ${dif} ${dif === 1 ? 'factură nouă' : 'facturi noi'}` : '✓ la zi')
+    setTimeout(() => setAduc(null), 3000)
+  }
   useEffect(() => {
     let viu = true
     ;(async () => {
@@ -81,8 +92,10 @@ export default function ImpartireCheltuieli({ aptId }: { aptId: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12, borderTop: '1px solid rgba(148,190,255,0.12)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ flex: 1, fontSize: 11, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#7BC8FF' }}>Împărțire cheltuieli · {n} {n === 1 ? 'persoană' : 'persoane'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={{ flex: '1 1 100%', fontSize: 11, fontWeight: 800, letterSpacing: '.12em', textTransform: 'uppercase', color: '#7BC8FF' }}>Împărțire cheltuieli · {n} {n === 1 ? 'persoană' : 'persoane'}</span>
+        <button onClick={aduceFacturi} disabled={aduc === 'Se aduc…'} title="Recitește facturile din Cheltuieli / Facturi" style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid rgba(61,220,151,0.35)', background: 'rgba(61,220,151,0.08)', color: '#3DDC97', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{aduc || '⟳ Aduce facturile noi'}</button>
+        <a href="/facturi" title="Încarcă o factură nouă (se asociază apartamentului)" style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid rgba(148,190,255,0.2)', color: '#8EA3BF', fontSize: 11, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>＋ Factură</a>
         <button onClick={() => setManual(m => !m)} title="Editează manual valorile, adaugă luni și note" style={{ padding: '4px 9px', borderRadius: 7, border: `1px solid ${manual ? '#FCD34D' : 'rgba(148,190,255,0.2)'}`, background: manual ? 'rgba(252,211,77,0.12)' : 'transparent', color: manual ? '#FCD34D' : '#8EA3BF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{manual ? '✓ gata manual' : '✏️ Manual'}</button>
         <button onClick={() => setEdit(e => !e)} style={{ padding: '4px 9px', borderRadius: 7, border: '1px solid rgba(148,190,255,0.2)', background: 'transparent', color: '#8EA3BF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{edit ? 'gata' : '⚙ persoane'}</button>
       </div>
