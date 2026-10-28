@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 
 // Selector de apartament cu cautare si grupare pe firme (cerut direct: „împărțit în secțiuni de privat și pe fiecare
@@ -30,10 +31,26 @@ export default function AptPicker({ apts, value, onChange, placeholder = '— Se
   const [q, setQ] = useState('')
   const [activ, setActiv] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  const lista = useRef<HTMLDivElement>(null)
+  // lista se deschide peste pagina (position fixed, in body) - altfel era taiata de cardurile cu overflow:hidden
+  // (raportat direct: „nu se vede să selectez apartamentul”); se deschide in sus daca jos nu e loc
+  const [poz, setPoz] = useState<{ top?: number; bottom?: number; left: number; maxH: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!deschis) return
+    const calc = () => {
+      const r = ref.current?.getBoundingClientRect(); if (!r) return
+      const w = Math.min(280, window.innerWidth - 16), left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))
+      const jos = window.innerHeight - r.bottom - 12, sus = r.top - 12
+      setPoz(jos >= 260 || jos >= sus ? { top: r.bottom + 4, left, maxH: Math.max(160, jos - 70) } : { bottom: window.innerHeight - r.top + 4, left, maxH: Math.max(160, sus - 70) })
+    }
+    calc()
+    window.addEventListener('resize', calc); window.addEventListener('scroll', calc, true)
+    return () => { window.removeEventListener('resize', calc); window.removeEventListener('scroll', calc, true) }
+  }, [deschis])
   useEffect(() => { citesteFirme().then(setFirme) }, [])
   useEffect(() => {
     if (!deschis) return
-    const f = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setDeschis(false) }
+    const f = (e: MouseEvent) => { const t = e.target as Node; if (ref.current && !ref.current.contains(t) && !lista.current?.contains(t)) setDeschis(false) }
     document.addEventListener('mousedown', f); return () => document.removeEventListener('mousedown', f)
   }, [deschis])
 
@@ -58,8 +75,8 @@ export default function AptPicker({ apts, value, onChange, placeholder = '— Se
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ales ? eticheta(ales) : placeholder}</span>
         <span style={{ opacity: 0.6, fontSize: 10 }}>▾</span>
       </button>
-      {deschis && (
-        <div style={{ position: 'absolute', zIndex: 80, top: 'calc(100% + 4px)', right: 0, width: 280, maxWidth: '86vw', background: '#0E1B30', border: '1px solid rgba(148,190,255,0.25)', borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.55)', overflow: 'hidden' }}>
+      {deschis && poz && typeof document !== 'undefined' && createPortal(
+        <div ref={lista} style={{ position: 'fixed', zIndex: 2000, top: poz.top, bottom: poz.bottom, left: poz.left, width: 280, maxWidth: 'calc(100vw - 16px)', background: '#0E1B30', border: '1px solid rgba(148,190,255,0.25)', borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.55)', overflow: 'hidden' }}>
           <div style={{ padding: 8, borderBottom: '1px solid rgba(148,190,255,0.12)' }}>
             <input autoFocus value={q} onChange={e => { setQ(e.target.value); setActiv(0) }} placeholder="Caută cod sau nume…"
               onKeyDown={e => {
@@ -70,7 +87,7 @@ export default function AptPicker({ apts, value, onChange, placeholder = '— Se
               }}
               style={{ width: '100%', padding: '7px 10px', fontSize: 12.5, borderRadius: 8 }} />
           </div>
-          <div style={{ maxHeight: 320, overflowY: 'auto', padding: '4px 0' }}>
+          <div style={{ maxHeight: Math.min(360, poz.maxH), overflowY: 'auto', padding: '4px 0' }}>
             {value && <button type="button" onClick={() => alege(null)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px', background: 'none', border: 'none', color: 'rgba(159,215,255,0.5)', fontSize: 12, cursor: 'pointer' }}>— fără apartament —</button>}
             {grupuri.map(g => (
               <div key={g.cheie || '-'}>
@@ -92,7 +109,7 @@ export default function AptPicker({ apts, value, onChange, placeholder = '— Se
             ))}
             {!plat.length && <div style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>Niciun apartament pentru „{q}”.</div>}
           </div>
-        </div>
+        </div>, document.body
       )}
     </div>
   )
