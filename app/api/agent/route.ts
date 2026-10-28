@@ -58,6 +58,49 @@ async function suprapuneri(aptId: string, ci: string, co: string, exceptId?: str
   return (data || []).filter((r: any) => r.camera_semnalata !== 'NEALOCAT')
 }
 
+// ── Site-ul nostru + linkuri (cerut direct: „să poată citi link-uri și să deschidă site-ul nostru ca să ia de acolo
+// informația de care are nevoie — toate apartamentele, pe baza link-ului pe care să mi-l dea când îl cer”).
+// ATENTIE: link_site din baza de date e de pe site-ul vechi (abhomesiasi.ro/apN.html → 404); linkurile bune vin de pe site.
+const SITE = 'https://www.abhomesiasi.ro'
+const UA = { 'User-Agent': 'Mozilla/5.0 (AB Homes asistent)' }
+const entitati = (t: string) => t.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+function textDinHtml(h: string) {
+  return entitati(h.replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h\d|li|section|tr|article|header|footer)>/gi, '\n').replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim()
+}
+// doar adrese publice http(s) - fara localhost / IP-uri interne (functia ruleaza pe server)
+function urlPermis(u: string): URL | null {
+  try {
+    const x = new URL(/^https?:\/\//i.test(u) ? u : u.startsWith('/') ? SITE + u : 'https://' + u)
+    if (!/^https?:$/.test(x.protocol)) return null
+    const h = x.hostname.toLowerCase()
+    if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':')) return null
+    return x
+  } catch { return null }
+}
+async function descarca(u: URL): Promise<{ ok: boolean; status: number; url: string; html: string }> {
+  const r = await fetch(u.toString(), { headers: UA, redirect: 'follow', signal: AbortSignal.timeout(9000) })
+  const tip = r.headers.get('content-type') || ''
+  const html = /text|html|json|xml/.test(tip) ? (await r.text()).slice(0, 600_000) : ''
+  return { ok: r.ok, status: r.status, url: r.url || u.toString(), html }
+}
+let cacheSite: { la: number; lista: { nume: string; link: string; descriere: string }[] } | null = null
+async function apartamenteSite() {
+  if (cacheSite && Date.now() - cacheSite.la < 10 * 60_000) return cacheSite.lista
+  const { html } = await descarca(new URL(SITE + '/apartamente'))
+  const vazute = new Set<string>(), lista: { nume: string; link: string; descriere: string }[] = []
+  for (const m of Array.from(html.matchAll(/<a[^>]+href="(\/apartamente\/[^"#?]+)"[^>]*>([\s\S]*?)<\/a>/gi))) {
+    if (vazute.has(m[1])) continue; vazute.add(m[1])
+    const txt = entitati(m[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+    // „Apartament 200 lei / noapte Green Station Zona Gării, Iași 6 persoane · …” -> numele din titlul cardului
+    const titlu = /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i.exec(m[2])?.[1]
+    lista.push({ nume: titlu ? entitati(titlu.replace(/<[^>]+>/g, '')).trim() : m[1].split('/').pop()!.replace(/-/g, ' '), link: SITE + m[1], descriere: txt.slice(0, 160) })
+  }
+  cacheSite = { la: Date.now(), lista }
+  return lista
+}
+
 // ───────────────────────── UNELTE ─────────────────────────
 const fn = (name: string, description: string, properties: any = {}, required: string[] = []) =>
   ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } })
@@ -71,6 +114,8 @@ const TOOLS = [
     de_la: S('YYYY-MM-DD: rezervări care se termină după această dată (opțional)'), pana_la: S('YYYY-MM-DD: rezervări care încep înainte de această dată (opțional)'),
     status: S('confirmata | anulata | finalizata | cerere | toate (implicit: fără anulate)'), limita: N('max rezultate, implicit 15'),
   }),
+  fn('site_abhomes', 'Site-ul nostru www.abhomesiasi.ro: fără parametri → lista TUTUROR apartamentelor de pe site cu linkul corect al fiecăruia; cu apartament → linkul + tot textul paginii lui (descriere, dotări, preț, capacitate, etaj, check-in). Folosește-l ORI de câte ori se cere linkul unui apartament sau informații de pe site.', { apartament: S('cod (ex. GS08) sau nume (opțional)') }),
+  fn('citeste_link', 'Deschide orice link (pagină web publică, inclusiv de pe site-ul nostru, Booking, Airbnb etc.) și întoarce textul paginii + linkurile din ea. Folosește-l când utilizatorul dă un link sau cere informații dintr-o pagină.', { url: S('adresa completă (https://…) sau o cale de pe site-ul nostru (ex. /contact)') }, ['url']),
   fn('detalii_rezervare', 'Toate detaliile unei rezervări (inclusiv apartament, adresă, instrucțiuni check-in, decont).', { rezervare_id: S('id rezervare') }, ['rezervare_id']),
   fn('disponibilitate', 'Ce apartamente sunt libere / ocupate pe o perioadă (cu capacitate și preț standard).', { checkin: S('YYYY-MM-DD'), checkout: S('YYYY-MM-DD'), persoane: N('nr. oaspeți (opțional)') }, ['checkin', 'checkout']),
   fn('lista_apartamente', 'Lista apartamentelor active: cod, nume, adresă, zonă, capacitate, preț standard, link site, instrucțiuni de check-in.'),
@@ -164,7 +209,38 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       }
     }
     case 'lista_apartamente':
-      return (await apartamente()).map(x => ({ id: x.id, cod: x.nota, nume: curat(x.nume), adresa: x.adresa, zona: x.zona, capacitate: x.capacitate_max, pret_standard: x.pret_standard, link_site: x.link_site, instructiuni_checkin: x.instructiuni_checkin }))
+      return (await apartamente()).map(x => ({ id: x.id, cod: x.nota, nume: curat(x.nume), adresa: x.adresa, zona: x.zona, capacitate: x.capacitate_max, pret_standard: x.pret_standard, instructiuni_checkin: x.instructiuni_checkin }))
+    case 'site_abhomes': {
+      const lista = await apartamenteSite()
+      if (!curat(a.apartament)) return { site: SITE, apartamente: lista.map(x => ({ nume: x.nume, link: x.link, rezumat: x.descriere })) }
+      // potrivire: codul / numele din baza noastra -> numele de pe site (ex. GS08 -> Green Station, M08 -> Cuib Urban daca asa scrie)
+      const apt = gasesteApt(await apartamente(true), a.apartament)
+      const cand = [curat(a.apartament), apt?.nume || ''].map(norm).filter(Boolean)
+      // numarul din nume conteaza (Cherry 2 ≠ Cherry 3); daca numele nu se potriveste, cautam si in descrierea cardului
+      // (ex. M08 „Mircea” → „Cuib Urban · Mircea cel Bătrân”)
+      const cifre = (t: string) => (t.match(/\b\d+\b/g) || []).join(',')
+      const scor = (n: string, d: string) => Math.max(...cand.map(c => {
+        if (cifre(c) && cifre(n) && cifre(c) !== cifre(n)) return 0
+        const sc = n === c ? 100 : n.includes(c) || c.includes(n) ? 80 : c.split(' ').filter(w => w.length > 2 && n.includes(w)).length * 20
+        return sc ? sc - (cifre(c) && !cifre(n) ? 10 : 0) : c.split(' ').filter(w => w.length > 3 && !/^\d+$/.test(w) && d.includes(w)).length * 15
+      }))
+      const best = lista.map(x => ({ x, s: scor(norm(x.nume), norm(x.descriere)) })).sort((p, q) => q.s - p.s)[0]
+      if (!best || best.s < 15) return { negasit: `Nu am găsit „${a.apartament}” pe site.`, apartamente_site: lista.map(x => ({ nume: x.nume, link: x.link })) }
+      const pg = await descarca(new URL(best.x.link))
+      const text = textDinHtml(pg.html).replace(/Alte apartamente[\s\S]*$/i, '').slice(0, 5000)
+      return { apartament_din_baza: apt ? etApt(apt) : null, nume_pe_site: best.x.nume, link: best.x.link, text_pagina: text }
+    }
+    case 'citeste_link': {
+      const u = urlPermis(curat(a.url)); if (!u) return { eroare: 'Link invalid sau nepermis (doar pagini web publice http/https).' }
+      const pg = await descarca(u)
+      if (!pg.ok) return { eroare: `Pagina a răspuns cu ${pg.status}${pg.status === 404 ? ' (nu există)' : ''}.`, url: pg.url }
+      const titlu = entitati(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(pg.html)?.[1] || '').trim()
+      const baza = new URL(pg.url)
+      const linkuri = Array.from(new Set(Array.from(pg.html.matchAll(/<a[^>]+href="([^"#]+)"/gi)).map(m => { try { return new URL(entitati(m[1]), baza).toString() } catch { return '' } })
+        .filter(l => /^https?:/.test(l)))).slice(0, 60)
+      const text = textDinHtml(pg.html).slice(0, 9000)
+      return { url: pg.url, titlu, text, linkuri, ...(text.length < 80 ? { nota: 'Pagina nu are text care se poate citi direct (se încarcă din JavaScript sau blochează accesul automat) — spune-i asta utilizatorului.' } : {}) }
+    }
     case 'analiza_activitate': {
       const zile = Math.min(Math.max(Number(a.zile) || 7, 1), 90)
       const de = new Date(Date.now() - zile * 86400000).toISOString()
@@ -365,7 +441,8 @@ REGULI:
 8. Răspunsuri scurte, cu liste când ajută. Sume în RON cu separator de mii. Datele în format „16 oct.”.
 9. Când ești întrebat ce se poate îmbunătăți, folosește recomandari + situatia_zilei și dă pași concreți, ordonați după impact.
 10. Aplicația are un jurnal de activitate (analiza_activitate) — momentan DOAR pentru observare. Nu-l pomeni și nu propune automatizări din proprie inițiativă; folosește-l doar când utilizatorul întreabă cum lucrează echipa, ce se repetă sau ce s-ar putea automatiza — atunci dă exemple concrete din date (secvențe repetate, butoane folosite des, ore, mesaje), cu impactul estimat.
-11. Linkurile le scrii simplu, întregi (https://…) — aplicația le pune singură buton „Copiază”. Codurile, parolele Wi-Fi, adresele, IBAN-urile, telefoanele sau orice altă valoare pe care utilizatorul o poate copia le pui între \`backticks\` (câte una) — devin buton de copiere. Nu scrie „[Copy]” sau „copiază de aici”.`
+11. Linkurile le scrii simplu, întregi (https://…) — aplicația le pune singură buton „Copiază”. Codurile, parolele Wi-Fi, adresele, IBAN-urile, telefoanele sau orice altă valoare pe care utilizatorul o poate copia le pui între \`backticks\` (câte una) — devin buton de copiere. Nu scrie „[Copy]” sau „copiază de aici”.
+12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.`
 }
 
 async function apelOpenAI(body: any) {
