@@ -1,5 +1,6 @@
 'use client'
 import { GHID_BAZA } from '@/lib/gazdeGhid'
+import ImpartireCheltuieli from '@/components/ImpartireCheltuieli'
 import { useEffect, useState } from 'react'
 import { supabase, Apartament, Proprietar, reorderAptsSubset, persistAptOrdine, numVal, numInput } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
@@ -600,6 +601,8 @@ export default function ApartamentePage() {
             </div>
 
             <Calc apt={selected}/>
+
+            <ImpartireCheltuieli key={selected.id} aptId={selected.id}/>
 
             {/* Actions */}
             <div style={{ display:'flex', gap:7, marginTop:'auto', paddingTop:8 }}>
