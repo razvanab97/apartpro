@@ -350,7 +350,7 @@ export default function FacturiPage() {
     const bail = setTimeout(()=>{ setLoadingArchiva(false); setLoadError(true) }, 20000)
     try{
       const { data, error } = await supabase.from('cheltuieli')
-        .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url,data_plata')
+        .select('id,descriere,valoare,data,nota,categorie,status,apartament_id,fisier_url,data_plata,created_at')
         .not('fisier_url', 'is', null)
         .order('data', { ascending: false })
       if(error) throw error
@@ -1016,7 +1016,10 @@ export default function FacturiPage() {
                             </div>
                             {f.nota && <div style={{ fontSize:10, color:'rgba(159,215,255,0.3)', marginTop:1 }}>{f.nota}</div>}
                           </div>
-                          <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{f.data}</div>
+                          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                            <div style={{ fontSize:11, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }} title="Data plății / scadența din Cheltuieli">{f.data}</div>
+                            {f.created_at && <div style={{ fontSize:10.5, color:'#7BC8FF', whiteSpace:'nowrap' }} title={'Adăugată în aplicație: ' + new Date(f.created_at).toLocaleString('ro-RO')}>＋ adăugat {new Date(f.created_at).toLocaleDateString('ro-RO', { day:'numeric', month:'short' })}</div>}
+                          </div>
                           <div style={{ fontSize:13, fontWeight:600, color:'#E8F4FF', fontFamily:'monospace' }}>{Number(f.valoare).toLocaleString('ro-RO')} RON</div>
                           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
                             <span style={{ fontSize:11, padding:'2px 8px', borderRadius:5, background: f.status==='validat'?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.1)', color: f.status==='validat'?'#4ADE80':'#FCD34D', fontWeight:500, textAlign:'center' as const }}>
