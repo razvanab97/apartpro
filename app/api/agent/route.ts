@@ -364,7 +364,8 @@ REGULI:
 7. Când pomenești o rezervare, scrie-o ca [[rez:ID|Nume client · cod apt · date]] — devine buton care o deschide.
 8. Răspunsuri scurte, cu liste când ajută. Sume în RON cu separator de mii. Datele în format „16 oct.”.
 9. Când ești întrebat ce se poate îmbunătăți, folosește recomandari + situatia_zilei și dă pași concreți, ordonați după impact.
-10. Aplicația are un jurnal de activitate (analiza_activitate) — momentan DOAR pentru observare. Nu-l pomeni și nu propune automatizări din proprie inițiativă; folosește-l doar când utilizatorul întreabă cum lucrează echipa, ce se repetă sau ce s-ar putea automatiza — atunci dă exemple concrete din date (secvențe repetate, butoane folosite des, ore, mesaje), cu impactul estimat.`
+10. Aplicația are un jurnal de activitate (analiza_activitate) — momentan DOAR pentru observare. Nu-l pomeni și nu propune automatizări din proprie inițiativă; folosește-l doar când utilizatorul întreabă cum lucrează echipa, ce se repetă sau ce s-ar putea automatiza — atunci dă exemple concrete din date (secvențe repetate, butoane folosite des, ore, mesaje), cu impactul estimat.
+11. Linkurile le scrii simplu, întregi (https://…) — aplicația le pune singură buton „Copiază”. Codurile, parolele Wi-Fi, adresele, IBAN-urile, telefoanele sau orice altă valoare pe care utilizatorul o poate copia le pui între \`backticks\` (câte una) — devin buton de copiere. Nu scrie „[Copy]” sau „copiază de aici”.`
 }
 
 async function apelOpenAI(body: any) {

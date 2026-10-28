@@ -102,17 +102,34 @@ async function anuleazaActiune(u: any) {
   if (err) throw new Error(err)
 }
 
-// ── text: **bold**, liste, [[rez:ID|eticheta]] -> buton care deschide rezervarea ──
+// Buton de copiere (cerut direct: „să avem funcția de copy atunci când cerem link-uri sau alte informații”)
+function Copiaza({ v, eticheta, mic }: { v: string; eticheta?: ReactNode; mic?: boolean }) {
+  const [ok, setOk] = useState(false)
+  const copiaza = () => {
+    const gata = () => { setOk(true); setTimeout(() => setOk(false), 1500) }
+    navigator.clipboard.writeText(v).then(gata).catch(() => {
+      try { const ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); gata() } catch {}
+    })
+  }
+  if (mic) return <button onClick={copiaza} title="Copiază" data-copiaza={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, margin: '0 2px', padding: '1px 7px', borderRadius: 6, border: `1px solid ${ok ? 'rgba(74,222,128,0.45)' : 'rgba(124,155,255,0.3)'}`, background: ok ? 'rgba(74,222,128,0.12)' : 'rgba(124,155,255,0.1)', color: ok ? '#4ADE80' : '#A5B4FC', fontSize: 11, fontWeight: 700, cursor: 'pointer', verticalAlign: 'baseline' }}>{ok ? <Check size={11} /> : <Copy size={11} />}{ok ? 'Copiat' : (eticheta ?? 'Copiază')}</button>
+  return <button onClick={copiaza} title="Copiază" data-copiaza={v} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%', margin: '2px 2px', padding: '3px 9px', borderRadius: 8, border: `1px solid ${ok ? 'rgba(74,222,128,0.45)' : 'rgba(124,155,255,0.3)'}`, background: ok ? 'rgba(74,222,128,0.1)' : 'rgba(124,155,255,0.08)', color: ok ? '#4ADE80' : '#E0E7FF', fontSize: 12.5, fontWeight: 600, fontFamily: 'ui-monospace,Menlo,monospace', cursor: 'pointer', verticalAlign: 'baseline', textAlign: 'left', wordBreak: 'break-all' }}>
+    <span>{eticheta ?? v}</span>{ok ? <Check size={12} style={{ flexShrink: 0 }} /> : <Copy size={12} style={{ flexShrink: 0, opacity: 0.7 }} />}
+  </button>
+}
+
+// ── text: **bold**, liste, [[rez:ID|eticheta]] -> buton care deschide rezervarea; linkuri si `valori` -> buton Copiază ──
 function Text({ t, onRez }: { t: string; onRez: (id: string) => void }) {
   const linii = t.split('\n')
   const inline = (s: string, k: number): ReactNode[] => {
     const out: ReactNode[] = []
-    const re = /\[\[rez:([0-9a-f-]{8,})\|([^\]]+)\]\]|\*\*([^*]+)\*\*/gi
+    const re = /\[\[rez:([0-9a-f-]{8,})\|([^\]]+)\]\]|\*\*([^*]+)\*\*|`([^`\n]+)`|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>()\]]+[^\s<>()\].,;:!?'"„”])/gi
     let last = 0, m: RegExpExecArray | null, i = 0
     while ((m = re.exec(s))) {
       if (m.index > last) out.push(s.slice(last, m.index))
       if (m[1]) { const id = m[1]; out.push(<button key={`${k}-${i++}`} onClick={() => onRez(id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, margin: '1px 2px', padding: '1px 8px', borderRadius: 7, border: '1px solid rgba(77,163,255,0.35)', background: 'rgba(77,163,255,0.12)', color: '#7BC8FF', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', verticalAlign: 'baseline' }}>↗ {m[2]}</button>) }
-      else out.push(<b key={`${k}-${i++}`} style={{ color: '#FFFFFF' }}>{m[3]}</b>)
+      else if (m[3] != null) out.push(<b key={`${k}-${i++}`} style={{ color: '#FFFFFF' }}>{m[3]}</b>)
+      else if (m[4] != null) out.push(<Copiaza key={`${k}-${i++}`} v={m[4]} />)
+      else { const url = m[6] || m[7]; out.push(<span key={`${k}-${i++}`} style={{ display: 'inline' }}><a href={url} target="_blank" rel="noreferrer" style={{ color: '#7BC8FF', textDecoration: 'underline', wordBreak: 'break-all' }}>{m[5] || url}</a><Copiaza v={url} mic /></span>) }
       last = re.lastIndex
     }
     if (last < s.length) out.push(s.slice(last))
@@ -353,6 +370,7 @@ export default function Agent() {
                   color: m.role === 'user' ? '#FFFFFF' : m.nota ? '#C7D2FE' : 'rgba(232,244,255,0.92)', whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined }}>
                   {m.role === 'user' ? m.content : <Text t={m.content} onRez={setRezDeschisa} />}
                 </div>
+                {m.role === 'assistant' && !m.nota && m.content.length > 3 && <div style={{ marginTop: 4, opacity: 0.75 }}><Copiaza mic eticheta="Copiază tot" v={m.content.replace(/\[\[rez:[^|]+\|([^\]]+)\]\]/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')} /></div>}
                 {m.cards?.map((c, ci) => c.tip === 'actiune' ? cardActiune(c, mi, ci)
                   : c.tip === 'mesaj' ? cardMesaj(c, mi, ci)
                   : c.tip === 'confirmare' ? <button key={ci} onClick={() => setConfId(c.rezervare_id)} style={{ ...btn('linear-gradient(135deg,rgba(37,99,235,0.2),rgba(124,58,237,0.2))', '#7DD3FC', 'rgba(56,189,248,0.4)'), marginTop: 8, width: '100%' }}>✦ Deschide confirmarea pentru {c.titlu} (poză / PDF)</button>

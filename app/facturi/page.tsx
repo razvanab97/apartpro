@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import AptPicker, { citesteFirme } from '@/components/AptPicker'
+import { esteEon, doarPrimaPagina } from '@/lib/pdfPrimaPagina'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
@@ -387,14 +388,14 @@ export default function FacturiPage() {
     })
 
     // preview URL
-    const previewUrl = URL.createObjectURL(file)
+    let previewUrl = URL.createObjectURL(file)
 
     // Upload fisier in Supabase Storage
     let fileUrl: string | null = null
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2,'0')
+    const storagePath = `facturi/${now.getFullYear()}-${pad(now.getMonth()+1)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
     try {
-      const now = new Date()
-      const pad = (n: number) => String(n).padStart(2,'0')
-      const storagePath = `facturi/${now.getFullYear()}-${pad(now.getMonth()+1)}/${id}-${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('Facturi')
         .upload(storagePath, file, { contentType: mimeType, upsert: true })
@@ -411,6 +412,19 @@ export default function FacturiPage() {
       })
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
+
+      // E.ON: pastram doar pagina 1 (restul de 4 pagini nu au sens) - inlocuim fisierul din storage si previzualizarea
+      if (mimeType === 'application/pdf' && esteEon(data.furnizor)) {
+        const prima = await doarPrimaPagina(file)
+        if (prima) {
+          const cale1 = storagePath.replace(/(\.pdf)?$/i, '-p1.pdf')
+          const { error: e2 } = await supabase.storage.from('Facturi').upload(cale1, prima, { contentType: 'application/pdf', upsert: true })
+          if (!e2) {
+            if (fileUrl) supabase.storage.from('Facturi').remove([storagePath]).then(() => {}, () => {})
+            fileUrl = getStorageUrl('Facturi', cale1); previewUrl = URL.createObjectURL(prima)
+          }
+        }
+      }
 
       // Potriveste apartamentul pentru o intrare (poate fi factura principala sau o luna
       // individuala din facturi_multiple - vezi Royal cu mai multe luni intr-un screenshot)
