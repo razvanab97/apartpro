@@ -12,6 +12,26 @@ const ORD = ['chirie', 'asociatie', 'eon_curent', 'eon_gaz', 'internet', 'salubr
 const LUNI_S = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec']
 const LUNI_L = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie']
 const fmt = (n: number) => Math.round(n).toLocaleString('ro-RO')
+// Luna (perioada) pentru care e factura, din nota „Factură <nr> | <perioadă>” (cerut direct: „să se preia și luna
+// pentru care e factura”). Ex: „Luna August 2026” -> „august 2026”; „02.08.2026 - 30.09.2026” -> „aug – sep 2026”.
+const LUNI_LUNG = ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie']
+const LUNI_SC = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec']
+export function lunaFactura(nota?: string | null): string {
+  const p = String(nota || '').split('|')[1]?.trim() || ''
+  if (!p) return ''
+  const r = /(\d{1,2})\.(\d{1,2})\.(\d{4})\s*[-–]\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(p)
+  if (r) {
+    const [m1, y1, m2, y2] = [+r[2] - 1, r[3], +r[5] - 1, r[6]]
+    if (m1 === m2 && y1 === y2) return `${LUNI_LUNG[m1]} ${y1}`
+    return y1 === y2 ? `${LUNI_SC[m1]} – ${LUNI_SC[m2]} ${y2}` : `${LUNI_SC[m1]} ${y1} – ${LUNI_SC[m2]} ${y2}`
+  }
+  const low = p.toLowerCase()
+  const i = LUNI_LUNG.findIndex(l => low.includes(l))
+  const y = (/(20\d{2})/.exec(p) || [])[1]
+  if (i >= 0) return `${LUNI_LUNG[i]}${y ? ' ' + y : ''}`
+  return p.length <= 40 ? p : ''
+}
+
 // Rosu atenuat cand e putin de platit (cerut direct: „când avem puțin de plătit, roșul să devină mai puțin agresiv”)
 const PRAG_MIC = 150
 const rosu = (suma: number) => suma > 0 && suma < PRAG_MIC ? 'rgba(248,113,113,0.62)' : '#F87171'
@@ -21,7 +41,7 @@ const lunaDe = (d: string) => { const p = d.split('-'); return `${LUNI_S[+p[1] -
 const furnizorDin = (descriere?: string | null) => { const s = String(descriere || ''); return s.includes('—') ? s.split('—').pop()!.trim() : '' }
 const etichetaCat = (c: string, descriere?: string | null) => CAT[c] || String(descriere || c).split('—')[0].trim() || c
 
-type Rand = { id: string; apartament_id: string; categorie: string; descriere: string | null; valoare: number; status: string; data: string; fisier_url: string | null; created_at?: string | null; data_scadenta?: string | null; data_plata?: string | null }
+type Rand = { id: string; apartament_id: string; categorie: string; descriere: string | null; valoare: number; status: string; data: string; fisier_url: string | null; nota?: string | null; created_at?: string | null; data_scadenta?: string | null; data_plata?: string | null }
 // scadenta: campul dedicat daca e completat, altfel data platii (la facturi = scadenta de pe factura, la chirie / asociatie = 1 ale lunii)
 const scad = (r: Rand) => r.data_scadenta || r.data
 const ziDin = (iso?: string | null) => iso ? zi(iso.slice(0, 10)) : ''
@@ -68,6 +88,8 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   }
   const [ultim, setUltim] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [vezi, setVezi] = useState<{ r: Rand; eticheta: string; sub: string | null } | null>(null)  // factura deschisa in pop-up
+  useEffect(() => { if (!vezi) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setVezi(null) }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [vezi])
   // fișe închise (rămâne doar numele apartamentului) — ținute minte pe dispozitiv
   const [inchise, setInchise] = useState<string[]>([])
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem('fise_inchise') || '[]'); if (Array.isArray(v)) setInchise(v.map(String)) } catch {} }, [])
@@ -77,7 +99,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   async function load() {
     setLoading(true)
     const dIst = aziLocal(new Date(an, luna - 4, 1))
-    const sel = 'id,apartament_id,categorie,descriere,valoare,status,data,fisier_url,created_at,data_scadenta,data_plata'
+    const sel = 'id,apartament_id,categorie,descriere,valoare,status,data,fisier_url,nota,created_at,data_scadenta,data_plata'
     const [{ data: a }, { data: r }, { data: h }] = await Promise.all([
       supabase.from('cheltuieli').select(sel).not('apartament_id', 'is', null).gte('data', start).lte('data', sfarsit),
       supabase.from('cheltuieli').select(sel).not('apartament_id', 'is', null).eq('status', 'nevalidat').lt('data', start).gt('valoare', 0).order('data'),
@@ -181,7 +203,8 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13.5, color: '#E8F4FF', textDecoration: platit ? 'line-through' : 'none', textDecorationColor: 'rgba(159,215,255,0.5)' }}>
             {eticheta}
-            {r.fisier_url && <a href={r.fisier_url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Deschide factura" style={{ marginLeft: 6, fontSize: 12, textDecoration: 'none' }}>📎</a>}
+            {r.fisier_url && <button type="button" onClick={e => { e.stopPropagation(); setVezi({ r, eticheta, sub }) }} title="Vezi factura" style={{ marginLeft: 6, fontSize: 12, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}>📎</button>}
+            {lunaFactura(r.nota) && <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: 'rgba(77,163,255,0.12)', color: '#7BC8FF', verticalAlign: 'middle', textDecoration: 'none', display: 'inline-block' }}>{lunaFactura(r.nota)}</span>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: late ? rosu(Number(r.valoare)) : 'rgba(159,215,255,0.5)' }}>
             {sub ? sub + ' · ' : ''}{platit ? `plătit${r.data_plata ? ' ' + ziDin(r.data_plata) : ''}` : restanta ? `restanță din ${lunaDe(r.data)} · scadent ${zi(scad(r))}` : late ? `depășit · scadent ${zi(scad(r))}` : `scadent ${zi(scad(r))}`}
@@ -296,8 +319,32 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
     .sort((x, y) => !x ? 1 : !y ? -1 : x.localeCompare(y, 'ro'))
     .map(firma => ({ firma, lista: vizibile.filter(f => firmaDe(f) === firma) }))
   const inactiveViz = inactive.filter(trece).sort(alfabetic)
+  const pdf = vezi && /\.pdf($|\?)/i.test(vezi.r.fisier_url || '')
+  const popup = vezi && (
+    <div onClick={() => setVezi(null)} style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(3,7,15,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 'min(900px,100%)', height: 'min(92dvh,1000px)', display: 'flex', flexDirection: 'column', background: '#0E1B30', border: '1px solid rgba(148,190,255,0.25)', borderRadius: 18, overflow: 'hidden', boxShadow: '0 30px 80px rgba(0,0,0,0.55)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid rgba(148,190,255,0.12)', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#E8F4FF' }}>{vezi.eticheta}{lunaFactura(vezi.r.nota) && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: '#7BC8FF' }}>· {lunaFactura(vezi.r.nota)}</span>}</div>
+            <div style={{ fontSize: 12, color: 'rgba(159,215,255,0.6)', marginTop: 2 }}>
+              {[vezi.sub, `${fmt(Number(vezi.r.valoare))} RON`, `scadent ${zi(scad(vezi.r))}`, ['validat', 'platit'].includes(vezi.r.status) ? `plătit${vezi.r.data_plata ? ' ' + ziDin(vezi.r.data_plata) : ''}` : 'neachitat', (vezi.r.nota || '').split('|')[0].trim()].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+          <a href={vezi.r.fisier_url!} target="_blank" rel="noreferrer" style={{ padding: '7px 12px', borderRadius: 9, border: '1px solid rgba(77,163,255,0.35)', color: '#7BC8FF', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>Deschide în tab nou</a>
+          <button onClick={() => setVezi(null)} aria-label="Închide" style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid rgba(159,215,255,0.2)', background: 'transparent', color: 'rgba(214,228,244,0.8)', fontSize: 16, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, background: '#1a2230' }}>
+          {pdf ? <iframe src={vezi.r.fisier_url!} title="Factura" style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }} />
+            // eslint-disable-next-line @next/next/no-img-element
+            : <div style={{ width: '100%', height: '100%', overflow: 'auto', display: 'grid', placeItems: 'center' }}><img src={vezi.r.fisier_url!} alt="Factura" style={{ maxWidth: '100%' }} /></div>}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {popup}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10 }}>
         {kpi('rest', fmt(tot - pl + sumaRestante) + ' RON', `de plătit${sumaRestante ? ` (din care ${fmt(sumaRestante)} restanțe)` : ''}`, '#E8F4FF', 'rgba(214,228,244,0.06)')}
         {kpi('late', String(depasite), 'plăți depășite', '#F87171', 'rgba(248,113,113,0.12)')}
