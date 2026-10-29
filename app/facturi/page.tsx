@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, getStorageUrl, reorderAptsSubset, persistAptOrdine } from '@/lib/supabase'
 import AptPicker, { citesteFirme } from '@/components/AptPicker'
-import { esteEon, doarPrimaPagina } from '@/lib/pdfPrimaPagina'
+import { doarPagina1Furnizor, doarPrimaPagina } from '@/lib/pdfPrimaPagina'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { Upload, FileText, Check, Trash2, Plus, Loader, AlertCircle, RefreshCw, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
@@ -218,8 +218,9 @@ export default function FacturiPage() {
 
       // BONUS DECISIV: numarul apartamentului din factura == numarul din codul apartamentului
       // Daca nr apartament e cunoscut si nu se potriveste → penalizare puternica
+      // comparat ca NUMAR: „AP.2” din factura = HD02 (inainte „2” ≠ „02” ca text → HD02 penalizat, castiga Canta)
       if (apNrInAddr && aptNr) {
-        if (apNrInAddr === aptNr) score += 50  // match perfect - castig garantat
+        if (Number(apNrInAddr) === Number(aptNr)) score += 50  // match perfect - castig garantat
         else score -= 30                        // nr diferit - eliminat practic
       }
 
@@ -413,8 +414,8 @@ export default function FacturiPage() {
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
 
-      // E.ON: pastram doar pagina 1 (restul de 4 pagini nu au sens) - inlocuim fisierul din storage si previzualizarea
-      if (mimeType === 'application/pdf' && esteEon(data.furnizor)) {
+      // E.ON / Hidroelectrica: pastram doar pagina 1 (restul paginilor nu au sens) - inlocuim fisierul din storage si previzualizarea
+      if (mimeType === 'application/pdf' && doarPagina1Furnizor(data.furnizor)) {
         const prima = await doarPrimaPagina(file)
         if (prima) {
           const cale1 = storagePath.replace(/(\.pdf)?$/i, '-p1.pdf')
@@ -440,7 +441,7 @@ export default function FacturiPage() {
         const nrDinAdresa = String(entryData.adresa_consum || '').match(/\bap(?:artament)?\.?\s*(\d+)/i)?.[1]
           || (entryData.nr_apartament ? String(entryData.nr_apartament).replace(/\D/g, '') || null : null)
         const codNecunoscut = !!entryData.cod_locatie_urbica && !nrDinCodUrbica
-        const aptConflict = !!nrDinCodUrbica && !!nrDinAdresa && nrDinCodUrbica !== nrDinAdresa
+        const aptConflict = !!nrDinCodUrbica && !!nrDinAdresa && Number(nrDinCodUrbica) !== Number(nrDinAdresa)
           ? `Cod Urbica ${entryData.cod_locatie_urbica} = ap. ${nrDinCodUrbica}, dar adresa din factură spune ap. ${nrDinAdresa} — alege apartamentul manual`
           : codNecunoscut
             ? `Cod Urbica ${entryData.cod_locatie_urbica} necunoscut (adresa: ap. ${nrDinAdresa || '?'}) — alege apartamentul manual`
