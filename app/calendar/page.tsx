@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { CHEIE_BLOCARI, parseBlocari, blocataIn, type Blocare } from '@/lib/blocariProprietar'
+import { pregatesteCaptura, citesteRezervare, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
@@ -196,7 +197,8 @@ export default function CalendarPage() {
     setNewRez(prev => ({ ...prev, nume: c.nume, telefon: c.telefon || prev.telefon }))
     setClientQuery(''); setClientResults([]); setShowClientDropdown(false)
   }
-  const [rezScanPreview, setRezScanPreview] = useState<string|null>(null)
+  // mai multe capturi ale aceleiasi rezervari, citite impreuna (vezi lib/capturiScan.ts)
+  const [rezCapturi, setRezCapturi] = useState<Captura[]>([])
   const [scanningRez, setScanningRez] = useState(false)
   const [rezScanError, setRezScanError] = useState<string|null>(null)
   const [rezScanApt, setRezScanApt] = useState<string|null>(null)
@@ -331,7 +333,7 @@ export default function CalendarPage() {
     const co = isoDate(year,month,to+1)
     setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'', notite:'', persoane:'' })
     setCiPreview(null)
-    setRezScanPreview(null); setRezScanError(null); setRezScanApt(null)
+    setRezCapturi([]); setRezScanError(null); setRezScanApt(null)
     setPanel('new')
   }
 
@@ -427,19 +429,21 @@ export default function CalendarPage() {
 
   // Importa o rezervare (Airbnb/Booking, de regula) dintr-un screenshot - completeaza formularul
   // automat, dar salvarea ramane manuala (buton Salveaza), ca sa poti verifica inainte
-  async function scanRezervare(file: File) {
-    setRezScanPreview(URL.createObjectURL(file))
+  async function scanRezervare(files: File[], ramase?: Captura[]) {
     setRezScanError(null)
     setRezScanApt(null)
+    let toate: Captura[]
+    if (ramase) toate = ramase
+    else {
+      const loc = Math.max(0, MAX_CAPTURI - rezCapturi.length)
+      if (files.length > loc) setRezScanError(`Maxim ${MAX_CAPTURI} capturi pentru o rezervare`)
+      toate = [...rezCapturi, ...(await Promise.all(files.slice(0, loc).map(pregatesteCaptura)))]
+    }
+    setRezCapturi(toate)
+    if (!toate.length) return
     setScanningRez(true)
     try {
-      const base64Data = await fileToBase64(file)
-      const res = await fetch('/api/scan-rezervare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64Data, mimeType: file.type || 'image/jpeg' }),
-      })
-      const data = await res.json()
+      const data = await citesteRezervare(toate)
       if (data.error || !data.result) {
         setRezScanError(data.error || 'Nu am putut citi datele din poză — completează manual')
         setScanningRez(false)
@@ -456,6 +460,9 @@ export default function CalendarPage() {
         pret: r.pret_total ? String(r.pret_total) : prev.pret,
         persoane: persoane ? String(persoane) : prev.persoane,
         aptId: matchedAptId || prev.aptId,
+        // telefonul si codul apar de obicei in alta sectiune Airbnb („Administrează rezervarea”) - de-asta mai multe capturi
+        telefon: r.telefon || prev.telefon,
+        notite: r.cod && !prev.notite.includes(r.cod) ? [prev.notite.trim(), `Cod ${r.cod}`].filter(Boolean).join(' | ') : prev.notite,
       }))
       if (r.apartament_text) {
         setRezScanApt(matchedAptId
@@ -825,25 +832,35 @@ export default function CalendarPage() {
 
                 {/* Import din screenshot (Airbnb/Booking) */}
                 <div style={{ marginBottom:14,padding:'10px',borderRadius:9,border:'1px dashed rgba(167,139,250,0.35)',background:'rgba(167,139,250,0.05)' }}>
-                  <input ref={rezScanRef} type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&scanRezervare(e.target.files[0])} style={{ display:'none' }}/>
-                  {rezScanPreview
-                    ? <div style={{ position:'relative',borderRadius:8,overflow:'hidden',border:'1px solid rgba(167,139,250,0.3)' }}>
-                        <img src={rezScanPreview} alt="" style={{ width:'100%',maxHeight:140,objectFit:'contain',background:'rgba(0,0,0,0.4)',display:'block' }}/>
+                  <input ref={rezScanRef} type="file" accept="image/*" multiple onChange={e=>{ const f=Array.from(e.target.files||[]); e.target.value=''; if(f.length) scanRezervare(f) }} style={{ display:'none' }}/>
+                  {rezCapturi.length
+                    ? <div style={{ position:'relative',borderRadius:8,overflow:'hidden',border:'1px solid rgba(167,139,250,0.3)',background:'rgba(0,0,0,0.3)',padding:6 }}>
+                        <div style={{ display:'flex',gap:6,overflowX:'auto' }}>
+                          {rezCapturi.map((c,i)=>(
+                            <div key={c.url} data-captura style={{ position:'relative',flexShrink:0,width:52,height:92,borderRadius:6,overflow:'hidden',border:'1px solid rgba(167,139,250,0.35)' }}>
+                              <img src={c.url} alt={`Captura ${i+1}`} style={{ width:'100%',height:'100%',objectFit:'cover',objectPosition:'top',display:'block' }}/>
+                              <button onClick={()=>scanRezervare([], rezCapturi.filter((_,j)=>j!==i))} disabled={scanningRez} title="Scoate captura" style={{ position:'absolute',top:2,right:2,width:16,height:16,borderRadius:8,border:'none',background:'rgba(0,0,0,0.65)',color:'#fff',fontSize:10,lineHeight:'16px',padding:0,cursor:'pointer' }}>×</button>
+                            </div>
+                          ))}
+                          {rezCapturi.length < MAX_CAPTURI && <button onClick={()=>rezScanRef.current?.click()} disabled={scanningRez} title="Adaugă încă o captură a aceleiași rezervări"
+                            style={{ flexShrink:0,width:52,height:92,borderRadius:6,border:'1px dashed rgba(167,139,250,0.5)',background:'transparent',color:'#C4B5FD',fontSize:20,cursor:'pointer' }}>＋</button>}
+                        </div>
                         {scanningRez && (
                           <div style={{ position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',gap:7,color:'#fff',fontSize:12,fontWeight:600 }}>
                             <Loader size={14} style={{ animation:'spin 1s linear infinite' }}/>Se citește...
                           </div>
                         )}
-                        <button onClick={()=>{setRezScanPreview(null);setRezScanError(null);setRezScanApt(null)}} style={{ position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.6)',border:'none',borderRadius:4,color:'#fff',cursor:'pointer',padding:'2px 6px',fontSize:10 }}>✕</button>
+                        <button onClick={()=>{setRezCapturi([]);setRezScanError(null);setRezScanApt(null)}} style={{ position:'absolute',top:4,right:4,background:'rgba(0,0,0,0.6)',border:'none',borderRadius:4,color:'#fff',cursor:'pointer',padding:'2px 6px',fontSize:10 }}>✕</button>
                       </div>
                     : <button onClick={()=>rezScanRef.current?.click()}
                         style={{ width:'100%',padding:'9px',borderRadius:7,border:'none',background:'transparent',color:'rgba(167,139,250,0.75)',fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:7 }}>
-                        📸 Importă din screenshot (Airbnb/Booking)
+                        📸 Importă din screenshot-uri (Airbnb/Booking — poți pune mai multe)
                       </button>
                   }
                   {rezScanError && <div style={{ fontSize:11,color:'#F87171',marginTop:6 }}>{rezScanError}</div>}
                   {rezScanApt && <div style={{ fontSize:11,color:rezScanApt.startsWith('✓')?'#4ADE80':'#FCD34D',marginTop:6 }}>{rezScanApt}</div>}
-                  {!rezScanPreview && <div style={{ fontSize:10,color:'rgba(159,215,255,0.3)',marginTop:5,textAlign:'center' }}>Completează automat câmpurile de mai jos — verifică înainte de salvare</div>}
+                  {rezCapturi.length>0 && <div style={{ fontSize:10.5,color:'#C4B5FD',marginTop:5 }}>{rezCapturi.length===1?'1 captură':`${rezCapturi.length} capturi citite împreună`} · ＋ pentru încă o secțiune a rezervării (telefon, sumă…)</div>}
+                  {!rezCapturi.length && <div style={{ fontSize:10,color:'rgba(159,215,255,0.3)',marginTop:5,textAlign:'center' }}>Completează automat câmpurile de mai jos — verifică înainte de salvare</div>}
                 </div>
 
                 {/* Apartament */}

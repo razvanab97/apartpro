@@ -7,6 +7,7 @@ import { fmt5star, parse5star } from '@/lib/syncFivestar'
 import { payloadRezervare } from '@/lib/rezervareEdit'
 import RezervareEditor from '@/components/RezervareEditor'
 import { saveAdresaExtrasa } from '@/lib/locatii-romania'
+import { pregatesteCaptura, citesteRezervare, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 
 // Sistemul extern (5starDesk sau orice alt PMS/ERP folosit pentru rezervări) nu are API de
 // scriere, doar formularul lui web propriu — scopul principal e "extrage din poză + editează
@@ -95,6 +96,8 @@ export default function ScanCopyPopup() {
   const [creata, setCreata] = useState<{ id: string; text: string } | null>(null)
   const [editId, setEditId] = useState<string | null>(null)
   const [duplicatId, setDuplicatId] = useState<string | null>(null)
+  // mai multe capturi ale aceleiasi rezervari (Airbnb: info in sectiuni diferite) - se citesc IMPREUNA, informatia se combina
+  const [capturi, setCapturi] = useState<Captura[]>([])
 
   useEffect(() => {
     Promise.resolve(supabase.from('apartamente').select('id,nota,nume').eq('status','activ').order('nota'))
@@ -102,17 +105,18 @@ export default function ScanCopyPopup() {
       .catch(() => {})
   }, [])
 
-  async function runScan(base64Data: string, mimeType: string) {
+  async function runScan(base64Data: string, mimeType: string, toate?: Captura[]) {
     setScanning(true); setError(null)
     try {
-      const endpoint = mode === 'rezervare' ? '/api/scan-rezervare' : '/api/scan-ci'
-      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base64Data, mimeType }) })
-      const data = await res.json()
+      const data: any = mode === 'rezervare' && toate
+        ? await citesteRezervare(toate)
+        : await (await fetch(mode === 'rezervare' ? '/api/scan-rezervare' : '/api/scan-ci', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ base64Data, mimeType }) })).json()
       if (mode === 'rezervare') {
         if (data.error || !data.result) { setError(data.error || 'Nu am putut citi datele din poză'); return }
         const r: RezRaw = data.result
-        setRezForm({
-          aptId: matchApt(r.apartament_text, apts),
+        setRezForm(prev => ({
+          // apartamentul ales manual ramane, daca noile capturi nu-l recunosc
+          aptId: matchApt(r.apartament_text, apts) || prev.aptId,
           nume: r.nume_client || '',
           telefon: r.telefon || '',
           pret: r.pret_total != null ? String(r.pret_total) : '',
@@ -123,7 +127,7 @@ export default function ScanCopyPopup() {
           copii: r.copii != null ? String(r.copii) : '',
           canal: canalDinCod(r.cod),
           moneda: r.moneda || 'RON',
-        })
+        }))
         setCreata(null); setCreateErr(null); setSuprapunere(null)
         setHasResult(true)
       } else {
@@ -148,11 +152,32 @@ export default function ScanCopyPopup() {
       }
     } catch (e: any) {
       setError('Eroare la scanare: ' + (e.message || e))
+    } finally {
+      setScanning(false)
     }
-    setScanning(false)
+  }
+
+  // rezervare: capturile se ADAUGA la cele deja puse si se recitesc toate impreuna
+  async function adaugaCapturi(blobs: (File | Blob)[]) {
+    if (capturi.length + blobs.length > MAX_CAPTURI) { setError(`Maxim ${MAX_CAPTURI} capturi pentru o rezervare`); blobs = blobs.slice(0, Math.max(0, MAX_CAPTURI - capturi.length)) }
+    if (!blobs.length) return
+    setScanning(true)
+    try {
+      const noi = await Promise.all(blobs.map(pregatesteCaptura))
+      const toate = [...capturi, ...noi]
+      setCapturi(toate)
+      await runScan('', '', toate)
+    } catch { setError('Eroare la citirea fișierului'); setScanning(false) }
+  }
+  async function stergeCaptura(i: number) {
+    const ramase = capturi.filter((_, j) => j !== i)
+    setCapturi(ramase)
+    if (ramase.length) await runScan('', '', ramase)
+    else { setHasResult(false); setRezForm(emptyRezForm) }
   }
 
   async function handleFiles(files: FileList) {
+    if (mode === 'rezervare') { await adaugaCapturi(Array.from(files)); return }
     for (const f of Array.from(files)) {
       try {
         const b64 = await fileToBase64(f)
@@ -171,6 +196,7 @@ export default function ScanCopyPopup() {
         if (type) { blob = await item.getType(type); break }
       }
       if (!blob) { setError('Nu am găsit nicio imagine în clipboard — fă un screenshot, apoi încearcă din nou'); return }
+      if (mode === 'rezervare') { await adaugaCapturi([blob]); return }
       const b64 = await fileToBase64(new File([blob], 'clip.png', { type: blob.type }))
       await runScan(b64, blob.type)
     } catch {
@@ -179,7 +205,7 @@ export default function ScanCopyPopup() {
   }
 
   function switchMode(m: 'rezervare' | 'buletin') {
-    setMode(m); setError(null); setHasResult(false); setRezForm(emptyRezForm); setCiForm(emptyCiForm); setCreata(null); setCreateErr(null); setSuprapunere(null); setDuplicatId(null)
+    setMode(m); setError(null); setHasResult(false); setCapturi([]); setRezForm(emptyRezForm); setCiForm(emptyCiForm); setCreata(null); setCreateErr(null); setSuprapunere(null); setDuplicatId(null)
   }
 
   const selectedApt = apts.find(a => a.id === rezForm.aptId)
@@ -359,12 +385,28 @@ export default function ScanCopyPopup() {
         </div>
 
         <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 12 }}>
-          {mode === 'rezervare' ? 'Captură din Airbnb sau Booking cu detaliile rezervării' : 'Poză a actului de identitate (buletin)'}
+          {mode === 'rezervare' ? 'Capturi din Airbnb sau Booking — poți pune mai multe pentru aceeași rezervare (check-in, telefon, sumă…), informația se combină' : 'Poză a actului de identitate (buletin)'}
         </div>
+
+        {mode === 'rezervare' && capturi.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+              {capturi.map((c, i) => (
+                <div key={c.url} data-captura style={{ position: 'relative', flexShrink: 0, width: 58, height: 104, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(196,181,253,0.35)', background: 'rgba(0,0,0,0.35)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.url} alt={`Captura ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                  <span style={{ position: 'absolute', left: 4, bottom: 3, fontSize: 10, fontWeight: 800, color: '#fff', textShadow: '0 1px 3px #000' }}>{i + 1}</span>
+                  <button onClick={() => stergeCaptura(i)} disabled={scanning} title="Scoate captura" style={{ position: 'absolute', top: 3, right: 3, width: 18, height: 18, borderRadius: 9, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 11, lineHeight: '18px', padding: 0, cursor: 'pointer' }}>×</button>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: '#C4B5FD', marginTop: 4 }}>{capturi.length === 1 ? '1 captură' : `${capturi.length} capturi citite împreună`} · adaugă alta dacă lipsește ceva (ex. telefonul sau suma)</div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <label style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px dashed rgba(196,181,253,0.35)', background: 'rgba(196,181,253,0.06)', color: '#C4B5FD', fontSize: 12, fontWeight: 600, textAlign: 'center', cursor: 'pointer' }}>
-            📎 Alege poză
+            {mode === 'rezervare' && capturi.length ? '＋ Adaugă captură' : '📎 Alege poză'}
             <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = '' }} />
           </label>
           <button onClick={pasteFromClipboard} style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid rgba(196,181,253,0.25)', background: 'transparent', color: '#C4B5FD', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -374,7 +416,7 @@ export default function ScanCopyPopup() {
 
         {scanning && (
           <div style={{ textAlign: 'center', padding: '12px 0', color: 'rgba(159,215,255,0.5)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Analizez captura…
+            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> {mode === 'rezervare' && capturi.length > 1 ? `Analizez cele ${capturi.length} capturi…` : 'Analizez captura…'}
           </div>
         )}
         {error && <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', fontSize: 12, marginBottom: 10 }}>{error}</div>}
