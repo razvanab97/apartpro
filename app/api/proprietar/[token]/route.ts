@@ -4,7 +4,7 @@ import { CHEIE_LINKURI, CHEIE_BLOCARI, parseBlocari, type Blocare, type LinkProp
 import { eGazdaGhid } from '@/lib/gazdeGhid'
 
 // API-ul paginii publice /p/<token> (calendarul proprietarului) - vezi lib/blocariProprietar.ts.
-// Proprietarul vede DOAR apartamentele lui si doar intervalele ocupate (fara nume / telefoane / sume).
+// Proprietarul vede DOAR apartamentele lui si blocarile; zilele rezervate apar doar in mesajul de eroare (fara nume / sume).
 
 export const dynamic = 'force-dynamic'
 const ISO = /^\d{4}-\d{2}-\d{2}$/
@@ -31,16 +31,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   const { token } = await params
   const link = await citesteLink(token)
   if (!link) return NextResponse.json({ ok: false, error: 'Link invalid' }, { status: 404 })
-  const azi = aziRO(), de = plusZile(azi, -62), pana = plusZile(azi, 400)
-  const [{ data: a }, rez, bl] = await Promise.all([
+  const azi = aziRO(), de = plusZile(azi, -62)
+  // pagina nu mai arata calendarul (cerut direct: varianta simpla) - nu trimitem rezervarile, doar blocarile
+  const [{ data: a }, bl] = await Promise.all([
     supabase.from('apartamente').select('id,nume').in('id', link.apts),
-    rezervari(link.apts, de, pana),
     citesteBlocari(),
   ])
   return NextResponse.json({
     ok: true, nume: link.nume, azi,
     apartamente: link.apts.map(id => ({ id, nume: String((a || []).find((x: any) => x.id === id)?.nume || '').trim() })).filter(x => x.nume),
-    rezervari: rez.map(r => ({ apt: r.apartament_id, ci: r.data_checkin, co: r.data_checkout })),
     blocari: bl.filter(b => link.apts.includes(b.apt) && b.pana_la >= de).map(b => ({ id: b.id, apt: b.apt, de_la: b.de_la, pana_la: b.pana_la, nota: b.nota, al_meu: b.token === token })),
   }, { headers: { 'Cache-Control': 'no-store' } })
 }
@@ -73,17 +72,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ ok: true })
   }
 
-  if (b.actiune !== 'blocheaza') return NextResponse.json({ ok: false, error: 'Acțiune necunoscută' }, { status: 400 })
+  if (b.actiune !== 'blocheaza' && b.actiune !== 'verifica') return NextResponse.json({ ok: false, error: 'Acțiune necunoscută' }, { status: 400 })
   const apt = String(b.apt || ''), de_la = String(b.de_la || ''), pana_la = String(b.pana_la || '')
   const nota = String(b.nota || '').trim().slice(0, 200)
   if (!link.apts.includes(apt)) return NextResponse.json({ ok: false, error: 'Apartament invalid' }, { status: 400 })
   if (!ISO.test(de_la) || !ISO.test(pana_la) || pana_la < de_la) return NextResponse.json({ ok: false, error: 'Perioadă invalidă' }, { status: 400 })
   if (de_la < aziRO()) return NextResponse.json({ ok: false, error: 'Nu se pot bloca zile din trecut.' }, { status: 400 })
   if (plusZile(de_la, 366) < pana_la) return NextResponse.json({ ok: false, error: 'Perioada e prea lungă (maxim un an).' }, { status: 400 })
-  // nu peste rezervari existente sau peste alte blocari
-  const ocupate = await rezervari([apt], de_la, plusZile(pana_la, 1))
-  if (ocupate.length) return NextResponse.json({ ok: false, error: 'În perioada aleasă există deja rezervări — alege doar zile libere.' }, { status: 409 })
-  if (blocari.some(x => x.apt === apt && x.de_la <= pana_la && de_la <= x.pana_la)) return NextResponse.json({ ok: false, error: 'O parte din zile sunt deja blocate.' }, { status: 409 })
+  // nu peste rezervari existente sau peste alte blocari. Pagina nu are calendar, asa ca proprietarul afla din mesaj exact
+  // perioada ocupata (cerut direct: „există rezervare pentru perioada x – y”) - noptile rezervate: check-in … check-out − 1
+  const ocupate = (await rezervari([apt], de_la, plusZile(pana_la, 1))).sort((x: any, y: any) => x.data_checkin.localeCompare(y.data_checkin))
+  const perioada = (de: string, pana: string) => de === pana ? ziRO(de) : `${ziRO(de)} – ${ziRO(pana)}`
+  const z = ocupate.map((r: any) => perioada(r.data_checkin, plusZile(r.data_checkout, -1)))
+  const eroareRez = z.length ? (z.length === 1 ? `Există rezervare pentru perioada ${z[0]}` : `Există rezervări pentru perioadele: ${z.join(', ')}`) : ''
+  const deja = blocari.filter(x => x.apt === apt && x.de_la <= pana_la && de_la <= x.pana_la)
+  const eroareBl = deja.length ? `Zilele ${deja.map(x => perioada(x.de_la, x.pana_la)).join(', ')} sunt deja blocate.` : ''
+  // verificare pe loc, cand proprietarul alege datele (inainte de „Blochează”)
+  if (b.actiune === 'verifica') return NextResponse.json({ ok: true, liber: !eroareRez && !eroareBl, mesaj: eroareRez || eroareBl })
+  if (eroareRez) return NextResponse.json({ ok: false, error: eroareRez }, { status: 409 })
+  if (eroareBl) return NextResponse.json({ ok: false, error: eroareBl }, { status: 409 })
 
   const noua: Blocare = { id: Math.random().toString(36).slice(2, 10), apt, de_la, pana_la, nota, token, nume: link.nume, creat_la: new Date().toISOString() }
   const { error } = await supabase.from('setari').upsert({ cheie: CHEIE_BLOCARI, valoare: JSON.stringify([...blocari, noua]) }, { onConflict: 'cheie' })
