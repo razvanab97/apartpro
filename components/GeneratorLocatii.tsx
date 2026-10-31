@@ -238,7 +238,6 @@ export default function GeneratorLocatii() {
             <div className={styles.countyField}>
               <label htmlFor="location-county">Județ / București</label>
               <div className={styles.selectWrap}>
-                <MapPin size={17} aria-hidden="true" />
                 <select id="location-county" value={county} onChange={event => changeCounty(event.target.value)}>
                   <option value="">Alege județul</option>
                   {counties.map(option => <option key={option.judet} value={option.judet}>{option.judet} ({option.remaining} disponibile)</option>)}
