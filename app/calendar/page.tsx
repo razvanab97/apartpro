@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { CHEIE_BLOCARI, parseBlocari, blocataIn, type Blocare } from '@/lib/blocariProprietar'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
@@ -131,6 +132,8 @@ function proRataMonth(r: Rez, y: number, m: number): number {
 
 export default function CalendarPage() {
   const [rezAll, setRezAll]     = useState<Rez[]>([])
+  // zilele blocate de proprietari din calendarul lor (/p/<token>) - vezi lib/blocariProprietar.ts
+  const [blocari, setBlocari]   = useState<Blocare[]>([])
   const [apts, setApts]         = useState<Apt[]>([])
   const [loading, setLoading]   = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -270,6 +273,7 @@ export default function CalendarPage() {
     try{
       const start = isoDate(year, month, 1)
       const end   = isoDate(year, month, daysInMonth(year, month) + ZILE_EXTRA)
+      supabase.from('setari').select('valoare').eq('cheie', CHEIE_BLOCARI).maybeSingle().then(({ data }) => setBlocari(parseBlocari(data?.valoare)), () => {})
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         // select('*') pe rezervari (nu lista explicita) - platit_proprietar/suma_platita_proprietar
@@ -678,6 +682,19 @@ export default function CalendarPage() {
                                   })()
                                 : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
                               }
+                            </div>
+                          )
+                        })()}
+
+                        {/* Zi blocata de proprietar (din calendarul lui) - hasurat portocaliu, cu numele la inceputul perioadei */}
+                        {!r && (()=>{
+                          const b = blocari.find(x => x.apt===apt.id && blocataIn(x, ds))
+                          if (!b) return null
+                          const inceput = b.de_la===ds || d===1
+                          return (
+                            <div data-blocare="1" title={`🔒 Blocat de ${b.nume}: ${b.de_la} → ${b.pana_la}${b.nota?` · ${b.nota}`:''}`}
+                              style={{ position:'absolute', top:8, bottom:8, left:inceput?4:0, right:b.pana_la===ds?4:0, borderRadius:`${inceput?7:0}px ${b.pana_la===ds?7:0}px ${b.pana_la===ds?7:0}px ${inceput?7:0}px`, background:'repeating-linear-gradient(135deg,rgba(251,146,60,0.30) 0 6px,rgba(251,146,60,0.12) 6px 12px)', border:'1px dashed rgba(251,146,60,0.7)', display:'flex', alignItems:'center', paddingLeft:6, overflow:'hidden', zIndex:2, pointerEvents:'auto' }}>
+                              {inceput && <span style={{ fontSize:11, fontWeight:700, color:'#FDBA74', whiteSpace:'nowrap' }}>🔒 {b.nume}</span>}
                             </div>
                           )
                         })()}

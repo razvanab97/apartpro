@@ -93,6 +93,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isStaff = pathname === '/staff'
   // ghidul de check-in pentru oaspeti (/ghid/<COD>) e o pagina publica: fara meniu, asistent sau observator
   if (pathname?.startsWith('/ghid/')) return <>{children}</>
+  // calendarul proprietarului (/p/<token>, link public) - la fel, fara interfata de admin
+  if (pathname?.startsWith('/p/')) return <>{children}</>
   if (typeof window !== 'undefined' && !isStaff) { try { localStorage.setItem('apartpro_admin', '1') } catch {} }
 
   return (
