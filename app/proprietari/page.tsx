@@ -349,7 +349,7 @@ export default function ProprietariPage() {
       const idsCom = aptsCom.map(a => a.id)
       const cfgTaxe = await citesteTaxe()
       const [{ data: rz }, cur, { data: dp }, { data: ex }] = await Promise.all([
-        supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,status_rezervare,camera_semnalata')
+        supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,status_rezervare,camera_semnalata,comision_platforma_valoare,tva_comision_platforma')
           .in('apartament_id', idsCom).gt('data_checkout', pz).lte('data_checkin', uz).in('status_rezervare', ['confirmata', 'finalizata']),
         curateniiTaxate(pz, uz, cfgTaxe, idsCom.filter(id => cfgTaxe.apt[id])),
         supabase.from('setari').select('cheie,valoare').in('cheie', idsCom.map(id => `decont_proprietar_${id}_${an}_${luna}`)),

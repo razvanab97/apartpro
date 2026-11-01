@@ -25,7 +25,16 @@ const PLATFORME = [
 // calculatorul din Calendar). Rezervarile fara suma completata apar cu 0 - se completeaza in rezervare.
 function valoareRez(r: any): number { return Number(r?.suma_incasata) || 0 }
 
-function calcComision(brut: number, canal: string) {
+// Comisionul platformei: cel REAL din rezervare cand e completat (ex. Airbnb: plătit de oaspete 435 − primit 367,57
+// = 67,43; vezi asistentul, propune_rezervare_noua), proportional cu partea din rezervare din perioada; altfel estimat
+// cu procentul platformei (Airbnb 15% / Booking 17%). TVA intracomunitar = 21% din comision.
+function calcComision(brut: number, canal: string, r?: any) {
+  const real = Number(r?.comision_platforma_valoare) || 0, tot = valoareRez(r)
+  if (real > 0 && tot > 0) {
+    const k = brut / tot, com = real * k
+    const tva = (Number(r.tva_comision_platforma) || real * 0.21) * k
+    return { com, tva, total: com + tva }
+  }
   const p = PLATFORME.find(x => x.key === canal) || { comPct: 0, hasPaymentFee: false }
   const com = brut * p.comPct
   const tva = com * 0.21
@@ -82,7 +91,7 @@ function RezervareRow({ r, tipRaport, comisionAB, periodStart, periodEnd, showAp
   const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : brutTotal
   const isProRata = brut !== brutTotal && brutTotal > 0
   const proRataPct = brutTotal > 0 ? Math.round(brut/brutTotal*100) : 100
-  const { com, tva, total: totalPlatforma } = calcComision(brut, r.canal)
+  const { com, tva, total: totalPlatforma } = calcComision(brut, r.canal, r)
   const netDupaPlatforme = brut - totalPlatforma
   const comisionABVal = tipRaport === 'cu_comision' ? netDupaPlatforme * (comisionAB / 100) : 0
   const netFinal = netDupaPlatforme - comisionABVal
@@ -354,7 +363,7 @@ export default function RapoartePage() {
   const totals = rezIncluse.reduce((acc, r) => {
     // Use pro-rata for reservations that span across period boundary
     const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
-    const { com, tva, total } = calcComision(brut, r.canal)
+    const { com, tva, total } = calcComision(brut, r.canal, r)
     const net = brut - total
     const comAB = tipRaport === 'cu_comision' ? net * ((Number(comisionAB)||0) / 100) : 0
     acc.brut += brut
@@ -390,7 +399,7 @@ export default function RapoartePage() {
 
       const rows = rezIncluse.map(r => {
         const brut = valoareRez(r)
-        const { total } = calcComision(brut, r.canal)
+        const { total } = calcComision(brut, r.canal, r)
         const net = brut - total
         const comAB = tipRaport === 'cu_comision' ? net*((Number(comisionAB)||0)/100) : 0
         const row = [r.nume_client, `${r.data_checkin}→${r.data_checkout}`, String(r.nr_nopti||0), r.canal?.toUpperCase(), r.apartament?.nota||'—', `${fmt(brut)}`, total>0?`-${fmt(total)}`:'—', `${fmt(net)}`]
@@ -816,7 +825,7 @@ export default function RapoartePage() {
             const byPlatform = PLATFORME.map(p => {
               const rezP = rezIncluse.filter(r => r.canal === p.key || (p.key==='direct' && ['direct','whatsapp','telefon','site'].includes(r.canal)))
               const brut = rezP.reduce((s,r)=>s+valoareRez(r),0)
-              const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(valoareRez(r),r.canal); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
+              const { com, tva, total } = rezP.reduce((acc,r)=>{ const c=calcComision(valoareRez(r),r.canal,r); return {com:acc.com+c.com,tva:acc.tva+c.tva,total:acc.total+c.total} },{com:0,tva:0,total:0})
               return { ...p, brut, com, tva, total, nr: rezP.length }
             }).filter(p => p.nr > 0)
 
@@ -832,7 +841,7 @@ export default function RapoartePage() {
             // direct pentru VM07/CG40, generalizat pentru orice apartament cu acest cost setat.
             const CANAL_GRUP: Record<string,'airbnb'|'booking'|'privat'> = { airbnb:'airbnb', booking:'booking' }
             const perLocatie = (() => {
-              const map = new Map<string, { apt:any; airbnb:number; airbnbN:number; booking:number; bookingN:number; privat:number; privatN:number }>()
+              const map = new Map<string, { apt:any; airbnb:number; airbnbN:number; booking:number; bookingN:number; privat:number; privatN:number; airbnbCom:number; bookingCom:number }>()
               for (const r of rezIncluse) {
                 const aptId = r.apartament_id
                 if (!map.has(aptId)) {
@@ -840,18 +849,19 @@ export default function RapoartePage() {
                   // contine cost_curatenie_per_rezervare, de-asta trebuie combinat cu lista
                   // separata `apartamente`, care are toate coloanele.
                   const apt = { ...(r.apartament||{}), ...(apartamente.find(a=>a.id===aptId)||{}) }
-                  map.set(aptId, { apt, airbnb:0, airbnbN:0, booking:0, bookingN:0, privat:0, privatN:0 })
+                  map.set(aptId, { apt, airbnb:0, airbnbN:0, booking:0, bookingN:0, privat:0, privatN:0, airbnbCom:0, bookingCom:0 })
                 }
                 const e = map.get(aptId)!
                 const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
                 const grup = CANAL_GRUP[r.canal] || 'privat'
                 e[grup] += brut
                 e[`${grup}N` as 'airbnbN'|'bookingN'|'privatN'] += 1
+                if (grup !== 'privat') e[`${grup}Com` as 'airbnbCom'|'bookingCom'] += calcComision(brut, r.canal, r).total
               }
               return Array.from(map.values())
                 .map(e => {
-                  const ab = calcComision(e.airbnb,'airbnb'); const abNet = e.airbnb - ab.total
-                  const bk = calcComision(e.booking,'booking'); const bkNet = e.booking - bk.total
+                  const ab = { total: e.airbnbCom }; const abNet = e.airbnb - ab.total
+                  const bk = { total: e.bookingCom }; const bkNet = e.booking - bk.total
                   const privatNet = e.privat
                   const netDupaPlatforme = abNet + bkNet + privatNet
                   const costCuratenie = Number(e.apt?.cost_curatenie_per_rezervare || 0)

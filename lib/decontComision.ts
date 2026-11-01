@@ -41,12 +41,16 @@ export function decontComision(apt: any, rezervari: any[], start: string, end: s
   if (tip === 'fara_comision') return null
   // noptile se numara pana la 1 ale lunii urmatoare (end = ultima zi a lunii; noaptea de pe 31 face parte din luna)
   const d = new Date(end + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); const endEx = d.toISOString().slice(0, 10)
-  let brut = 0, com = 0
+  let brut = 0, com = 0, tvaReal = 0
   for (const r of rezervari) {
     const v = proRata(r, start, endEx)
-    brut += v; com += v * (COM_PLATFORMA[r.canal] || 0)
+    brut += v
+    // comisionul real al platformei din rezervare (cand e completat), altfel estimat cu procentul
+    const real = Number(r.comision_platforma_valoare) || 0, tot = valoareRez(r)
+    if (real > 0 && tot > 0) { com += real * v / tot; tvaReal += (Number(r.tva_comision_platforma) || real * TVA_INTRACOM) * v / tot }
+    else { const c = v * (COM_PLATFORMA[r.canal] || 0); com += c; tvaReal += c * TVA_INTRACOM }
   }
-  const tva = com * TVA_INTRACOM
+  const tva = tvaReal
   const netPlatforme = brut - com - tva
   const costRez = Number(apt.cost_curatenie_per_rezervare) || 0
   const nrCheckout = rezervari.filter(r => r.data_checkout >= start && r.data_checkout <= end).length
