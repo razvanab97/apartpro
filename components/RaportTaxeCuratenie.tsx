@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { citesteTaxe, salveazaTaxe, curateniiTaxate, stergeCuratenieGata, cheieCuratenie, TaxeCfg, CurateniaTaxata } from '@/lib/taxeCuratenie'
+import { citesteTaxe, salveazaTaxe, curateniiTaxate, stergeCuratenieGata, modificaSumaTaxa, salveazaTaxaCuratenie, TaxeCfg, CurateniaTaxata } from '@/lib/taxeCuratenie'
 
 // Raport separat de curatenie (cerut direct): curateniile finalizate taxate proprietarului, pe luna si pe
 // apartament, cu tariful editabil (implicit 75 RON la Cherry 3), suma modificabila pe o singura curatenie
@@ -52,11 +52,18 @@ export default function RaportTaxeCuratenie() {
     setRows(v => (v || []).filter(x => !(x.apartament_id === r.apartament_id && x.data === r.data)))
   }
 
-  function setSuma(r: CurateniaTaxata, val: string) {
-    if (!cfg) return
-    const k = cheieCuratenie(r.apartament_id, r.data), supr = { ...cfg.suprascrieri }
-    if (val === '' || Number(val) === Number(cfg.apt[r.apartament_id]?.tarif)) delete supr[k]; else supr[k] = Number(val)
-    salveaza({ ...cfg, suprascrieri: supr })
+  // suma modificata se scrie direct in evidenta curateniei respective
+  async function setSuma(r: CurateniaTaxata, val: string) {
+    const e = await modificaSumaTaxa(r.apartament_id, r.data, Number(val) || 0, r.ora_gata)
+    setMesaj(e ? 'Eroare: ' + e : 'Salvat ✓'); setTimeout(() => setMesaj(''), 1800)
+    incarca()
+  }
+  // curatenii marcate „gata” dinainte de evidenta (fara inregistrare) -> le salvam cu tariful actual
+  async function salveazaNesalvate() {
+    const lipsa = (rows || []).filter(r => !r.salvata)
+    for (const r of lipsa) await salveazaTaxaCuratenie(r.apartament_id, r.data, r.ora_gata)
+    setMesaj(`Salvat ✓ (${lipsa.length})`); setTimeout(() => setMesaj(''), 1800)
+    incarca()
   }
 
   const grupuri = useMemo(() => {
@@ -73,6 +80,8 @@ export default function RaportTaxeCuratenie() {
   const inp: React.CSSProperties = { background: 'rgba(20,38,65,0.8)', border: '1px solid rgba(100,160,255,0.2)', borderRadius: 8, color: '#E8F4FF', fontSize: 13, padding: '7px 9px', outline: 'none' }
   const btn: React.CSSProperties = { padding: '7px 11px', borderRadius: 8, border: '1px solid rgba(100,160,255,0.2)', background: 'rgba(20,38,65,0.8)', color: '#7BC8FF', fontSize: 14, fontWeight: 700, cursor: 'pointer', lineHeight: 1 }
   const totalLuna = (rows || []).reduce((s, r) => s + r.suma, 0)
+  const nesalvate = (rows || []).filter(r => !r.salvata).length
+  const oraSalvare = (iso: string | null) => iso ? new Date(iso).toLocaleString('ro-RO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -88,6 +97,12 @@ export default function RaportTaxeCuratenie() {
         <span style={{ fontSize: 12, color: 'rgba(159,215,255,0.6)', flex: 1, minWidth: 180 }}>De scăzut proprietarilor pentru curățenie · {(rows || []).length} curățenii finalizate</span>
         <span style={{ fontSize: 22, fontWeight: 800, color: '#4ADE80', fontFamily: 'monospace' }}>{fmt(totalLuna)} RON</span>
       </div>
+      {nesalvate > 0 && (
+        <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(252,211,77,0.07)', border: '1px solid rgba(252,211,77,0.3)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, color: '#FCD34D', flex: 1, minWidth: 200 }}>⚠ {nesalvate} {nesalvate === 1 ? 'curățenie e marcată' : 'curățenii sunt marcate'} „Gata” fără cost salvat în evidență (dinainte de evidență) — apare cu tariful actual.</span>
+          <button onClick={salveazaNesalvate} data-salveaza-nesalvate style={{ ...inp, cursor: 'pointer', fontWeight: 700, color: '#FCD34D' }}>💾 Salvează în evidență</button>
+        </div>
+      )}
 
       {!cfg || !rows ? <div style={{ color: 'rgba(159,215,255,0.5)', fontSize: 13 }}>Se încarcă…</div> : grupuri.map(g => {
         const total = g.rows.reduce((s, r) => s + r.suma, 0)
@@ -113,8 +128,10 @@ export default function RaportTaxeCuratenie() {
                 {g.rows.map(r => (
                   <div key={r.data} data-test="rand-curatenie" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderTop: '1px solid rgba(159,215,255,0.05)' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#E8F4FF', minWidth: 110, textTransform: 'capitalize' }}>{ziText(r.data)}</span>
-                    <span style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)', flex: 1 }}>✅ {r.ora_inceput && r.ora_inceput !== r.ora_gata ? `${r.ora_inceput}–` : ''}{r.ora_gata || ''}</span>
-                    <input type="number" min={0} defaultValue={r.suma} key={r.data + r.suma} onBlur={e => Number(e.target.value) !== r.suma && setSuma(r, e.target.value)} title={r.modificata ? 'Sumă modificată doar pentru această curățenie' : 'Tariful standard'} style={{ ...inp, width: 80, textAlign: 'right', padding: '5px 8px', borderColor: r.modificata ? 'rgba(252,211,77,0.5)' : 'rgba(100,160,255,0.2)' }} />
+                    <span style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)', flex: 1, lineHeight: 1.35 }}>✅ {r.ora_inceput && r.ora_inceput !== r.ora_gata ? `${r.ora_inceput}–` : ''}{r.ora_gata || ''}
+                      <span data-evidenta={r.salvata ? 'salvat' : 'nesalvat'} style={{ display: 'block', fontSize: 10.5, color: r.salvata ? 'rgba(74,222,128,0.75)' : '#FCD34D' }}>{r.salvata ? `💾 salvat ${oraSalvare(r.salvat_la)}${r.modificata ? ' · modificat' : ''}${!r.modificata && r.tarif !== g.t.tarif ? ` · tarif de atunci ${fmt(r.tarif)}` : ''}` : '⚠ nesalvat în evidență'}</span>
+                    </span>
+                    <input type="number" min={0} defaultValue={r.suma} key={r.data + r.suma} onBlur={e => Number(e.target.value) !== r.suma && setSuma(r, e.target.value)} title={r.modificata ? 'Sumă modificată doar pentru această curățenie' : 'Suma salvată la „Gata” — o poți modifica'} style={{ ...inp, width: 80, textAlign: 'right', padding: '5px 8px', borderColor: r.modificata ? 'rgba(252,211,77,0.5)' : 'rgba(100,160,255,0.2)' }} />
                     <span style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)' }}>RON</span>
                     <button onClick={() => sterge(r)} title="Șterge curățenia finalizată" style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.06)', color: '#F87171', cursor: 'pointer', fontSize: 13 }}>🗑</button>
                   </div>
@@ -134,7 +151,7 @@ export default function RaportTaxeCuratenie() {
           {aptNou && <button onClick={() => { const d = new Date(); salveaza({ ...cfg, apt: { ...cfg.apt, [aptNou]: { tarif: 75, dela: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, activ: true } } }); setAptNou('') }} style={{ ...inp, cursor: 'pointer', fontWeight: 700, color: '#4ADE80' }}>Adaugă</button>}
         </div>
       )}
-      <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>Fiecare curățenie bifată „Gata” (din data de început) adaugă tariful la suma scăzută proprietarului. Totalul lunii apare automat în Rapoarte → Calculator decontat → Curățenie.</div>
+      <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>Când staff-ul apasă „Gata”, costul curățeniei se salvează în evidență cu tariful de atunci (💾 + data și ora). Dacă schimbi tariful, se aplică doar curățeniilor de după. „Reîncepe” în Staff sau 🗑 aici îl scot din evidență. Totalul lunii apare automat în Rapoarte → Calculator decontat → Curățenie.</div>
     </div>
   )
 }

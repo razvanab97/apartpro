@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, normalizeWaPhone, aziLocal } from '@/lib/supabase'
 import { ConnectionError } from '@/components/ui'
+import { salveazaTaxaCuratenie, stergeTaxaCuratenie } from '@/lib/taxeCuratenie'
 
 const CODE = '1111'
 const P = (n:number) => String(n).padStart(2,'0')
@@ -315,6 +316,10 @@ export default function StaffPage() {
     if (status==='inceput') update.ora_inceput = ora
     if (status==='gata') { update.ora_gata = ora; update.ora_inceput = prev.ora_inceput||ora }
     await supabase.from('curatenie_status').upsert(update, {onConflict:'apartament_id,data'})
+    // Evidenta costului de curatenie scazut proprietarului (ex. Cherry 3): se salveaza CAND se apasa „Gata”, cu suma
+    // de atunci; „Reîncepe” o scoate (vezi lib/taxeCuratenie.ts). Doar pe ziua curateniei - nu si pe data ramasitei.
+    if (status==='gata') await salveazaTaxaCuratenie(aptId, data, ora).catch(()=>null)
+    else if (prev.status==='gata') await stergeTaxaCuratenie(aptId, data).catch(()=>{})
     // Daca e o curatenie ramasita din alta zi, marcheaza si data originala ca finalizata
     // ca sa nu mai apara in lista de neterminate a doua zi
     const ramasitaInfo = ramasiteMap.get(aptId)
