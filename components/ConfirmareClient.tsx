@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Copy, Check, Download, FileText, MessageCircle, Loader2, Upload, Send } from 'lucide-react'
+import { X, Copy, Check, Download, FileText, MessageCircle, Loader2, Upload } from 'lucide-react'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { citesteGhid, incarcaMedia } from '@/lib/ghid'
 
@@ -156,7 +156,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
     descarca(pdfDinJpeg(new Uint8Array(await jb.arrayBuffer()), cv.width, cv.height), numeFisier + '.pdf')
   }
   const tel = normalizeWaPhone(String(rezervare.telefon_client || ''))
-  // trimitere directa pe telefonul clientului (cerut direct: „buton direct de trimis confirmarea pe telefon”):
+  // trimitere directa pe WhatsApp-ul clientului (cerut direct: „buton direct de trimis confirmarea pe telefon” - „e pe WhatsApp”):
   // 1) unde browserul poate partaja fisiere (iPhone, Android, Mac) - meniul de partajare cu POZA deja atasata → WhatsApp
   // 2) altfel - poza se copiaza si se deschide WhatsApp direct pe numarul clientului; ramane doar ⌘V / Ctrl+V + Enter
   const [trimit, setTrimit] = useState(false)
@@ -235,7 +235,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
           </div>)}
 
           <button data-trimite onClick={trimitePeTelefon} disabled={!img || trimit} style={{ ...btn('linear-gradient(135deg,#25D366,#128C7E)', '#FFFFFF', 'transparent'), padding: '13px 14px', fontSize: 14.5, marginTop: 'auto', boxShadow: '0 8px 24px rgba(37,211,102,0.25)', opacity: !img || trimit ? 0.6 : 1 }}>
-            {trimit ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />} Trimite pe telefon{tel ? ` · ${String(rezervare.telefon_client || '').trim()}` : ''}
+            {trimit ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <MessageCircle size={16} />} Trimite pe WhatsApp{tel ? ` · ${String(rezervare.telefon_client || '').trim()}` : ''}
           </button>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {([
@@ -245,9 +245,6 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
               </>],
               ['Text', <>
                 <button key="ct" onClick={copiazaText} style={{ ...btn('rgba(77,163,255,0.1)', '#7BC8FF', 'rgba(77,163,255,0.3)'), flex: 1.4 }}><FileText size={14} /> Copiază text</button>
-                {tel.length >= 9
-                  ? <a key="wa" href={`https://wa.me/${tel}`} target="_blank" rel="noreferrer" style={{ ...btn('rgba(37,211,102,0.12)', '#4ADE80', 'rgba(37,211,102,0.35)'), flex: 1 }}><MessageCircle size={14} /> WhatsApp</a>
-                  : <span key="wa" style={{ ...btn('transparent', 'rgba(159,215,255,0.35)', 'rgba(159,215,255,0.1)'), flex: 1, cursor: 'default', fontWeight: 500, fontSize: 11.5 }}>fără telefon</span>}
               </>],
               ['PDF', <>
                 <button key="pdf" onClick={descarcaPdf} disabled={!img} style={{ ...btn('rgba(159,215,255,0.06)', 'rgba(214,228,244,0.85)', 'rgba(159,215,255,0.2)'), flex: 1 }}><Download size={14} /> Descarcă PDF</button>
@@ -260,7 +257,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             ))}
           </div>
           {stare && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: /Browserul|Nu |Eroare/.test(stare) ? '#FCD34D' : '#4ADE80' }}><Check size={13} /> {stare}</div>}
-          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>„Trimite pe telefon”: pe iPhone / Mac / Android se deschide meniul de partajare cu poza atașată → alegi WhatsApp și clientul; pe alte calculatoare poza se copiază și se deschide WhatsApp cu clientul → ⌘V / Ctrl+V și Enter. Nimic nu se trimite fără tine. Contact AB Homes: {WHATSAPP}.</div>
+          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>„Trimite pe WhatsApp”: pe iPhone / Mac / Android se deschide meniul de partajare cu poza atașată → alegi WhatsApp și clientul; pe alte calculatoare poza se copiază și se deschide WhatsApp cu clientul → ⌘V / Ctrl+V și Enter. Nimic nu se trimite fără tine. Contact AB Homes: {WHATSAPP}.</div>
         </div>
       </div>
       <style>{`@media (max-width: 780px){ .cf-wrap{ grid-template-columns: 1fr !important } }`}</style>

@@ -7,11 +7,11 @@ export const W = 1098, H = 1432, S = 2   // dimensiunile referintei; exportul e 
 export type Limba = 'ro' | 'en'
 export const T = {
   ro: {
-    sub: 'CONFIRMARE REZERVARE', loc: 'IAȘI · PRIVATE STAYS', titlu: 'Rezervare confirmată', multumim: 'Vă mulțumim, ',
+    sub: 'CONFIRMARE REZERVARE', loc: 'IAȘI · APARTAMENTE PRIVATE', titlu: 'Rezervare confirmată', multumim: 'Vă mulțumim, ',
     sejur: 'Sejurul dumneavoastră la AB HOMES este confirmat.', apt: 'APARTAMENT', checkin: 'CHECK-IN', checkout: 'CHECK-OUT',
     dela: 'de la ', panala: 'până la ', oaspeti: (n: number) => n === 1 ? '1 oaspete' : `${n} oaspeți`, nopti: (n: number) => n === 1 ? '1 noapte' : `${n} nopți`,
     total: 'TOTAL SEJUR', avans: 'AVANS PLĂTIT', achitat: 'ACHITAT', rest: 'REST DE PLATĂ', integral: 'ACHITAT INTEGRAL',
-    wa: 'Detalii pentru acces: le veți primi pe WhatsApp în ziua sosirii.', nr: 'NR. REZERVARE', motto: 'Your stay, thoughtfully curated.',
+    wa: 'Detalii pentru acces: le veți primi pe WhatsApp în ziua sosirii.', nr: 'NR. REZERVARE', motto: 'Sejurul dumneavoastră, pregătit cu grijă.',
     luni: ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'],
     zile: ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'],
   },
