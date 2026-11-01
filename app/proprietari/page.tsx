@@ -4,6 +4,8 @@ import { supabase, Proprietar, calculeazaDecont } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, Card, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, ConnectionError } from '@/components/ui'
 import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, ChevronUp, RefreshCw, Check, TrendingUp, FileText, Download, X } from 'lucide-react'
+import { decontComision } from '@/lib/decontComision'
+import { citesteTaxe, curateniiTaxate } from '@/lib/taxeCuratenie'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
@@ -281,6 +283,10 @@ export default function ProprietariPage() {
   const [platiStatus, setPlatiStatus] = useState<Record<string,any>>({})
   // plati partiale din Cheltuieli → Fișe (setari plata_partiala_<idCheltuiala>), ca sumele sa fie aceleasi in ambele pagini
   const [partiale, setPartiale] = useState<Record<string, number>>({})
+  // apartamentele pe comision: rezervarile lunii, curateniile din evidenta si starea decontului (setari decont_proprietar_<apt>_<an>_<luna>)
+  const [rezLuna, setRezLuna] = useState<any[]>([])
+  const [curEvid, setCurEvid] = useState<Record<string, { total: number; nr: number }>>({})
+  const [decontPlatit, setDecontPlatit] = useState<Record<string, { platit: boolean; suma: number; data: string }>>({})
   const [savingPlata, setSavingPlata] = useState<string|null>(null)
   // Apartamente asociate — select-ul de "+ Adaugă apartament" e comun, un singur card e expandat oricand
   const [addSel, setAddSel] = useState('')
@@ -293,7 +299,7 @@ export default function ProprietariPage() {
   const { toast, show } = useToast()
 
   useEffect(() => { load() }, [])
-  useEffect(() => { loadLunar() }, [luna, an])
+  useEffect(() => { loadLunar() }, [luna, an, apts])
 
   async function load() {
     setLoading(true)
@@ -302,7 +308,7 @@ export default function ProprietariPage() {
     try{
       const [{ data: propData }, { data: aptData }, { data: chiriiData }] = await Promise.all([
         supabase.from('proprietari').select('*').order('nume'),
-        supabase.from('apartamente').select('id,nume,nota,status,proprietar_id,utilitati_la_proprietar').order('nota'),
+        supabase.from('apartamente').select('id,nume,nota,status,proprietar_id,utilitati_la_proprietar,comision_tip,comision_procent,comision_fix,cost_curatenie_per_rezervare').order('nota'),
         supabase.from('chirii_fixe').select('*').eq('activ', true),
       ])
       setProprietari(propData||[])
@@ -337,6 +343,28 @@ export default function ProprietariPage() {
     const pm: Record<string, number> = {}
     for (const x of pp || []) { try { const v = JSON.parse(x.valoare); if (Array.isArray(v)) pm[x.cheie.replace('plata_partiala_', '')] = v.reduce((t: number, q: any) => t + (Number(q.suma) || 0), 0) } catch {} }
     setPartiale(pm)
+    // decontul apartamentelor pe comision (cu proprietar) - aceleasi reguli ca in Rapoarte, vezi lib/decontComision.ts
+    const aptsCom = apts.filter(a => a.proprietar_id && a.comision_tip && a.comision_tip !== 'fara_comision')
+    if (aptsCom.length) {
+      const idsCom = aptsCom.map(a => a.id)
+      const cfgTaxe = await citesteTaxe()
+      const [{ data: rz }, cur, { data: dp }, { data: ex }] = await Promise.all([
+        supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,status_rezervare,camera_semnalata')
+          .in('apartament_id', idsCom).gt('data_checkout', pz).lte('data_checkin', uz).in('status_rezervare', ['confirmata', 'finalizata']),
+        curateniiTaxate(pz, uz, cfgTaxe, idsCom.filter(id => cfgTaxe.apt[id])),
+        supabase.from('setari').select('cheie,valoare').in('cheie', idsCom.map(id => `decont_proprietar_${id}_${an}_${luna}`)),
+        // rezervarile debifate in Rapoarte (exclus din raport) nu intra nici in decont
+        supabase.from('setari').select('valoare').eq('cheie', 'raport_rezervari_excluse').maybeSingle(),
+      ])
+      let excluse: string[] = []; try { excluse = JSON.parse(ex?.valoare || '[]') } catch {}
+      setRezLuna((rz || []).filter((r: any) => r.camera_semnalata !== 'NEALOCAT' && !excluse.includes(r.id)))
+      const ce: Record<string, { total: number; nr: number }> = {}
+      for (const id of idsCom.filter(id => cfgTaxe.apt[id])) { const x = cur.filter(c => c.apartament_id === id); ce[id] = { total: x.reduce((t, c) => t + c.suma, 0), nr: x.length } }
+      setCurEvid(ce)
+      const dm: Record<string, any> = {}
+      for (const x of dp || []) { try { dm[x.cheie.split('_')[2]] = JSON.parse(x.valoare) } catch {} }
+      setDecontPlatit(dm)
+    } else { setRezLuna([]); setCurEvid({}); setDecontPlatit({}) }
     const lm: Record<string, any> = {}
     ;(liniiData || []).forEach((l: any) => { lm[`${l.apartament_id}_${l.tip}`] = l })
     setPlatiStatus(lm)
@@ -360,7 +388,9 @@ export default function ProprietariPage() {
       const utilTotal = Math.round(eon + asoc)
       const utilPermis = !!apt.utilitati_la_proprietar
 
-      if (!chirie && !chirieCh.length && (!utilPermis || utilTotal === 0)) return
+      const pz = `${an}-${pad(luna)}-01`, uz = toYMD(new Date(an, luna, 0))
+      const decont = apt.comision_tip && apt.comision_tip !== 'fara_comision' ? decontComision(apt, rezLuna.filter(r => r.apartament_id === apt.id), pz, uz, curEvid[apt.id] || null) : null
+      if (!chirie && !chirieCh.length && (!utilPermis || utilTotal === 0) && !(decont && decont.nrRezervari)) return
 
       const liniiApt: any[] = []
 
@@ -399,6 +429,16 @@ export default function ProprietariPage() {
         totalPlatit += platit ? utilTotal : pl
       }
 
+      // decontul pe comision (incasari − platforme − TVA intracomunitar − curatenie − comision AB) - separat de chirie
+      if (decont && decont.nrRezervari) {
+        const st = decontPlatit[apt.id]
+        const platit = !!st?.platit
+        const suma = Math.round(platit ? Number(st.suma) : decont.deVirat)
+        liniiApt.push({ tip: 'decont', label: `${decont.nrRezervari} rez. · comision ${decont.comisionText}`, suma, platit, platitSuma: platit ? suma : 0, decont })
+        totalRON += suma
+        if (platit) totalPlatit += suma
+      }
+
       if (liniiApt.length === 0) return
       detalii.push({ apt, linii: liniiApt, subtotal: liniiApt.reduce((s,l) => s+l.suma, 0) })
     })
@@ -406,9 +446,18 @@ export default function ProprietariPage() {
     return { totalRON, totalPlatit, totalRamas: totalRON - totalPlatit, detalii }
   }
 
-  async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati', linieExistenta: any, l?: any) {
+  async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati'|'decont', linieExistenta: any, l?: any) {
     const key = `${apt.id}_${tip}`
     setSavingPlata(key)
+    // decontul pe comision: starea de plata (si suma inghetata la plata) in setari
+    if (tip === 'decont') {
+      const nou = !l?.platit
+      const { error } = await supabase.from('setari').upsert({ cheie: `decont_proprietar_${apt.id}_${an}_${luna}`, valoare: JSON.stringify({ platit: nou, suma: l?.suma || 0, data: new Date().toISOString().slice(0,10) }) }, { onConflict: 'cheie' })
+      setSavingPlata(null)
+      show(error ? 'error' : 'success', error ? error.message : nou ? 'Decont marcat ca plătit' : 'Decont marcat ca neplătit')
+      loadLunar()
+      return
+    }
     // linie legata de Cheltuieli: bifa marcheaza (sau demarcheaza) aceleasi randuri acolo, ca cele doua pagini sa arate la fel
     if (l?.randuri?.length) {
       const nou = !l.platit, ids = l.randuri.map((c: any) => c.id)
@@ -640,9 +689,13 @@ export default function ProprietariPage() {
                                   <input type="checkbox" checked={l.platit} disabled={savingPlata===`${d.apt.id}_${l.tip}`}
                                     onChange={() => toggleLinie(p.id, d.apt, l.tip, l.linie, l)}/>
                                   <span style={{ fontSize:11, color: l.platit ? '#4ADE80' : 'rgba(159,215,255,0.6)', fontWeight:600, minWidth:62 }}>
-                                    {l.tip === 'chirie' ? 'Chirie' : 'Utilități'}
+                                    {l.tip === 'chirie' ? 'Chirie' : l.tip === 'decont' ? 'Decont' : 'Utilități'}
                                   </span>
                                   <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', flex:1 }}>{l.label}
+                                    {l.tip === 'decont' && l.decont && <span data-decont style={{ display:'block', fontSize:10.5, color:'rgba(214,228,244,0.7)', lineHeight:1.5, marginTop:2 }}>
+                                      Încasări {l.decont.brut.toLocaleString('ro-RO')} − comision platforme {l.decont.comPlatforme.toLocaleString('ro-RO')} − TVA intracomunitar {l.decont.tvaIntracom.toLocaleString('ro-RO')} = <b>{l.decont.netPlatforme.toLocaleString('ro-RO')}</b>
+                                      {' '}− curățenie {l.decont.curatenie.toLocaleString('ro-RO')} ({l.decont.curatenieText}) − comision AB {l.decont.comision.toLocaleString('ro-RO')} = <b style={{ color:'#4ADE80' }}>{l.decont.deVirat.toLocaleString('ro-RO')} RON</b>
+                                    </span>}
                                     {!l.platit && l.platitSuma > 0 && <span data-partial-prop style={{ display:'block', fontSize:10.5, fontWeight:700, color:'#FCD34D' }}>plătit parțial {l.platitSuma.toLocaleString('ro-RO')} · rest {(l.suma - l.platitSuma).toLocaleString('ro-RO')} RON</span>}
                                   </span>
                                   <span style={{ fontSize:12, fontWeight:700, fontFamily:'monospace', color: l.platit ? '#4ADE80' : '#fff', textDecoration: l.platit ? 'line-through' : 'none' }}>{l.suma.toLocaleString('ro-RO')} RON</span>
