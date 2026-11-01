@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, Copy, Check, Download, FileText, MessageCircle, Loader2, Upload } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { X, Copy, Check, Download, FileText, MessageCircle, Loader2, Upload, Send } from 'lucide-react'
+import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { citesteGhid, incarcaMedia } from '@/lib/ghid'
 
 // Confirmare de rezervare pentru client, ca imagine / PDF - design „Futuristic Luxury” reprodus dupa imaginea de
@@ -155,7 +155,32 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
     const jb = await new Promise<Blob | null>(r => cv.toBlob(r, 'image/jpeg', 0.94)); if (!jb) return
     descarca(pdfDinJpeg(new Uint8Array(await jb.arrayBuffer()), cv.width, cv.height), numeFisier + '.pdf')
   }
-  const tel = String(rezervare.telefon_client || '').replace(/[^0-9]/g, '')
+  const tel = normalizeWaPhone(String(rezervare.telefon_client || ''))
+  // trimitere directa pe telefonul clientului (cerut direct: „buton direct de trimis confirmarea pe telefon”):
+  // 1) unde browserul poate partaja fisiere (iPhone, Android, Mac) - meniul de partajare cu POZA deja atasata → WhatsApp
+  // 2) altfel - poza se copiaza si se deschide WhatsApp direct pe numarul clientului; ramane doar ⌘V / Ctrl+V + Enter
+  const [trimit, setTrimit] = useState(false)
+  async function trimitePeTelefon() {
+    if (!cvRef.current) return
+    setTrimit(true)
+    try {
+      const blob = await blobPng()
+      // pentru partajare: JPEG de calitate inalta (~1 MB in loc de 5-7 MB PNG - se trimite repede si de pe date mobile)
+      const jpg = await new Promise<Blob | null>(res => cvRef.current!.toBlob(res, 'image/jpeg', 0.92))
+      const fisier = jpg ? new File([jpg], numeFisier + '.jpg', { type: 'image/jpeg' }) : new File([blob], numeFisier + '.png', { type: 'image/png' })
+      const nav: any = navigator
+      if (nav.canShare && nav.canShare({ files: [fisier] })) {
+        try { await nav.share({ files: [fisier], title: 'Confirmare rezervare', text: `${T[limba].titlu} — AB Homes Iași` }); flash('Confirmarea a fost trimisă') }
+        catch (e: any) { if (e?.name !== 'AbortError') flash('Nu s-a putut deschide meniul de partajare — folosește „Copiază poza”') }
+        return
+      }
+      if (!tel) { flash('Rezervarea nu are telefon — folosește „Copiază poza”'); return }
+      let copiat = true
+      try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]) } catch { copiat = false }
+      window.open(`https://wa.me/${tel}`, '_blank', 'noopener')
+      flash(copiat ? 'Poza e copiată și s-a deschis WhatsApp cu clientul — apasă ⌘V / Ctrl+V și Enter' : 'S-a deschis WhatsApp cu clientul — descarcă poza (PNG) și atașeaz-o')
+    } finally { setTrimit(false) }
+  }
   const rest = Math.max(0, nr(total) - nr(achitat))
 
   const btn = (bgc: string, fg: string, br: string): React.CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 12px', borderRadius: 10, border: `1px solid ${br}`, background: bgc, color: fg, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' })
@@ -209,7 +234,10 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             {!pozeGhid.length && !incarcPoza && <span style={{ fontSize: 11, fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'rgba(159,215,255,0.45)' }}>Încarcă o poză (se ține minte pentru apartament)</span>}
           </div>)}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 'auto' }}>
+          <button data-trimite onClick={trimitePeTelefon} disabled={!img || trimit} style={{ ...btn('linear-gradient(135deg,#25D366,#128C7E)', '#FFFFFF', 'transparent'), padding: '13px 14px', fontSize: 14.5, marginTop: 'auto', boxShadow: '0 8px 24px rgba(37,211,102,0.25)', opacity: !img || trimit ? 0.6 : 1 }}>
+            {trimit ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />} Trimite pe telefon{tel ? ` · ${String(rezervare.telefon_client || '').trim()}` : ''}
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {([
               ['Poză', <>
                 <button key="cp" onClick={copiazaPoza} disabled={!img} style={{ ...btn('linear-gradient(135deg,#7C3AED,#2563EB)', '#FFFFFF', 'transparent'), flex: 1.4 }}><Copy size={14} /> Copiază poza</button>
@@ -232,7 +260,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             ))}
           </div>
           {stare && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: /Browserul|Nu |Eroare/.test(stare) ? '#FCD34D' : '#4ADE80' }}><Check size={13} /> {stare}</div>}
-          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>Pas rapid: „Copiază poza” → „WhatsApp” (se deschide chatul cu clientul, {WHATSAPP} rămâne contactul AB Homes) → lipește poza. Nimic nu se trimite automat.</div>
+          <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', lineHeight: 1.5 }}>„Trimite pe telefon”: pe iPhone / Mac / Android se deschide meniul de partajare cu poza atașată → alegi WhatsApp și clientul; pe alte calculatoare poza se copiază și se deschide WhatsApp cu clientul → ⌘V / Ctrl+V și Enter. Nimic nu se trimite fără tine. Contact AB Homes: {WHATSAPP}.</div>
         </div>
       </div>
       <style>{`@media (max-width: 780px){ .cf-wrap{ grid-template-columns: 1fr !important } }`}</style>
