@@ -237,16 +237,23 @@ export default function EditorGhid() {
       <div style={sec}>Regulile locației</div>
       <div style={card}>
         {g.reguli.map((r, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: 8, alignItems: 'end' }}>
-            {camp('Etichetă' + lb, ((r as any)[k('eticheta')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('eticheta')]: v } : y) } : x))}
-            {camp('Regula' + lb, ((r as any)[k('text')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('text')]: v } : y) } : x))}
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '52px 140px 1fr 150px auto', gap: 8, alignItems: 'end' }}>
+            {camp('Icon', r.icon || '', v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, icon: v.slice(0, 4) } : y) } : x), { ph: '🌙' })}
+            {camp('Titlu' + lb, ((r as any)[k('eticheta')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('eticheta')]: v } : y) } : x))}
+            {camp('Explicație' + lb, ((r as any)[k('text')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('text')]: v } : y) } : x))}
+            <label style={lbl}>Grup
+              <select value={r.grup || ''} onChange={e => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, grup: (e.target.value || undefined) as any } : y) } : x)}>
+                <option value="">— fără grup —</option><option value="sedere">Pe durata șederii</option><option value="plecare">La plecare</option>
+              </select>
+            </label>
             <div style={{ display: 'flex', gap: 4, paddingBottom: 2 }}>
+              <button title={r.important ? 'Important (evidențiat) — apasă ca să scoți' : 'Marchează ca important'} onClick={() => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, important: !y.important } : y) } : x)} style={{ ...iconBtn, color: r.important ? '#FF8A3D' : undefined }}><Star size={13} /></button>
               <button title="Mută sus" onClick={() => set({ reguli: muta(g.reguli, i, -1) })} style={iconBtn}><ArrowUp size={13} /></button>
               <button title="Șterge" onClick={() => set({ reguli: g.reguli.filter((_, j) => j !== i) })} style={iconBtn}><X size={13} /></button>
             </div>
           </div>
         ))}
-        <button onClick={() => set({ reguli: [...g.reguli, { eticheta_ro: '', eticheta_en: '', text_ro: '', text_en: '' }] })} style={{ ...mic(), alignSelf: 'flex-start' }}><Plus size={13} /> Regulă nouă</button>
+        <button onClick={() => set({ reguli: [...g.reguli, { eticheta_ro: '', eticheta_en: '', text_ro: '', text_en: '', grup: 'sedere' }] })} style={{ ...mic(), alignSelf: 'flex-start' }}><Plus size={13} /> Regulă nouă</button>
       </div>
       <div style={card}>{camp('Mesaj de final' + lb, gv('final'), v => set({ [k('final')]: v } as any))}</div>
     </div>

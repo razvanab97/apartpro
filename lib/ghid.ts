@@ -10,7 +10,9 @@ export type Pas = { titlu_ro: string; titlu_en: string; text_ro: string; text_en
   link_url: string; link_ro: string; link_en: string; media: Media[]
   copiaza?: string }  // text cu buton „Copiază” (ex. strada si numarul)
 export type Acces = { ro: string; en: string; valoare: string; cod: boolean }
-export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string }
+// eticheta = titlul scurt al regulii; icon / grup / important sunt optionale (cerut direct: regulile „mai profi scrise,
+// mai bine organizate și așezate în pagină”) - grup: 'sedere' (pe durata șederii) sau 'plecare' (la plecare)
+export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string; icon?: string; grup?: 'sedere' | 'plecare'; important?: boolean }
 export type Ghid = {
   titlu: string; sub_ro: string; sub_en: string; checkin: string; checkout: string
   acces: Acces[]; acces_nota_ro: string; acces_nota_en: string
@@ -32,14 +34,14 @@ export function ghidNou(nume = ''): Ghid {
     acces_nota_en: 'The locker code changes for every booking. The one above is valid for your stay.',
     pasi: [{ ...pasGol(), titlu_ro: 'Adresa', titlu_en: 'Address', link_ro: 'Deschide în Google Maps', link_en: 'Open in Google Maps' }],
     reguli: [
-      { eticheta_ro: '22:30 – 08:00', eticheta_en: '22:30 – 08:00', text_ro: 'Ore de liniște, pentru confortul tuturor locatarilor.', text_en: 'Quiet hours, for the comfort of all residents.' },
-      { eticheta_ro: 'balcon', eticheta_en: 'balcony', text_ro: 'Fumatul nu este permis în apartament, doar pe balcon.', text_en: 'No smoking inside the apartment, only on the balcony.' },
-      { eticheta_ro: 'curățenie', eticheta_en: 'tidiness', text_ro: 'Lăsați apartamentul în aceeași stare în care l-ați găsit.', text_en: 'Please leave the apartment as you found it.' },
-      { eticheta_ro: 'gunoi', eticheta_en: 'trash', text_ro: 'La plecare, aruncați gunoiul sau, cel puțin, strângeți-l corespunzător.', text_en: 'When leaving, take out the trash or at least bag it properly.' },
-      { eticheta_ro: 'comunicare', eticheta_en: 'messages', text_ro: 'Comunicarea se face strict prin mesaje, pe WhatsApp sau pe platforma pe care ați rezervat (dacă aveți rezervare acolo).', text_en: 'Communication is by message only — on WhatsApp or on the platform you booked through (if you booked there).' },
-      { eticheta_ro: 'la plecare', eticheta_en: 'when leaving', text_ro: 'La plecare, vă rugăm să închideți căldura (coborâți la temperatura minimă), să închideți aerul condiționat și să lăsați geamurile rabatate.', text_en: 'When leaving, please turn the heating down to the minimum, switch off the air conditioning and leave the windows tilted open.' },
-      { eticheta_ro: '30 min', eticheta_en: '30 min', text_ro: 'Anunțați-ne cu 30 de minute înainte de a elibera locația.', text_en: 'Please let us know 30 minutes before you leave the apartment.' },
-      { eticheta_ro: '11:00', eticheta_en: '11:00', text_ro: 'Check-out-ul se face până la ora 11:00. Lăsați cheia înapoi în locker.', text_en: 'Check-out is by 11:00. Please put the key back in the locker.' },
+      { grup: 'sedere', icon: '🌙', important: true, eticheta_ro: 'Liniște între 22:30 – 08:00', eticheta_en: 'Quiet hours 22:30 – 08:00', text_ro: 'Vă rugăm să respectați orele de liniște, pentru confortul vecinilor.', text_en: 'Please keep the noise down, out of respect for the neighbours.' },
+      { grup: 'sedere', icon: '🚭', eticheta_ro: 'Fumatul — doar pe balcon', eticheta_en: 'Smoking — balcony only', text_ro: 'Fumatul nu este permis în interiorul apartamentului.', text_en: 'Smoking is not allowed inside the apartment.' },
+      { grup: 'sedere', icon: '💬', eticheta_ro: 'Comunicare doar prin mesaj', eticheta_en: 'Messages only', text_ro: 'Ne scrieți pe WhatsApp sau pe platforma pe care ați rezervat — vă răspundem cât mai repede.', text_en: 'Write to us on WhatsApp or on the platform you booked through — we reply as quickly as possible.' },
+      { grup: 'sedere', icon: '✨', eticheta_ro: 'Ordine și curățenie', eticheta_en: 'Keep it tidy', text_ro: 'Vă rugăm să păstrați apartamentul în starea în care l-ați găsit.', text_en: 'Please keep the apartment as you found it.' },
+      { grup: 'plecare', icon: '⏱️', eticheta_ro: 'Anunțați plecarea cu 30 de minute înainte', eticheta_en: 'Let us know 30 minutes before you leave', text_ro: 'Trimiteți-ne un mesaj cu aproximativ 30 de minute înainte să eliberați apartamentul.', text_en: 'Send us a message about 30 minutes before you check out.' },
+      { grup: 'plecare', icon: '🕚', eticheta_ro: 'Check-out până la 11:00', eticheta_en: 'Check-out by 11:00', text_ro: 'Lăsați cheia înapoi în locker.', text_en: 'Please put the key back in the locker.' },
+      { grup: 'plecare', icon: '🌡️', eticheta_ro: 'Căldură, aer condiționat, geamuri', eticheta_en: 'Heating, AC and windows', text_ro: 'Coborâți căldura la temperatura minimă, opriți aerul condiționat și lăsați geamurile rabatate.', text_en: 'Turn the heating down to the minimum, switch off the air conditioning and leave the windows tilted open.' },
+      { grup: 'plecare', icon: '🗑️', eticheta_ro: 'Gunoiul', eticheta_en: 'Trash', text_ro: 'Aruncați gunoiul la pubele sau, cel puțin, lăsați-l strâns în sac.', text_en: 'Take the trash to the bins, or at least leave it bagged.' },
     ],
     telefon: '+40 712 290 109', final_ro: 'Echipa AB Homes vă dorește un sejur plăcut!', final_en: 'The AB Homes team wishes you a pleasant stay!', fundal: '',
   }

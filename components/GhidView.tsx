@@ -63,8 +63,14 @@ const CSS = `
 .gh-rules{margin-top:44px;border-top:1px solid var(--line);padding-top:26px}
 .gh-rules h2,.gh-end h2{margin:0 0 12px;font-family:var(--disp);font-weight:400;font-size:30px;letter-spacing:.02em;color:var(--ink)}
 .gh-rules ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
-.gh-rules li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:baseline;padding:10px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line);color:var(--dim)}
-.gh-rules li b{font-family:var(--mono);font-weight:600;color:var(--acc);font-size:13px;white-space:nowrap}
+.gh-rules .grp{margin:20px 0 10px;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--acc)}
+.gh-rules .grp:first-of-type{margin-top:4px}
+.gh-rules li{display:grid;grid-template-columns:42px 1fr;gap:14px;align-items:center;padding:12px 16px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.gh-rules li .ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--accs);font-size:20px;line-height:1}
+.gh-rules li b{display:block;font-family:var(--body);font-weight:700;font-size:15.5px;line-height:1.3;color:var(--ink)}
+.gh-rules li .tx{display:block;margin-top:3px;font-size:14.5px;line-height:1.5;color:var(--dim)}
+.gh-rules li.imp{border-color:rgba(255,102,0,.55);background:linear-gradient(90deg,rgba(255,102,0,.16),var(--panel) 70%)}
+.gh-rules li em{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:20px;background:var(--acc);color:#1a0d02;font-style:normal;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:2px}
 .gh-end{margin-top:38px;text-align:center;padding:24px 18px;border-radius:24px;background:var(--panel2);border:1px solid var(--line2)}
 .gh-end p{margin:0 0 14px;color:var(--dim)}
 .gh-tel{font-family:var(--mono);font-weight:600;font-size:20px;color:var(--ink);letter-spacing:.04em}
@@ -170,7 +176,22 @@ export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?:
         {g.reguli.length > 0 && (
           <section className="gh-rules">
             <h2>{t('Regulile locației', 'House rules')}</h2>
-            <ul>{g.reguli.map((r, i) => <li key={i}><b>{t(r.eticheta_ro, r.eticheta_en)}</b><span>{t(r.text_ro, r.text_en)}</span></li>)}</ul>
+            {/* pe grupe (pe durata sederii / la plecare) daca sunt setate; fiecare regula: icon + titlu + explicatie */}
+            {(g.reguli.some(r => r.grup)
+              ? ([['sedere', 'Pe durata șederii', 'During your stay'], ['plecare', 'La plecare', 'When you leave'], ['', '', '']] as const)
+                  .map(([k, ro, en]) => ({ k, titlu: t(ro, en), reguli: g.reguli.filter(r => (r.grup || '') === k) }))
+              : [{ k: 'toate', titlu: '', reguli: g.reguli }]
+            ).filter(x => x.reguli.length).map(x => (
+              <div key={x.k}>
+                {x.titlu && <div className="grp">{x.titlu}</div>}
+                <ul>{x.reguli.map((r, i) => (
+                  <li key={i} className={r.important ? 'imp' : ''}>
+                    <span className="ic" aria-hidden="true">{r.icon || '•'}</span>
+                    <span><b>{t(r.eticheta_ro, r.eticheta_en)}{r.important && <em>{t('Important', 'Important')}</em>}</b><span className="tx">{t(r.text_ro, r.text_en)}</span></span>
+                  </li>
+                ))}</ul>
+              </div>
+            ))}
           </section>
         )}
 
