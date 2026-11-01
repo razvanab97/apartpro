@@ -28,3 +28,14 @@ export async function citesteRezervare(capturi: Captura[]): Promise<{ result?: a
   const data = await res.json().catch(() => ({ error: `Eroare ${res.status}` }))
   return data
 }
+
+// miniatura mica (JPEG ~160 px) - pentru afisarea in conversatia asistentului, care se pastreaza in browser
+export async function miniatura(c: Captura, max = 160): Promise<string> {
+  try {
+    const img = new Image(); img.src = c.url; await img.decode()
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k)
+    cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height)
+    return cv.toDataURL('image/jpeg', 0.7)
+  } catch { return '' }
+}

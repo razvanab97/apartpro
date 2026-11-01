@@ -5,7 +5,8 @@ import { supabase, type Apartament } from '@/lib/supabase'
 import { SELECT_REZERVARE, cuApartament, payloadRezervare, salveazaRezervare } from '@/lib/rezervareEdit'
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
-import { Sparkles, X, Send, Loader2, Mic, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo } from 'lucide-react'
+import { pregatesteCaptura, miniatura, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
+import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo } from 'lucide-react'
 
 // Asistentul AB Homes (cerut direct: agent personal care vede tot ce se intampla in platforma si poate face /
 // anula / muta rezervari si pregati mesaje). Serverul (/api/agent) citeste baza si PROPUNE actiuni; aici le
@@ -13,7 +14,7 @@ import { Sparkles, X, Send, Loader2, Mic, Copy, Check, MessageCircle, RotateCcw,
 // rezervare (decontul se recalculeaza identic). Fiecare actiune intra in jurnal (setari „agent_jurnal”) cu „Anulează acțiunea”.
 
 type Card = Record<string, any> & { stare?: 'asteapta' | 'gata' | 'renuntat' | 'eroare' | 'anulat'; info?: string; jurnalId?: string }
-type Msg = { role: 'user' | 'assistant'; content: string; cards?: Card[]; nota?: boolean; ts: number }
+type Msg = { role: 'user' | 'assistant'; content: string; cards?: Card[]; nota?: boolean; ts: number; imagini?: string[] }  // imagini = miniaturi
 type Ctx = { rezervare_id: string; rezervare_nume?: string } | null
 type Jurnal = { id: string; ts: number; actiune: string; titlu: string; descriere: string; undo: any; anulat?: boolean }
 
@@ -162,6 +163,21 @@ export default function Agent() {
   const endRef = useRef<HTMLDivElement>(null)
   const recRef = useRef<any>(null)
   const inpRef = useRef<HTMLTextAreaElement>(null)
+  // capturi atasate la mesaj (cerut direct: „să putem adăuga poze din clipboard, chiar mai multe, și să facă rezervarea direct”):
+  // lipite (Cmd+V) in campul de text sau alese cu 📎 - Airbnb / Booking / buletin; se trimit la AI odata cu mesajul
+  const [atasate, setAtasate] = useState<Captura[]>([])
+  const [pregatesc, setPregatesc] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  async function adaugaImagini(files: (File | Blob)[]) {
+    const img = files.filter(f => (f.type || '').startsWith('image/') || /\.(jpe?g|png|webp|heic)$/i.test((f as File).name || ''))
+    if (!img.length) return
+    setPregatesc(true)
+    try {
+      const loc = Math.max(0, MAX_CAPTURI - atasate.length)
+      const noi = await Promise.all(img.slice(0, loc).map(pregatesteCaptura))
+      setAtasate(a => [...a, ...noi].slice(0, MAX_CAPTURI))
+    } finally { setPregatesc(false) }
+  }
 
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem(CHEIE_CONV) || '[]'); if (Array.isArray(v)) setMsgs(v) } catch {} }, [])
   useEffect(() => { try { localStorage.setItem(CHEIE_CONV, JSON.stringify(msgs.slice(-60))) } catch {} }, [msgs])
@@ -176,16 +192,19 @@ export default function Agent() {
   })
 
   async function trimite(text?: string) {
-    const t = (text ?? input).trim()
-    if (!t || loading) return
-    setInput('')
-    const nou: Msg[] = [...msgs, { role: 'user', content: t, ts: Date.now() }]
+    const imgs = text == null ? atasate : []
+    const t = ((text ?? input).trim()) || (imgs.length ? 'Creează rezervarea din capturile atașate' : '')
+    if (!t || loading || pregatesc) return
+    setInput(''); setAtasate([])
+    const mini = imgs.length ? (await Promise.all(imgs.map(c => miniatura(c)))).filter(Boolean) : undefined
+    const nou: Msg[] = [...msgs, { role: 'user', content: t, ts: Date.now(), ...(mini?.length ? { imagini: mini } : {}) }]
     setMsgs(nou); setLoading(true)
     window.dispatchEvent(new CustomEvent('observator:eveniment', { detail: { tip: 'agent', tinta: t.slice(0, 300), detalii: { context: ctx?.rezervare_nume || null } } }))
     try {
       // istoricul pentru AI: textul + starea cardurilor (ca sa stie ce s-a confirmat / renuntat)
-      const mesaje = nou.map(m => ({ role: m.role, content: m.content + (m.cards?.length ? '\n' + m.cards.map(c => `[card ${c.tip}${c.actiune ? ' ' + c.actiune : ''}: ${c.titlu || ''} — ${c.stare || 'afișat'}${c.info ? ' · ' + c.info : ''}]`).join('\n') : '') }))
-      const res = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mesaje, context: { pagina: pathname, ...(ctx || {}) } }) })
+      // imaginile intregi pleaca doar cu mesajul curent; in istoric ramane doar mentiunea lor
+      const mesaje = nou.map((m, i) => ({ role: m.role, content: m.content + (m.imagini?.length && i < nou.length - 1 ? `\n[a atașat ${m.imagini.length} capturi — deja citite]` : '') + (m.cards?.length ? '\n' + m.cards.map(c => `[card ${c.tip}${c.actiune ? ' ' + c.actiune : ''}: ${c.titlu || ''} — ${c.stare || 'afișat'}${c.info ? ' · ' + c.info : ''}]`).join('\n') : '') }))
+      const res = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mesaje, context: { pagina: pathname, ...(ctx || {}) }, imagini: imgs.map(c => ({ base64Data: c.base64Data, mimeType: c.mimeType })) }) })
       const j = await res.json()
       if (!j.ok) setMsgs(m => [...m, { role: 'assistant', content: '⚠ ' + (j.error || 'Eroare'), ts: Date.now(), nota: true }])
       else setMsgs(m => [...m, { role: 'assistant', content: j.reply || (j.cards?.length ? 'Ți-am pregătit mai jos:' : '…'), cards: (j.cards || []).map((c: Card) => c.tip === 'actiune' ? { ...c, stare: 'asteapta' } : c), ts: Date.now() }])
@@ -368,6 +387,7 @@ export default function Agent() {
                 <div style={{ padding: m.role === 'user' ? '8px 12px' : m.nota ? '6px 10px' : '2px 0', borderRadius: 13, fontSize: m.nota ? 12 : 13.5, lineHeight: 1.55,
                   background: m.role === 'user' ? 'linear-gradient(135deg,#2563EB,#4F46E5)' : m.nota ? 'rgba(124,155,255,0.08)' : 'transparent',
                   color: m.role === 'user' ? '#FFFFFF' : m.nota ? '#C7D2FE' : 'rgba(232,244,255,0.92)', whiteSpace: m.role === 'user' ? 'pre-wrap' : undefined }}>
+                  {m.role === 'user' && m.imagini?.length ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>{m.imagini.map((src, k) => <img key={k} src={src} alt="" style={{ width: 46, height: 64, objectFit: 'cover', objectPosition: 'top', borderRadius: 6, border: '1px solid rgba(255,255,255,0.35)' }} />)}</div> : null}
                   {m.role === 'user' ? m.content : <Text t={m.content} onRez={setRezDeschisa} />}
                 </div>
                 {m.role === 'assistant' && !m.nota && m.content.length > 3 && <div style={{ marginTop: 4, opacity: 0.75 }}><Copiaza mic eticheta="Copiază tot" v={m.content.replace(/\[\[rez:[^|]+\|([^\]]+)\]\]/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')} /></div>}
@@ -383,12 +403,29 @@ export default function Agent() {
 
           {/* intrare */}
           {!jurnal && (
-            <div style={{ padding: 10, borderTop: '1px solid rgba(124,155,255,0.15)', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-              <textarea ref={inpRef} value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder="Întreabă sau cere ceva…"
+            <div style={{ borderTop: '1px solid rgba(124,155,255,0.15)' }}>
+            {(atasate.length > 0 || pregatesc) && (
+              <div data-atasate style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '8px 10px 0', overflowX: 'auto' }}>
+                {atasate.map((c, k) => (
+                  <div key={c.url} style={{ position: 'relative', flexShrink: 0, width: 46, height: 64, borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(124,155,255,0.4)' }}>
+                    <img src={c.url} alt={`Captura ${k + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+                    <button onClick={() => setAtasate(a => a.filter((_, j) => j !== k))} title="Scoate" style={{ position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: 8, border: 'none', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 10, lineHeight: '16px', padding: 0, cursor: 'pointer' }}>×</button>
+                  </div>
+                ))}
+                {pregatesc && <Loader2 size={14} className="ag-spin" />}
+                <span style={{ fontSize: 11, color: 'rgba(186,214,255,0.6)', whiteSpace: 'nowrap' }}>{atasate.length} {atasate.length === 1 ? 'captură' : 'capturi'} · scrie ce mai știi (apartament, date, preț)</span>
+              </div>
+            )}
+            <div style={{ padding: 10, display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+              <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={e => { const f = Array.from(e.target.files || []); e.target.value = ''; adaugaImagini(f) }} />
+              <button onClick={() => fileRef.current?.click()} title="Atașează capturi (Airbnb, Booking, buletin) — sau lipește-le cu Cmd+V în câmpul de text" style={{ ...btn('transparent', 'rgba(214,228,244,0.7)', 'rgba(159,215,255,0.2)'), padding: 10 }}><Paperclip size={16} /></button>
+              <textarea ref={inpRef} value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={atasate.length ? 'ex. creează rezervare, N32, 3–5 nov., 600 lei' : 'Întreabă sau cere ceva…'}
+                onPaste={e => { const f = Array.from(e.clipboardData?.files || []).filter(x => x.type.startsWith('image/')); if (f.length) { e.preventDefault(); adaugaImagini(f) } }}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); trimite() } }}
                 style={{ flex: 1, resize: 'none', maxHeight: 120, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(124,155,255,0.25)', background: 'rgba(14,27,48,0.8)', color: '#FFFFFF', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', lineHeight: 1.4 }} />
               <button onClick={voce} title="Dictează" style={{ ...btn(listening ? 'rgba(239,68,68,0.2)' : 'transparent', listening ? '#F87171' : 'rgba(214,228,244,0.7)', 'rgba(159,215,255,0.2)'), padding: 10 }}><Mic size={16} /></button>
-              <button onClick={() => trimite()} disabled={loading || !input.trim()} title="Trimite" style={{ ...btn('linear-gradient(135deg,#2563EB,#7C3AED)', '#FFFFFF', 'transparent'), padding: 10, opacity: loading || !input.trim() ? 0.5 : 1 }}><Send size={16} /></button>
+              <button onClick={() => trimite()} disabled={loading || pregatesc || (!input.trim() && !atasate.length)} title="Trimite" style={{ ...btn('linear-gradient(135deg,#2563EB,#7C3AED)', '#FFFFFF', 'transparent'), padding: 10, opacity: loading || (!input.trim() && !atasate.length) ? 0.5 : 1 }}><Send size={16} /></button>
+            </div>
             </div>
           )}
         </div>

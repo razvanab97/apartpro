@@ -449,7 +449,8 @@ REGULI:
 9. Când ești întrebat ce se poate îmbunătăți, folosește recomandari + situatia_zilei și dă pași concreți, ordonați după impact.
 10. Aplicația are un jurnal de activitate (analiza_activitate) — momentan DOAR pentru observare. Nu-l pomeni și nu propune automatizări din proprie inițiativă; folosește-l doar când utilizatorul întreabă cum lucrează echipa, ce se repetă sau ce s-ar putea automatiza — atunci dă exemple concrete din date (secvențe repetate, butoane folosite des, ore, mesaje), cu impactul estimat.
 11. Linkurile le scrii simplu, întregi (https://…) — aplicația le pune singură buton „Copiază”. Codurile, parolele Wi-Fi, adresele, IBAN-urile, telefoanele sau orice altă valoare pe care utilizatorul o poate copia le pui între \`backticks\` (câte una) — devin buton de copiere. Nu scrie „[Copy]” sau „copiază de aici”.
-12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.`
+12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.
+13. Dacă utilizatorul atașează capturi (Airbnb, Booking, alt site) sau poza unui buletin și cere o rezervare: citește din imagini numele, datele (anul: cea mai apropiată dată viitoare; „Sosește mâine” = mâine), nr. de oaspeți, telefonul, codul rezervării și suma — la Airbnb suma plătită de oaspete („Oaspetele a plătit” → Total), nu câștigul gazdei; din buletin: numele, CNP-ul și adresa. Ce scrie utilizatorul în mesaj (apartament, date, cost, avans) are prioritate față de imagini. Canal: airbnb pentru Airbnb / cod HM…, booking pentru Booking / cod numeric, altfel direct. În observații pui codul rezervării și, la buletin, CNP-ul. Apartamentul îl iei din mesaj sau din titlul anunțului din captură (potrivește-l cu lista_apartamente). Dacă ai apartamentul, numele și datele, apelează DIRECT propune_rezervare_noua, fără alte întrebări; dacă lipsește ceva esențial, întreabă doar ce lipsește. Spune pe scurt ce ai citit din capturi.`
 }
 
 async function apelOpenAI(body: any) {
@@ -466,10 +467,17 @@ async function apelOpenAI(body: any) {
 
 export async function POST(req: NextRequest) {
   if (!OPENAI_KEY) return NextResponse.json({ ok: false, error: 'Lipsește OPENAI_API_KEY pe server' })
-  const { mesaje, context } = await req.json()
+  const { mesaje, context, imagini } = await req.json()
   const istoric = (Array.isArray(mesaje) ? mesaje : []).slice(-24)
     .filter((m: any) => (m.role === 'user' || m.role === 'assistant') && curat(m.content))
     .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 6000) }))
+  // capturile atasate (Airbnb / Booking / buletin) merg cu ultimul mesaj al utilizatorului - modelul le citeste direct
+  const imgs = (Array.isArray(imagini) ? imagini : []).filter((x: any) => x?.base64Data).slice(0, 6)
+  if (imgs.length && istoric.length && istoric[istoric.length - 1].role === 'user') {
+    const ult = istoric[istoric.length - 1] as any
+    ult.content = [{ type: 'text', text: ult.content + `\n[am atașat ${imgs.length} ${imgs.length === 1 ? 'captură' : 'capturi'}]` },
+      ...imgs.map((x: any) => ({ type: 'image_url', image_url: { url: `data:${x.mimeType || 'image/jpeg'};base64,${x.base64Data}` } }))]
+  }
   const msgs: any[] = [{ role: 'system', content: sistem(context) }, ...istoric]
   const cards: Card[] = []
   const unelte: string[] = []
