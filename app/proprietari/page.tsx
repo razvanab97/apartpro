@@ -279,6 +279,8 @@ export default function ProprietariPage() {
   const [an, setAn] = useState(now.getFullYear())
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [platiStatus, setPlatiStatus] = useState<Record<string,any>>({})
+  // plati partiale din Cheltuieli → Fișe (setari plata_partiala_<idCheltuiala>), ca sumele sa fie aceleasi in ambele pagini
+  const [partiale, setPartiale] = useState<Record<string, number>>({})
   const [savingPlata, setSavingPlata] = useState<string|null>(null)
   // Apartamente asociate — select-ul de "+ Adaugă apartament" e comun, un singur card e expandat oricand
   const [addSel, setAddSel] = useState('')
@@ -320,14 +322,21 @@ export default function ProprietariPage() {
     const pz = `${an}-${pad(luna)}-01`
     const uz = toYMD(new Date(an, luna, 0))
     const [{ data: chData }, { data: liniiData }] = await Promise.all([
+      // si chiria: sursa sumelor si a starii de plata e Cheltuieli (cerut direct: „conform cu cheltuielile să se actualizeze
+      // sumele și în proprietari”) - chirii_fixe ramane doar rezerva, cand luna n-are rand de chirie in Cheltuieli
       supabase.from('cheltuieli')
-        .select('apartament_id,categorie,valoare,status')
+        .select('id,apartament_id,categorie,valoare,status,data_plata')
         .gte('data', pz).lte('data', uz)
-        .in('categorie', ['asociatie','eon_curent','eon_gaz','eon_duo']),
+        .in('categorie', ['chirie','asociatie','eon_curent','eon_gaz','eon_duo']),
       supabase.from('plati_proprietari_linii').select('*')
         .eq('luna', luna).eq('an', an),
     ])
     setCheltuieli(chData||[])
+    const ids = (chData || []).map((c: any) => c.id)
+    const { data: pp } = ids.length ? await supabase.from('setari').select('cheie,valoare').in('cheie', ids.map((id: string) => 'plata_partiala_' + id)) : { data: [] as any[] }
+    const pm: Record<string, number> = {}
+    for (const x of pp || []) { try { const v = JSON.parse(x.valoare); if (Array.isArray(v)) pm[x.cheie.replace('plata_partiala_', '')] = v.reduce((t: number, q: any) => t + (Number(q.suma) || 0), 0) } catch {} }
+    setPartiale(pm)
     const lm: Record<string, any> = {}
     ;(liniiData || []).forEach((l: any) => { lm[`${l.apartament_id}_${l.tip}`] = l })
     setPlatiStatus(lm)
@@ -340,19 +349,33 @@ export default function ProprietariPage() {
     let totalRON = 0, totalPlatit = 0
     const detalii: any[] = []
 
+    // cat s-a platit dintr-un set de randuri din Cheltuieli: integral (validat) sau partial (plati partiale)
+    const platitDin = (rows: any[]) => rows.reduce((t: number, c: any) => t + (['validat','platit'].includes(c.status) ? Number(c.valoare||0) : Math.min(Number(c.valoare||0), partiale[c.id] || 0)), 0)
     propApts.forEach(apt => {
       const chirie = chirii.find(c => c.apartament_id === apt.id)
-      const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id)
+      const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id && c.categorie !== 'chirie')
+      const chirieCh = cheltuieli.filter(c => c.apartament_id === apt.id && c.categorie === 'chirie')
       const eon = utilApt.filter(c => ['eon_curent','eon_gaz','eon_duo'].includes(c.categorie)).reduce((s:number,c:any) => s+Number(c.valoare||0), 0)
       const asoc = utilApt.filter(c => c.categorie === 'asociatie').reduce((s:number,c:any) => s+Number(c.valoare||0), 0)
       const utilTotal = Math.round(eon + asoc)
       const utilPermis = !!apt.utilitati_la_proprietar
 
-      if (!chirie && (!utilPermis || utilTotal === 0)) return
+      if (!chirie && !chirieCh.length && (!utilPermis || utilTotal === 0)) return
 
       const liniiApt: any[] = []
 
-      if (chirie) {
+      if (chirieCh.length) {
+        // suma si plata vin din Cheltuieli (randul „Chirie” al lunii) - bifa de aici marcheaza acelasi rand acolo
+        const suma = Math.round(chirieCh.reduce((t: number, c: any) => t + Number(c.valoare||0), 0))
+        const pl = Math.round(platitDin(chirieCh))
+        const platit = pl >= suma
+        // suma din Apartamente → Plăți o aratam doar daca se potriveste cu cea din Cheltuieli (altfel ar fi contradictoriu)
+        const fixRON = chirie ? (chirie.moneda === 'EUR' ? chirie.suma * cursEUR : chirie.suma) * (chirie.cu_tva ? 1.21 : 1) : 0
+        const label = (chirie && Math.abs(fixRON - suma) <= suma * 0.01 ? `${chirie.moneda === 'EUR' ? chirie.suma + ' EUR' : chirie.suma + ' RON'} · ` : '') + 'din Cheltuieli'
+        liniiApt.push({ tip: 'chirie', label, suma, platit, platitSuma: platit ? suma : pl, linie: platiStatus[`${apt.id}_chirie`], randuri: chirieCh })
+        totalRON += suma
+        totalPlatit += platit ? suma : pl
+      } else if (chirie) {
         // chirie.suma e baza FARA TVA - daca e bifat cu_tva (Apartamente → Plăți), platim si TVA-ul catre proprietar
         const sumaBaza = chirie.moneda === 'EUR' ? chirie.suma * cursEUR : chirie.suma
         const liveRON = Math.round(chirie.cu_tva ? sumaBaza * 1.21 : sumaBaza)
@@ -366,12 +389,14 @@ export default function ProprietariPage() {
       }
 
       if (utilPermis && utilTotal > 0) {
+        // starea de plata vine din Cheltuieli (facturile E.ON / Asociatie ale lunii), inclusiv platile partiale
         const linie = platiStatus[`${apt.id}_utilitati`]
-        const platit = !!linie?.platit
-        const sumaAfisata = platit ? Number(linie.suma_ron) : utilTotal
-        liniiApt.push({ tip: 'utilitati', label: `E.ON ${Math.round(eon)} + Asociație ${Math.round(asoc)}`, suma: sumaAfisata, platit, linie })
-        totalRON += sumaAfisata
-        if (platit) totalPlatit += sumaAfisata
+        const randuri = utilApt.filter(c => ['eon_curent','eon_gaz','eon_duo','asociatie'].includes(c.categorie))
+        const pl = Math.round(platitDin(randuri))
+        const platit = pl >= utilTotal
+        liniiApt.push({ tip: 'utilitati', label: `E.ON ${Math.round(eon)} + Asociație ${Math.round(asoc)}`, suma: utilTotal, platit, platitSuma: platit ? utilTotal : pl, linie, randuri })
+        totalRON += utilTotal
+        totalPlatit += platit ? utilTotal : pl
       }
 
       if (liniiApt.length === 0) return
@@ -381,9 +406,21 @@ export default function ProprietariPage() {
     return { totalRON, totalPlatit, totalRamas: totalRON - totalPlatit, detalii }
   }
 
-  async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati', linieExistenta: any) {
+  async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati', linieExistenta: any, l?: any) {
     const key = `${apt.id}_${tip}`
     setSavingPlata(key)
+    // linie legata de Cheltuieli: bifa marcheaza (sau demarcheaza) aceleasi randuri acolo, ca cele doua pagini sa arate la fel
+    if (l?.randuri?.length) {
+      const nou = !l.platit, ids = l.randuri.map((c: any) => c.id)
+      const { error } = await supabase.from('cheltuieli').update(nou ? { status: 'validat', data_plata: new Date().toISOString().slice(0,10) } : { status: 'nevalidat', data_plata: null }).in('id', ids)
+      const rec = { proprietar_id: propId, apartament_id: apt.id, luna, an, tip, suma_ron: l.suma, curs_eur: null, suma_eur: null, platit: nou, data_platii: nou ? new Date().toISOString().slice(0,10) : null }
+      if (linieExistenta?.id) await supabase.from('plati_proprietari_linii').update(rec).eq('id', linieExistenta.id)
+      else await supabase.from('plati_proprietari_linii').insert(rec)
+      setSavingPlata(null)
+      show(error ? 'error' : 'success', error ? error.message : nou ? 'Marcat ca plătit (și în Cheltuieli)' : 'Marcat ca neplătit (și în Cheltuieli)')
+      loadLunar()
+      return
+    }
     const nouPlatit = !linieExistenta?.platit
     let payload: any
     if (nouPlatit) {
@@ -601,11 +638,13 @@ export default function ProprietariPage() {
                               {d.linii.map((l:any) => (
                                 <label key={l.tip} style={{ display:'flex', alignItems:'center', gap:8, cursor: savingPlata===`${d.apt.id}_${l.tip}` ? 'wait' : 'pointer', padding:'5px 8px', borderRadius:6, background: l.platit ? 'rgba(74,222,128,0.06)' : 'rgba(255,255,255,0.02)' }}>
                                   <input type="checkbox" checked={l.platit} disabled={savingPlata===`${d.apt.id}_${l.tip}`}
-                                    onChange={() => toggleLinie(p.id, d.apt, l.tip, l.linie)}/>
+                                    onChange={() => toggleLinie(p.id, d.apt, l.tip, l.linie, l)}/>
                                   <span style={{ fontSize:11, color: l.platit ? '#4ADE80' : 'rgba(159,215,255,0.6)', fontWeight:600, minWidth:62 }}>
                                     {l.tip === 'chirie' ? 'Chirie' : 'Utilități'}
                                   </span>
-                                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', flex:1 }}>{l.label}</span>
+                                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', flex:1 }}>{l.label}
+                                    {!l.platit && l.platitSuma > 0 && <span data-partial-prop style={{ display:'block', fontSize:10.5, fontWeight:700, color:'#FCD34D' }}>plătit parțial {l.platitSuma.toLocaleString('ro-RO')} · rest {(l.suma - l.platitSuma).toLocaleString('ro-RO')} RON</span>}
+                                  </span>
                                   <span style={{ fontSize:12, fontWeight:700, fontFamily:'monospace', color: l.platit ? '#4ADE80' : '#fff', textDecoration: l.platit ? 'line-through' : 'none' }}>{l.suma.toLocaleString('ro-RO')} RON</span>
                                   {l.platit && <Check size={12} color="#4ADE80"/>}
                                 </label>
