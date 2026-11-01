@@ -55,11 +55,15 @@ const CSS = `
 .gh-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:50px;background:var(--acc);color:#fff;font-weight:700;font-size:14.5px;text-decoration:none;box-shadow:0 8px 20px rgba(255,102,0,.3)}
 .gh-btn:hover{background:var(--accd)}
 .gh-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;align-items:center}
-.gh-pics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.gh-pics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:start}
 .gh figure{position:relative;margin:0;border-radius:20px;overflow:hidden;border:1px solid var(--line);background:var(--panel)}
 .gh figure.img{cursor:zoom-in}
 .gh figure img,.gh figure video{display:block;width:100%;height:auto;max-height:640px;object-fit:cover;background:#000}
 .gh figcaption{padding:9px 14px;font-size:13px;font-weight:600;color:var(--dim)}
+/* descrierea unui video scrisa PE video (cerut direct: „pe video să scrie exact ce se găsește”), ascunsa cat ruleaza */
+.gh figure .vlbl{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);z-index:2;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:12px;background:rgba(10,8,6,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,102,0,.5);color:#F7F3EC;font-size:13.5px;font-weight:700;line-height:1.25;pointer-events:none;transition:opacity .25s}
+.gh figure .vlbl i{font-style:normal;color:var(--acc);font-size:11px}
+.gh figure.playing .vlbl{opacity:0}
 .gh-rules{margin-top:44px;border-top:1px solid var(--line);padding-top:26px}
 .gh-rules h2,.gh-end h2{margin:0 0 12px;font-family:var(--disp);font-weight:400;font-size:30px;letter-spacing:.02em;color:var(--ink)}
 .gh-rules ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
@@ -162,8 +166,11 @@ export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?:
                         {m.tip === 'img'
                           // eslint-disable-next-line @next/next/no-img-element
                           ? <img src={m.url} alt={t(m.ro, m.en) || t(p.titlu_ro, p.titlu_en)} loading="lazy" />
-                          : <video src={m.url} controls playsInline preload="metadata" />}
-                        {t(m.ro, m.en) && <figcaption>{t(m.ro, m.en)}</figcaption>}
+                          : <video src={m.url} controls playsInline preload="metadata"
+                              onPlay={e => e.currentTarget.parentElement?.classList.add('playing')} onPause={e => e.currentTarget.parentElement?.classList.remove('playing')} />}
+                        {m.tip === 'video'
+                          ? t(m.ro, m.en) && <span className="vlbl"><i>▶</i>{t(m.ro, m.en)}</span>
+                          : t(m.ro, m.en) && <figcaption>{t(m.ro, m.en)}</figcaption>}
                       </figure>
                     ))}
                   </div>

@@ -221,7 +221,7 @@ export default function EditorGhid() {
                     <button title="Șterge" onClick={() => setPas(i, { media: p.media.filter((_, b) => b !== j) })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: '#F87171' }}><X size={12} /></button>
                   </div>
                 </div>
-                <input value={l === 'en' ? m.en : m.ro} placeholder={'Descriere' + lb} onChange={e => setPas(i, { media: p.media.map((mm, b) => b === j ? { ...mm, [l]: e.target.value } : mm) })}
+                <input value={l === 'en' ? m.en : m.ro} placeholder={m.tip === 'video' ? 'Ce arată video-ul (apare scris pe video)' + lb : 'Descriere' + lb} onChange={e => setPas(i, { media: p.media.map((mm, b) => b === j ? { ...mm, [l]: e.target.value } : mm) })}
                   style={{ border: 'none', borderRadius: 0, borderTop: '1px solid rgba(159,215,255,0.1)', fontSize: 12, padding: '7px 9px' }} />
               </div>
             ))}
