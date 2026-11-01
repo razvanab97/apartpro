@@ -48,7 +48,8 @@ const CSS = `
 .gh-step h3{margin:2px 0 6px;font-size:22px;line-height:1.25;font-weight:700;color:var(--ink);text-wrap:balance}
 .gh-step p{margin:0 0 12px;color:var(--dim);max-width:62ch;white-space:pre-line}
 .gh-inl{font-family:var(--mono);font-weight:700;color:var(--acc);white-space:nowrap;letter-spacing:.04em}
-.gh-call{margin:0 0 12px;padding:10px 14px;border-radius:14px;border:1px solid rgba(255,102,0,.35);background:var(--accs);color:var(--ink);font-size:14.5px;white-space:pre-line}
+/* nota evidentiata dintr-un pas - mai vizibila si cu text ingrosat (cerut direct) */
+.gh-call{margin:0 0 12px;padding:12px 16px;border-radius:14px;border:1.5px solid rgba(255,102,0,.6);border-left:5px solid var(--acc);background:linear-gradient(90deg,rgba(255,102,0,.24),rgba(255,102,0,.12));color:#F7F3EC;font-size:15px;font-weight:700;line-height:1.45;white-space:pre-line;box-shadow:0 6px 22px rgba(255,102,0,.14)}
 .gh-cp{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--line2);background:rgba(10,8,6,.45)}
 .gh-cp span{min-width:0;font-weight:700;color:var(--ink);font-size:15.5px;overflow-wrap:anywhere}
 .gh-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:50px;background:var(--acc);color:#fff;font-weight:700;font-size:14.5px;text-decoration:none;box-shadow:0 8px 20px rgba(255,102,0,.3)}
