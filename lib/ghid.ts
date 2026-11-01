@@ -100,3 +100,4 @@ export async function incarcaMedia(cod: string, file: File, onProgres?: (pct: nu
   if (eroare) return { eroare: `${file.name}: ${eroare}` }
   return { media: { tip: video ? 'video' : 'img', url: getStorageUrl('Facturi', path), ro: '', en: '' } }
 }
+

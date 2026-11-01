@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import type { Ghid } from '@/lib/ghid'
+import { cuCoduri } from '@/lib/ghidCoduri'
 
 // Afisarea ghidului de check-in (aceeasi pe pagina publica /ghid/<COD> si in previzualizarea din editor).
 // Identitatea vizuala a paginii R7-101: fundal cald inchis din poza cladirii, accent portocaliu, Anton + Quicksand.
@@ -46,6 +47,7 @@ const CSS = `
 .gh-num{font-family:var(--disp);font-size:46px;line-height:.9;color:var(--acc);text-align:right}
 .gh-step h3{margin:2px 0 6px;font-size:22px;line-height:1.25;font-weight:700;color:var(--ink);text-wrap:balance}
 .gh-step p{margin:0 0 12px;color:var(--dim);max-width:62ch;white-space:pre-line}
+.gh-inl{font-family:var(--mono);font-weight:700;color:var(--acc);white-space:nowrap;letter-spacing:.04em}
 .gh-call{margin:0 0 12px;padding:10px 14px;border-radius:14px;border:1px solid rgba(255,102,0,.35);background:var(--accs);color:var(--ink);font-size:14.5px;white-space:pre-line}
 .gh-cp{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--line2);background:rgba(10,8,6,.45)}
 .gh-cp span{min-width:0;font-weight:700;color:var(--ink);font-size:15.5px;overflow-wrap:anywhere}
@@ -90,6 +92,8 @@ export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?:
   )
   const fundal = g.fundal || g.pasi.flatMap(p => p.media).find(m => m.tip === 'img')?.url || ''
   const acces = g.acces.filter(a => a.valoare.trim())
+  // {cod} / {wifi} / {parola wifi} din text -> valoarea actuala din „Acces rapid”, evidentiata (vezi lib/ghid.ts cuCoduri)
+  const txt = (s: string) => cuCoduri(s, g.acces).map((b, j) => 'cod' in b ? <span key={j} className="gh-inl">{b.cod}</span> : <span key={j}>{b.text}</span>)
   const tel = g.telefon.replace(/[^0-9]/g, '')
 
   return (
@@ -139,9 +143,9 @@ export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?:
               <span className="gh-num" aria-hidden="true">{i + 1}</span>
               <div>
                 <h3>{t(p.titlu_ro, p.titlu_en) || '…'}</h3>
-                {t(p.text_ro, p.text_en) && <p>{t(p.text_ro, p.text_en)}</p>}
+                {t(p.text_ro, p.text_en) && <p>{txt(t(p.text_ro, p.text_en))}</p>}
                 {p.copiaza?.trim() && <div className="gh-cp"><span>{p.copiaza}</span>{btnCopy('p' + i, p.copiaza)}</div>}
-                {t(p.nota_ro, p.nota_en) && <p className="gh-call">{t(p.nota_ro, p.nota_en)}</p>}
+                {t(p.nota_ro, p.nota_en) && <p className="gh-call">{txt(t(p.nota_ro, p.nota_en))}</p>}
                 {p.link_url && <div className="gh-row"><a className="gh-btn" href={p.link_url} target="_blank" rel="noopener noreferrer">{t(p.link_ro, p.link_en) || p.link_url}</a></div>}
                 {p.media.length > 0 && (
                   <div className="gh-pics">

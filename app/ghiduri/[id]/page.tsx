@@ -168,6 +168,14 @@ export default function EditorGhid() {
           </div>
           {camp('Titlu' + lb, pv(p, 'titlu'), v => setPas(i, { [k('titlu')]: v } as any))}
           {camp('Text' + lb, pv(p, 'text'), v => setPas(i, { [k('text')]: v } as any), { rows: 3, ph: 'Ce trebuie să facă oaspetele la acest pas…' })}
+          {/* coduri din „Acces rapid” inserate in text - pe pagina oaspetelui apare mereu valoarea actuala de sus */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: -4 }}>
+            <span style={{ fontSize: 10.5, color: 'rgba(159,215,255,0.45)' }}>Inserează din Acces rapid:</span>
+            {[{ ph: '{cod}', et: 'cod' }, ...g.acces.filter(a => a.valoare.trim() && !a.cod).map(a => ({ ph: `{${a.ro}}`, et: a.ro }))].map(x => (
+              <button key={x.ph} type="button" title={`Adaugă ${x.ph} — pe pagină apare valoarea de sus`} onClick={() => setPas(i, { [k('text')]: (pv(p, 'text') || '').replace(/\s*$/, '') + (pv(p, 'text') ? ' ' : '') + x.ph } as any)}
+                style={{ padding: '2px 8px', borderRadius: 6, border: '1px solid rgba(255,138,61,0.4)', background: 'rgba(255,138,61,0.08)', color: '#FF8A3D', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'ui-monospace,Menlo,monospace' }}>{x.ph}</button>
+            ))}
+          </div>
           {camp('Text cu buton „Copiază” (ex. strada și numărul)', p.copiaza || '', v => setPas(i, { copiaza: v }), { ph: 'Străpungere Silvestru nr. 7' })}
           {camp('Notă evidențiată (portocaliu)' + lb, pv(p, 'nota'), v => setPas(i, { [k('nota')]: v } as any), { rows: 2, ph: 'ex. Se lucrează la interfon…' })}
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 8 }}>
