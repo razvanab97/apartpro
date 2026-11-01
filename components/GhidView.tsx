@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import type { Ghid } from '@/lib/ghid'
-import { cuCoduri } from '@/lib/ghidCoduri'
+import { cuCoduri, doarVizibile } from '@/lib/ghidCoduri'
 
 // Afisarea ghidului de check-in (aceeasi pe pagina publica /ghid/<COD> si in previzualizarea din editor).
 // Identitatea vizuala a paginii R7-101: fundal cald inchis din poza cladirii, accent portocaliu, Anton + Quicksand.
@@ -86,7 +86,8 @@ const CSS = `
 @media (max-width:520px){.gh-step{grid-template-columns:38px 1fr;gap:12px}.gh-num{font-size:36px}.gh-step h3{font-size:20px}}
 `
 
-export default function GhidView({ g, fix = true, limbaStart }: { g: Ghid; fix?: boolean; limbaStart?: 'ro' | 'en' }) {
+export default function GhidView({ g: gTot, fix = true, limbaStart }: { g: Ghid; fix?: boolean; limbaStart?: 'ro' | 'en' }) {
+  const g = doarVizibile(gTot)  // ce e marcat „ascuns” in editor nu apare oaspetelui
   const [l, setL] = useState<'ro' | 'en'>(limbaStart || 'ro')
   const [mare, setMare] = useState<string | null>(null)
   const [copiat, setCopiat] = useState<string | null>(null)

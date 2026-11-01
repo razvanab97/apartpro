@@ -5,14 +5,16 @@ import { supabase, getStorageUrl, incarcaDirect } from '@/lib/supabase'
 // Un ghid pe apartament, salvat in setari (cheie ghid_apt_<id>) - fara migrare; pozele / videoclipurile in
 // storage (bucket-ul Facturi, folderul ghiduri/<cod>/). Pagina publica: /ghid/<COD> (ex. /ghid/GS08).
 
-export type Media = { tip: 'img' | 'video'; url: string; ro: string; en: string }
+// ascuns = ramane in editor, dar nu apare pe pagina oaspetelui (cerut direct: „butonul de ascundere a unei secțiuni,
+// care să rămână acolo, dar să nu fie vizibilă clienților”) - pe pasi, poze / video, reguli si randurile din Acces rapid
+export type Media = { tip: 'img' | 'video'; url: string; ro: string; en: string; ascuns?: boolean }
 export type Pas = { titlu_ro: string; titlu_en: string; text_ro: string; text_en: string; nota_ro: string; nota_en: string
   link_url: string; link_ro: string; link_en: string; media: Media[]
-  copiaza?: string }  // text cu buton „Copiază” (ex. strada si numarul)
-export type Acces = { ro: string; en: string; valoare: string; cod: boolean }
+  copiaza?: string; ascuns?: boolean }  // copiaza = text cu buton „Copiază” (ex. strada si numarul)
+export type Acces = { ro: string; en: string; valoare: string; cod: boolean; ascuns?: boolean }
 // eticheta = titlul scurt al regulii; icon / grup / important sunt optionale (cerut direct: regulile „mai profi scrise,
 // mai bine organizate și așezate în pagină”) - grup: 'sedere' (pe durata șederii) sau 'plecare' (la plecare)
-export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string; icon?: string; grup?: 'sedere' | 'plecare'; important?: boolean }
+export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string; icon?: string; grup?: 'sedere' | 'plecare'; important?: boolean; ascuns?: boolean }
 export type Ghid = {
   titlu: string; sub_ro: string; sub_en: string; checkin: string; checkout: string
   acces: Acces[]; acces_nota_ro: string; acces_nota_en: string

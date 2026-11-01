@@ -1,4 +1,4 @@
-import type { Acces } from '@/lib/ghid'
+import type { Acces, Ghid } from '@/lib/ghid'
 // fara alte importuri: e folosit si de pagina publica a ghidului (components/GhidView.tsx) - nu trebuie sa traga clientul bazei de date
 // Coduri din „Acces rapid” scrise automat in pasi (cerut direct: „nu putem trece aici automat codul pe care îl avem în
 // partea de sus, pe care cineva îl omite? și de fiecare dată când se modifică sus, să se modifice și aici”).
@@ -26,4 +26,10 @@ export function cuCoduri(text: string, acces: Acces[]): BucataText[] {
   }
   if (last < text.length) out.push({ text: text.slice(last) })
   return out
+}
+
+// Ghidul asa cum il vede oaspetele: fara pasii / pozele / regulile / randurile din Acces rapid marcate „ascuns”
+export function doarVizibile(g: Ghid): Ghid {
+  return { ...g, acces: g.acces.filter(a => !a.ascuns), reguli: g.reguli.filter(r => !r.ascuns),
+    pasi: g.pasi.filter(p => !p.ascuns).map(p => ({ ...p, media: p.media.filter(m => !m.ascuns) })) }
 }

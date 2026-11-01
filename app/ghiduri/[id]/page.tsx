@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { PageHeader } from '@/components/Layout'
 import GhidView from '@/components/GhidView'
 import { citesteGhid, salveazaGhid, versiuneGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
-import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film } from 'lucide-react'
+import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film, Eye, EyeOff } from 'lucide-react'
 
 // Editorul ghidului de check-in (cerut direct: „o modalitate de modificare text și de adăugat alte poze”).
 // Stanga: textele (RO sau EN), pozele / videoclipurile pe fiecare pas, ordinea; dreapta: ghidul exact cum il vede
@@ -163,11 +163,12 @@ export default function EditorGhid() {
       <div style={sec}>Acces rapid (cod, Wi-Fi…)</div>
       <div style={card}>
         {g.acces.map((a, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+          <div key={i} data-ascuns={a.ascuns ? '1' : undefined} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end', opacity: a.ascuns ? 0.45 : 1 }}>
             {camp('Etichetă' + lb, l === 'en' ? a.en : a.ro, v => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, [l]: v } : y) } : x))}
             {camp('Valoare', a.valoare, v => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, valoare: v } : y) } : x), { mono: true })}
             <div style={{ display: 'flex', gap: 4, paddingBottom: 2 }}>
               <button title="Afișează mare, portocaliu (cod)" onClick={() => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, cod: !y.cod } : y) } : x)} style={{ ...iconBtn, color: a.cod ? '#FF8A3D' : iconBtn.color, borderColor: a.cod ? 'rgba(255,138,61,0.6)' : 'rgba(159,215,255,0.18)' }}><Star size={13} /></button>
+              <button data-comuta-ascuns title={a.ascuns ? 'Ascuns pentru clienți — apasă ca să-l arăți' : 'Ascunde de clienți (rămâne aici)'} onClick={() => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, ascuns: !y.ascuns } : y) } : x)} style={{ ...iconBtn, color: a.ascuns ? '#FCD34D' : undefined }}>{a.ascuns ? <EyeOff size={13} /> : <Eye size={13} />}</button>
               <button title="Mută sus" onClick={() => set({ acces: muta(g.acces, i, -1) })} style={iconBtn}><ArrowUp size={13} /></button>
               <button title="Șterge" onClick={() => set({ acces: g.acces.filter((_, j) => j !== i) })} style={iconBtn}><X size={13} /></button>
             </div>
@@ -179,11 +180,13 @@ export default function EditorGhid() {
 
       <div style={sec}>Pașii, în ordinea în care ajunge oaspetele</div>
       {g.pasi.map((p, i) => (
-        <div key={i} style={card}
+        <div key={i} data-ascuns={p.ascuns ? '1' : undefined} style={{ ...card, ...(p.ascuns ? { opacity: 0.5, borderStyle: 'dashed' } : {}) }}
           onDragOver={e => { e.preventDefault() }} onDrop={e => { e.preventDefault(); if (e.dataTransfer.files?.length) adaugaMedia(i, e.dataTransfer.files) }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontFamily: 'Impact,"Arial Narrow",sans-serif', fontSize: 24, color: '#FF8A3D', width: 26 }}>{i + 1}</span>
             <span style={{ flex: 1, fontSize: 13, fontWeight: 800, color: '#E8F4FF' }}>{(l === 'en' ? p.titlu_en || p.titlu_ro : p.titlu_ro) || 'Pas nou'}</span>
+            {p.ascuns && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#FCD34D', padding: '2px 7px', borderRadius: 6, background: 'rgba(252,211,77,0.12)' }}>ASCUNS PENTRU CLIENȚI</span>}
+            <button data-comuta-ascuns title={p.ascuns ? 'Ascuns pentru clienți — apasă ca să-l arăți' : 'Ascunde pasul de clienți (rămâne aici)'} onClick={() => setPas(i, { ascuns: !p.ascuns })} style={{ ...iconBtn, color: p.ascuns ? '#FCD34D' : undefined }}>{p.ascuns ? <EyeOff size={13} /> : <Eye size={13} />}</button>
             <button title="Mută sus" onClick={() => set({ pasi: muta(g.pasi, i, -1) })} style={iconBtn}><ArrowUp size={13} /></button>
             <button title="Mută jos" onClick={() => set({ pasi: muta(g.pasi, i, 1) })} style={iconBtn}><ArrowDown size={13} /></button>
             <button title="Șterge pasul" onClick={() => { if (window.confirm(`Ștergi pasul „${p.titlu_ro || i + 1}” cu tot cu poze?`)) set({ pasi: g.pasi.filter((_, j) => j !== i) }) }} style={{ ...iconBtn, color: '#F87171' }}><X size={13} /></button>
@@ -207,7 +210,7 @@ export default function EditorGhid() {
           <div style={{ ...lbl, marginTop: 2 }}>Poze și video</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', gap: 8 }}>
             {p.media.map((m, j) => (
-              <div key={j} style={{ borderRadius: 10, overflow: 'hidden', border: `1px solid ${g.fundal === m.url ? 'rgba(255,138,61,0.7)' : 'rgba(159,215,255,0.15)'}`, background: 'rgba(5,12,24,0.6)', display: 'flex', flexDirection: 'column' }}>
+              <div key={j} data-ascuns={m.ascuns ? '1' : undefined} style={{ opacity: m.ascuns ? 0.45 : 1, borderRadius: 10, overflow: 'hidden', border: `1px solid ${g.fundal === m.url ? 'rgba(255,138,61,0.7)' : 'rgba(159,215,255,0.15)'}`, background: 'rgba(5,12,24,0.6)', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ position: 'relative', aspectRatio: '4 / 3', background: '#000' }}>
                   {m.tip === 'img'
                     // eslint-disable-next-line @next/next/no-img-element
@@ -216,6 +219,7 @@ export default function EditorGhid() {
                   {m.tip === 'video' && <span style={{ position: 'absolute', left: 6, top: 6, display: 'flex', alignItems: 'center', gap: 4, padding: '2px 7px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10.5, fontWeight: 700 }}><Film size={11} /> video</span>}
                   <div style={{ position: 'absolute', right: 4, top: 4, display: 'flex', gap: 3 }}>
                     {m.tip === 'img' && <button title={g.fundal === m.url ? 'Fundalul paginii' : 'Folosește ca fundal al paginii'} onClick={() => set({ fundal: g.fundal === m.url ? '' : m.url })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: g.fundal === m.url ? '#FF8A3D' : '#fff' }}><Star size={12} /></button>}
+                    <button data-comuta-ascuns title={m.ascuns ? 'Ascuns pentru clienți — apasă ca să-l arăți' : 'Ascunde de clienți (rămâne aici)'} onClick={() => setPas(i, { media: p.media.map((mm, b) => b === j ? { ...mm, ascuns: !mm.ascuns } : mm) })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: m.ascuns ? '#FCD34D' : '#fff' }}>{m.ascuns ? <EyeOff size={12} /> : <Eye size={12} />}</button>
                     <button title="Mută la stânga" onClick={() => setPas(i, { media: muta(p.media, j, -1) })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: '#fff' }}><ArrowUp size={12} style={{ transform: 'rotate(-90deg)' }} /></button>
                     <button title="Mută la dreapta" onClick={() => setPas(i, { media: muta(p.media, j, 1) })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: '#fff' }}><ArrowUp size={12} style={{ transform: 'rotate(90deg)' }} /></button>
                     <button title="Șterge" onClick={() => setPas(i, { media: p.media.filter((_, b) => b !== j) })} style={{ ...iconBtn, width: 24, height: 24, background: 'rgba(0,0,0,0.55)', color: '#F87171' }}><X size={12} /></button>
@@ -237,7 +241,7 @@ export default function EditorGhid() {
       <div style={sec}>Regulile locației</div>
       <div style={card}>
         {g.reguli.map((r, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '52px 140px 1fr 150px auto', gap: 8, alignItems: 'end' }}>
+          <div key={i} data-ascuns={r.ascuns ? '1' : undefined} style={{ display: 'grid', gridTemplateColumns: '52px 140px 1fr 150px auto', gap: 8, alignItems: 'end', opacity: r.ascuns ? 0.45 : 1 }}>
             {camp('Icon', r.icon || '', v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, icon: v.slice(0, 4) } : y) } : x), { ph: '🌙' })}
             {camp('Titlu' + lb, ((r as any)[k('eticheta')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('eticheta')]: v } : y) } : x))}
             {camp('Explicație' + lb, ((r as any)[k('text')] || ''), v => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, [k('text')]: v } : y) } : x))}
@@ -248,6 +252,7 @@ export default function EditorGhid() {
             </label>
             <div style={{ display: 'flex', gap: 4, paddingBottom: 2 }}>
               <button title={r.important ? 'Important (evidențiat) — apasă ca să scoți' : 'Marchează ca important'} onClick={() => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, important: !y.important } : y) } : x)} style={{ ...iconBtn, color: r.important ? '#FF8A3D' : undefined }}><Star size={13} /></button>
+              <button data-comuta-ascuns title={r.ascuns ? 'Ascunsă pentru clienți — apasă ca s-o arăți' : 'Ascunde regula de clienți (rămâne aici)'} onClick={() => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, ascuns: !y.ascuns } : y) } : x)} style={{ ...iconBtn, color: r.ascuns ? '#FCD34D' : undefined }}>{r.ascuns ? <EyeOff size={13} /> : <Eye size={13} />}</button>
               <button title="Mută sus" onClick={() => set({ reguli: muta(g.reguli, i, -1) })} style={iconBtn}><ArrowUp size={13} /></button>
               <button title="Șterge" onClick={() => set({ reguli: g.reguli.filter((_, j) => j !== i) })} style={iconBtn}><X size={13} /></button>
             </div>
