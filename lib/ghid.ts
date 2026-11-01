@@ -53,9 +53,16 @@ export async function citesteGhid(aptId: string): Promise<Ghid | null> {
   try { return { ...ghidNou(), ...JSON.parse(data.valoare) } } catch { return null }
 }
 
-export async function salveazaGhid(aptId: string, g: Ghid): Promise<string | null> {
-  const { error } = await supabase.from('setari').upsert({ cheie: cheieGhid(aptId), valoare: JSON.stringify({ ...g, actualizat: new Date().toISOString() }) }, { onConflict: 'cheie' })
+export async function salveazaGhid(aptId: string, g: Ghid, actualizat = new Date().toISOString()): Promise<string | null> {
+  const { error } = await supabase.from('setari').upsert({ cheie: cheieGhid(aptId), valoare: JSON.stringify({ ...g, actualizat }) }, { onConflict: 'cheie' })
   return error ? error.message : null
+}
+
+// Versiunea salvata acum in baza (campul actualizat) - editorul o compara cu cea pe care a deschis-o, ca sa nu suprascrie
+// modificarile facute intre timp din alta parte (alt telefon / alt tab / modificari automate) - vezi app/ghiduri/[id]
+export async function versiuneGhid(aptId: string): Promise<string | null> {
+  const g = await citesteGhid(aptId)
+  return g ? (g.actualizat || '') : null
 }
 
 // Apartamentul dupa codul din link (nota, ex. GS08) sau dupa id

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PageHeader } from '@/components/Layout'
 import GhidView from '@/components/GhidView'
-import { citesteGhid, salveazaGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
+import { citesteGhid, salveazaGhid, versiuneGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
 import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film } from 'lucide-react'
 
 // Editorul ghidului de check-in (cerut direct: „o modalitate de modificare text și de adăugat alte poze”).
@@ -32,6 +32,9 @@ export default function EditorGhid() {
   const [vedere, setVedere] = useState<'edit' | 'preview'>('edit')
   const [copiat, setCopiat] = useState(false)
   const prima = useRef(true)
+  // versiunea din baza pe care am deschis-o / salvat-o ultima data; daca intre timp altcineva a salvat alta, nu suprascriem
+  const baza = useRef<string | null>(null)
+  const [conflict, setConflict] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -40,6 +43,7 @@ export default function EditorGhid() {
       if (!data) { setApt({ id: '', nota: null, nume: 'Apartament negăsit', adresa: null }); setG(ghidNou()); return }
       setApt(data as Apt)
       const ghid = await citesteGhid(data.id)
+      baza.current = ghid ? (ghid.actualizat || '') : null
       setG(ghid || { ...ghidNou(String(data?.nume || '')), sub_ro: data?.adresa || '' })
     })()
   }, [id])
@@ -50,13 +54,31 @@ export default function EditorGhid() {
     if (prima.current) { prima.current = false; return }
     setStare('modificat')
     const t = setTimeout(async () => {
+      if (!apt?.id || conflict) return
       setStare('salvez')
-      if (!apt?.id) return
-      const err = await salveazaGhid(apt.id, g)
-      if (err) { setStare('eroare'); setEroare(err) } else { setStare('salvat'); setEroare(null) }
+      const acum = await versiuneGhid(apt.id)
+      if (acum !== baza.current && !(acum === null && baza.current === null)) { setConflict(true); setStare('modificat'); return }
+      const nou = new Date().toISOString()
+      const err = await salveazaGhid(apt.id, g, nou)
+      if (err) { setStare('eroare'); setEroare(err) } else { baza.current = nou; setStare('salvat'); setEroare(null) }
     }, 1000)
     return () => clearTimeout(t)
-  }, [g, id, apt?.id])
+  }, [g, id, apt?.id]) // eslint-disable-line react-hooks/exhaustive-deps -- fara conflict: inchiderea avertismentului nu trebuie sa declanseze o salvare
+  async function incarcaVersiuneaNoua() {
+    if (!apt?.id) return
+    const ghid = await citesteGhid(apt.id)
+    baza.current = ghid ? (ghid.actualizat || '') : null
+    prima.current = true
+    setConflict(false); setStare('salvat')
+    if (ghid) setG(ghid)
+  }
+  async function pastreazaCeAmAici() {
+    if (!apt?.id || !g) return
+    const nou = new Date().toISOString()
+    const err = await salveazaGhid(apt.id, g, nou)
+    if (err) { setStare('eroare'); setEroare(err); return }
+    baza.current = nou; setConflict(false); setStare('salvat'); setEroare(null)
+  }
   useEffect(() => {
     const f = (e: BeforeUnloadEvent) => { if (stare !== 'salvat') { e.preventDefault(); e.returnValue = '' } }
     window.addEventListener('beforeunload', f); return () => window.removeEventListener('beforeunload', f)
@@ -233,6 +255,7 @@ export default function EditorGhid() {
   const stareTxt = stare === 'salvat' ? <span style={{ color: '#4ADE80', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={13} /> Salvat</span>
     : stare === 'salvez' ? <span style={{ color: 'rgba(159,215,255,0.7)' }}>Se salvează…</span>
     : stare === 'eroare' ? <span style={{ color: '#F87171' }}>Nesalvat — eroare</span>
+    : conflict ? <span style={{ color: '#FCD34D' }}>⚠ Nesalvat — conflict</span>
     : <span style={{ color: '#FCD34D' }}>Modificări…</span>
 
   return (
@@ -249,6 +272,13 @@ export default function EditorGhid() {
             <a href={link} target="_blank" rel="noreferrer" style={{ ...mic('#FF8A3D', 'rgba(255,138,61,0.45)'), textDecoration: 'none' }}><ExternalLink size={13} /> Deschide</a>
           </div>
         } />
+      {conflict && (
+        <div data-conflict style={{ margin: '12px 16px 0', padding: '12px 14px', borderRadius: 12, background: 'rgba(252,211,77,0.08)', border: '1px solid rgba(252,211,77,0.45)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 240, fontSize: 13, fontWeight: 700, color: '#FCD34D' }}>⚠ Ghidul a fost modificat din altă parte (alt telefon / alt tab) după ce ai deschis pagina. Nu am salvat peste — alege ce păstrezi:</span>
+          <button onClick={incarcaVersiuneaNoua} style={mic('#4ADE80', 'rgba(74,222,128,0.45)')}>↻ Încarcă versiunea nouă</button>
+          <button onClick={() => { if (window.confirm('Salvezi ce ai aici peste versiunea nouă? Modificările făcute din altă parte se pierd.')) pastreazaCeAmAici() }} style={mic('#F87171', 'rgba(248,113,113,0.45)')}>Păstrează ce am aici</button>
+        </div>
+      )}
       <div className="ghe-tabs" style={{ display: 'none', gap: 6, padding: '10px 16px 0' }}>
         {(['edit', 'preview'] as const).map(v => <button key={v} onClick={() => setVedere(v)} style={{ ...mic(vedere === v ? '#fff' : undefined, vedere === v ? '#4DA3FF' : undefined), background: vedere === v ? '#4DA3FF' : 'transparent', flex: 1 }}>{v === 'edit' ? 'Editează' : 'Cum arată'}</button>)}
       </div>
