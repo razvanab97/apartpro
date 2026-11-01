@@ -87,6 +87,34 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
     await supabase.from('setari').upsert({ cheie: CHEIE_URMARITE, valoare: JSON.stringify(nou) }, { onConflict: 'cheie' })
   }
   const [ultim, setUltim] = useState<string | null>(null)
+  // plati partiale (cerut direct: „să putem seta că s-a plătit doar o parte din sumă, nu suma totală, să vedem la final ce
+  // trebuie să mai plătim proprietarului”) - in setari, cate o cheie pe cheltuiala: plata_partiala_<id> = [{ suma, data }]
+  const [partiale, setPartiale] = useState<Record<string, { suma: number; data: string }[]>>({})
+  const [partialDeschis, setPartialDeschis] = useState<string | null>(null)
+  const [sumaPartiala, setSumaPartiala] = useState('')
+  const platitPartial = (r: Rand) => Math.min(Number(r.valoare) || 0, (partiale[r.id] || []).reduce((s, p) => s + (Number(p.suma) || 0), 0))
+  async function incarcaPartiale() {
+    const { data } = await supabase.from('setari').select('cheie,valoare').like('cheie', 'plata_partiala_%')
+    const m: Record<string, { suma: number; data: string }[]> = {}
+    for (const x of data || []) { try { const v = JSON.parse(x.valoare); if (Array.isArray(v) && v.length) m[x.cheie.replace('plata_partiala_', '')] = v } catch {} }
+    setPartiale(m)
+  }
+  useEffect(() => { incarcaPartiale() }, [an, luna])
+  async function scrieePartiale(r: Rand, lista: { suma: number; data: string }[]) {
+    setPartiale(p => { const n = { ...p }; if (lista.length) n[r.id] = lista; else delete n[r.id]; return n })
+    if (lista.length) await supabase.from('setari').upsert({ cheie: 'plata_partiala_' + r.id, valoare: JSON.stringify(lista) }, { onConflict: 'cheie' })
+    else await supabase.from('setari').delete().eq('cheie', 'plata_partiala_' + r.id)
+  }
+  async function adaugaPartial(r: Rand) {
+    const v = Math.round((parseFloat(sumaPartiala.replace(',', '.')) || 0) * 100) / 100
+    if (v <= 0) return
+    const lista = [...(partiale[r.id] || []), { suma: v, data: azi }]
+    await scrieePartiale(r, lista)
+    setSumaPartiala('')
+    // s-a strans toata suma -> randul devine platit
+    if (lista.reduce((s, p) => s + p.suma, 0) >= Number(r.valoare) - 0.005 && !['validat', 'platit'].includes(r.status)) { await comuta(r); setPartialDeschis(null) }
+    onChanged?.()
+  }
   const [busy, setBusy] = useState<string | null>(null)
   const [vezi, setVezi] = useState<{ r: Rand; eticheta: string; sub: string | null } | null>(null)  // factura deschisa in pop-up
   useEffect(() => { if (!vezi) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setVezi(null) }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [vezi])
@@ -155,10 +183,10 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       let tot = 0, pl = 0, depasite = 0, lipsa = 0
       for (const s of sloturi) {
         if (!s.randuri.length) { if (lunaCurentaSauTrecuta) lipsa++; continue }
-        for (const r of s.randuri) { tot += Number(r.valoare); if (platit(r)) pl += Number(r.valoare); else if (scad(r) < azi) depasite++ }
+        for (const r of s.randuri) { tot += Number(r.valoare); if (platit(r)) pl += Number(r.valoare); else { pl += platitPartial(r); if (scad(r) < azi) depasite++ } }
       }
       const restanteDeplata = rest.filter(r => !platit(r))
-      const sumaRestante = restanteDeplata.reduce((s, r) => s + Number(r.valoare), 0)
+      const sumaRestante = restanteDeplata.reduce((s, r) => s + Number(r.valoare) - platitPartial(r), 0)
       depasite += restanteDeplata.length
       const urmarit = apt.status === 'inactiv' && urmarite.includes(String(apt.id))
       // evidenta pe apartament (cerut direct: „când au fost ultimele adăugate, când au fost plătite, și scadența — cel mai important”)
@@ -170,7 +198,7 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
       const ultimaAdaugare = [ultime[apt.id]?.adaugare || '', ...toate.map(r => r.created_at || '')].filter(Boolean).sort().pop() || null
       return { apt, sloturi, rest, furn, tot, pl, rest_luna: tot - pl, depasite, lipsa, sumaRestante, inactiv: apt.status === 'inactiv' && !urmarit, urmarit, urmScad, urmViitoare, ultimaPlata, ultimaAdaugare }
     })
-  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta, urmarite, ultime])
+  }, [apts, luna0, restante, istoric, azi, lunaCurentaSauTrecuta, urmarite, ultime, partiale])
 
   const active = fise.filter(f => !f.inactiv && (f.sloturi.length || f.rest.length))
   const inactive = fise.filter(f => f.inactiv && (f.sloturi.some(s => s.randuri.length) || f.rest.some(r => r.status === 'nevalidat')))
@@ -194,8 +222,11 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
   const randEl = (r: Rand, eticheta: string, sub: string | null, restanta: boolean) => {
     const platit = ['validat', 'platit'].includes(r.status)
     const late = !platit && (restanta || scad(r) < azi)
+    const part = platit ? 0 : platitPartial(r), ramas = Number(r.valoare) - part, plati = partiale[r.id] || []
+    const deschis = partialDeschis === r.id
     return (
-      <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '30px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 6px', borderRadius: 12, background: late ? (Number(r.valoare) < PRAG_MIC ? 'rgba(248,113,113,0.05)' : 'rgba(248,113,113,0.12)') : 'transparent', opacity: platit ? 0.5 : 1, transition: 'opacity .2s' }}>
+      <div key={r.id}>
+      <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr auto', gap: 10, alignItems: 'center', padding: '8px 6px', borderRadius: 12, background: late ? (Number(r.valoare) < PRAG_MIC ? 'rgba(248,113,113,0.05)' : 'rgba(248,113,113,0.12)') : 'transparent', opacity: platit ? 0.5 : 1, transition: 'opacity .2s' }}>
         <button onClick={() => comuta(r)} disabled={busy === r.id} aria-label={platit ? 'Plătit — apasă ca să anulezi' : 'Marchează plătit'}
           style={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${platit ? '#4ADE80' : late ? rosu(Number(r.valoare)) : 'rgba(159,215,255,0.3)'}`, background: platit ? '#4ADE80' : 'transparent', color: '#03250F', fontSize: 13, fontWeight: 800, padding: 0, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
           {busy === r.id ? '…' : platit ? '✓' : ''}
@@ -207,12 +238,37 @@ export default function FiseCheltuieli({ an, luna, apts, onChanged }: { an: numb
             {lunaFactura(r.nota) && <span style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 700, padding: '1px 7px', borderRadius: 20, background: 'rgba(77,163,255,0.12)', color: '#7BC8FF', verticalAlign: 'middle', textDecoration: 'none', display: 'inline-block' }}>{lunaFactura(r.nota)}</span>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: late ? rosu(Number(r.valoare)) : 'rgba(159,215,255,0.5)' }}>
+            {part > 0 && <span data-partial style={{ color: '#FCD34D' }}>plătit parțial {fmt(part)} din {fmt(Number(r.valoare))} · </span>}
             {sub ? sub + ' · ' : ''}{platit ? `plătit${r.data_plata ? ' ' + ziDin(r.data_plata) : ''}` : restanta ? `restanță din ${lunaDe(r.data)} · scadent ${zi(scad(r))}` : late ? `depășit · scadent ${zi(scad(r))}` : `scadent ${zi(scad(r))}`}
             {r.created_at && <span style={{ marginLeft: 6, fontWeight: 500, color: 'rgba(159,215,255,0.38)' }}>· adăugat {ziDin(r.created_at)}</span>}
             {ultim === r.id && <button onClick={() => comuta({ ...r, status: 'validat' })} style={{ marginLeft: 6, border: 'none', background: 'none', color: '#7BC8FF', fontSize: 11, fontWeight: 700, padding: 0, cursor: 'pointer' }}>Anulează</button>}
           </div>
         </div>
-        <span style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontWeight: 700, fontSize: 13.5, color: '#E8F4FF', whiteSpace: 'nowrap' }}>{fmt(Number(r.valoare))}</span>
+        <button type="button" data-suma={r.id} onClick={() => { setPartialDeschis(deschis ? null : r.id); setSumaPartiala('') }} title={platit ? 'Plăți' : 'Plată parțială — apasă ca să notezi cât s-a plătit'}
+          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', textAlign: 'right', fontFamily: 'ui-monospace,Menlo,monospace', whiteSpace: 'nowrap' }}>
+          <span style={{ display: 'block', fontWeight: 700, fontSize: 13.5, color: part > 0 ? '#FCD34D' : '#E8F4FF', borderBottom: platit ? 'none' : '1px dashed rgba(159,215,255,0.3)' }}>{fmt(part > 0 ? ramas : Number(r.valoare))}</span>
+          {part > 0 && <span style={{ display: 'block', fontSize: 10, color: 'rgba(159,215,255,0.5)' }}>rest din {fmt(Number(r.valoare))}</span>}
+        </button>
+      </div>
+      {deschis && (
+        <div data-partial-panou style={{ margin: '2px 6px 8px 40px', padding: 10, borderRadius: 10, background: 'rgba(14,27,43,0.7)', border: '1px solid rgba(252,211,77,0.25)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {part > 0 && <div style={{ height: 5, borderRadius: 3, background: 'rgba(159,215,255,0.12)', overflow: 'hidden' }}><div style={{ width: `${Math.min(100, part / Number(r.valoare) * 100)}%`, height: '100%', background: '#FCD34D' }} /></div>}
+          {plati.map((p, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(214,228,244,0.85)' }}>
+              <span style={{ flex: 1 }}>💸 {fmt(p.suma)} RON · {ziDin(p.data)}</span>
+              <button onClick={() => scrieePartiale(r, plati.filter((_, j) => j !== i))} title="Șterge plata" style={{ border: 'none', background: 'none', color: '#F87171', cursor: 'pointer', fontSize: 13, padding: 0 }}>×</button>
+            </div>
+          ))}
+          {!platit ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input data-partial-input autoFocus inputMode="decimal" value={sumaPartiala} onChange={e => setSumaPartiala(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') adaugaPartial(r) }}
+                placeholder={`Cât s-a plătit acum? (rest ${fmt(ramas)})`} style={{ flex: 1, minWidth: 150, padding: '7px 9px', borderRadius: 8, border: '1px solid rgba(159,215,255,0.2)', background: 'rgba(20,38,65,0.8)', color: '#E8F4FF', fontSize: 13 }} />
+              <button data-partial-adauga onClick={() => adaugaPartial(r)} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(252,211,77,0.4)', background: 'rgba(252,211,77,0.1)', color: '#FCD34D', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>Adaugă plată</button>
+            </div>
+          ) : <div style={{ fontSize: 11.5, color: '#4ADE80' }}>✓ Plătit integral{r.data_plata ? ' · ' + ziDin(r.data_plata) : ''}</div>}
+          {!platit && <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.45)' }}>Rest de plătit: <b style={{ color: '#FCD34D' }}>{fmt(ramas)} RON</b> · când se adună toată suma, rândul devine plătit ✓</div>}
+        </div>
+      )}
       </div>
     )
   }
