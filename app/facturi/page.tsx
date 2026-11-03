@@ -115,6 +115,11 @@ export default function FacturiPage() {
   const [loadError, setLoadError] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [preview, setPreview] = useState<Factura | null>(null)
+  // factura deschisa in pop-up pe pagina (cerut direct: „să fie pop-up pe pagină, să-mi fie la îndemână, să nu se mai
+  // deschidă pe o pagină nouă”) - PDF in iframe, poza ca imagine; Esc / click in afara inchide
+  const [vezi, setVezi] = useState<{ url: string; titlu: string; sub: string; pdf: boolean } | null>(null)
+  useEffect(() => { if (!vezi) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setVezi(null) }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k) }, [vezi])
+  const estePdf = (url: string, mime?: string) => mime ? mime === 'application/pdf' : /\.pdf($|\?)/i.test(url)
   const [saving, setSaving] = useState<string | null>(null)
   const [searchArchiva, setSearchArchiva] = useState<string>('')
   // arhiva: fiecare apartament e strans implicit, se deschide la click (cerut direct); se tine minte pe dispozitiv
@@ -700,6 +705,25 @@ export default function FacturiPage() {
   return (
     <>
       <PageHeader title="Facturi & Documente" subtitle="Încarcă și extrage automat datele din facturi"/>
+      {vezi && (
+        <div data-vezi-factura onClick={() => setVezi(null)} style={{ position:'fixed', inset:0, zIndex:70, background:'rgba(3,7,15,0.7)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ width:'min(900px,100%)', height:'min(92dvh,1000px)', display:'flex', flexDirection:'column', background:'#0E1B30', border:'1px solid rgba(148,190,255,0.25)', borderRadius:18, overflow:'hidden', boxShadow:'0 30px 80px rgba(0,0,0,0.55)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderBottom:'1px solid rgba(148,190,255,0.12)', flexWrap:'wrap' }}>
+              <div style={{ flex:1, minWidth:200 }}>
+                <div style={{ fontWeight:800, fontSize:15, color:'#E8F4FF' }}>{vezi.titlu}</div>
+                {vezi.sub && <div style={{ fontSize:12, color:'rgba(159,215,255,0.6)', marginTop:2 }}>{vezi.sub}</div>}
+              </div>
+              <a href={vezi.url} target="_blank" rel="noreferrer" style={{ padding:'7px 12px', borderRadius:9, border:'1px solid rgba(77,163,255,0.35)', color:'#7BC8FF', fontSize:12, fontWeight:700, textDecoration:'none' }}>Deschide în tab nou</a>
+              <button onClick={() => setVezi(null)} aria-label="Închide" style={{ width:32, height:32, borderRadius:9, border:'1px solid rgba(159,215,255,0.2)', background:'transparent', color:'rgba(214,228,244,0.8)', fontSize:16, cursor:'pointer' }}>×</button>
+            </div>
+            <div style={{ flex:1, minHeight:0, background:'#1a2230' }}>
+              {vezi.pdf ? <iframe src={vezi.url} title="Factura" style={{ width:'100%', height:'100%', border:'none', background:'#fff' }} />
+                // eslint-disable-next-line @next/next/no-img-element
+                : <div style={{ width:'100%', height:'100%', overflow:'auto', display:'grid', placeItems:'center' }}><img src={vezi.url} alt="Factura" style={{ maxWidth:'100%' }} /></div>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ flex:1, overflowY:'auto', padding:'0 24px 40px' }}>
 
@@ -818,10 +842,10 @@ export default function FacturiPage() {
                                 )
                               })()}
                             {f.file_url && (
-                                <a href={f.file_url} target="_blank" rel="noopener"
-                                  style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', color:'#7BC8FF', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:3 }}>
+                                <button data-deschide onClick={() => setVezi({ url: f.file_url!, titlu: `${f.categorieLabel || 'Factură'} — ${f.furnizor || ''}`, sub: [f.suma_totala != null ? `${f.suma_totala.toLocaleString('ro-RO',{minimumFractionDigits:2})} RON` : '', validNr(f.nr_factura) ? '#' + validNr(f.nr_factura) : '', f.perioada || '', f.data_scadenta ? 'scad. ' + f.data_scadenta : ''].filter(Boolean).join(' · '), pdf: estePdf(f.file_url!, f.mimeType) })}
+                                  style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.08)', border:'1px solid rgba(77,163,255,0.25)', color:'#7BC8FF', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:3 }}>
                                   📄 Deschide
-                                </a>
+                                </button>
                               )}
                             {f.data_emitere && <span style={{ fontSize:11, color:'rgba(159,215,255,0.35)' }}>emis: {f.data_emitere}</span>}
                             {f.data_scadenta && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>scad. {f.data_scadenta}</span>}
@@ -1080,11 +1104,11 @@ export default function FacturiPage() {
                           </div>
                           <div style={{ display:'flex', gap:5, alignItems:'center' }}>
                             {f.fisier_url && (<>
-                              <a href={f.fisier_url} target="_blank" rel="noopener"
+                              <button data-deschide-arhiva onClick={() => setVezi({ url: f.fisier_url, titlu: f.descriere || 'Factură', sub: [`${Number(f.valoare).toLocaleString('ro-RO',{minimumFractionDigits:2})} RON`, f.data || '', (f.nota || '').split('|')[0].trim()].filter(Boolean).join(' · '), pdf: estePdf(f.fisier_url) })}
                                 title="Deschide factura"
-                                style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(77,163,255,0.25)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none' }}>
+                                style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(77,163,255,0.25)', background:'rgba(77,163,255,0.08)', color:'#7BC8FF', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}>
                                 📄
-                              </a>
+                              </button>
                               <a href={f.fisier_url} download
                                 title="Descarcă factura"
                                 style={{ width:28, height:28, borderRadius:6, border:'1px solid rgba(74,222,128,0.25)', background:'rgba(74,222,128,0.08)', color:'#4ADE80', display:'flex', alignItems:'center', justifyContent:'center', textDecoration:'none', fontSize:13 }}>
