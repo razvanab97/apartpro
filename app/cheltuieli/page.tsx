@@ -86,8 +86,11 @@ const DEF: Record<string,Record<string,number>> = {
 }
 // Chirie fixa efectiva (RON, + TVA daca e bifat) dintr-o configurare chirii_fixe (din Apartamente → Plăți),
 // sau null daca apartamentul n-are nicio chirie fixa setata acolo — in acest caz se cade inapoi pe DEF
+// O chirie fixa activa cu suma 0 = explicit FARA chirie (ex. L83, renuntat din noiembrie 2026) -> 0: nu se mai genereaza
+// si nu se mai realiniaza randul de chirie al lunii, si nu se cade pe DEF
 function chirieDinFixe(cf: any, curs: number): number | null {
-  if (!cf || !cf.suma) return null
+  if (!cf) return null
+  if (!Number(cf.suma)) return 0
   const ronBaza = cf.moneda === 'EUR' ? Number(cf.suma) * curs : Number(cf.suma)
   return Math.round(cf.cu_tva ? ronBaza * 1.21 : ronBaza)
 }

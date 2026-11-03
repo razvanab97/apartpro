@@ -7,8 +7,10 @@ import { Plus, Users, Edit2, Trash2, Phone, Mail, Building2, ChevronDown, Chevro
 import { decontComision } from '@/lib/decontComision'
 import { citesteTaxe, curateniiTaxate } from '@/lib/taxeCuratenie'
 import DeconturiContent from '@/components/DeconturiContent'
+import SituatieProprietar from '@/components/SituatieProprietar'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
+const fmtRon = (n: number) => Math.round(n).toLocaleString('ro-RO')
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
 type BadgeColor = 'green'|'amber'|'red'|'blue'|'gray'
 const STATUS_COLOR: Record<string, BadgeColor> = { draft:'gray', aprobat:'amber', platit:'green' }
@@ -45,6 +47,7 @@ export default function ProprietariPage() {
   const [platiStatus, setPlatiStatus] = useState<Record<string,any>>({})
   // plati partiale din Cheltuieli → Fișe (setari plata_partiala_<idCheltuiala>), ca sumele sa fie aceleasi in ambele pagini
   const [partiale, setPartiale] = useState<Record<string, number>>({})
+  const [partialeDet, setPartialeDet] = useState<Record<string, { suma: number; data: string }[]>>({})  // platile partiale cu data, pentru lista completa
   // apartamentele pe comision: rezervarile lunii, curateniile din evidenta si starea decontului (setari decont_proprietar_<apt>_<an>_<luna>)
   const [rezLuna, setRezLuna] = useState<any[]>([])
   const [curEvid, setCurEvid] = useState<Record<string, { total: number; nr: number }>>({})
@@ -89,22 +92,36 @@ export default function ProprietariPage() {
   async function loadLunar() {
     const pz = `${an}-${pad(luna)}-01`
     const uz = toYMD(new Date(an, luna, 0))
-    const [{ data: chData }, { data: liniiData }] = await Promise.all([
+    // utilitatile: ultimele facturi ADAUGATE (cerut direct: „când plătim proprietarilor, ne raportăm la ultimele facturi
+    // adăugate, nu la data când au scadența”) - pe fiecare apartament, ultimul lot de facturi E.ON / Asociatie adaugate pana
+    // la sfarsitul lunii alese: ziua ultimei facturi adaugate si 7 zile inainte (E.ON si Urbica se pot adauga in zile diferite;
+    // o factura veche, ex. gaz platit in septembrie, nu mai intra). Ex. noiembrie = facturile pe septembrie adaugate pe
+    // 3 nov., chiar daca una are scadenta in decembrie. Chiria ramane pe luna ei (data).
+    const dupaLuna = toYMD(new Date(an, luna, 1)), inainte = toYMD(new Date(an, luna - 5, 1))
+    const [{ data: chChirie }, { data: chUtil }, { data: liniiData }] = await Promise.all([
       // si chiria: sursa sumelor si a starii de plata e Cheltuieli (cerut direct: „conform cu cheltuielile să se actualizeze
       // sumele și în proprietari”) - chirii_fixe ramane doar rezerva, cand luna n-are rand de chirie in Cheltuieli
       supabase.from('cheltuieli')
-        .select('id,apartament_id,categorie,valoare,status,data_plata')
-        .gte('data', pz).lte('data', uz)
-        .in('categorie', ['chirie','asociatie','eon_curent','eon_gaz','eon_duo']),
+        .select('id,apartament_id,categorie,valoare,status,data_plata,data,nota,descriere')
+        .gte('data', pz).lte('data', uz).eq('categorie', 'chirie'),
+      supabase.from('cheltuieli')
+        .select('id,apartament_id,categorie,valoare,status,data_plata,data,nota,descriere,created_at')
+        .gte('created_at', inainte).lt('created_at', dupaLuna)
+        .in('categorie', ['asociatie','eon_curent','eon_gaz','eon_duo']),
       supabase.from('plati_proprietari_linii').select('*')
         .eq('luna', luna).eq('an', an),
     ])
-    setCheltuieli(chData||[])
+    const ultima: Record<string, number> = {}
+    for (const c of chUtil || []) { const t = new Date(c.created_at).getTime(); if (!ultima[c.apartament_id] || t > ultima[c.apartament_id]) ultima[c.apartament_id] = t }
+    const LOT = 8 * 86400000  // ziua ultimei facturi + 7 zile inainte
+    const chData = [...(chChirie || []), ...(chUtil || []).filter((c: any) => ultima[c.apartament_id] - new Date(c.created_at).getTime() < LOT)]
+    setCheltuieli(chData)
     const ids = (chData || []).map((c: any) => c.id)
     const { data: pp } = ids.length ? await supabase.from('setari').select('cheie,valoare').in('cheie', ids.map((id: string) => 'plata_partiala_' + id)) : { data: [] as any[] }
     const pm: Record<string, number> = {}
-    for (const x of pp || []) { try { const v = JSON.parse(x.valoare); if (Array.isArray(v)) pm[x.cheie.replace('plata_partiala_', '')] = v.reduce((t: number, q: any) => t + (Number(q.suma) || 0), 0) } catch {} }
-    setPartiale(pm)
+    const pd: Record<string, { suma: number; data: string }[]> = {}
+    for (const x of pp || []) { try { const v = JSON.parse(x.valoare); if (Array.isArray(v)) { const id = x.cheie.replace('plata_partiala_', ''); pm[id] = v.reduce((t: number, q: any) => t + (Number(q.suma) || 0), 0); pd[id] = v.map((q: any) => ({ suma: Number(q.suma) || 0, data: String(q.data || '') })) } } catch {} }
+    setPartiale(pm); setPartialeDet(pd)
     // decontul apartamentelor pe comision (cu proprietar) - aceleasi reguli ca in Rapoarte, vezi lib/decontComision.ts
     const aptsCom = apts.filter(a => a.proprietar_id && a.comision_tip && a.comision_tip !== 'fara_comision')
     if (aptsCom.length) {
@@ -134,13 +151,18 @@ export default function ProprietariPage() {
 
   // Calcul detaliat per apartament: chirie (live, la cursul curent) + utilitati (doar daca apt.utilitati_la_proprietar)
   // + starea liniei de plata salvata (platit/nu, si suma inghetata in momentul platii)
+  // cat s-a platit dintr-un rand din Cheltuieli: integral (validat / platit) sau partial (plati partiale din Fișe)
+  // un rand de diferenta negativ (ex. E.ON de platit mai mic decat factura citita) nu e o plata: 0 pana se valideaza
+  const platitRand = (c: any) => ['validat','platit'].includes(c.status) ? Number(c.valoare||0) : Math.max(0, Math.min(Number(c.valoare||0), partiale[c.id] || 0))
+
   function calcTotal(propId: string) {
     const propApts = apts.filter(a => a.proprietar_id === propId)
     let totalRON = 0, totalPlatit = 0
     const detalii: any[] = []
+    const faraChirie: { apt: any; motiv: string }[] = []
 
     // cat s-a platit dintr-un set de randuri din Cheltuieli: integral (validat) sau partial (plati partiale)
-    const platitDin = (rows: any[]) => rows.reduce((t: number, c: any) => t + (['validat','platit'].includes(c.status) ? Number(c.valoare||0) : Math.min(Number(c.valoare||0), partiale[c.id] || 0)), 0)
+    const platitDin = (rows: any[]) => rows.reduce((t: number, c: any) => t + platitRand(c), 0)
     propApts.forEach(apt => {
       const chirie = chirii.find(c => c.apartament_id === apt.id)
       const utilApt = cheltuieli.filter(c => c.apartament_id === apt.id && c.categorie !== 'chirie')
@@ -156,7 +178,11 @@ export default function ProprietariPage() {
 
       const liniiApt: any[] = []
 
-      if (chirieCh.length) {
+      // rand de chirie pus pe 0 in Cheltuieli = fara chirie in luna aceea (ex. L83 scos din noiembrie 2026) - nici rezerva din chirii_fixe
+      // tot fara chirie: chiria fixa pusa pe 0 (renuntat) si apartamentele inactive (ex. L94 - raman doar utilitatile de platit)
+      const chirieZero = (chirieCh.length > 0 && chirieCh.every((c: any) => !Number(c.valoare))) || (chirie && !Number(chirie.suma)) || apt.status === 'inactiv'
+      if (chirieZero) faraChirie.push({ apt, motiv: chirie && !Number(chirie.suma) && /renun/i.test(chirie.note || '') ? String(chirie.note).split('—').slice(1).join('—').trim() || 'renunțat' : apt.status === 'inactiv' ? 'apartament inactiv — doar utilități' : chirie && !Number(chirie.suma) ? 'chirie fixă 0' : 'chiria lunii e 0 în Cheltuieli' })
+      else if (chirieCh.length) {
         // suma si plata vin din Cheltuieli (randul „Chirie” al lunii) - bifa de aici marcheaza acelasi rand acolo
         const suma = Math.round(chirieCh.reduce((t: number, c: any) => t + Number(c.valoare||0), 0))
         const pl = Math.round(platitDin(chirieCh))
@@ -207,7 +233,7 @@ export default function ProprietariPage() {
       detalii.push({ apt, linii: liniiApt, subtotal: liniiApt.reduce((s,l) => s+l.suma, 0) })
     })
 
-    return { totalRON, totalPlatit, totalRamas: totalRON - totalPlatit, detalii }
+    return { totalRON, totalPlatit, totalRamas: totalRON - totalPlatit, detalii, faraChirie: faraChirie.filter(f => detalii.some(d => d.apt.id === f.apt.id)) }
   }
 
   async function toggleLinie(propId: string, apt: any, tip: 'chirie'|'utilitati'|'decont', linieExistenta: any, l?: any) {
@@ -343,11 +369,11 @@ export default function ProprietariPage() {
         {/* Selector lună + curs */}
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, flexWrap:'wrap' }}>
           <select value={luna} onChange={e=>setLuna(Number(e.target.value))}
-            style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'7px 12px', color:'#fff', fontSize:13 }}>
+            style={{ width:'auto', minWidth:90, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'7px 12px', color:'#fff', fontSize:13 }}>
             {LUNI.slice(1).map((l,i) => <option key={i+1} value={i+1}>{l}</option>)}
           </select>
           <select value={an} onChange={e=>setAn(Number(e.target.value))}
-            style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'7px 12px', color:'#fff', fontSize:13 }}>
+            style={{ width:'auto', minWidth:90, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, padding:'7px 12px', color:'#fff', fontSize:13 }}>
             {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:8, background:'rgba(74,222,128,0.08)', border:'1px solid rgba(74,222,128,0.2)' }}>
@@ -367,7 +393,7 @@ export default function ProprietariPage() {
             action={<Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Adaugă proprietar</Button>}/>
         ) : proprietari.map(p => {
           const propApts = apts.filter(a => a.proprietar_id === p.id)
-          const { totalRON, totalRamas, detalii } = calcTotal(p.id)
+          const { totalRON, totalPlatit, totalRamas, detalii, faraChirie } = calcTotal(p.id)
           const isExpanded = expandedId === p.id
           const statusPlata = totalRON === 0 ? 'neplatit' : totalRamas === 0 ? 'platit' : totalRamas === totalRON ? 'neplatit' : 'partial'
           const statusColor = statusPlata === 'platit' ? '#4ADE80' : statusPlata === 'partial' ? '#FCD34D' : '#F87171'
@@ -390,6 +416,7 @@ export default function ProprietariPage() {
                   <div style={{ textAlign:'right', flexShrink:0 }}>
                     <div style={{ fontSize:18, fontWeight:800, color:'#fff', fontFamily:'monospace' }}>{totalRON.toLocaleString('ro-RO')} <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>RON</span></div>
                     <span style={s.badge(statusColor)}>{statusPlata}</span>
+                    <div data-header-plata style={{ fontSize:10.5, color:'rgba(159,215,255,0.55)', marginTop:4, fontFamily:'monospace' }}>plătit <b style={{ color:'#4ADE80' }}>{fmtRon(totalPlatit)}</b> · rămas <b style={{ color: totalRamas > 0 ? '#FCD34D' : '#4ADE80' }}>{fmtRon(totalRamas)}</b></div>
                   </div>
                 )}
                 <span style={{ color:'rgba(159,215,255,0.3)', flexShrink:0 }}>{isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</span>
@@ -436,52 +463,8 @@ export default function ProprietariPage() {
                     </div>
                   ) : (
                     <>
-                      {/* Tabel per apartament, cu bifa Platit pe fiecare linie */}
-                      <div style={{ marginTop:12, marginBottom:14 }}>
-                        {detalii.map(d => (
-                          <div key={d.apt.id} style={{ padding:'10px 12px', background:'rgba(255,255,255,0.03)', borderRadius:9, marginBottom:6, border:'1px solid rgba(255,255,255,0.06)' }}>
-                            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <span style={s.nota}>{d.apt.nota}</span>
-                                <span style={{ fontSize:12, color:'rgba(159,215,255,0.6)' }}>{d.apt.nume}</span>
-                              </div>
-                              <span style={{ fontSize:14, fontWeight:700, color:'#fff', fontFamily:'monospace' }}>{d.subtotal.toLocaleString('ro-RO')} RON</span>
-                            </div>
-                            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                              {d.linii.map((l:any) => (
-                                <label key={l.tip} style={{ display:'flex', alignItems:'center', gap:8, cursor: savingPlata===`${d.apt.id}_${l.tip}` ? 'wait' : 'pointer', padding:'5px 8px', borderRadius:6, background: l.platit ? 'rgba(74,222,128,0.06)' : 'rgba(255,255,255,0.02)' }}>
-                                  <input type="checkbox" checked={l.platit} disabled={savingPlata===`${d.apt.id}_${l.tip}`}
-                                    onChange={() => toggleLinie(p.id, d.apt, l.tip, l.linie, l)}/>
-                                  <span style={{ fontSize:11, color: l.platit ? '#4ADE80' : 'rgba(159,215,255,0.6)', fontWeight:600, minWidth:62 }}>
-                                    {l.tip === 'chirie' ? 'Chirie' : l.tip === 'decont' ? 'Decont' : 'Utilități'}
-                                  </span>
-                                  <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)', flex:1 }}>{l.label}
-                                    {l.tip === 'decont' && l.decont && <span data-decont style={{ display:'block', fontSize:10.5, color:'rgba(214,228,244,0.7)', lineHeight:1.5, marginTop:2 }}>
-                                      Încasări {l.decont.brut.toLocaleString('ro-RO')} − comision platforme {l.decont.comPlatforme.toLocaleString('ro-RO')} − TVA intracomunitar {l.decont.tvaIntracom.toLocaleString('ro-RO')} = <b>{l.decont.netPlatforme.toLocaleString('ro-RO')}</b>
-                                      {' '}− curățenie {l.decont.curatenie.toLocaleString('ro-RO')} ({l.decont.curatenieText}) − comision AB {l.decont.comision.toLocaleString('ro-RO')} = <b style={{ color:'#4ADE80' }}>{l.decont.deVirat.toLocaleString('ro-RO')} RON</b>
-                                    </span>}
-                                    {!l.platit && l.platitSuma > 0 && <span data-partial-prop style={{ display:'block', fontSize:10.5, fontWeight:700, color:'#FCD34D' }}>plătit parțial {l.platitSuma.toLocaleString('ro-RO')} · rest {(l.suma - l.platitSuma).toLocaleString('ro-RO')} RON</span>}
-                                  </span>
-                                  <span style={{ fontSize:12, fontWeight:700, fontFamily:'monospace', color: l.platit ? '#4ADE80' : '#fff', textDecoration: l.platit ? 'line-through' : 'none' }}>{l.suma.toLocaleString('ro-RO')} RON</span>
-                                  {l.platit && <Check size={12} color="#4ADE80"/>}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Total ramas de plata */}
-                      <div style={{ background:'rgba(77,163,255,0.06)', border:'1px solid rgba(77,163,255,0.15)', borderRadius:10, padding:'12px 14px' }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                          <span style={{ fontSize:12, color:'rgba(159,215,255,0.6)' }}>Total {LUNI[luna]} {an}</span>
-                          <span style={{ fontSize:16, fontWeight:700, color:'rgba(159,215,255,0.5)', fontFamily:'monospace' }}>{totalRON.toLocaleString('ro-RO')} RON</span>
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:6 }}>
-                          <span style={{ fontSize:12, color: totalRamas>0 ? '#F87171' : '#4ADE80', fontWeight:600 }}>{totalRamas>0 ? 'Rămas de plătit' : '✓ Totul plătit'}</span>
-                          <span style={{ fontSize:20, fontWeight:800, color: totalRamas>0 ? '#F87171' : '#4ADE80', fontFamily:'monospace' }}>{totalRamas.toLocaleString('ro-RO')} RON</span>
-                        </div>
-                      </div>
+                      <SituatieProprietar proprietar={p.nume} luna={luna} an={an} detalii={detalii} faraChirie={faraChirie} chirii={chirii} partialeDet={partialeDet} platitRand={platitRand}
+                        saving={savingPlata} onToggle={(d: any, l: any) => toggleLinie(p.id, d.apt, l.tip, l.linie, l)} />
                     </>
                   )}
 
