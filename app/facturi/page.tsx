@@ -666,6 +666,24 @@ export default function FacturiPage() {
     setSaving(null)
   }
 
+  // corectare manuala a sumei de plata (cerut direct: „buton al prețului ce trebuie plătit, în caz că sistemul nu ia
+  // prețul corect”); daca factura e deja salvata in cheltuieli, se actualizeaza si acolo
+  const [editSuma, setEditSuma] = useState<{ id: string; val: string } | null>(null)
+  async function salveazaSuma(f: Factura) {
+    if (!editSuma) return
+    const v = Math.round(parseFloat(editSuma.val.replace(/\s/g, '').replace(',', '.')) * 100) / 100
+    if (!isFinite(v) || v < 0) { show('error', 'Sumă invalidă'); return }
+    const ai = (f as any)._sumaAI ?? f.suma_totala
+    if (f.status === 'salvat' && f.cheltuiala_id) {
+      const { error } = await supabase.from('cheltuieli').update({ valoare: v }).eq('id', f.cheltuiala_id)
+      if (error) { show('error', error.message); return }
+      loadSaved()
+    }
+    setFacturi(list => list.map(x => x.id === f.id ? { ...x, suma_totala: v, _sumaAI: ai } as any : x))
+    setEditSuma(null)
+    show('success', `Sumă de plată corectată: ${v.toLocaleString('ro-RO', { minimumFractionDigits: 2 })} RON${f.status === 'salvat' ? ' (actualizată și în cheltuieli)' : ''}`)
+  }
+
   function removeFactura(id: string) {
     setFacturi(f => f.filter(x => x.id !== id))
   }
@@ -765,9 +783,25 @@ export default function FacturiPage() {
                               <div style={{ fontSize:12, color:'#F87171', marginBottom:4 }}>{f.errorMsg}</div>
                             )}
                             <div style={{ display:'flex', alignItems:'center', gap:14, flexWrap:'wrap' }}>
-                              <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
-                                {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>
-                              </span>
+                              {editSuma?.id === f.id ? (
+                                <span style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
+                                  <input data-suma-input autoFocus inputMode="decimal" value={editSuma!.val} onChange={e => setEditSuma({ id: f.id!, val: e.target.value })}
+                                    onKeyDown={e => { if (e.key === 'Enter') salveazaSuma(f); if (e.key === 'Escape') setEditSuma(null) }}
+                                    style={{ width:110, fontSize:16, fontWeight:700, padding:'3px 8px', borderRadius:7, border:`1px solid ${color}80`, background:'rgba(0,0,0,0.25)', color:'var(--text)', outline:'none' }} />
+                                  <span style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>RON</span>
+                                  <button data-suma-ok onClick={() => salveazaSuma(f)} title="Salvează suma" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid rgba(74,222,128,0.4)', background:'rgba(74,222,128,0.12)', color:'#4ADE80', cursor:'pointer', fontSize:12, fontWeight:700 }}>✓</button>
+                                  <button onClick={() => setEditSuma(null)} title="Renunță" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid rgba(159,215,255,0.2)', background:'transparent', color:'rgba(159,215,255,0.6)', cursor:'pointer', fontSize:12 }}>×</button>
+                                </span>
+                              ) : (
+                                <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                                  <span style={{ fontSize:18, fontWeight:700, color: f.status==='salvat'?'#4ADE80': color, letterSpacing:'-.5px' }}>
+                                    {f.suma_totala?.toLocaleString('ro-RO',{minimumFractionDigits:2})} <span style={{ fontSize:11, fontWeight:400 }}>RON</span>
+                                  </span>
+                                  <button data-suma-edit onClick={() => setEditSuma({ id: f.id!, val: String(f.suma_totala ?? '') })} title="Corectează suma de plată, dacă sistemul n-a citit-o corect"
+                                    style={{ fontSize:10, padding:'2px 8px', borderRadius:5, border:'1px solid rgba(252,211,77,0.35)', background:'rgba(252,211,77,0.08)', color:'#FCD34D', cursor:'pointer', fontWeight:600 }}>✎ Sumă de plată</button>
+                                  {(f as any)._sumaAI != null && (f as any)._sumaAI !== f.suma_totala && <span style={{ fontSize:10, color:'rgba(159,215,255,0.4)' }}>corectat manual (citit: {Number((f as any)._sumaAI).toLocaleString('ro-RO',{minimumFractionDigits:2})})</span>}
+                                </span>
+                              )}
                               {f._nrApartament && (
                                 <span style={{ fontSize:10, padding:'2px 8px', borderRadius:5, fontWeight:700, background:f._aptConflict?'rgba(248,113,113,0.12)':'rgba(252,211,77,0.1)', border:`1px solid ${f._aptConflict?'rgba(248,113,113,0.35)':'rgba(252,211,77,0.3)'}`, color:f._aptConflict?'#F87171':'#FCD34D' }}>
                                   ap. {f._nrApartament}
