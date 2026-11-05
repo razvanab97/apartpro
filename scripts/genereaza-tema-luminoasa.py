@@ -112,6 +112,14 @@ def intunecat(rgb):
     return (round(r * 255), round(g * 255), round(b * 255))
 
 
+MUTED_SLAB = (104, 90, 70)   # text secundar (era INK_MUTED transparent) - ~6:1 pe crem
+MUTED_TARE = (78, 67, 50)    # etichete / titluri estompate - ~8:1
+
+
+def mai_inchis(rgb, f=0.85):
+    return tuple(round(c * f) for c in rgb)
+
+
 def cheie(r, g, b, a):
     """Cheia culorii, aceeasi ca in public/tema-luminoasa.js: r,g,b,alfa*1000."""
     return f'{r},{g},{b},{round(min(a, 1.0) * 1000)}'
@@ -128,14 +136,16 @@ def main():
         k = cheie(r, g, b, a)
         c = clasa(rgb)
         # TEXT
+        # contrast minim ~6:1 pe crem (cerut direct: „textele... mai accentuate, mai închise, să se vadă corect și
+        # complet”) - înainte textul estompat ieșea la 2,5–4:1 (ex. „active”, numele apartamentelor, etichetele)
         if c == 'light':
-            text[k] = css(INK, max(0.78, a))
+            text[k] = css(INK, max(0.9, a))
         elif c == 'muted':
-            text[k] = css(INK_MUTED, min(0.92, max(0.55, a * 1.25)))
+            text[k] = css(MUTED_SLAB if a < 0.5 else MUTED_TARE, 1.0)
         elif c == 'accent':
-            text[k] = css(ACCENT_TEXT[rgb], max(0.85, a))
+            text[k] = css(mai_inchis(ACCENT_TEXT[rgb]), 1.0)
         elif c == 'accent-other' and lum(rgb) > 0.45:
-            text[k] = css(intunecat(rgb), max(0.85, a))
+            text[k] = css(mai_inchis(intunecat(rgb)), 1.0)
         # FUNDAL
         if rgb in BG_SOLID and a >= 0.85:
             fundal[k] = css(BG_SOLID[rgb], a)
@@ -182,6 +192,7 @@ def main():
 {L} .mpr-tab {{ color:{css(INK_MUTED, 0.7)}!important; }}
 {L} .mpr-tab.on {{ background:{CARD}!important; color:{css(INK, 1)}!important; }}
 {L} svg text {{ fill:{css(INK, 1)}!important; }}
+{L}[data-tema-astept] body > * {{ visibility:hidden!important; }}
 '''
     out = os.path.join(RAD, 'app', 'tema-luminoasa.css')
     open(out, 'w').write(baza + '\n'.join(reguli_clase) + '\n')
@@ -238,7 +249,28 @@ RUNTIME = r"""/* GENERAT de scripts/genereaza-tema-luminoasa.py — nu edita man
       obs.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] }); }
     else { obs.disconnect(); restaureaza(); }
   };
-  try { if (document.documentElement.getAttribute('data-theme') === 'light' || localStorage.getItem('tema') === 'light') window.__temaLuminoasa(true); } catch (e) {}
+  // Pornirea pe tema deschisa: NU traducem nimic inainte ca React sa preia (hidrateze) elementele - altfel stilurile din
+  // pagina nu mai corespund cu cele trimise de server si React raporteaza eroarea de hidratare (raportata direct, pe
+  // <body style>). Pana atunci continutul sta ascuns peste fundalul crem (fara clipire in inchis); siguranta: 3 s.
+  function hidratat() {
+    var b = document.body; if (!b) return false;
+    var l = b.querySelectorAll('[style]');
+    for (var i = 0; i < l.length; i++) {
+      // doar elementele aplicatiei - nu <script>, nici elementele proprii Next.js (next-route-announcer, nextjs-portal)
+      var tg = l[i].tagName; if (tg === 'SCRIPT' || tg === 'STYLE' || tg === 'TEMPLATE' || tg.indexOf('-') >= 0) continue;
+      var ok = false; for (var x in l[i]) { if (x.indexOf('__reactFiber') === 0) { ok = true; break; } } if (!ok) return false; }
+    for (var y in b) { if (y.indexOf('__reactFiber') === 0) return true; }
+    return false;
+  }
+  function porneste() {
+    var t0 = Date.now(), de = document.documentElement;
+    de.setAttribute('data-tema-astept', '');
+    (function verifica() {
+      if (hidratat() || Date.now() - t0 > 3000) { window.__temaLuminoasa(true); de.removeAttribute('data-tema-astept'); }
+      else setTimeout(verifica, 16);
+    })();
+  }
+  try { if (document.documentElement.getAttribute('data-theme') === 'light' || localStorage.getItem('tema') === 'light') porneste(); } catch (e) {}
 })();
 """
 

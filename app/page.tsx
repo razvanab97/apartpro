@@ -8,6 +8,8 @@ import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSqu
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
+import FataDeAnulTrecut from '@/components/FataDeAnulTrecut'
+import { useEvolutieLunara, GraficVenituri } from '@/components/EvolutieLunara'
 
 // pastreaza o singura rezervare per apartament (evita duplicate din import/sync), preferand-o pe cea cu telefon
 // ultima zi a lunii, in local time (YYYY-MM-DD) - .toISOString() ar muta data cu o zi
@@ -33,31 +35,10 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data), min = Math.min(...data), range = max - min || 1
   const w = 80, h = 28
   const pts = data.map((v, i) => `${(i/(data.length-1))*w},${h-((v-min)/range)*(h-4)-2}`).join(' ')
-  return <svg width={w} height={h} style={{ display:'block' }}><polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" opacity="0.85"/></svg>
-}
-function RevenueChart({ data }: { data: { luna:string; valoare:number }[] }) {
-  const max = Math.max(...data.map(d=>d.valoare)) || 1
-  return (
-    <div style={{ display:'flex', alignItems:'flex-end', gap:6, height:80, padding:'0 4px' }}>
-      {data.map((d,i) => (
-        <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-          <div style={{ width:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:64, gap:1 }}>
-            <div style={{ width:'100%', borderRadius:'3px 3px 0 0', background:i===data.length-1?'rgba(77,163,255,0.85)':'rgba(77,163,255,0.25)', border:i===data.length-1?'1px solid rgba(159,215,255,0.5)':'1px solid rgba(77,163,255,0.2)', height:`${(d.valoare/max)*60}px`, transition:'height 0.3s ease', position:'relative' }}>
-              {i===data.length-1&&<div style={{ position:'absolute', top:-18, left:'50%', transform:'translateX(-50%)', fontSize:9, color:'#4DA3FF', whiteSpace:'nowrap', fontFamily:'monospace', fontWeight:600 }}>{(d.valoare/1000).toFixed(1)}k</div>}
-            </div>
-          </div>
-          <div style={{ fontSize:9, color:'rgba(159,215,255,0.35)', fontFamily:'monospace' }}>{d.luna}</div>
-        </div>
-      ))}
-    </div>
-  )
+  // se intinde pe toata latimea panoului (viewBox + preserveAspectRatio none), cu o zona umpluta discret sub linie
+  return <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display:'block', width:'100%', height:44 }}><polygon points={`0,${h} ${pts} ${w},${h}`} fill={color} opacity="0.08"/><polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" opacity="0.85" vectorEffect="non-scaling-stroke"/></svg>
 }
 
-const DEMO_REVENUE = [
-  {luna:'Ian',valoare:6200},{luna:'Feb',valoare:5800},{luna:'Mar',valoare:7400},
-  {luna:'Apr',valoare:8100},{luna:'Mai',valoare:9200},{luna:'Iun',valoare:11400},
-]
-const SPARKLINE_DATA = [42,45,38,52,48,61,55,68,72,65,78,82]
 
 const UTIL_COLS = [
   {key:'chirie',label:'Chirie',due:1},{key:'asociatie',label:'Asociație',due:15},
@@ -75,10 +56,10 @@ function daysUntil(dueDay:number,luna:number,an:number){
   return Math.ceil((d.getTime()-now.getTime())/(1000*60*60*24))
 }
 function dueColor(days:number,paid:boolean){
-  if(paid) return{text:'#4ADE80',bg:'rgba(74,222,128,0.1)',border:'rgba(74,222,128,0.25)'}
-  if(days<=0) return{text:'#F87171',bg:'rgba(248,113,113,0.1)',border:'rgba(248,113,113,0.35)'}
-  if(days<=3) return{text:'#F87171',bg:'rgba(248,113,113,0.07)',border:'rgba(248,113,113,0.25)'}
-  if(days<=7) return{text:'#FCD34D',bg:'rgba(252,211,77,0.07)',border:'rgba(252,211,77,0.25)'}
+  if(paid) return{text:'#7FCFA0',bg:'rgba(74,222,128,0.1)',border:'rgba(74,222,128,0.25)'}
+  if(days<=0) return{text:'#E08E8E',bg:'rgba(248,113,113,0.1)',border:'rgba(248,113,113,0.35)'}
+  if(days<=3) return{text:'#E08E8E',bg:'rgba(248,113,113,0.07)',border:'rgba(248,113,113,0.25)'}
+  if(days<=7) return{text:'#E3C77A',bg:'rgba(252,211,77,0.07)',border:'rgba(252,211,77,0.25)'}
   return{text:'rgba(159,215,255,0.5)',bg:'rgba(100,160,255,0.05)',border:'rgba(100,160,255,0.15)'}
 }
 
@@ -184,6 +165,11 @@ export default function DashboardPage() {
   const [preturiData,setPreturiData]=useState('')
   const [bookingWidget,setBookingWidget]=useState({net:0,count:0,payDate:'',status:'urmeaza',from:'',to:''})
   const [expanded,setExpanded]=useState<Record<string,boolean>>({})
+  const evolutie=useEvolutieLunara(12)  // ultimele 12 luni reale (inainte: date demonstrative)
+  // Check-in / Check-out / Rezervări în curs se pot strânge (cerut direct: „să se poată rula și strânge secțiunea și
+  // doar să apăsăm dacă vrem să vedem check-in, check-out ș.a.m.d.”) - implicit strânse, ținute minte pe dispozitiv
+  const [deschisePanouri,setDeschisePanouri]=useState<Record<string,boolean>>(()=>{ try{ return JSON.parse(localStorage.getItem('dash_panouri_deschise')||'{}') }catch{ return {} } })
+  const comutaPanou=(k:string)=>setDeschisePanouri(prev=>{ const n={...prev,[k]:!prev[k]}; try{ localStorage.setItem('dash_panouri_deschise',JSON.stringify(n)) }catch{}; return n })
   const [toggling,setToggling]=useState<string|null>(null)
   const [sabloaneCO,setSabloaneCO]=useState<Record<string,string>>({})
   const [sabloaneSetari,setSabloaneSetari]=useState<Record<string,string>>({})
@@ -384,7 +370,7 @@ export default function DashboardPage() {
     const tasks: MesajTask[] = []
     checkoutAzi.forEach((r:any)=>{
       const id='co-'+r.id, ov=mesajOverrides[id]
-      tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#C084FC',titluCategorie:'Checkout',
+      tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#B29BD9',titluCategorie:'Checkout',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
     })
@@ -393,7 +379,7 @@ export default function DashboardPage() {
       // (cerut direct: „n-are sens să apară ambele”)
       if((dupaCheckin||(r.apartament?.id&&curatenieGataIds.has(r.apartament.id)))&&!mesajeSentIds.has('ci-'+r.id)) return
       const id='ci-'+r.id, ov=mesajOverrides[id]
-      tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#FCD34D',titluCategorie:'Check-in',
+      tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#E3C77A',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         codPlatforma:r.cod_rezervare_platforma||undefined,canalLabel:CANALE_LABEL[r.canal]||r.canal,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckin(r,sabloaneSetari.checkin_confirmare)})
@@ -408,19 +394,19 @@ export default function DashboardPage() {
       const tel=r.apartament?.proprietar?.telefon
       if(!tel) return
       const id='propn-'+r.id, ov=mesajOverrides[id]
-      tasks.push({id,rawId:r.id,categorie:'prop-nou',icon:'🏠',accent:'#A78BFA',titluCategorie:'Proprietar · rezervare nouă',
+      tasks.push({id,rawId:r.id,categorie:'prop-nou',icon:'🏠',accent:'#A497D6',titluCategorie:'Proprietar · rezervare nouă',
         nume:r.apartament?.proprietar?.nume||r.apartament?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Client: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgProprietar(r)})
     })
     ciProprietarAzi.forEach((r:any)=>{
       const id='propci-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
-      tasks.push({id,rawId:r.id,categorie:'prop-ci',icon:'🔑',accent:'#A78BFA',titluCategorie:'Proprietar · check-in azi',
+      tasks.push({id,rawId:r.id,categorie:'prop-ci',icon:'🔑',accent:'#A497D6',titluCategorie:'Proprietar · check-in azi',
         nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Oaspete: ${r.nume_client} · ${r.nr_nopti||'?'} nopți`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckinProprietar(r)})
     })
     coProprietarAzi.forEach((r:any)=>{
       const id='propco-'+r.id, ov=mesajOverrides[id], tel=r.apartament.proprietar.telefon
-      tasks.push({id,rawId:r.id,categorie:'prop-co',icon:'🚪',accent:'#A78BFA',titluCategorie:'Proprietar · check-out azi',
+      tasks.push({id,rawId:r.id,categorie:'prop-co',icon:'🚪',accent:'#A497D6',titluCategorie:'Proprietar · check-out azi',
         nume:r.apartament?.proprietar?.nume,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:`Oaspete: ${r.nume_client}`,
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
@@ -593,7 +579,7 @@ export default function DashboardPage() {
       // taskuri urgente
       supabase.from('taskuri').select('*',{count:'exact',head:true}).eq('prioritate','urgenta').eq('status','de_facut'),
       // apartamente
-      supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nume'),
+      supabase.from('apartamente').select('id,nume,nota,exclus_statistici').eq('status','activ').order('nume'),
       // cheltuieli luna curenta
       supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,status,data').gte('data',`${an}-${pad(luna)}-01`).lte('data', ultimaZiLunaStr(an, luna)),
       // rezervari active acum cu detalii
@@ -728,7 +714,9 @@ export default function DashboardPage() {
     const aptMap=Object.fromEntries((aptData||[]).map((a:any)=>[a.id,a]))
     const byApt:Record<string,{apt:any;net:number;brut:number}>={}
     for(const r of rezLunaCam){
-      const apt=aptMap[r.apartament_id]; if(!apt) continue
+      // „Exclus din statistici” (ex. N45 - cerut direct: „rămân în calcule doar comisioanele de la această locație”):
+      // nu apare la încasări pe locație; comisionul lui rămâne în „Comisioane”
+      const apt=aptMap[r.apartament_id]; if(!apt||apt.exclus_statistici) continue
       const brut=proRataLuna(r)
       const canal=(r.canal||'').toLowerCase()
       const net=canal==='airbnb'?brut*0.85*(1-0.21*0.15):canal==='booking'?brut*0.83*(1-0.21*0.17):brut
@@ -826,22 +814,24 @@ export default function DashboardPage() {
   const pctCh=cheltuieli.length>0?Math.round(cheltuieli.filter(c=>c.status==='validat').length/cheltuieli.length*100):0
 
   /* ── stiluri ─────────────────────────────────────────────────────────── */
-  const panel:React.CSSProperties={background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',border:'1px solid rgba(159,215,255,0.1)',borderRadius:10,overflow:'hidden'}
-  const panelHdr:React.CSSProperties={display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'1px solid rgba(159,215,255,0.07)'}
-  const panelTitle:React.CSSProperties={fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.8px'}
-  const waBtn=(color:string,bg:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:7,border:`1px solid ${color}`,background:bg,color,fontSize:11,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const,flexShrink:0})
+  // stil futurist atenuat (cerut direct: „redesign la toată pagina... culorile să fie mai puțin atât de accentuate”):
+  // sticla intunecata cu un gradient discret, margini fine indigo, titluri monospace cu spatiere
+  const panel:React.CSSProperties={background:'linear-gradient(160deg,rgba(120,110,200,0.06),rgba(8,12,28,0.55) 60%)',backdropFilter:'blur(18px)',WebkitBackdropFilter:'blur(18px)',border:'1px solid rgba(170,182,240,0.24)',borderRadius:14,overflow:'hidden',boxShadow:'inset 0 1px 0 rgba(200,210,255,0.06), 0 12px 32px rgba(0,0,0,0.28)',flexShrink:0}
+  const panelHdr:React.CSSProperties={display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'rgba(255,255,255,0.015)',borderBottom:'1px solid rgba(170,182,240,0.14)'}
+  const panelTitle:React.CSSProperties={fontSize:11.5,fontWeight:700,color:'rgba(190,200,235,0.6)',textTransform:'uppercase',letterSpacing:'0.16em',fontFamily:'ui-monospace,SFMono-Regular,Menlo,monospace'}
+  const waBtn=(color:string,bg:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'6px 11px',borderRadius:7,border:`1px solid ${color}`,background:bg,color,fontSize:12,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const,flexShrink:0})
 
   /* ── card oaspete ────────────────────────────────────────────────────── */
   function GuestCard({r,type}:{r:any;type:'checkin'|'checkout'}){
     const apt=r.apartament
     const isCI=type==='checkin'
-    const color=isCI?'#FCD34D':'#C084FC'
+    const color=isCI?'#E3C77A':'#B29BD9'
     const phone=r.telefon_client||''
     // Aceleasi id-uri ca in "Mesaje de azi" (co-/ci-/gata- + id rezervare) — trimis sau anulat
     // de-acolo dispare si de-aici, si invers, cerut direct ("sa dispara de pe toate platformele").
     function statusOrButton(idPrefix:string, href:string, icon:React.ReactNode, label:string, btnColor:string, btnBg:string){
       const id=idPrefix+r.id
-      if(mesajeSentIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(74,222,128,0.4)','rgba(74,222,128,0.08)'),color:'#4ADE80',cursor:'default'}}><Check size={12}/>Trimis</span>
+      if(mesajeSentIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(74,222,128,0.4)','rgba(74,222,128,0.08)'),color:'#7FCFA0',cursor:'default'}}><Check size={12}/>Trimis</span>
       if(mesajeAnulateIds.has(id)) return <span key={idPrefix} style={{...waBtn('rgba(248,113,113,0.3)','rgba(248,113,113,0.06)'),color:'rgba(248,113,113,0.55)',cursor:'default'}}>✕ Șters</span>
       if(idPrefix==='co-'&&eliberateIds.has(r.apartament?.id)) return <span key={idPrefix} title="Apartamentul e marcat eliberat în Curățenie — reminderul nu mai e necesar" style={{...waBtn('rgba(74,222,128,0.3)','rgba(74,222,128,0.06)'),color:'rgba(74,222,128,0.75)',cursor:'default'}}>🚪 Eliberat</span>
       return <a key={idPrefix} href={href} target="_blank" rel="noreferrer" onClick={()=>marcheazaMesajTrimis(id)} style={waBtn(btnColor,btnBg)}>{icon}{label}</a>
@@ -856,9 +846,9 @@ export default function DashboardPage() {
         <div style={{flex:1,minWidth:120}}>
           <div style={{fontSize:13,fontWeight:600,color:'#E8F4FF',marginBottom:2}}>{r.nume_client}</div>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap' as const}}>
-            {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{apt.nota}</span>}
-            <span style={{fontSize:11,color:'rgba(159,215,255,0.5)'}}>{apt?.nume}</span>
-            {phone&&<span style={{fontSize:11,color:'rgba(159,215,255,0.35)',display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</span>}
+            {apt?.nota&&<span style={{fontSize:11.5,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4}}>{apt.nota}</span>}
+            <span style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{apt?.nume}</span>
+            {phone&&<span style={{fontSize:12,color:'rgba(159,215,255,0.35)',display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</span>}
           </div>
         </div>
         {/* butoane WA */}
@@ -879,6 +869,21 @@ export default function DashboardPage() {
   return(
     <>
       <style>{`
+        /* ── tema deschisă: fundal crem cu grilă abia vizibilă, panouri albe-calde cu margini clare și umbră fină,
+           fără străluciri pe text (tabelul general din tema-luminoasa.js traduce doar culorile simple) ── */
+        [data-theme="light"] .dash-fx {
+          background-color:#F3EEE4 !important;
+          background-image:radial-gradient(900px 380px at 0% 0%, rgba(124,108,200,0.08), transparent 60%), radial-gradient(800px 360px at 100% 30%, rgba(60,150,170,0.06), transparent 60%), linear-gradient(rgba(120,96,64,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(120,96,64,0.05) 1px, transparent 1px) !important;
+        }
+        [data-theme="light"] .dash-fx * { text-shadow:none !important; }
+        /* codurile apartamentelor (var --accent-blue) - albastru închis, lizibil pe crem */
+        [data-theme="light"] .dash-fx { --accent-blue:#1D4ED8; }
+        [data-theme="light"] .dash-fx [data-kpi-punct] { width:6px !important; height:6px !important; filter:saturate(1.6) brightness(0.75); box-shadow:none !important; }
+        [data-theme="light"] .fx-panel {
+          background:linear-gradient(165deg,#FFFFFF,#FBF8F1) !important;
+          border-color:rgba(120,96,64,0.20) !important;
+          box-shadow:inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(60,45,20,0.05), 0 8px 24px rgba(60,45,20,0.07) !important;
+        }
         @media (max-width: 768px) {
           .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
           .guest-grid { grid-template-columns: 1fr !important; }
@@ -899,16 +904,19 @@ export default function DashboardPage() {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8,padding:'9px 20px',background:'rgba(14,27,43,0.65)',backdropFilter:'blur(24px)',WebkitBackdropFilter:'blur(24px)',borderBottom:'1px solid rgba(159,215,255,0.08)',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:20,minWidth:0}}>
           <span style={{fontSize:12,fontWeight:600,color:'#FFFFFF',letterSpacing:-0.2,flexShrink:0}}>Dashboard</span>
-          <span className="dash-topbar-date" style={{fontSize:11,color:'rgba(159,215,255,0.4)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{format(now,'EEE dd MMM yyyy · HH:mm',{locale:ro})}</span>
+          <span className="dash-topbar-date" style={{fontSize:12,color:'rgba(159,215,255,0.4)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{format(now,'EEE dd MMM yyyy · HH:mm',{locale:ro})}</span>
           <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0}}>
-            <div style={{width:6,height:6,borderRadius:'50%',background:'#22C55E',boxShadow:'0 0 6px rgba(34,197,94,0.8)'}}/>
-            <span style={{fontSize:10,color:'#22C55E',fontFamily:'monospace'}}>LIVE</span>
+            <div style={{width:6,height:6,borderRadius:'50%',background:'#6CC28F',boxShadow:'0 0 6px rgba(34,197,94,0.8)'}}/>
+            <span style={{fontSize:11.5,color:'#6CC28F',fontFamily:'monospace'}}>LIVE</span>
           </div>
         </div>
         <Link href="/rezervari" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.85)',border:'1px solid rgba(159,215,255,0.35)',color:'#FFFFFF',fontSize:12,fontWeight:500,textDecoration:'none',flexShrink:0}}>+ Rezervare nouă</Link>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:12}}>
+      <div className="dash-fx" style={{flex:1,overflowY:'auto',overflowX:'hidden',padding:'14px 16px 60px',display:'flex',flexDirection:'column',gap:20,
+        backgroundColor:'#070B18',
+        backgroundImage:'radial-gradient(900px 380px at 0% 0%, rgba(110,95,190,0.10), transparent 60%), radial-gradient(800px 360px at 100% 30%, rgba(90,160,190,0.07), transparent 60%), linear-gradient(rgba(160,170,230,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(160,170,230,0.035) 1px, transparent 1px)',
+        backgroundSize:'auto, auto, 32px 32px, 32px 32px',backgroundAttachment:'local'}}>
 
         {/* MESAJE DE AZI — o singura bara in locul celor 6 bannere (check-in, acces, checkout, proprietari);
             deschide "Mesaje pe rand" (cerut direct: varianta de telefon, mai simplu) */}
@@ -918,7 +926,7 @@ export default function DashboardPage() {
           const tot=nDim+nSos+nProp
           if(!mesajeTasks.length&&!nNr) return null
           const chip=(l:string,n:number,f:FilaMesaje,c:string)=>n>0&&(
-            <button key={f} onClick={()=>deschideMesaje(f)} style={{padding:'5px 10px',borderRadius:20,border:`1px solid ${c}55`,background:`${c}18`,color:c,fontSize:11.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{l} · {n}</button>
+            <button key={f} onClick={()=>deschideMesaje(f)} style={{padding:'5px 10px',borderRadius:20,border:`1px solid ${c}55`,background:`${c}18`,color:c,fontSize:12.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{l} · {n}</button>
           )
           return(
             <div style={{background:tot?'rgba(37,211,102,0.07)':'rgba(214,228,244,0.04)',border:`1px solid ${tot?'rgba(37,211,102,0.35)':'rgba(159,215,255,0.12)'}`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const}}>
@@ -926,7 +934,7 @@ export default function DashboardPage() {
               <div style={{flex:1,minWidth:150}}>
                 <div style={{fontSize:13.5,fontWeight:800,color:'#E8F4FF'}}>{tot?`${tot} ${tot===1?'mesaj':'mesaje'} de trimis azi`:'Mesajele de azi sunt trimise ✓'}</div>
                 <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginTop:6}}>
-                  {chip('Dimineața',nDim,'dim','#C084FC')}{chip('Sosiri',nSos,'sos','#FCD34D')}{chip('Proprietari',nProp,'prop','#A78BFA')}{chip('📵 Numere lipsă',nNr,'numere','#F87171')}
+                  {chip('Dimineața',nDim,'dim','#B29BD9')}{chip('Sosiri',nSos,'sos','#E3C77A')}{chip('Proprietari',nProp,'prop','#A497D6')}{chip('📵 Numere lipsă',nNr,'numere','#E08E8E')}
                 </div>
               </div>
               {tot>0&&<button onClick={()=>deschideMesaje()} style={{padding:'10px 18px',borderRadius:10,border:'none',background:'#25D366',color:'#03250F',fontSize:13,fontWeight:800,cursor:'pointer'}}>Trimite pe rând</button>}
@@ -935,61 +943,65 @@ export default function DashboardPage() {
         })()}
 
         {/* KPI STRIP */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}} className="kpi-grid">
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}} className="kpi-grid">
           {[
-            {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#4DA3FF',icon:<Building2 size={12}/>,sub:'active'},
-            {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#9FD7FF',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
-            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNetFiltrat||0).toLocaleString('ro-RO')}`,accent:'#22C55E',icon:<DollarSign size={12}/>,sub:'RON net',sub2:`brut ${(stats.incasariBrutFiltrat||0).toLocaleString('ro-RO')}`,sub2Color:'#22C55E'},
-            {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#4DA3FF',icon:<Percent size={12}/>,sub:'RON firmă'},
-            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#22C55E':'#F59E0B',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
-            {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#EF4444':'#22C55E',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
+            {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#7FA8E0',icon:<Building2 size={12}/>,sub:'active'},
+            {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#A9C8E8',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
+            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNetFiltrat||0).toLocaleString('ro-RO')}`,accent:'#6CC28F',icon:<DollarSign size={12}/>,sub:'RON net',sub2:`brut ${(stats.incasariBrutFiltrat||0).toLocaleString('ro-RO')}`,sub2Color:'#6CC28F'},
+            {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#7FA8E0',icon:<Percent size={12}/>,sub:'RON firmă'},
+            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#6CC28F':'#D9A85C',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
+            {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#D97A7A':'#6CC28F',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
           ].map((k,i)=>(
-            <div key={i} style={{...panel,borderTop:`2px solid ${k.accent}`}}>
-              <div style={{padding:'10px 12px'}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
-                  <span style={panelTitle}>{k.label}</span>
-                  <span style={{color:k.accent,opacity:0.7}}>{k.icon}</span>
+            <div key={i} className="fx-panel" style={{...panel,position:'relative'}}>
+              <div style={{position:'absolute',left:14,right:14,top:0,height:1,background:`linear-gradient(90deg, transparent, ${k.accent}66, transparent)`}}/>
+              <div style={{padding:'12px 14px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                  <span style={{display:'flex',alignItems:'center',gap:7}}><span data-kpi-punct style={{width:5,height:5,borderRadius:'50%',background:k.accent,boxShadow:`0 0 6px ${k.accent}80`}}/><span style={panelTitle}>{k.label}</span></span>
+                  <span style={{color:k.accent,opacity:0.5}}>{k.icon}</span>
                 </div>
-                <div style={{fontFamily:'monospace',fontSize:22,fontWeight:700,color:k.accent,letterSpacing:-1,lineHeight:1}}>{k.value}</div>
+                <div style={{fontFamily:'monospace',fontSize:24,fontWeight:700,color:'#E6EAF7',letterSpacing:-0.5,lineHeight:1,textShadow:`0 0 16px ${k.accent}40`}}>{k.value}</div>
                 {(k as any).sub2&&<div style={{fontFamily:'monospace',fontSize:13,fontWeight:600,color:(k as any).sub2Color||k.accent,marginTop:3}}>{(k as any).sub2}</div>}
-                <div style={{fontSize:10,color:'rgba(159,215,255,0.4)',marginTop:4}}>{k.sub}</div>
+                <div style={{fontSize:11.5,color:'rgba(159,215,255,0.4)',marginTop:4}}>{k.sub}</div>
               </div>
             </div>
           ))}
         </div>
+
+        {/* ══ FATA DE ANUL TRECUT + PROGNOZA (luna curenta si urmatoare) ══ */}
+        <FataDeAnulTrecut/>
 
         <div className="prognoza-card">
         {/* ══ PROGNOZA LUNA VIITOARE ══ */}
         {(()=>{
           const pct=prognoza.cheltuieliLC>0?Math.min(100,Math.round((prognoza.incasariLV/prognoza.cheltuieliLC)*100)):0
           const deficit=prognoza.cheltuieliLC-prognoza.incasariLV
-          const color=pct>=100?'#4ADE80':pct>=70?'#FCD34D':pct>=40?'#F97316':'#F87171'
+          const color=pct>=100?'#7FCFA0':pct>=70?'#E3C77A':pct>=40?'#D99A6C':'#E08E8E'
           const lvShort=lunaVitoareLabel.split(' ')[0]
           const lcShort=lunaLabel.split(' ')[0]
           return(
-            <div style={{background:'rgba(214,228,244,0.05)',backdropFilter:'blur(24px)',border:`1px solid ${color}25`,borderTop:`2px solid ${color}`,borderRadius:10,padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto auto',alignItems:'center',gap:14}}>
+            <div className="fx-panel" style={{...panel,overflow:'visible',boxShadow:`inset 0 1px 0 ${color}55, 0 10px 30px rgba(0,0,0,0.18)`,padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto auto',alignItems:'center',gap:14}}>
               <div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2}}>Prognoză {lvShort}</div>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2}}>Prognoză {lvShort}</div>
                 <div style={{fontSize:22,fontWeight:700,color,fontFamily:'monospace',lineHeight:1}}>{pct}%</div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.35)',marginTop:2}}>{deficit>0?`-${deficit.toLocaleString('ro-RO')} deficit`:`+${Math.abs(deficit).toLocaleString('ro-RO')} surplus`}</div>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.35)',marginTop:2}}>{deficit>0?`-${deficit.toLocaleString('ro-RO')} deficit`:`+${Math.abs(deficit).toLocaleString('ro-RO')} surplus`}</div>
               </div>
               <div>
                 <div style={{height:6,background:'rgba(159,215,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:4}}>
                   <div style={{height:'100%',width:`${pct}%`,background:color,borderRadius:3,transition:'width 0.8s ease'}}/>
                 </div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>
                   {pct<100?`Mai necesari ${deficit.toLocaleString('ro-RO')} RON în ${lvShort}`:`Cheltuielile din ${lcShort} sunt acoperite ✓`}
                 </div>
               </div>
               <div style={{textAlign:'right' as const}}>
-                <div style={{fontSize:9,color:'rgba(74,222,128,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Rezervări {lvShort}</div>
-                <div style={{fontSize:14,fontWeight:700,color:'#4ADE80',fontFamily:'monospace'}}>{prognoza.incasariLV.toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON</div>
+                <div style={{fontSize:10.5,color:'rgba(74,222,128,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Rezervări {lvShort}</div>
+                <div style={{fontSize:14,fontWeight:700,color:'#7FCFA0',fontFamily:'monospace'}}>{prognoza.incasariLV.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>RON</div>
               </div>
               <div style={{textAlign:'right' as const}}>
-                <div style={{fontSize:9,color:'rgba(248,113,113,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Cheltuieli {lcShort}</div>
-                <div style={{fontSize:14,fontWeight:700,color:'#F87171',fontFamily:'monospace'}}>{prognoza.cheltuieliLC.toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON</div>
+                <div style={{fontSize:10.5,color:'rgba(248,113,113,0.5)',marginBottom:2,textTransform:'uppercase',letterSpacing:'.05em'}}>Cheltuieli {lcShort}</div>
+                <div style={{fontSize:14,fontWeight:700,color:'#E08E8E',fontFamily:'monospace'}}>{prognoza.cheltuieliLC.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>RON</div>
               </div>
             </div>
           )
@@ -1002,17 +1014,17 @@ export default function DashboardPage() {
           const isInc=bookingWidget.status==='incasat'
           const payDateFmt=bookingWidget.payDate?new Date(bookingWidget.payDate+'T12:00:00').toLocaleDateString('ro-RO',{day:'numeric',month:'short'}):''
           return bookingWidget.count>0?(
-            <div style={{background:'rgba(214,228,244,0.05)',border:'0.5px solid rgba(0,83,186,0.3)',borderTop:'2px solid #0055A5',borderRadius:10,padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto',alignItems:'center',gap:12}}>
+            <div className="fx-panel" style={{...panel,overflow:'visible',boxShadow:'inset 0 1px 0 rgba(110,150,220,0.45), 0 10px 30px rgba(0,0,0,0.18)',padding:'10px 14px',display:'grid',gridTemplateColumns:'auto 1fr auto',alignItems:'center',gap:12}}>
               <div style={{width:36,height:36,borderRadius:9,background:'rgba(0,83,186,0.15)',border:'0.5px solid rgba(0,83,186,0.3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
                 <span style={{fontSize:18}}>🏨</span>
               </div>
               <div>
-                <div style={{fontSize:10,fontWeight:600,color:'rgba(159,215,255,0.45)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:2}}>Încasare Booking</div>
-                <div style={{fontSize:11,color:'rgba(159,215,255,0.4)'}}>{bookingWidget.count} rez · {lunaLabel} · Plată {payDateFmt}</div>
+                <div style={{fontSize:11.5,fontWeight:600,color:'rgba(159,215,255,0.45)',textTransform:'uppercase',letterSpacing:'.07em',marginBottom:2}}>Încasare Booking</div>
+                <div style={{fontSize:12,color:'rgba(159,215,255,0.4)'}}>{bookingWidget.count} rez · {lunaLabel} · Plată {payDateFmt}</div>
               </div>
               <div style={{textAlign:'right' as const}}>
-                <div style={{fontSize:18,fontWeight:700,color:isInc?'#4ADE80':'#60A5FA',fontFamily:'monospace'}}>{bookingWidget.net.toLocaleString('ro-RO')}</div>
-                <div style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>RON net</div>
+                <div style={{fontSize:18,fontWeight:700,color:isInc?'#7FCFA0':'#86A9DC',fontFamily:'monospace'}}>{bookingWidget.net.toLocaleString('ro-RO')}</div>
+                <div style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>RON net</div>
               </div>
             </div>
           ):null
@@ -1020,27 +1032,27 @@ export default function DashboardPage() {
         </div>
 
         {/* ══ INCASARI NETE PER LOCATIE ══ */}
-        <div style={panel}>
+        <div className="fx-panel" style={panel}>
             <div style={panelHdr}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
-                <TrendingUp size={12} color="#4ADE80"/>
-                <span style={{...panelTitle,color:'#4ADE80'}}>Încasări nete {lunaLabel.split(' ')[0]} — per locație</span>
+                <TrendingUp size={12} color="#7FCFA0"/>
+                <span style={{...panelTitle,color:'#7FCFA0'}}>Încasări nete {lunaLabel.split(' ')[0]} — per locație</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:'#4ADE80',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{perAptIncome.length} locații</span>
+              <span style={{fontSize:11.5,fontWeight:600,color:'#7FCFA0',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{perAptIncome.length} locații</span>
             </div>
             <div style={{padding:'8px 10px',display:'flex',flexWrap:'wrap',gap:6}}>
               {perAptIncome.length===0
-                ?<div style={{padding:'12px 4px',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Nicio încasare înregistrată pentru luna curentă</div>
+                ?<div style={{padding:'12px 4px',fontSize:12,color:'rgba(159,215,255,0.25)'}}>Nicio încasare înregistrată pentru luna curentă</div>
                 :perAptIncome.map(({apt,net})=>{
                   const verde=isAptVerde(apt)
-                  const color=verde?'#4ADE80':'#FB923C'
+                  const color=verde?'#7FCFA0':'#FB923C'
                   const bg=verde?'rgba(74,222,128,0.07)':'rgba(251,146,60,0.07)'
                   const border=verde?'rgba(74,222,128,0.2)':'rgba(251,146,60,0.2)'
                   return(
                     <div key={apt.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 12px',background:bg,border:`1px solid ${border}`,borderRadius:8}}>
-                      {apt.nota&&<span style={{fontSize:10,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
-                      <span style={{fontSize:11,color:'rgba(214,228,244,0.75)',flexShrink:0}}>{apt.nume}</span>
-                      <span style={{fontSize:13,fontWeight:700,color,fontFamily:'monospace',flexShrink:0}}>{net.toLocaleString('ro-RO')} <span style={{fontSize:9,fontWeight:400,color:'rgba(159,215,255,0.4)'}}>RON</span></span>
+                      {apt.nota&&<span style={{fontSize:11.5,fontWeight:700,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 6px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                      <span style={{fontSize:12,color:'rgba(214,228,244,0.75)',flexShrink:0}}>{apt.nume}</span>
+                      <span style={{fontSize:13,fontWeight:700,color,fontFamily:'monospace',flexShrink:0}}>{net.toLocaleString('ro-RO')} <span style={{fontSize:10.5,fontWeight:400,color:'rgba(159,215,255,0.4)'}}>RON</span></span>
                     </div>
                   )
                 })
@@ -1051,61 +1063,64 @@ export default function DashboardPage() {
         {/* ══ OASPETI AZI ══ */}
         {/* ══ OASPETI AZI ══ */}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        <div style={{display:'grid',gridTemplateColumns:coMesajeTrimise?'repeat(2,1fr)':'repeat(3,1fr)',gap:8}} className="guest-grid">
+        <div style={{display:'grid',gridTemplateColumns:coMesajeTrimise?'repeat(2,1fr)':'repeat(3,1fr)',gap:12,alignItems:'start'}} className="guest-grid">
 
           {/* CHECK-IN AZI */}
-          <div style={panel}>
-            <div style={panelHdr}>
+          <div className="fx-panel" style={panel} data-panou="ci">
+            <div data-panou-antet="ci" role="button" tabIndex={0} onClick={()=>comutaPanou('ci')} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();comutaPanou('ci')}}} style={{...panelHdr,cursor:'pointer',userSelect:'none',borderBottom:deschisePanouri['ci']?panelHdr.borderBottom:'none'}}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
-                <LogIn size={12} color="#FCD34D"/>
-                <span style={{...panelTitle,color:'#FCD34D'}}>Check-in astăzi</span>
+                <LogIn size={12} color="#E3C77A"/>
+                <span style={{...panelTitle,color:'#E3C77A'}}>Check-in astăzi</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:'#FCD34D',background:'rgba(252,211,77,0.1)',padding:'1px 7px',borderRadius:10}}>{checkinAzi.length}</span>
+              <span style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11.5,fontWeight:600,color:'#E3C77A',background:'rgba(252,211,77,0.1)',padding:'1px 7px',borderRadius:10}}>{checkinAzi.length}</span><ChevronDown size={13} color="rgba(190,200,235,0.55)" style={{transform:deschisePanouri['ci']?'rotate(180deg)':'none',transition:'transform .2s'}}/></span>
             </div>
-            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
+            {!deschisePanouri['ci']&&checkinAzi.length>0&&<div data-panou-rezumat style={{padding:'8px 14px 10px',display:'flex',flexWrap:'wrap' as const,gap:6}}>{checkinAzi.map((r:any)=><span key={r.id} style={{fontSize:12,color:'rgba(214,228,244,0.75)',padding:'2px 8px',borderRadius:999,border:'1px solid rgba(160,170,230,0.14)',background:'rgba(255,255,255,0.02)',whiteSpace:'nowrap'}}>{firstName(r.nume_client||'')}{r.apartament?.nota?<b style={{color:'#7FA8E0',fontWeight:600}}> · {r.apartament.nota}</b>:null}</span>)}</div>}
+            {deschisePanouri['ci']&&<div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
               {checkinAzi.length===0
-                ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Niciun check-in astăzi</div>
+                ?<div style={{padding:'16px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.25)'}}>Niciun check-in astăzi</div>
                 :checkinAzi.map(r=><GuestCard key={r.id} r={r} type="checkin"/>)
               }
-            </div>
+            </div>}
           </div>
 
           {/* CHECK-OUT AZI */}
-          {!coMesajeTrimise&&<div style={panel}>
-            <div style={panelHdr}>
+          {!coMesajeTrimise&&<div className="fx-panel" style={panel} data-panou="co">
+            <div data-panou-antet="co" role="button" tabIndex={0} onClick={()=>comutaPanou('co')} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();comutaPanou('co')}}} style={{...panelHdr,cursor:'pointer',userSelect:'none',borderBottom:deschisePanouri['co']?panelHdr.borderBottom:'none'}}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
-                <LogOut size={12} color="#C084FC"/>
-                <span style={{...panelTitle,color:'#C084FC'}}>Check-out astăzi</span>
-                <span style={{fontSize:10,fontWeight:600,color:'#C084FC',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
+                <LogOut size={12} color="#B29BD9"/>
+                <span style={{...panelTitle,color:'#B29BD9'}}>Check-out astăzi</span>
+                <span style={{fontSize:11.5,fontWeight:600,color:'#B29BD9',background:'rgba(192,132,252,0.1)',padding:'1px 7px',borderRadius:10}}>{checkoutAzi.length}</span>
               </div>
-              {checkoutAzi.length>0&&(
-                <button onClick={()=>setMesajeListOpen(true)}
-                  style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(192,132,252,0.3)',background:'rgba(192,132,252,0.08)',color:'#C084FC',fontSize:10,fontWeight:600,cursor:'pointer'}}>
+              <span style={{display:'flex',alignItems:'center',gap:8}}>{checkoutAzi.length>0&&(
+                <button onClick={e=>{e.stopPropagation();setMesajeListOpen(true)}}
+                  style={{display:'flex',alignItems:'center',gap:5,padding:'4px 10px',borderRadius:6,border:'1px solid rgba(192,132,252,0.3)',background:'rgba(192,132,252,0.08)',color:'#B29BD9',fontSize:11.5,fontWeight:600,cursor:'pointer'}}>
                   <MessageCircle size={10}/>Trimite tuturor
                 </button>
-              )}
+              )}<ChevronDown size={13} color="rgba(190,200,235,0.55)" style={{transform:deschisePanouri['co']?'rotate(180deg)':'none',transition:'transform .2s'}}/></span>
             </div>
-            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
+            {!deschisePanouri['co']&&checkoutAzi.length>0&&<div data-panou-rezumat style={{padding:'8px 14px 10px',display:'flex',flexWrap:'wrap' as const,gap:6}}>{checkoutAzi.map((r:any)=><span key={r.id} style={{fontSize:12,color:'rgba(214,228,244,0.75)',padding:'2px 8px',borderRadius:999,border:'1px solid rgba(160,170,230,0.14)',background:'rgba(255,255,255,0.02)',whiteSpace:'nowrap'}}>{firstName(r.nume_client||'')}{r.apartament?.nota?<b style={{color:'#7FA8E0',fontWeight:600}}> · {r.apartament.nota}</b>:null}</span>)}</div>}
+            {deschisePanouri['co']&&<div style={{padding:'10px',display:'flex',flexDirection:'column',gap:8}}>
               {checkoutAzi.length===0
-                ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Niciun check-out astăzi</div>
+                ?<div style={{padding:'16px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.25)'}}>Niciun check-out astăzi</div>
                 :checkoutAzi.map(r=><GuestCard key={r.id} r={r} type="checkout"/>)
               }
-            </div>
+            </div>}
           </div>}
 
           {/* REZERVARI ACTIVE ACUM */}
-          <div style={panel}>
-            <div style={panelHdr}>
+          <div className="fx-panel" style={panel} data-panou="rc">
+            <div data-panou-antet="rc" role="button" tabIndex={0} onClick={()=>comutaPanou('rc')} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();comutaPanou('rc')}}} style={{...panelHdr,cursor:'pointer',userSelect:'none',borderBottom:deschisePanouri['rc']?panelHdr.borderBottom:'none'}}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <BedDouble size={12} color="#7BC8FF"/>
                 <span style={{...panelTitle,color:'#7BC8FF'}}>Rezervări în curs</span>
-                <span style={{fontSize:10,fontWeight:600,color:'#7BC8FF',background:'rgba(123,200,255,0.1)',padding:'1px 7px',borderRadius:10}}>{rezervariCurente.length}</span>
+                <span style={{fontSize:11.5,fontWeight:600,color:'#7BC8FF',background:'rgba(123,200,255,0.1)',padding:'1px 7px',borderRadius:10}}>{rezervariCurente.length}</span>
               </div>
-              <Link href="/rezervari" style={{fontSize:9,color:'#4DA3FF',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
+              <span style={{display:'flex',alignItems:'center',gap:8}}><Link href="/rezervari" onClick={e=>e.stopPropagation()} style={{fontSize:10.5,color:'#7FA8E0',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link><ChevronDown size={13} color="rgba(190,200,235,0.55)" style={{transform:deschisePanouri['rc']?'rotate(180deg)':'none',transition:'transform .2s'}}/></span>
             </div>
-            <div style={{padding:'10px',display:'flex',flexDirection:'column',gap:7}}>
+            {!deschisePanouri['rc']&&rezervariCurente.length>0&&<div data-panou-rezumat style={{padding:'8px 14px 10px',display:'flex',flexWrap:'wrap' as const,gap:6}}>{rezervariCurente.map((r:any)=><span key={r.id} style={{fontSize:12,color:'rgba(214,228,244,0.75)',padding:'2px 8px',borderRadius:999,border:'1px solid rgba(160,170,230,0.14)',background:'rgba(255,255,255,0.02)',whiteSpace:'nowrap'}}>{firstName(r.nume_client||'')}{r.apartament?.nota?<b style={{color:'#7FA8E0',fontWeight:600}}> · {r.apartament.nota}</b>:null}</span>)}</div>}
+            {deschisePanouri['rc']&&<div style={{padding:'10px',display:'flex',flexDirection:'column',gap:7}}>
               {rezervariCurente.length===0
-                ?<div style={{padding:'16px',textAlign:'center',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Nicio rezervare activă acum</div>
+                ?<div style={{padding:'16px',textAlign:'center',fontSize:12,color:'rgba(159,215,255,0.25)'}}>Nicio rezervare activă acum</div>
                 :rezervariCurente.map((r:any)=>{
                   const apt=r.apartament
                   const phone=r.telefon_client||''
@@ -1118,20 +1133,20 @@ export default function DashboardPage() {
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:600,color:'#E8F4FF',marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nume_client}</div>
                         <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap' as const}}>
-                          {apt?.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 5px',borderRadius:4,flexShrink:0}}>{apt.nota}</span>}
-                          <span style={{fontSize:11,color:'rgba(159,215,255,0.45)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt?.nume}</span>
-                          <span style={{fontSize:10,fontWeight:500,color:noptiRamase<=1?'#F87171':noptiRamase<=2?'#FCD34D':'rgba(74,222,128,0.7)',flexShrink:0}}>
+                          {apt?.nota&&<span style={{fontSize:11.5,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 5px',borderRadius:4,flexShrink:0}}>{apt.nota}</span>}
+                          <span style={{fontSize:12,color:'rgba(159,215,255,0.45)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt?.nume}</span>
+                          <span style={{fontSize:11.5,fontWeight:500,color:noptiRamase<=1?'#E08E8E':noptiRamase<=2?'#E3C77A':'rgba(74,222,128,0.7)',flexShrink:0}}>
                             {noptiRamase<=0?'CO azi':noptiRamase===1?'1n rămasă':`${noptiRamase}n rămase`}
                           </span>
                         </div>
-                        {phone&&<div style={{fontSize:10,color:'rgba(159,215,255,0.35)',marginTop:2,display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</div>}
+                        {phone&&<div style={{fontSize:11.5,color:'rgba(159,215,255,0.35)',marginTop:2,display:'flex',alignItems:'center',gap:3}}><Phone size={9}/>{phone}</div>}
                       </div>
                       {phone&&<div style={{display:'flex',gap:5,flexShrink:0}}>
                         <a href={`tel:${phone}`} style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(123,200,255,0.25)',background:'rgba(123,200,255,0.08)',color:'#7BC8FF',textDecoration:'none'}}>
                           <Phone size={13}/>
                         </a>
                         <a href={waLink(phone,`Bună ziua, ${firstName(r.nume_client)}! Vă contactăm de la AB Homes Iași. `)} target="_blank" rel="noreferrer"
-                          style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(74,222,128,0.25)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',textDecoration:'none'}}>
+                          style={{display:'flex',alignItems:'center',justifyContent:'center',width:30,height:30,borderRadius:7,border:'1px solid rgba(74,222,128,0.25)',background:'rgba(74,222,128,0.08)',color:'#7FCFA0',textDecoration:'none'}}>
                           <MessageCircle size={13}/>
                         </a>
                       </div>}
@@ -1139,28 +1154,28 @@ export default function DashboardPage() {
                   )
                 })
               }
-            </div>
+            </div>}
           </div>
 
         </div>{/* end 3-col grid */}
 
           {/* DISPONIBILE AZI - linie completa jos */}
-          <div style={panel}>
+          <div className="fx-panel" style={panel}>
             <div style={panelHdr}>
               <div style={{display:'flex',alignItems:'center',gap:7}}>
-                <BedDouble size={12} color="#4ADE80"/>
-                <span style={{...panelTitle,color:'#4ADE80'}}>Disponibile astăzi</span>
+                <BedDouble size={12} color="#7FCFA0"/>
+                <span style={{...panelTitle,color:'#7FCFA0'}}>Disponibile astăzi</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:'#4ADE80',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{libereAzi.length}</span>
+              <span style={{fontSize:11.5,fontWeight:600,color:'#7FCFA0',background:'rgba(74,222,128,0.1)',padding:'1px 7px',borderRadius:10}}>{libereAzi.length}</span>
             </div>
             <div style={{padding:'8px 10px',display:'flex',flexWrap:'wrap',gap:6}}>
               {libereAzi.length===0
-                ?<div style={{padding:'8px',fontSize:11,color:'rgba(159,215,255,0.25)'}}>Toate apartamentele sunt ocupate 🎉</div>
+                ?<div style={{padding:'8px',fontSize:12,color:'rgba(159,215,255,0.25)'}}>Toate apartamentele sunt ocupate 🎉</div>
                 :libereAzi.map(a=>(
                   <div key={a.id} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',background:'rgba(74,222,128,0.07)',border:'1px solid rgba(74,222,128,0.2)',borderRadius:20}}>
-                    {a.nota&&<span style={{fontSize:10,fontWeight:700,color:'var(--accent-blue)',fontFamily:'monospace'}}>{a.nota}</span>}
-                    <span style={{fontSize:11,fontWeight:500,color:'rgba(214,228,244,0.85)'}}>{a.nume}</span>
-                    <div style={{width:5,height:5,borderRadius:'50%',background:'#4ADE80',boxShadow:'0 0 3px rgba(74,222,128,0.7)',flexShrink:0}}/>
+                    {a.nota&&<span style={{fontSize:11.5,fontWeight:700,color:'var(--accent-blue)',fontFamily:'monospace'}}>{a.nota}</span>}
+                    <span style={{fontSize:12,fontWeight:500,color:'rgba(214,228,244,0.85)'}}>{a.nume}</span>
+                    <div style={{width:5,height:5,borderRadius:'50%',background:'#7FCFA0',boxShadow:'0 0 3px rgba(74,222,128,0.7)',flexShrink:0}}/>
                   </div>
                 ))
               }
@@ -1170,14 +1185,14 @@ export default function DashboardPage() {
         </div>{/* end outer flex */}
 
         {/* ══ CURĂȚENIE ASTĂZI ══ */}
-        <div style={{background:'rgba(214,228,244,0.05)',border:'0.5px solid rgba(159,215,255,0.1)',borderTop:'2px solid #EF9F27',borderRadius:10,overflow:'hidden'}}>
+        <div className="fx-panel" style={{...panel,boxShadow:'inset 0 1px 0 rgba(217,168,92,0.45), 0 10px 30px rgba(0,0,0,0.18)'}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 14px',background:'rgba(14,27,43,0.5)',borderBottom:'0.5px solid rgba(159,215,255,0.07)'}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontSize:13}}>🧹</span>
-              <span style={{fontSize:11,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
-              <span style={{fontSize:11,fontWeight:600,background:'rgba(239,159,39,0.15)',color:'#EF9F27',padding:'1px 8px',borderRadius:20,border:'0.5px solid rgba(239,159,39,0.3)'}}>{coAziCur.length+ciAziCur.filter((ci:any)=>!coAziCur.find((co:any)=>co.apartament?.id===ci.apartament?.id)).length}</span>
+              <span style={{fontSize:12,fontWeight:600,color:'rgba(159,215,255,0.55)',textTransform:'uppercase',letterSpacing:'0.7px'}}>Curățenie astăzi</span>
+              <span style={{fontSize:12,fontWeight:600,background:'rgba(239,159,39,0.15)',color:'#EF9F27',padding:'1px 8px',borderRadius:20,border:'0.5px solid rgba(239,159,39,0.3)'}}>{coAziCur.length+ciAziCur.filter((ci:any)=>!coAziCur.find((co:any)=>co.apartament?.id===ci.apartament?.id)).length}</span>
             </div>
-            <button onClick={waEchipaCuratenie} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'0.5px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#4ADE80',fontSize:12,fontWeight:500,cursor:'pointer'}}>
+            <button onClick={waEchipaCuratenie} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',borderRadius:7,border:'0.5px solid rgba(74,222,128,0.3)',background:'rgba(74,222,128,0.08)',color:'#7FCFA0',fontSize:12,fontWeight:500,cursor:'pointer'}}>
               <MessageCircle size={13}/>WA echipă
             </button>
           </div>
@@ -1193,13 +1208,13 @@ export default function DashboardPage() {
               const len=lenjerii[co.id]??lenDef
               return(
                 <div key={co.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:ciMatch?'rgba(248,113,113,0.05)':'rgba(252,211,77,0.04)',border:`0.5px solid ${ciMatch?'rgba(248,113,113,0.2)':'rgba(252,211,77,0.15)'}`,borderRadius:8}}>
-                  {apt?.nota&&<span style={{fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                  {apt?.nota&&<span style={{fontSize:11.5,fontWeight:700,color:'#7FA8E0',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:500,color:'rgba(214,228,244,0.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{apt?.nume||'—'}</div>
-                    <div style={{fontSize:11,marginTop:1}}>
+                    <div style={{fontSize:12,marginTop:1}}>
                       {ciMatch
-                        ?<><span style={{color:'#F87171'}}>CO: {co.nume_client}</span><span style={{color:'rgba(159,215,255,0.3)'}}> → </span><span style={{color:'#4ADE80'}}>CI: {ciMatch.nume_client}</span></>
-                        :<span style={{color:'#FCD34D'}}>CO: {co.nume_client}</span>
+                        ?<><span style={{color:'#E08E8E'}}>CO: {co.nume_client}</span><span style={{color:'rgba(159,215,255,0.3)'}}> → </span><span style={{color:'#7FCFA0'}}>CI: {ciMatch.nume_client}</span></>
+                        :<span style={{color:'#E3C77A'}}>CO: {co.nume_client}</span>
                       }
                     </div>
                   </div>
@@ -1207,12 +1222,12 @@ export default function DashboardPage() {
                     <BedDouble size={13} color="rgba(159,215,255,0.35)"/>
                     <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:Math.max(1,(l[co.id]??lenDef)-1)}))}
                       style={{width:24,height:24,borderRadius:5,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:300}}>−</button>
-                    <span style={{fontSize:15,fontWeight:600,color:'#FCD34D',minWidth:20,textAlign:'center' as const}}>{len}</span>
+                    <span style={{fontSize:15,fontWeight:600,color:'#E3C77A',minWidth:20,textAlign:'center' as const}}>{len}</span>
                     <button onClick={()=>setLenjerii((l:any)=>({...l,[co.id]:(l[co.id]??lenDef)+1}))}
                       style={{width:24,height:24,borderRadius:5,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:300}}>+</button>
                   </div>
-                  <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,flexShrink:0,
-                    color:ciMatch?'#F87171':'#FCD34D',
+                  <span style={{fontSize:11.5,fontWeight:600,padding:'2px 7px',borderRadius:4,flexShrink:0,
+                    color:ciMatch?'#E08E8E':'#E3C77A',
                     background:ciMatch?'rgba(248,113,113,0.12)':'rgba(252,211,77,0.1)',
                     border:`0.5px solid ${ciMatch?'rgba(248,113,113,0.25)':'rgba(252,211,77,0.2)'}`}}>
                     {ciMatch?'CO→CI':'CO'}
@@ -1227,20 +1242,20 @@ export default function DashboardPage() {
               const len=lenjerii[ci.id]??lenDef
               return(
                 <div key={ci.id||idx} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:'rgba(74,222,128,0.04)',border:'0.5px solid rgba(74,222,128,0.15)',borderRadius:8}}>
-                  {apt?.nota&&<span style={{fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
+                  {apt?.nota&&<span style={{fontSize:11.5,fontWeight:700,color:'#7FA8E0',background:'rgba(77,163,255,0.12)',padding:'2px 7px',borderRadius:4,fontFamily:'monospace',flexShrink:0}}>{apt.nota}</span>}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:500,color:'rgba(214,228,244,0.9)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{apt?.nume||'—'}</div>
-                    <div style={{fontSize:11,color:'#4ADE80',marginTop:1}}>CI: {ci.nume_client}</div>
+                    <div style={{fontSize:12,color:'#7FCFA0',marginTop:1}}>CI: {ci.nume_client}</div>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
                     <BedDouble size={13} color="rgba(159,215,255,0.35)"/>
                     <button onClick={()=>setLenjerii((l:any)=>({...l,[ci.id]:Math.max(1,(l[ci.id]??lenDef)-1)}))}
                       style={{width:24,height:24,borderRadius:5,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:300}}>−</button>
-                    <span style={{fontSize:15,fontWeight:600,color:'#FCD34D',minWidth:20,textAlign:'center' as const}}>{len}</span>
+                    <span style={{fontSize:15,fontWeight:600,color:'#E3C77A',minWidth:20,textAlign:'center' as const}}>{len}</span>
                     <button onClick={()=>setLenjerii((l:any)=>({...l,[ci.id]:(l[ci.id]??lenDef)+1}))}
                       style={{width:24,height:24,borderRadius:5,border:'0.5px solid rgba(159,215,255,0.2)',background:'rgba(159,215,255,0.06)',color:'rgba(214,228,244,0.8)',cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:300}}>+</button>
                   </div>
-                  <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:4,color:'#4ADE80',background:'rgba(74,222,128,0.1)',border:'0.5px solid rgba(74,222,128,0.2)',flexShrink:0}}>CI</span>
+                  <span style={{fontSize:11.5,fontWeight:600,padding:'2px 7px',borderRadius:4,color:'#7FCFA0',background:'rgba(74,222,128,0.1)',border:'0.5px solid rgba(74,222,128,0.2)',flexShrink:0}}>CI</span>
                 </div>
               )
             })}
@@ -1249,26 +1264,27 @@ export default function DashboardPage() {
 
 
         {/* ROW GRAFICE */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:8}} className="grafice-grid">
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 300px',gap:12}} className="grafice-grid">
           {/* REVENUE */}
-          <div style={panel}>
+          <div className="fx-panel" style={panel}>
             <div style={panelHdr}>
-              <span style={panelTitle}>Venituri lunare</span>
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <span style={{fontSize:10,color:'rgba(77,163,255,0.6)',fontFamily:'monospace'}}>{DEMO_REVENUE[DEMO_REVENUE.length-1].valoare.toLocaleString('ro-RO')} RON</span>
-                <span style={{fontSize:9,color:'#22C55E',fontFamily:'monospace'}}>▲ +23.9%</span>
-              </div>
+              <span style={panelTitle}>Venituri lunare · ultimele 12 luni</span>
+              {evolutie&&evolutie.length>=3&&(()=>{ const lc=evolutie[evolutie.length-2], lp=evolutie[evolutie.length-3], p=lp.lei?Math.round((lc.lei/lp.lei-1)*100):null
+                return <div data-venituri-antet style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:11.5,color:'rgba(169,200,232,0.75)',fontFamily:'monospace'}}>{lc.eticheta}: {lc.lei.toLocaleString('ro-RO')} RON</span>
+                  {p!=null&&<span style={{fontSize:11.5,color:p>=0?'#7FCFA0':'#E08E8E',fontFamily:'monospace',fontWeight:700}} title={`${lc.eticheta} față de ${lp.eticheta}`}>{p>=0?'▲':'▼'} {Math.abs(p)}% vs {lp.eticheta}</span>}
+                </div> })()}
             </div>
             <div style={{padding:'16px 14px 10px'}}>
-              <RevenueChart data={DEMO_REVENUE}/>
+              {evolutie?<GraficVenituri luni={evolutie}/>:<div style={{height:124,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'rgba(159,215,255,0.4)'}}>Se încarcă evoluția…</div>}
               <div style={{display:'flex',gap:16,marginTop:10}}>
                 <div>
-                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#4DA3FF'}}>{stats.incasariNet>0?stats.incasariNet.toLocaleString('ro-RO'):'11.400'}</div>
-                  <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>RON luna curentă</div>
+                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#7FA8E0'}}>{(stats.incasariNet||0).toLocaleString('ro-RO')}</div>
+                  <div style={{fontSize:11.5,color:'rgba(159,215,255,0.4)'}}>RON net încasat luna curentă</div>
                 </div>
                 <div style={{marginLeft:'auto'}}>
-                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#22C55E'}}>{stats.comisioaneLuna>0?stats.comisioaneLuna.toLocaleString('ro-RO'):'1.710'}</div>
-                  <div style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>RON comisioane</div>
+                  <div style={{fontFamily:'monospace',fontSize:18,fontWeight:700,color:'#6CC28F'}}>{(stats.comisioaneLuna||0).toLocaleString('ro-RO')}</div>
+                  <div style={{fontSize:11.5,color:'rgba(159,215,255,0.4)'}}>RON comisioane</div>
                 </div>
               </div>
             </div>
@@ -1277,11 +1293,11 @@ export default function DashboardPage() {
               <div style={{padding:'0 14px 14px'}}>
                 <div style={{background:'rgba(14,27,43,0.5)',borderRadius:8,padding:'10px 12px',border:'1px solid rgba(159,215,255,0.08)'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                    <span style={{fontSize:10,color:'rgba(159,215,255,0.45)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>
+                    <span style={{fontSize:11.5,color:'rgba(159,215,255,0.45)',textTransform:'uppercase' as const,letterSpacing:'.06em'}}>
                       Acoperire cheltuieli luna anterioară
                     </span>
                     <span style={{fontSize:14,fontWeight:700,fontFamily:'monospace',
-                      color:stats.incasariNet>=cheltuieliLP.total?'#4ADE80':stats.incasariNet>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'}}>
+                      color:stats.incasariNet>=cheltuieliLP.total?'#7FCFA0':stats.incasariNet>=cheltuieliLP.total*0.7?'#E3C77A':'#E08E8E'}}>
                       {cheltuieliLP.total>0?Math.round(Math.min(100,stats.incasariNet/cheltuieliLP.total*100)):0}%
                     </span>
                   </div>
@@ -1289,14 +1305,14 @@ export default function DashboardPage() {
                     <div style={{
                       height:'100%',borderRadius:3,transition:'width .5s',
                       width:`${cheltuieliLP.total>0?Math.min(100,stats.incasariNet/cheltuieliLP.total*100):0}%`,
-                      background:stats.incasariNet>=cheltuieliLP.total?'#4ADE80':stats.incasariNet>=cheltuieliLP.total*0.7?'#FCD34D':'#F87171'
+                      background:stats.incasariNet>=cheltuieliLP.total?'#7FCFA0':stats.incasariNet>=cheltuieliLP.total*0.7?'#E3C77A':'#E08E8E'
                     }}/>
                   </div>
                   <div style={{display:'flex',justifyContent:'space-between',marginTop:5}}>
-                    <span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                    <span style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>
                       Cheltuieli: {cheltuieliLP.total.toLocaleString('ro-RO')} RON
                     </span>
-                    <span style={{fontSize:9,color:'rgba(159,215,255,0.3)'}}>
+                    <span style={{fontSize:10.5,color:'rgba(159,215,255,0.3)'}}>
                       Încasat: {stats.incasariNet.toLocaleString('ro-RO')} RON
                     </span>
                   </div>
@@ -1306,16 +1322,16 @@ export default function DashboardPage() {
           </div>
 
           {/* REZERVARI RECENTE */}
-          <div style={panel}>
+          <div className="fx-panel" style={panel}>
             <div style={panelHdr}>
               <span style={panelTitle}>Rezervări recente</span>
-              <Link href="/rezervari" style={{fontSize:9,color:'#4DA3FF',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
+              <Link href="/rezervari" style={{fontSize:10.5,color:'#7FA8E0',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
             </div>
             <div style={{overflow:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse'}}>
                 <thead><tr>
                   {['CLIENT','APARTAMENT','CI','CO','SUMĂ','CANAL'].map(h=>(
-                    <th key={h} style={{padding:'7px 10px',textAlign:'left',fontSize:9,fontWeight:600,color:'rgba(159,215,255,0.35)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid rgba(159,215,255,0.06)',whiteSpace:'nowrap'}}>{h}</th>
+                    <th key={h} style={{padding:'7px 10px',textAlign:'left',fontSize:10.5,fontWeight:600,color:'rgba(159,215,255,0.35)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid rgba(159,215,255,0.06)',whiteSpace:'nowrap'}}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
@@ -1324,10 +1340,10 @@ export default function DashboardPage() {
                     :rezervariRecente.map((r:any)=>(
                       <tr key={r.id}>
                         <td style={{padding:'8px 10px',fontSize:12,fontWeight:500,color:'#FFFFFF',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:100}}>{r.nume_client}</td>
-                        <td style={{padding:'8px 10px',fontSize:11,color:'rgba(159,215,255,0.55)',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis'}}>{r.apartament?.nume||'—'}</td>
-                        <td style={{padding:'8px 10px',fontSize:10,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkin?.slice(5)}</td>
-                        <td style={{padding:'8px 10px',fontSize:10,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkout?.slice(5)}</td>
-                        <td style={{padding:'8px 10px',fontSize:11,fontWeight:600,color:'#4ADE80',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{Number(r.suma_incasata).toLocaleString('ro-RO')}</td>
+                        <td style={{padding:'8px 10px',fontSize:12,color:'rgba(159,215,255,0.55)',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis'}}>{r.apartament?.nume||'—'}</td>
+                        <td style={{padding:'8px 10px',fontSize:11.5,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkin?.slice(5)}</td>
+                        <td style={{padding:'8px 10px',fontSize:11.5,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkout?.slice(5)}</td>
+                        <td style={{padding:'8px 10px',fontSize:12,fontWeight:600,color:'#7FCFA0',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{Number(r.suma_incasata).toLocaleString('ro-RO')}</td>
                         <td style={{padding:'8px 10px',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap'}}><CanalBadge canal={r.canal}/></td>
                       </tr>
                     ))
@@ -1338,36 +1354,37 @@ export default function DashboardPage() {
           </div>
 
           {/* RIGHT COL */}
-          <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            <div style={panel}>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            <div className="fx-panel" style={panel}>
               <div style={panelHdr}><span style={panelTitle}>Ocupare</span></div>
               <div style={{padding:'12px 14px'}}>
                 <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:8}}>
-                  <span style={{fontFamily:'monospace',fontSize:32,fontWeight:700,color:gradOcupare>60?'#22C55E':'#F59E0B',letterSpacing:-1}}>{gradOcupare}%</span>
-                  <span style={{fontSize:10,color:'rgba(159,215,255,0.4)'}}>grad ocupare</span>
+                  <span style={{fontFamily:'monospace',fontSize:32,fontWeight:700,color:gradOcupare>60?'#6CC28F':'#D9A85C',letterSpacing:-1}}>{gradOcupare}%</span>
+                  <span style={{fontSize:11.5,color:'rgba(159,215,255,0.4)'}}>grad ocupare luna curentă</span>
                 </div>
                 <div style={{height:6,background:'rgba(159,215,255,0.08)',borderRadius:3,overflow:'hidden',marginBottom:8}}>
-                  <div style={{height:'100%',width:`${gradOcupare}%`,background:gradOcupare>60?'linear-gradient(90deg,#22C55E,#4ADE80)':'linear-gradient(90deg,#F59E0B,#FCD34D)',borderRadius:3,transition:'width 0.6s ease'}}/>
+                  <div style={{height:'100%',width:`${gradOcupare}%`,background:gradOcupare>60?'linear-gradient(90deg,#6CC28F,#7FCFA0)':'linear-gradient(90deg,#D9A85C,#E3C77A)',borderRadius:3,transition:'width 0.6s ease'}}/>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
                   <div style={{background:'rgba(34,197,94,0.08)',border:'1px solid rgba(34,197,94,0.15)',borderRadius:6,padding:'6px 8px'}}>
-                    <div style={{fontFamily:'monospace',fontSize:16,fontWeight:700,color:'#4ADE80'}}>{stats.rezervariActive}</div>
-                    <div style={{fontSize:9,color:'rgba(159,215,255,0.35)'}}>OCUPATE</div>
+                    <div style={{fontFamily:'monospace',fontSize:16,fontWeight:700,color:'#7FCFA0'}}>{new Set(rezervariCurente.map((r:any)=>r.apartament_id)).size}</div>
+                    <div style={{fontSize:10.5,color:'rgba(159,215,255,0.35)'}}>OCUPATE AZI</div>
                   </div>
                   <div style={{background:'rgba(77,163,255,0.08)',border:'1px solid rgba(77,163,255,0.15)',borderRadius:6,padding:'6px 8px'}}>
-                    <div style={{fontFamily:'monospace',fontSize:16,fontWeight:700,color:'#7BC8FF'}}>{Math.max(0,stats.apartamenteActive-stats.rezervariActive)}</div>
-                    <div style={{fontSize:9,color:'rgba(159,215,255,0.35)'}}>LIBERE</div>
+                    <div style={{fontFamily:'monospace',fontSize:16,fontWeight:700,color:'#7BC8FF'}}>{Math.max(0,stats.apartamenteActive-new Set(rezervariCurente.map((r:any)=>r.apartament_id)).size)}</div>
+                    <div style={{fontSize:10.5,color:'rgba(159,215,255,0.35)'}}>LIBERE AZI</div>
                   </div>
                 </div>
               </div>
             </div>
-            <div style={panel}>
-              <div style={panelHdr}><span style={panelTitle}>Trend rezervări</span><span style={{fontSize:9,color:'#22C55E',fontFamily:'monospace'}}>▲ +18%</span></div>
+            <div className="fx-panel" style={panel}>
+              <div style={panelHdr}><span style={panelTitle}>Rezervări pe lună</span>{evolutie&&evolutie.length>=3&&(()=>{ const lc=evolutie[evolutie.length-2], lp=evolutie[evolutie.length-3], p=lp.rezervari?Math.round((lc.rezervari/lp.rezervari-1)*100):null
+                return p!=null?<span data-trend-rez style={{fontSize:10.5,color:p>=0?'#6CC28F':'#E08E8E',fontFamily:'monospace'}} title={`${lc.eticheta}: ${lc.rezervari} față de ${lp.eticheta}: ${lp.rezervari}`}>{p>=0?'▲':'▼'} {Math.abs(p)}% {lc.eticheta} vs {lp.eticheta}</span>:null })()}</div>
               <div style={{padding:'10px 12px 8px'}}>
-                <Sparkline data={SPARKLINE_DATA} color="#4DA3FF"/>
+                {evolutie&&evolutie.length>1?<Sparkline data={evolutie.slice(0,-1).map(l=>l.rezervari)} color="#7FA8E0"/>:<div style={{height:40}}/>}
                 <div style={{display:'flex',justifyContent:'space-between',marginTop:4}}>
-                  <span style={{fontSize:9,color:'rgba(159,215,255,0.3)',fontFamily:'monospace'}}>Ian</span>
-                  <span style={{fontSize:9,color:'rgba(159,215,255,0.3)',fontFamily:'monospace'}}>Iun</span>
+                  <span style={{fontSize:10.5,color:'rgba(159,215,255,0.3)',fontFamily:'monospace'}}>{evolutie?.[0]?`${evolutie[0].eticheta} ${evolutie[0].an}`:''}</span>
+                  <span style={{fontSize:10.5,color:'rgba(159,215,255,0.3)',fontFamily:'monospace'}}>{evolutie&&evolutie.length>1?`${evolutie[evolutie.length-2].eticheta}: ${evolutie[evolutie.length-2].rezervari} rez.`:''}</span>
                 </div>
               </div>
             </div>
@@ -1375,13 +1392,13 @@ export default function DashboardPage() {
         </div>
 
         {/* ══ PLĂȚI SCADENTE ══ */}
-        <div style={panel}>
+        <div className="fx-panel" style={panel}>
           <div style={panelHdr}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={panelTitle}>Plăți scadente — următoarele 14 zile</span>
-              {totalScadente>0&&<span style={{fontSize:10,fontWeight:600,color:'#F87171',background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:10,padding:'1px 7px'}}>{totalScadente} neachitate</span>}
+              {totalScadente>0&&<span style={{fontSize:11.5,fontWeight:600,color:'#E08E8E',background:'rgba(248,113,113,0.12)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:10,padding:'1px 7px'}}>{totalScadente} neachitate</span>}
             </div>
-            <Link href="/cheltuieli" style={{fontSize:9,color:'#4DA3FF',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
+            <Link href="/cheltuieli" style={{fontSize:10.5,color:'#7FA8E0',textDecoration:'none',display:'flex',alignItems:'center',gap:2}}>TOATE <ArrowUpRight size={9}/></Link>
           </div>
           <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:6}}>
             {apts.map(apt=>{
@@ -1394,13 +1411,13 @@ export default function DashboardPage() {
                 <div key={apt.id} style={{border:'1px solid rgba(100,160,255,0.12)',borderRadius:10,overflow:'hidden',background:'rgba(20,35,58,0.5)'}}>
                   <button onClick={()=>setExpanded(e=>({...e,[apt.id]:!e[apt.id]}))} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'transparent',border:'none',cursor:'pointer',textAlign:'left'}}>
                     <div style={{display:'flex',alignItems:'center',gap:7,flex:1,minWidth:0}}>
-                      {apt.nota&&<span style={{fontSize:10,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 7px',borderRadius:4,flexShrink:0}}>{apt.nota}</span>}
+                      {apt.nota&&<span style={{fontSize:11.5,fontWeight:600,color:'var(--accent-blue)',background:'rgba(77,163,255,0.12)',padding:'1px 7px',borderRadius:4,flexShrink:0}}>{apt.nota}</span>}
                       <span style={{fontSize:13,fontWeight:500,color:'#E8F4FF',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{apt.nume}</span>
-                      {urgente>0&&<AlertTriangle size={12} color="#F87171" style={{flexShrink:0}}/>}
+                      {urgente>0&&<AlertTriangle size={12} color="#E08E8E" style={{flexShrink:0}}/>}
                     </div>
                     <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-                      <span style={{fontSize:11,color:'rgba(159,215,255,0.5)'}}>{items.length} plăți</span>
-                      <span style={{fontSize:11,fontWeight:500,color:'#F87171'}}>{totalApt.toLocaleString('ro-RO')} RON</span>
+                      <span style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{items.length} plăți</span>
+                      <span style={{fontSize:12,fontWeight:500,color:'#E08E8E'}}>{totalApt.toLocaleString('ro-RO')} RON</span>
                       <ChevronDown size={13} color="rgba(159,215,255,0.35)" style={{transform:isOpen?'rotate(180deg)':'rotate(0)',transition:'transform .2s'}}/>
                     </div>
                   </button>
@@ -1415,12 +1432,12 @@ export default function DashboardPage() {
                         return(
                           <div key={ch.id} style={{display:'flex',alignItems:'stretch',background:dc.bg,border:`1px solid ${dc.border}`,borderRadius:10,overflow:'hidden',flexShrink:0,marginTop:8,transition:'all .2s'}}>
                             <div style={{padding:'10px 12px',lineHeight:1.3}}>
-                              <div style={{fontSize:10,fontWeight:500,color:dc.text,textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>{lbl}</div>
-                              <div style={{fontSize:16,fontWeight:600,color:isPaid?'#4ADE80':'#E8F4FF',letterSpacing:'-.3px'}}>{Number(ch.valoare).toLocaleString('ro-RO')}<span style={{fontSize:10,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span></div>
-                              <div style={{fontSize:10,marginTop:3,color:dc.text,fontWeight:days<=3?600:400}}>{days<0?`întârziat ${Math.abs(days)}z`:days===0?'scadent azi':`${days}z rămase`}{days<=3&&!isPaid?' ⚠':''}</div>
+                              <div style={{fontSize:11.5,fontWeight:500,color:dc.text,textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>{lbl}</div>
+                              <div style={{fontSize:16,fontWeight:600,color:isPaid?'#7FCFA0':'#E8F4FF',letterSpacing:'-.3px'}}>{Number(ch.valoare).toLocaleString('ro-RO')}<span style={{fontSize:11.5,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span></div>
+                              <div style={{fontSize:11.5,marginTop:3,color:dc.text,fontWeight:days<=3?600:400}}>{days<0?`întârziat ${Math.abs(days)}z`:days===0?'scadent azi':`${days}z rămase`}{days<=3&&!isPaid?' ⚠':''}</div>
                             </div>
                             <button onClick={()=>togglePaid(ch)} disabled={toggling===ch.id} style={{width:38,display:'flex',alignItems:'center',justifyContent:'center',background:isPaid?'rgba(74,222,128,0.15)':'rgba(100,160,255,0.06)',borderTop:'none',borderRight:'none',borderBottom:'none',borderLeft:`1px solid ${dc.border}`,cursor:'pointer',transition:'all .18s',opacity:toggling===ch.id?0.5:1}}>
-                              <div style={{width:22,height:22,borderRadius:'50%',border:`2px solid ${isPaid?'#4ADE80':dc.text}`,background:isPaid?'#4ADE80':'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .18s'}}>
+                              <div style={{width:22,height:22,borderRadius:'50%',border:`2px solid ${isPaid?'#7FCFA0':dc.text}`,background:isPaid?'#7FCFA0':'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .18s'}}>
                                 {isPaid&&<Check size={12} color="#0E1B2B" strokeWidth={3}/>}
                               </div>
                             </button>
@@ -1437,7 +1454,7 @@ export default function DashboardPage() {
                 <button onClick={()=>setExpanded(e=>({...e,'fiscal':!e['fiscal']}))} style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'transparent',border:'none',cursor:'pointer',textAlign:'left'}}>
                   <span style={{fontSize:13,fontWeight:500,color:'#E8F4FF',flex:1}}>Obligații fiscale</span>
                   <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-                    <span style={{fontSize:11,color:'rgba(159,215,255,0.5)'}}>{fiscalScadente.length} obligații</span>
+                    <span style={{fontSize:12,color:'rgba(159,215,255,0.5)'}}>{fiscalScadente.length} obligații</span>
                     <ChevronDown size={13} color="rgba(159,215,255,0.35)" style={{transform:expanded['fiscal']?'rotate(180deg)':'rotate(0)',transition:'transform .2s'}}/>
                   </div>
                 </button>
@@ -1451,12 +1468,12 @@ export default function DashboardPage() {
                       return(
                         <div key={ft.key} style={{display:'flex',alignItems:'stretch',background:dc.bg,border:`1px solid ${dc.border}`,borderRadius:10,overflow:'hidden',flexShrink:0,marginTop:8}}>
                           <div style={{padding:'10px 12px',lineHeight:1.3}}>
-                            <div style={{fontSize:10,fontWeight:500,color:dc.text,textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>{ft.label}</div>
-                            <div style={{fontSize:16,fontWeight:600,color:isPaid?'#4ADE80':'#E8F4FF'}}>{item?Number(item.valoare).toLocaleString('ro-RO'):'—'}<span style={{fontSize:10,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span></div>
-                            <div style={{fontSize:10,marginTop:3,color:dc.text,fontWeight:days<=3?600:400}}>{days<0?`întârziat ${Math.abs(days)}z`:days===0?'scadent azi':`${days}z rămase`}</div>
+                            <div style={{fontSize:11.5,fontWeight:500,color:dc.text,textTransform:'uppercase',letterSpacing:'.04em',marginBottom:3}}>{ft.label}</div>
+                            <div style={{fontSize:16,fontWeight:600,color:isPaid?'#7FCFA0':'#E8F4FF'}}>{item?Number(item.valoare).toLocaleString('ro-RO'):'—'}<span style={{fontSize:11.5,fontWeight:400,marginLeft:3,color:'rgba(159,215,255,0.4)'}}>RON</span></div>
+                            <div style={{fontSize:11.5,marginTop:3,color:dc.text,fontWeight:days<=3?600:400}}>{days<0?`întârziat ${Math.abs(days)}z`:days===0?'scadent azi':`${days}z rămase`}</div>
                           </div>
                           {item&&<button onClick={()=>togglePaid(item)} disabled={toggling===item.id} style={{width:38,display:'flex',alignItems:'center',justifyContent:'center',background:isPaid?'rgba(74,222,128,0.15)':'rgba(100,160,255,0.06)',borderTop:'none',borderRight:'none',borderBottom:'none',borderLeft:`1px solid ${dc.border}`,cursor:'pointer',opacity:toggling===item.id?0.5:1}}>
-                            <div style={{width:22,height:22,borderRadius:'50%',border:`2px solid ${isPaid?'#4ADE80':dc.text}`,background:isPaid?'#4ADE80':'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .18s'}}>{isPaid&&<Check size={12} color="#0E1B2B" strokeWidth={3}/>}</div>
+                            <div style={{width:22,height:22,borderRadius:'50%',border:`2px solid ${isPaid?'#7FCFA0':dc.text}`,background:isPaid?'#7FCFA0':'transparent',display:'flex',alignItems:'center',justifyContent:'center',transition:'all .18s'}}>{isPaid&&<Check size={12} color="#0E1B2B" strokeWidth={3}/>}</div>
                           </button>}
                         </div>
                       )
@@ -1476,13 +1493,13 @@ export default function DashboardPage() {
           const isExcl=(id:string)=>{const a=aptM[id];return a?.nota==='CG40'||a?.nota==='VM07'}
           const totVerde=Math.round(rezLunaDsp.filter(r=>!isExcl(r.apartament_id)).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0))
           const totExcl=Math.round(rezLunaDsp.filter(r=>isExcl(r.apartament_id)).reduce((s:number,r:any)=>s+Number(r.suma_incasata||0),0))
-          const thS:React.CSSProperties={padding:'6px 10px',textAlign:'left',fontSize:9,fontWeight:600,color:'rgba(159,215,255,0.35)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid rgba(159,215,255,0.08)',whiteSpace:'nowrap'}
-          const tdS:React.CSSProperties={padding:'7px 10px',fontSize:11,borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap'}
+          const thS:React.CSSProperties={padding:'6px 10px',textAlign:'left',fontSize:10.5,fontWeight:600,color:'rgba(159,215,255,0.35)',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid rgba(159,215,255,0.08)',whiteSpace:'nowrap'}
+          const tdS:React.CSSProperties={padding:'7px 10px',fontSize:12,borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap'}
           return(
-            <div style={{...panel,marginTop:8}}>
+            <div className="fx-panel" style={{...panel,marginTop:8}}>
               <div style={panelHdr}>
                 <span style={panelTitle}>Rezervări {lunaLabel} — verificare calcul</span>
-                <span style={{fontSize:10,color:'rgba(159,215,255,0.35)',fontFamily:'monospace'}}>{rezLunaDsp.length} rez. cu checkin în lună</span>
+                <span style={{fontSize:11.5,color:'rgba(159,215,255,0.35)',fontFamily:'monospace'}}>{rezLunaDsp.length} rez. cu checkin în lună</span>
               </div>
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -1496,26 +1513,26 @@ export default function DashboardPage() {
                       const nopti=r.nr_nopti||Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)
                       return(
                         <tr key={r.id||i} style={{opacity:excl?0.45:1}}>
-                          <td style={{...tdS,fontWeight:700,color:excl?'#F87171':'#4ADE80',fontFamily:'monospace'}}>{apt?.nota||'—'}</td>
+                          <td style={{...tdS,fontWeight:700,color:excl?'#E08E8E':'#7FCFA0',fontFamily:'monospace'}}>{apt?.nota||'—'}</td>
                           <td style={{...tdS,color:'rgba(214,228,244,0.6)',fontFamily:'monospace'}}>{r.data_checkin?.slice(5)}</td>
                           <td style={{...tdS,color:'rgba(214,228,244,0.6)',fontFamily:'monospace'}}>{r.data_checkout?.slice(5)}</td>
                           <td style={{...tdS,color:'rgba(214,228,244,0.5)',fontFamily:'monospace',textAlign:'center' as const}}>{nopti}</td>
-                          <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:excl?'#F87171':'#4ADE80'}}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')}</td>
+                          <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:excl?'#E08E8E':'#7FCFA0'}}>{Number(r.suma_incasata||0).toLocaleString('ro-RO')}</td>
                           <td style={tdS}><CanalBadge canal={r.canal}/></td>
-                          <td style={{...tdS,fontSize:9,fontWeight:600,color:excl?'#F87171':'#4ADE80'}}>{excl?'EXCLUS':'VERDE'}</td>
+                          <td style={{...tdS,fontSize:10.5,fontWeight:600,color:excl?'#E08E8E':'#7FCFA0'}}>{excl?'EXCLUS':'VERDE'}</td>
                         </tr>
                       )
                     })}
                   </tbody>
                   <tfoot>
                     <tr style={{borderTop:'1px solid rgba(74,222,128,0.25)'}}>
-                      <td colSpan={4} style={{...tdS,fontWeight:700,color:'#4ADE80'}}>TOTAL VERDE (filtrat)</td>
-                      <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:'#4ADE80',fontSize:13}}>{totVerde.toLocaleString('ro-RO')}</td>
+                      <td colSpan={4} style={{...tdS,fontWeight:700,color:'#7FCFA0'}}>TOTAL VERDE (filtrat)</td>
+                      <td style={{...tdS,fontWeight:700,fontFamily:'monospace',color:'#7FCFA0',fontSize:13}}>{totVerde.toLocaleString('ro-RO')}</td>
                       <td colSpan={2} style={tdS}/>
                     </tr>
                     <tr>
-                      <td colSpan={4} style={{...tdS,fontWeight:600,color:'#F87171'}}>Total CG40+VM07 (exclus)</td>
-                      <td style={{...tdS,fontWeight:600,fontFamily:'monospace',color:'#F87171'}}>{totExcl.toLocaleString('ro-RO')}</td>
+                      <td colSpan={4} style={{...tdS,fontWeight:600,color:'#E08E8E'}}>Total CG40+VM07 (exclus)</td>
+                      <td style={{...tdS,fontWeight:600,fontFamily:'monospace',color:'#E08E8E'}}>{totExcl.toLocaleString('ro-RO')}</td>
                       <td colSpan={2} style={tdS}/>
                     </tr>
                     <tr style={{borderTop:'1px solid rgba(159,215,255,0.12)'}}>

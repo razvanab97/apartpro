@@ -16,5 +16,6 @@
 [data-theme="light"] .mpr-tab { color:rgba(92, 80, 62, 0.7)!important; }
 [data-theme="light"] .mpr-tab.on { background:#FFFDF8!important; color:rgb(33, 28, 20)!important; }
 [data-theme="light"] svg text { fill:rgb(33, 28, 20)!important; }
+[data-theme="light"][data-tema-astept] body > * { visibility:hidden!important; }
 [data-theme="light"] .bg-\[\#161b27\] { background-color:#FFFDF8!important; }
 [data-theme="light"] .border-\[\#2a3350\] { border-color:rgba(120, 96, 64, 0.32)!important; }
