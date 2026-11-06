@@ -49,6 +49,49 @@ type Luna = {
   an: number; luna: number; zile: number; curenta: boolean; ziAzi: number
   acum: Cifre; anTrecut: Cifre; acumLaZi: Cifre; anTrecutLaZi: Cifre; prognoza: number
   apts: { apt: any; acum: Cifre; anTrecut: Cifre; acumLaZi: Cifre; anTrecutLaZi: Cifre; prognoza: number }[]
+  tinta: Tinta
+}
+// Ce mai trebuie rezervat ca să atingem prognoza, doar pe locațiile interne (fără comision) + Vila Păcurari (cerut direct:
+// „care ar trebui să fie prețul minim pe noapte la locațiile noastre interne, nu cele cu comision. Adaugă și Vila în
+// calcul... Ex: la 150 RON trebuie să rezervăm încă 20 de nopți la toate locațiile ca să ajungem la asta”)
+type Tinta = { apts: any[]; prognoza: number; rezervat: number; nopti: number; diferenta: number; libere: number; deLa: string }
+const PRETURI = [150, 200, 250, 300, 350]
+
+function BlocTinta({ t, futurist }: { t: Tinta; futurist?: boolean }) {
+  const pretMinim = t.libere > 0 ? Math.ceil(t.diferenta / t.libere) : null
+  const pretMediu = t.nopti > 0 ? Math.round(t.rezervat / t.nopti) : null
+  const linie = futurist ? 'rgba(160,170,230,0.14)' : 'rgba(159,215,255,0.12)'
+  const mic: React.CSSProperties = { fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: futurist ? 'rgba(180,212,224,0.6)' : 'rgba(159,215,255,0.55)', fontFamily: futurist ? 'monospace' : undefined }
+  const nume = t.apts.map(a => a.nota || a.nume).join(', ')
+  return (
+    <div data-tinta style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: `1px solid ${linie}`, background: futurist ? 'rgba(127,196,214,0.04)' : 'rgba(255,255,255,0.02)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={mic}>Ce mai trebuie rezervat · locații interne + Vila</span>
+        <span title={nume} style={{ fontSize: 11.5, color: 'rgba(180,212,224,0.55)' }}>{t.apts.length} locații · {t.libere} nopți libere {t.deLa.slice(8) !== '01' ? `de pe ${t.deLa.slice(8, 10)}.${t.deLa.slice(5, 7)}` : 'în toată luna'}</span>
+      </div>
+      {t.diferenta <= 0 ? (
+        <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: '#7FCFA0' }}>✓ Prognoza pe aceste locații e deja atinsă ({lei(t.rezervat)} / {lei(t.prognoza)} lei)</div>
+      ) : (<>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 8, marginTop: 8 }}>
+          <div><div style={mic}>De rezervat</div><div style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 800, color: '#E3C77A' }}>{lei(t.diferenta)} <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(180,212,224,0.55)' }}>lei</span></div><div style={{ fontSize: 11.5, color: 'rgba(180,212,224,0.55)' }}>prognoză {lei(t.prognoza)} − rezervat {lei(t.rezervat)}</div></div>
+          <div><div style={mic}>Preț minim / noapte</div><div data-pret-minim style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 800, color: pretMinim != null && pretMinim > 0 ? '#E6EAF7' : '#E08E8E' }}>{pretMinim != null ? `${lei(pretMinim)} lei` : '—'}</div><div style={{ fontSize: 11.5, color: 'rgba(180,212,224,0.55)' }}>dacă se ocupă toate cele {t.libere} nopți libere</div></div>
+          <div><div style={mic}>Preț mediu acum</div><div style={{ fontFamily: 'monospace', fontSize: 17, fontWeight: 800, color: 'rgba(214,228,244,0.8)' }}>{pretMediu != null ? `${lei(pretMediu)} lei` : '—'}</div><div style={{ fontSize: 11.5, color: 'rgba(180,212,224,0.55)' }}>{t.nopti} nopți deja rezervate</div></div>
+        </div>
+        <div data-tinta-preturi style={{ display: 'grid', gridTemplateColumns: `repeat(${PRETURI.length}, minmax(0,1fr))`, gap: 6, marginTop: 10 }}>
+          {PRETURI.map(p => {
+            const n = Math.ceil(t.diferenta / p), proc = t.libere ? Math.round(n / t.libere * 100) : 999, ok = n <= t.libere
+            return (
+              <div key={p} style={{ padding: '6px 8px', borderRadius: 8, border: `1px solid ${ok ? linie : 'rgba(224,142,142,0.35)'}`, background: ok ? 'transparent' : 'rgba(224,142,142,0.06)', textAlign: 'center' }}>
+                <div style={{ fontSize: 11.5, color: 'rgba(180,212,224,0.6)' }}>la {p} lei</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 800, color: ok ? '#E6EAF7' : '#E08E8E' }}>{n} <span style={{ fontSize: 11, fontWeight: 400 }}>nopți</span></div>
+                <div style={{ fontSize: 11, color: ok ? 'rgba(180,212,224,0.55)' : '#E08E8E' }}>{ok ? `${proc}% din libere` : 'nu ajung nopțile'}</div>
+              </div>
+            )
+          })}
+        </div>
+      </>)}
+    </div>
+  )
 }
 
 export default function FataDeAnulTrecut() {
@@ -73,7 +116,7 @@ export default function FataDeAnulTrecut() {
       const [rezAcum, rezTrecut, { data: aptData }] = await Promise.all([
         toate(inceput(an, luna - 3), inceput(an, luna + 2)),
         toate(inceput(an - 1, luna - 3), inceput(an - 1, luna + 2)),
-        supabase.from('apartamente').select('id,nume,nota,status,exclus_statistici').order('nota'),
+        supabase.from('apartamente').select('id,nume,nota,status,exclus_statistici,comision_tip').order('nota'),
       ])
       // apartamentele „Exclus din statistici” (ex. N45, la care firma ia doar comisionul) nu intră în comparație / prognoză
       const apts = (aptData || []).filter((a: any) => !a.exclus_statistici)
@@ -99,7 +142,18 @@ export default function FataDeAnulTrecut() {
         }).filter(x => x.anTrecut.nopti > 0 || x.acum.nopti > 0)
           .sort((x, y) => Number(y.anTrecut.nopti > 0) - Number(x.anTrecut.nopti > 0) || String(x.apt.nota || x.apt.nume).localeCompare(String(y.apt.nota || y.apt.nume)))
         const tot = (f: (x: typeof aptsL[number]) => Cifre) => aptsL.reduce((t, x) => ({ nopti: t.nopti + f(x).nopti, lei: t.lei + f(x).lei }), { nopti: 0, lei: 0 })
-        return { an: A, luna: L, zile, curenta, ziAzi, acum: tot(x => x.acum), anTrecut: tot(x => x.anTrecut), acumLaZi: tot(x => x.acumLaZi), anTrecutLaZi: tot(x => x.anTrecutLaZi), prognoza: aptsL.reduce((t, x) => t + x.prognoza, 0), apts: aptsL }
+        // locațiile interne active (fără comision) + Vila Păcurari: prognoza lor, ce e rezervat și nopțile libere rămase
+        // (luna curentă: de azi încolo; luna viitoare: toată luna)
+        const interne = apts.filter((a: any) => a.status !== 'inactiv' && (a.comision_tip === 'fara_comision' || !a.comision_tip || a.nota === 'VM07'))
+        const deLa = curenta ? ymd(azi) : s
+        const tinta: Tinta = { apts: interne, prognoza: 0, rezervat: 0, nopti: 0, diferenta: 0, libere: 0, deLa }
+        for (const a of interne) {
+          const x = aptsL.find(y => y.apt.id === a.id)
+          tinta.prognoza += x?.prognoza || 0; tinta.rezervat += x?.acum.lei || 0; tinta.nopti += x?.acum.nopti || 0
+          tinta.libere += Math.max(0, zileIntre(deLa, e) - suma(rezAcum, deLa, e, a.id).nopti)
+        }
+        tinta.diferenta = Math.max(0, tinta.prognoza - tinta.rezervat)
+        return { an: A, luna: L, zile, curenta, ziAzi, acum: tot(x => x.acum), anTrecut: tot(x => x.anTrecut), acumLaZi: tot(x => x.acumLaZi), anTrecutLaZi: tot(x => x.anTrecutLaZi), prognoza: aptsL.reduce((t, x) => t + x.prognoza, 0), apts: aptsL, tinta }
       })
       setDate({ luni, tendinta, perioadaTendinta })
     } catch { setEroare(true) }
@@ -154,6 +208,8 @@ export default function FataDeAnulTrecut() {
                 <span>{progres}% din prognoză e deja rezervat</span>
                 <span><span style={{ color: '#FCD34D' }}>|</span> anul trecut · mai sunt de umplut ≈ {lei(Math.max(0, L.prognoza - L.acum.lei))} lei</span>
               </div>
+
+              <BlocTinta t={L.tinta} />
 
               <button data-pe-apartamente-toggle onClick={() => setDeschis(deschis === i ? null : i)} style={{ marginTop: 8, padding: '5px 10px', borderRadius: 8, border: '1px solid rgba(167,139,250,0.35)', background: deschis === i ? 'rgba(167,139,250,0.15)' : 'transparent', color: '#C4B5FD', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
                 {deschis === i ? 'Ascunde apartamentele' : `Pe apartamente (${L.apts.filter(a => a.anTrecut.nopti > 0).length} care erau și anul trecut) ▸`}
@@ -296,6 +352,7 @@ function Futurist({ date, deschis, setDeschis, comutator }: { date: { luni: Luna
                   {bara('Rezervat', L.acum.lei, NEON.c)}
                   {bara('Prognoză', L.prognoza, NEON.v, true)}
                 </div>
+                <BlocTinta t={L.tinta} futurist />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                   <span style={{ ...lbl, letterSpacing: '.08em' }}>{L.acum.nopti} nopți rezervate · {L.anTrecut.nopti} anul trecut</span>
                   <button data-pe-apartamente-toggle onClick={() => setDeschis(deschis === i ? null : i)} style={{ padding: '6px 12px', borderRadius: 999, border: '1px solid rgba(127,196,214,0.32)', background: deschis === i ? 'rgba(127,196,214,0.10)' : 'transparent', color: '#A9D3DD', fontSize: 12, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', cursor: 'pointer', boxShadow: deschis === i ? '0 0 14px rgba(127,196,214,0.2)' : 'none' }}>{deschis === i ? 'Închide' : 'Pe apartamente ▸'}</button>
