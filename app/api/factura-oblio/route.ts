@@ -23,6 +23,9 @@ export async function POST(req: NextRequest) {
   if (r.status_rezervare === 'anulata') return NextResponse.json({ error: 'Rezervarea e anulată' }, { status: 400 })
 
   const nopti = Math.max(0, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
+  // suma de facturat scrisă la rezervare (setari suma_facturare_<id>), altfel totalul rezervării (valoarea brută)
+  const { data: sf } = await supabase.from('setari').select('valoare').eq('cheie', `suma_facturare_${r.id}`).maybeSingle()
+  const sumaFacturare = Number(sf?.valoare) > 0 ? Number(sf?.valoare) : (Number(r.valoare_bruta) || 0)
   let resp: Response
   try {
     resp = await fetch(`${url.replace(/\/$/, '')}/api/oblio/factura-cazare`, {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
         checkout: r.data_checkout,
         nopti,
         persoane: r.nr_persoane,
-        suma: Number(r.valoare_bruta) || 0,
+        suma: sumaFacturare,
       }),
     })
   } catch (e) {

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
@@ -151,6 +151,23 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   useEffect(() => { if (open && editing?.id) window.dispatchEvent(new CustomEvent('agent:context', { detail: { rezervare_id: editing.id, rezervare_nume: `${editing.nume_client || ''} · ${editing.data_checkin || ''} → ${editing.data_checkout || ''}` } })) }, [open, editing?.id])
   const [showComision, setShowComision] = useState(false)
   const [original, setOriginal] = useState<any>(null)
+  // Suma de facturat (cerut direct: „suma de facturat, în loc de încasat efectiv. Unde vom scrie o sumă, posibil alta decât
+  // cea din calcul”) - în setari suma_facturare_<idRezervare>; goală = se facturează totalul rezervării (valoarea brută).
+  // Factura Oblio (/api/factura-oblio) o folosește pe aceasta când e completată.
+  const [sumaFact, setSumaFact] = useState<number | ''>('')
+  const [sumaFactSalvata, setSumaFactSalvata] = useState<number | ''>('')
+  const [showIncasat, setShowIncasat] = useState(false)
+  // „Încasat efectiv” e valoarea folosită de rapoarte / statistici / deconturi: dacă e gol / 0 sau era egal cu totalul,
+  // urmează totalul rezervării (altfel rezervarea apărea în raport fără sumă - raportat direct, Ionela Florentina N45)
+  const brutAnterior = useRef<number | null>(null), idAnterior = useRef<string | null>(null)
+  useEffect(() => {
+    if (!open || !editing) { brutAnterior.current = null; return }
+    if (idAnterior.current !== (editing.id || 'nou')) { idAnterior.current = editing.id || 'nou'; brutAnterior.current = null }
+    const brut = Number(editing.valoare_bruta) || 0, inc = Number(editing.suma_incasata) || 0
+    if (brut > 0 && (inc === 0 || (brutAnterior.current != null && inc === brutAnterior.current)) && inc !== brut)
+      setEditing((prev: any) => ({ ...prev, suma_incasata: brut }))
+    brutAnterior.current = brut
+  }, [open, editing?.id, editing?.valoare_bruta])  // eslint-disable-line react-hooks/exhaustive-deps
   // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
   // recalculeaza singur cand se schimba datele; cand se scrie direct totalul, pretul se deduce din el
   const [pretNoapte, setPretNoapte] = useState<number | '' | null>(null)
@@ -167,19 +184,44 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setShowComision(comision > 0)
       setOriginal(editing)
       setPretNoapte(null)
+      setSumaFact(''); setSumaFactSalvata('')
+      setShowIncasat(Number(editing?.suma_incasata) > 0 && Number(editing?.suma_incasata) !== Number(editing?.valoare_bruta))
       setFactura({ etapa: 'idle' })
     }
+  }
+
+  useEffect(() => {
+    if (!open || !editing?.id) return
+    let anulat = false
+    supabase.from('setari').select('valoare').eq('cheie', `suma_facturare_${editing.id}`).maybeSingle().then(({ data }) => {
+      if (anulat) return
+      const v = data?.valoare != null && data.valoare !== '' ? Number(data.valoare) : ''
+      setSumaFact(v === '' || isNaN(v as number) ? '' : v); setSumaFactSalvata(v === '' || isNaN(v as number) ? '' : v)
+    })
+    return () => { anulat = true }
+  }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // salvarea: întâi suma de facturat (dacă rezervarea există), apoi rezervarea
+  async function salveazaTot() {
+    if (editing?.id && String(sumaFact) !== String(sumaFactSalvata)) {
+      const cheie = `suma_facturare_${editing.id}`
+      const { error } = sumaFact === '' || !(Number(sumaFact) > 0)
+        ? await supabase.from('setari').delete().eq('cheie', cheie)
+        : await supabase.from('setari').upsert({ cheie, valoare: String(sumaFact) }, { onConflict: 'cheie' })
+      if (!error) setSumaFactSalvata(sumaFact)
+    }
+    onSave()
   }
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); onSave() }
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); salveazaTot() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, onSave])
+  }, [open, onClose, onSave, sumaFact, sumaFactSalvata, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open || !editing) return null
 
@@ -206,12 +248,13 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
 
   // Factura (Oblio, prin ContaFlow): doar Airbnb, rezervare salvata, cu cod si suma, fara modificari nesalvate
   const campuriFactura = ['cod_rezervare_platforma', 'valoare_bruta', 'nume_client', 'data_checkin', 'data_checkout', 'canal', 'apartament_id', 'nr_persoane', 'telefon_client']
-  const nesalvat = !!original && campuriFactura.some(k => String(original[k] ?? '') !== String(editing[k] ?? ''))
+  const nesalvat = (!!original && campuriFactura.some(k => String(original[k] ?? '') !== String(editing[k] ?? ''))) || String(sumaFact) !== String(sumaFactSalvata)
+  const deFacturat = Number(sumaFact) > 0 ? Number(sumaFact) : Number(editing.valoare_bruta) || 0
   const motivFaraFactura =
     !editing.id ? 'Salvează întâi rezervarea' :
     editing.canal !== 'airbnb' ? 'Facturarea automată e doar pentru rezervările Airbnb' :
     !String(editing.cod_rezervare_platforma || '').trim() ? 'Completează codul rezervării Airbnb' :
-    !(Number(editing.valoare_bruta) > 0) ? 'Completează valoarea brută' :
+    !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
     nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' : null
 
@@ -348,10 +391,21 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 </button>
               )}
               <div className="rz-grid rz-2" style={{ marginTop: 12 }}>
-                <div><Label>Încasat efectiv</Label><Money value={editing.suma_incasata} suffix={moneda} onChange={v => set({ suma_incasata: v })} /></div>
+                <div data-suma-facturare>
+                  <Label>Sumă de facturat</Label>
+                  <Money value={sumaFact} suffix={moneda} onChange={v => setSumaFact(v)} />
+                  <div style={{ fontSize: 11, marginTop: 4, color: Number(sumaFact) > 0 && Number(sumaFact) !== Number(editing.valoare_bruta) ? C.amber : C.faint }}>
+                    {!(Number(sumaFact) > 0) ? `gol = se facturează totalul (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda})`
+                      : Number(sumaFact) !== Number(editing.valoare_bruta) ? `diferă de total (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda}) cu ${fmt(Math.round((Number(sumaFact) - (Number(editing.valoare_bruta) || 0)) * 100) / 100)}` : 'egală cu totalul rezervării'}
+                  </div>
+                </div>
                 <div><Label>Taxă curățenie</Label><Money value={editing.taxa_curatenie_incasata} suffix={moneda} onChange={v => set({ taxa_curatenie_incasata: v })} /></div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                <Fold title="Încasat efectiv" open={showIncasat} onToggle={() => setShowIncasat(x => !x)}
+                  value={<span style={{ color: Number(editing.suma_incasata) > 0 ? C.text : C.faint }}>{Number(editing.suma_incasata) > 0 ? `${fmt(Number(editing.suma_incasata))} ${moneda}` : '0 · editează'}</span>}>
+                  <Money value={editing.suma_incasata} suffix={moneda} onChange={v => set({ suma_incasata: v })} />
+                </Fold>
                 <Fold title="Comision platformă" open={showComision} onToggle={() => setShowComision(s => !s)}
                   value={comision > 0 ? <span style={{ color: C.red }}>−{fmt(comision)} RON</span> : <span style={{ color: C.faint }}>0 · editează</span>}>
                   <div className="rz-grid" style={{ gridTemplateColumns: '0.8fr 1fr 1fr' }}>
@@ -464,7 +518,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
           )}
           <button type="button" className="rz-btn" onClick={onClose} style={{ padding: '10px 18px' }}>Anulează</button>
-          <button type="button" className="rz-btn rz-btn-primary" onClick={onSave} disabled={saving}>
+          <button type="button" className="rz-btn rz-btn-primary" onClick={salveazaTot} disabled={saving}>
             {saving ? <><Loader2 size={14} className="rz-spin" /> Se salvează…</> : 'Salvează rezervarea'}
           </button>
         </footer>

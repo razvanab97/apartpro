@@ -367,7 +367,9 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
           ...(comPlatf ? [['Comision platformă', null, `${comPlatf} RON + TVA intracom. ${tvaPlatf} RON`]] : [])],
         avertismente: av,
         payload: { apartament_id: apt.id, proprietar_id: apt.proprietar_id, nume_client: curat(a.nume_client), telefon_client: curat(a.telefon) || null, data_checkin: a.checkin, data_checkout: a.checkout,
-          nr_persoane: pers, valoare_bruta: total, suma_incasata: incasat, canal, status_plata: plata,
+          // suma_incasata = valoarea rezervării peste tot în aplicație (rapoarte, statistici, deconturi) - nu 0 la neplătite
+          // (raportat direct: rezervarea creată de Asistent apărea în raport fără sumă); plata reală e în status_plata
+          nr_persoane: pers, valoare_bruta: total, suma_incasata: incasat || total, canal, status_plata: plata,
           cod_rezervare_platforma: cod || null, comision_platforma_valoare: comPlatf, tva_comision_platforma: tvaPlatf,
           comision_platforma_procent: comPlatf && total ? Math.round(comPlatf / total * 10000) / 100 : 0,
           observatii: [curat(a.observatii), primita ? `Payout ${canal === 'booking' ? 'Booking' : 'Airbnb'} ${primita} RON · de facturat ${total} RON` : '', 'Creată de Asistent'].filter(Boolean).join(' · ') },
