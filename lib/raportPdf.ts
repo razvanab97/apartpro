@@ -137,20 +137,10 @@ export async function genereazaRaportPdf(d: RaportPdf) {
     dupa()
   }
 
-  // ── 3. comisioane pe platforma
-  sectiune('Comisioane pe platformă', 'toate locațiile selectate')
-  const nP = d.platforme.randuri.length
-  autoTable(doc, {
-    ...stilBaza, startY: y, head: [d.platforme.cap.map(T)], body: [...d.platforme.randuri.map(r => r.map(T)), d.platforme.total.map(T)],
-    columnStyles: { 2: { halign: 'right' as const }, 3: { halign: 'right' as const }, 4: { halign: 'right' as const }, 5: { halign: 'right' as const }, 6: { halign: 'right' as const } },
-    didParseCell: (c: any) => {
-      if (c.section === 'head' && c.column.index >= 2) c.cell.styles.halign = 'right'
-      if (c.section === 'body' && c.row.index === nP) { c.cell.styles.fillColor = NAVY2; c.cell.styles.textColor = [252, 222, 140]; c.cell.styles.fontStyle = 'bold' }
-    },
-  })
-  dupa()
+  // („Comisioane pe platformă” nu mai apare în PDF - cerut direct: „scoate secțiunea asta din PDF, e în plus”;
+  //  rămâne doar pe pagină, în Situație Fiscală)
 
-  // ── 4. decont proprietar (calculatorul din pagina)
+  // ── 3. decont proprietar (calculatorul din pagina)
   if (d.decont && d.decont.randuri.length) {
     sectiune('Decont proprietar')
     autoTable(doc, {
