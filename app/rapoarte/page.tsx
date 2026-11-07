@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase, numVal, numInput } from '@/lib/supabase'
-import { citesteTaxe, curateniiTaxate } from '@/lib/taxeCuratenie'
+import { citesteTaxe, curateniiTaxate, type CurateniaTaxata } from '@/lib/taxeCuratenie'
+import { genereazaRaportPdf, type LocatiePdf } from '@/lib/raportPdf'
 import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { FileText, Download, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
@@ -45,6 +46,11 @@ function calcComision(brut: number, canal: string, r?: any) {
 const CAT_CURATENIE = ['curatenie', 'spalatorie']
 const CAT_RAPORT = [...CAT_CURATENIE, 'eon_curent', 'eon_gaz', 'eon_duo', 'asociatie', 'internet', 'salubris']
 const ETICHETA_CHELT: Record<string, string> = { curatenie: 'Curățenie', spalatorie: 'Spălătorie / lenjerii', eon_curent: 'E.ON curent', eon_gaz: 'E.ON gaz', eon_duo: 'E.ON DUO', asociatie: 'Asociație', internet: 'Internet', salubris: 'Salubris' }
+// „Curățenii finalizate — 3 × 70 RON (02.11, 05.11, 07.11)”
+const textFinalizate = (l: any) => { const n = l.finalizate.length, z = l.finalizate.map((c: any) => `${c.data.slice(8, 10)}.${c.data.slice(5, 7)}`).join(', ')
+  const sume = Array.from(new Set(l.finalizate.map((c: any) => Number(c.suma))))
+  return n ? `Curățenii finalizate — ${n} × ${sume.length === 1 ? fmtRo(sume[0] as number) : 'taxă'} RON (${z})` : `Curățenii finalizate — niciuna marcată „Gata” în perioadă (taxă ${fmtRo(l.tarifTaxa)} RON / curățenie)` }
+const fmtRo = (n: number) => (Number(n) || 0).toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const detaliuChelt = (c: any) => { const n = String(c.nota || '').split('|')[0].replace(/^Factur[ăa]\s*/i, '').replace(/\.pdf$/i, '').trim(); return [ETICHETA_CHELT[c.categorie] || c.categorie, n].filter(Boolean).join(' · ') }
 
 function calcProRata(r: any, periodStart: string, periodEnd: string): number {
@@ -191,6 +197,10 @@ export default function RapoartePage() {
   // cheltuielile din Cheltuieli pentru locațiile și perioada raportului (curățenie, spălătorie, utilități)
   const [cheltRaport, setCheltRaport] = useState<any[]>([])
   const [includeChelt, setIncludeChelt] = useState(true)
+  // regula curățeniei (Curățenie → Taxe): la apartamentele cu taxă activă (ex. N45 70 RON, Cherry 3 75 RON) curățenia
+  // se scade când e marcată „Gata” în aplicație - cerut direct: „la N45 și Cherry să se respecte regula curățeniei”
+  const [curatFinalizate, setCuratFinalizate] = useState<CurateniaTaxata[]>([])
+  const [aptCuTaxa, setAptCuTaxa] = useState<Record<string, number>>({})
   const { toast, show } = useToast()
   const [graficeData, setGraficeData] = useState<any[]>([])
   const [graficeLoading, setGraficeLoading] = useState(false)
@@ -356,14 +366,17 @@ export default function RapoartePage() {
     const propr = new Set(selectedApts.map(id => apartamente.find(a => a.id === id)?.proprietar_id || id))
     let qc = supabase.from('cheltuieli').select('id,apartament_id,categorie,descriere,valoare,data,nota,status').gte('data', start).lte('data', end).in('categorie', CAT_RAPORT)
     if (selectedApts.length > 0) qc = qc.in('apartament_id', selectedApts)
-    const [{ data }, taxe, { data: ch }] = await Promise.all([q, selectedApts.length && propr.size === 1 ? citesteTaxe().then(cfg => curateniiTaxate(start, end, cfg, selectedApts)) : Promise.resolve([]), qc])
+    const finalizate = citesteTaxe().then(async cfg => ({ cfg, lista: await curateniiTaxate(start, end, cfg, selectedApts.length ? selectedApts : undefined) }))
+    const [{ data }, taxe, { data: ch }, fin] = await Promise.all([q, selectedApts.length && propr.size === 1 ? citesteTaxe().then(cfg => curateniiTaxate(start, end, cfg, selectedApts)) : Promise.resolve([]), qc, finalizate])
     setRezervari(data || [])
     setCheltRaport(ch || [])
+    setCuratFinalizate(fin.lista)
+    setAptCuTaxa(Object.fromEntries(Object.entries(fin.cfg.apt).filter(([, t]) => t.activ).map(([id, t]) => [id, Number(t.tarif) || 0])))
     if (taxe.length) {
       const total = taxe.reduce((s, t) => s + t.suma, 0)
       const sume = Array.from(new Set(taxe.map(t => t.suma)))
       setCuratenieAuto({ n: taxe.length, total, text: sume.length === 1 ? `${taxe.length} × ${fmt(sume[0])} RON` : `${taxe.length} curățenii` })
-      setCalcCuratenie(Math.round(total * 100) / 100)
+      setCalcCuratenie(0)   // curățeniile finalizate sunt deja scăzute în situația pe locație - nu se scad de două ori
     } else if (curatenieAuto) { setCuratenieAuto(null); setCalcCuratenie(0) }
     setPeriodStart(start)
     setPeriodEnd(end)
@@ -426,168 +439,95 @@ export default function RapoartePage() {
           const chelt = includeChelt ? cheltRaport.filter(c => c.apartament_id === e.apt?.id) : []
           const cheltCuratenie = chelt.filter(c => CAT_CURATENIE.includes(c.categorie))
           const cheltUtilitati = chelt.filter(c => !CAT_CURATENIE.includes(c.categorie))
-          // curățenia trecută în Cheltuieli înlocuiește estimarea „nr. rezervări × cost” (fără dublare)
-          const curatenieDinChelt = cheltCuratenie.length > 0
-          const curatenieTotal = curatenieDinChelt ? cheltCuratenie.reduce((t, c) => t + (Number(c.valoare) || 0), 0) : costCuratenie * nrRezervari
+          // ordinea: curățeniile marcate „Gata” (apartamentele cu taxă activă) > curățenia din Cheltuieli > estimarea
+          // „nr. rezervări × cost”; niciodată două deodată (fără dublare)
+          const cuTaxa = aptCuTaxa[e.apt?.id] != null
+          const finalizate = cuTaxa ? curatFinalizate.filter(c => c.apartament_id === e.apt?.id) : []
+          const curatenieDinChelt = !cuTaxa && cheltCuratenie.length > 0
+          const curatenieSursa: 'finalizate' | 'cheltuieli' | 'estimare' = cuTaxa ? 'finalizate' : curatenieDinChelt ? 'cheltuieli' : 'estimare'
+          const curatenieTotal = cuTaxa ? finalizate.reduce((t, c) => t + (Number(c.suma) || 0), 0)
+            : curatenieDinChelt ? cheltCuratenie.reduce((t, c) => t + (Number(c.valoare) || 0), 0) : costCuratenie * nrRezervari
           const utilitatiTotal = cheltUtilitati.reduce((t, c) => t + (Number(c.valoare) || 0), 0)
           const netDupaCosturi = netDupaPlatforme - curatenieTotal - utilitatiTotal
           const comAB = tipRaport==='cu_comision' ? netDupaCosturi * ((Number(comisionAB)||0)/100) : 0
           const netProprietar = netDupaCosturi - comAB
-          return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, curatenieDinChelt, cheltCuratenie, cheltUtilitati, utilitatiTotal, netDupaCosturi, comAB, netProprietar, nrRezervari }
+          return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, curatenieDinChelt, curatenieSursa, finalizate, tarifTaxa: aptCuTaxa[e.apt?.id] || 0, cheltCuratenie, cheltUtilitati, utilitatiTotal, netDupaCosturi, comAB, netProprietar, nrRezervari }
         })
         .sort((a,b)=>(a.apt?.nota||'').localeCompare(b.apt?.nota||''))
     })()
   }
 
+  // rezumatul pe locații (pentru cardurile de sus) - aceleași reguli ca „Situație Fiscală”
+  const rezumatLoc = (() => { if (!generated) return { costuri: 0, comAB: 0, net: 0, finalizate: false }
+    const l = calcPerLocatie(); const s = (f: (x: any) => number) => l.reduce((t, x) => t + (Number(f(x)) || 0), 0)
+    return { costuri: s(x => x.curatenieTotal + x.utilitatiTotal), comAB: s(x => x.comAB), net: s(x => x.netProprietar), finalizate: l.some(x => x.curatenieSursa === 'finalizate') } })()
+
   async function exportPDF() {
     if (!generated || rezervari.length === 0) return
     setExporting(true)
     try {
-      const { default: jsPDF } = await import('jspdf')
-      const { default: autoTable } = await import('jspdf-autotable')
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      const pageW = 297
-      doc.setFillColor(11, 18, 32); doc.rect(0, 0, pageW, 30, 'F')
-      doc.setTextColor(77, 163, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold')
-      doc.text('RAPORT ' + (tipRaport === 'cu_comision' ? 'CU COMISION ADMINISTRARE' : 'FARA COMISION ADMINISTRARE'), 14, 12)
-      doc.setTextColor(214, 228, 244); doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-      doc.text(`${aptNume} | ${LUNI[lunaStart-1]} ${anStart}${lunaStart!==lunaEnd||anStart!==anEnd?' → '+LUNI[lunaEnd-1]+' '+anEnd:''} | Platforme: ${selectedPlatforme.join(', ')}`, 14, 22)
-
-      const cols = tipRaport === 'cu_comision'
-        ? ['Client','Perioadă','N','Canal','Apt','Brut','Com.Platf','Net Platf',`Com.AB ${comisionAB}%`,'Net Final']
-        : ['Client','Perioadă','N','Canal','Apt','Brut','Com.Platf','Net Platf','Net Final']
-
-      const rows = rezIncluse.map(r => {
-        const brut = valoareRez(r)
-        const { total } = calcComision(brut, r.canal, r)
-        const net = brut - total
-        const comAB = tipRaport === 'cu_comision' ? net*((Number(comisionAB)||0)/100) : 0
-        const row = [r.nume_client, `${r.data_checkin}→${r.data_checkout}`, String(r.nr_nopti||0), r.canal?.toUpperCase(), r.apartament?.nota||'—', `${fmt(brut)}`, total>0?`-${fmt(total)}`:'—', `${fmt(net)}`]
-        if (tipRaport === 'cu_comision') row.push(`-${fmt(comAB)}`)
-        row.push(`${fmt(net-comAB)}`)
-        return row
-      })
-
-      const totalRow = ['TOTAL','','','','', fmt(totals.brut), `-${fmt(totals.platforma)}`, fmt(totals.netPlatforme)]
-      if (tipRaport === 'cu_comision') totalRow.push(`-${fmt(totals.comisionAB)}`)
-      totalRow.push(fmt(totals.netFinal))
-      rows.push(totalRow)
-
-      autoTable(doc, {
-        startY: 35, head: [cols], body: rows,
-        styles: { fontSize: 7, cellPadding: 2, textColor: [30,30,30], fillColor: [255,255,255] },
-        headStyles: { fillColor: [14,27,43], textColor: [159,215,255], fontStyle:'bold' },
-        alternateRowStyles: { fillColor: [245,248,255] },
-        bodyStyles: { textColor: [30,30,30], fillColor: [255,255,255] },
-        didParseCell: (data: any) => {
-          if (data.row.index === rows.length - 1) {
-            data.cell.styles.fillColor = [0,80,40]
-            data.cell.styles.textColor = [200,255,200]
-            data.cell.styles.fontStyle = 'bold'
-          }
-        }
-      })
-      const period = `${anStart}_${String(lunaStart).padStart(2,'0')}${lunaStart!==lunaEnd||anStart!==anEnd?'-'+anEnd+'_'+String(lunaEnd).padStart(2,'0'):''}`
-      // ── CALCULATOR DECONTAT în PDF ──────────────────────────────────
-      const calcY = ((doc as any).lastAutoTable?.finalY || 150) + 14
-      doc.setFillColor(14,27,43); doc.rect(0, calcY-5, pageW, 8, 'F')
-      doc.setTextColor(252,211,77); doc.setFontSize(10); doc.setFont('helvetica','bold')
-      doc.text('CALCULATOR DECONTAT PROPRIETAR', 14, calcY)
-
-      // Folosim valorile direct din React state
-      const calcRows: [string,string][] = [
-        ['Net dupa platforme si comision AB', fmt(totals.netFinal)+' RON'],
-      ]
-      let totalScaz = 0; let totalAdd = 0
-      const fixedItems: [string,number][] = [
-        ['Contabilitate', Number(calcContabilitate)||0],
-        [curatenieAuto && Number(calcCuratenie)===curatenieAuto.total ? `Curatenie (${curatenieAuto.text.replace('×','x').replace('ă','a').replace('ț','t')})` : 'Curatenie', Number(calcCuratenie)||0],
-        ['Lenjerii', Number(calcLenjerii)||0],
-        ['Promovare', Number(calcPromovare)||0],
-        ['Chirie platita', Number(calcChirie)||0],
-        ['Incasat cash (direct de proprietar)', Number(calcIncasatCash)||0],
-      ]
-      fixedItems.forEach(([label, val]) => {
-        if(val>0){ calcRows.push([`  - ${label}`, `- ${fmt(val)} RON`]); totalScaz+=val }
-      })
-      calcAltelinii.forEach(({desc,val,tip}) => {
-        const v = Number(val)||0
-        if(v>0 && desc.trim()){
-          const isScade = tip==='scade'
-          calcRows.push([`  ${isScade?'-':'+'} ${desc}`, `${isScade?'- ':'+ '}${fmt(v)} RON`])
-          if(isScade) totalScaz+=v; else totalAdd+=v
-        }
-      })
-      const netProp = totals.netFinal + totalAdd - totalScaz
-      calcRows.push(['SUMA DE PLATIT PROPRIETARULUI', fmt(netProp)+' RON'])
-
-      autoTable(doc, {
-        startY: calcY+4, head:[['Descriere','Suma']], body: calcRows,
-        styles:{ fontSize:8, cellPadding:3, textColor:[20,20,20], fillColor:[255,255,255] },
-        headStyles:{ fillColor:[20,40,80], textColor:[180,210,255], fontStyle:'bold' },
-        columnStyles:{ 0:{cellWidth:200}, 1:{cellWidth:60, halign:'right' as const} },
-        alternateRowStyles:{ fillColor:[245,248,255] },
-        didParseCell:(data:any)=>{
-          if(data.row.index===calcRows.length-1){
-            data.cell.styles.fillColor=[0,70,35]; data.cell.styles.textColor=[180,255,180]
-            data.cell.styles.fontStyle='bold'; data.cell.styles.fontSize=10
-          }
-        }
-      })
-
-      // ── SITUAȚIE FISCALĂ (pe locație, cu curățenie / utilități din Cheltuieli) + comisioane pe platformă ──
-      const fara = (t: string) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      doc.addPage()
-      doc.setFillColor(11, 18, 32); doc.rect(0, 0, pageW, 22, 'F')
-      doc.setTextColor(77, 163, 255); doc.setFontSize(13); doc.setFont('helvetica', 'bold')
-      doc.text('SITUATIE FISCALA', 14, 10)
-      doc.setTextColor(214, 228, 244); doc.setFontSize(9); doc.setFont('helvetica', 'normal')
-      doc.text(fara(`${aptNume} | ${LUNI[lunaStart-1]} ${anStart}${lunaStart!==lunaEnd||anStart!==anEnd?' -> '+LUNI[lunaEnd-1]+' '+anEnd:''}${includeChelt ? ' | cu cheltuielile din Cheltuieli' : ''}`), 14, 17)
       const locatii = calcPerLocatie()
-      let y = 28
-      for (const l of locatii) {
-        const rand: string[][] = [
-          ['Airbnb', String(l.airbnbN), fmt(l.airbnb), l.airbnb > 0 ? '-' + fmt(l.airbnb - l.abNet) : '-', fmt(l.abNet)],
-          ['Booking', String(l.bookingN), fmt(l.booking), l.booking > 0 ? '-' + fmt(l.booking - l.bkNet) : '-', fmt(l.bkNet)],
-          ['Privat', String(l.privatN), fmt(l.privat), '-', fmt(l.privatNet)],
-          ['Net dupa platforme', '', '', '', fmt(l.netDupaPlatforme)],
-        ]
-        if (l.curatenieDinChelt) l.cheltCuratenie.forEach((c: any) => rand.push([fara(`${detaliuChelt(c)} (Cheltuieli, ${c.data})`), '', '', '', '-' + fmt(Number(c.valoare) || 0)]))
-        else if (l.costCuratenie > 0) rand.push([`Curatenii - ${l.nrRezervari} x ${fmt(l.costCuratenie)} RON`, '', '', '', '-' + fmt(l.curatenieTotal)])
-        l.cheltUtilitati.forEach((c: any) => rand.push([fara(`${detaliuChelt(c)} (Cheltuieli, ${c.data})`), '', '', '', '-' + fmt(Number(c.valoare) || 0)]))
-        if (tipRaport === 'cu_comision') rand.push([`Com. AB Homes ${comisionAB}% (din net ${l.curatenieTotal > 0 || l.utilitatiTotal > 0 ? 'dupa costuri' : 'dupa platforme'})`, '', '', '', '-' + fmt(l.comAB)])
-        rand.push([tipRaport === 'cu_comision' ? 'NET PROPRIETAR' : 'NET FINAL', '', '', '', fmt(l.netProprietar)])
-        autoTable(doc, {
-          startY: y, head: [[fara(`${l.apt?.nota ? '[' + l.apt.nota + '] ' : ''}${l.apt?.nume || ''}`), 'Rez.', 'Generat', 'Comision+TVA', 'Net']], body: rand,
-          styles: { fontSize: 8, cellPadding: 2, textColor: [30, 30, 30], fillColor: [255, 255, 255] },
-          headStyles: { fillColor: [14, 27, 43], textColor: [159, 215, 255], fontStyle: 'bold' },
-          columnStyles: { 0: { cellWidth: 130 }, 2: { halign: 'right' as const }, 3: { halign: 'right' as const }, 4: { halign: 'right' as const } },
-          didParseCell: (data: any) => {
-            if (data.section === 'head' && data.column.index >= 2) data.cell.styles.halign = 'right'
-            if (data.section !== 'body') return
-            const t = String(data.row.raw?.[0] || '')
-            if (t === 'Net dupa platforme') { data.cell.styles.fillColor = [240, 244, 252]; data.cell.styles.fontStyle = 'bold' }
-            if (data.row.index === rand.length - 1) { data.cell.styles.fillColor = [0, 70, 35]; data.cell.styles.textColor = [200, 255, 200]; data.cell.styles.fontStyle = 'bold' }
-          },
-        })
-        y = ((doc as any).lastAutoTable?.finalY || y) + 8
-      }
+      const cuCom = tipRaport === 'cu_comision'
+      const sum = (f: (l: any) => number) => locatii.reduce((t, l) => t + (Number(f(l)) || 0), 0)
+      const costuri = sum(l => l.curatenieTotal + l.utilitatiTotal), comAB = sum(l => l.comAB), netProp = sum(l => l.netProprietar)
+      const per = `${LUNI[lunaStart-1]} ${anStart}${lunaStart!==lunaEnd||anStart!==anEnd?' → '+LUNI[lunaEnd-1]+' '+anEnd:''}`
+      const period = `${anStart}_${String(lunaStart).padStart(2,'0')}${lunaStart!==lunaEnd||anStart!==anEnd?'-'+anEnd+'_'+String(lunaEnd).padStart(2,'0'):''}`
+      const rez = rezIncluse.map(r => {
+        const brut = periodStart && periodEnd ? calcProRata(r, periodStart, periodEnd) : valoareRez(r)
+        const { total } = calcComision(brut, r.canal, r), net = brut - total, c = cuCom ? net*((Number(comisionAB)||0)/100) : 0
+        const row = [r.nume_client, `${r.data_checkin.slice(8,10)}.${r.data_checkin.slice(5,7)} → ${r.data_checkout.slice(8,10)}.${r.data_checkout.slice(5,7)}`, String(r.nr_nopti||0), String(r.canal||'').toUpperCase(), r.apartament?.nota||'—', fmt(brut), total>0?`-${fmt(total)}`:'—', fmt(net)]
+        if (cuCom) row.push(`-${fmt(c)}`)
+        row.push(fmt(net-c)); return row
+      })
+      const cap = ['Client','Perioadă','Nopți','Canal','Apt','Brut','Com. platformă','Net platformă', ...(cuCom?[`Com. AB ${comisionAB}%`]:[]), 'Net înainte de costuri']
+      const tot = ['TOTAL', '', String(totals.totalNopti), '', '', fmt(totals.brut), `-${fmt(totals.platforma)}`, fmt(totals.netPlatforme), ...(cuCom?[`-${fmt(totals.comisionAB)}`]:[]), fmt(totals.netFinal)]
+      const situatie: LocatiePdf[] = locatii.map(l => {
+        const randuri: LocatiePdf['randuri'] = [
+          { text: 'Airbnb', rez: String(l.airbnbN), generat: fmt(l.airbnb), comision: l.airbnb>0?`-${fmt(l.airbnb-l.abNet)}`:'—', net: fmt(l.abNet) },
+          { text: 'Booking', rez: String(l.bookingN), generat: fmt(l.booking), comision: l.booking>0?`-${fmt(l.booking-l.bkNet)}`:'—', net: fmt(l.bkNet) },
+          { text: 'Privat / direct', rez: String(l.privatN), generat: fmt(l.privat), comision: '—', net: fmt(l.privatNet) },
+          { text: 'Net după platforme', net: fmt(l.netDupaPlatforme), tip: 'subtotal' },
+        ].filter(x => x.tip || Number(x.rez) > 0) as LocatiePdf['randuri']
+        if (l.curatenieSursa === 'finalizate') randuri.push({ text: textFinalizate(l), net: l.curatenieTotal>0?`-${fmt(l.curatenieTotal)}`:'0,00', tip: 'cost' })
+        else if (l.curatenieSursa === 'cheltuieli') l.cheltCuratenie.forEach((c: any) => randuri.push({ text: `${detaliuChelt(c)} · Cheltuieli, ${c.data}`, net: `-${fmt(Number(c.valoare)||0)}`, tip: 'cost' }))
+        else if (l.costCuratenie > 0) randuri.push({ text: `Curățenii (estimare) — ${l.nrRezervari} × ${fmt(l.costCuratenie)} RON`, net: `-${fmt(l.curatenieTotal)}`, tip: 'cost' })
+        l.cheltUtilitati.forEach((c: any) => randuri.push({ text: `${detaliuChelt(c)} · Cheltuieli, ${c.data}`, net: `-${fmt(Number(c.valoare)||0)}`, tip: 'cost' }))
+        if (cuCom) randuri.push({ text: `Comision AB Homes ${comisionAB}% (din net ${l.curatenieTotal>0||l.utilitatiTotal>0?'după costuri':'după platforme'})`, net: `-${fmt(l.comAB)}`, tip: 'comision' })
+        return { titlu: `${l.apt?.nota ? l.apt.nota + ' · ' : ''}${String(l.apt?.nume || '').trim()}`, nrRez: l.nrRezervari, randuri, net: `${fmt(l.netProprietar)} RON`, etichetaNet: cuCom ? 'Net proprietar' : 'Net final' }
+      })
       const plat = PLATFORME.map(pl => {
         const rezP = rezIncluse.filter(x => x.canal === pl.key || (pl.key==='direct' && ['direct','whatsapp','telefon','site'].includes(x.canal)))
         const brut = rezP.reduce((t,x)=>t+valoareRez(x),0)
         const c = rezP.reduce((acc,x)=>{ const k=calcComision(valoareRez(x),x.canal,x); return {com:acc.com+k.com,tva:acc.tva+k.tva,total:acc.total+k.total} },{com:0,tva:0,total:0})
-        return [pl.label, String(rezP.length), fmt(brut), c.com>0?'-'+fmt(c.com):'-', c.tva>0?'-'+fmt(c.tva):'-', c.total>0?'-'+fmt(c.total):'-', fmt(brut-c.total), rezP.length]
-      }).filter(x => (x[7] as number) > 0).map(x => x.slice(0, 7) as string[])
-      plat.push(['TOTAL', String(rezIncluse.length), fmt(totals.brut), '-'+fmt(totals.com), '-'+fmt(totals.tva), '-'+fmt(totals.platforma), fmt(totals.netPlatforme)])
-      autoTable(doc, {
-        startY: y, head: [['Platforma', 'Nr. rez.', 'Brut total', 'Com. platforma', 'TVA 21%', 'Total dedus', 'Net dupa']], body: plat,
-        styles: { fontSize: 8, cellPadding: 2, textColor: [30, 30, 30], fillColor: [255, 255, 255] },
-        headStyles: { fillColor: [20, 40, 80], textColor: [180, 210, 255], fontStyle: 'bold' },
-        columnStyles: { 2: { halign: 'right' as const }, 3: { halign: 'right' as const }, 4: { halign: 'right' as const }, 5: { halign: 'right' as const }, 6: { halign: 'right' as const } },
-        didParseCell: (data: any) => { if (data.section === 'head' && data.column.index >= 2) data.cell.styles.halign = 'right'; if (data.section === 'body' && data.row.index === plat.length - 1) { data.cell.styles.fillColor = [14, 27, 43]; data.cell.styles.textColor = [252, 211, 77]; data.cell.styles.fontStyle = 'bold' } },
+        return { n: rezP.length, row: [pl.label, String(rezP.length), fmt(brut), c.com>0?'-'+fmt(c.com):'—', c.tva>0?'-'+fmt(c.tva):'—', c.total>0?'-'+fmt(c.total):'—', fmt(brut-c.total)] }
+      }).filter(x => x.n > 0).map(x => x.row)
+      // decontul: pornește de la net proprietar pe locații (curățenia / utilitățile sunt deja scăzute acolo -
+      // curățenia din calculator nu se mai scade încă o dată), apoi celelalte rânduri din calculator
+      const dec: [string, string][] = [['Net proprietar (din situația pe locații)', `${fmt(netProp)} RON`]]
+      let plus = 0, minus = 0
+      const fixe: [string, number][] = [['Contabilitate', Number(calcContabilitate)||0], ['Curățenie suplimentară', Number(calcCuratenie)||0], ['Lenjerii', Number(calcLenjerii)||0], ['Promovare', Number(calcPromovare)||0], ['Chirie plătită', Number(calcChirie)||0], ['Încasat cash (direct de proprietar)', Number(calcIncasatCash)||0]]
+      fixe.forEach(([t, v]) => { if (v > 0) { dec.push([`− ${t}`, `-${fmt(v)} RON`]); minus += v } })
+      calcAltelinii.forEach(({ desc, val, tip }) => { const v = Number(val)||0; if (v > 0 && desc.trim()) { const sc = tip === 'scade'; dec.push([`${sc?'−':'+'} ${desc}`, `${sc?'-':'+'}${fmt(v)} RON`]); if (sc) minus += v; else plus += v } })
+      await genereazaRaportPdf({
+        titlu: cuCom ? 'Raport decont proprietar' : 'Raport încasări',
+        subtitlu: cuCom ? 'Raport cu comision de administrare' : 'Raport fără comision de administrare',
+        perioada: per, locatii: `${aptNume} · ${selectedPlatforme.length === PLATFORME.length ? 'toate platformele' : 'platforme: ' + selectedPlatforme.join(', ')}`,
+        fisier: `Raport_ABHomes_${aptNume.replace(/[\[\] ]+/g,'_').replace(/^_+|_+$/g,'')}_${period}.pdf`,
+        kpi: [
+          { label: 'Total brut', valoare: `${fmt(totals.brut)} RON`, sub: `${rezIncluse.length} rezervări · ${totals.totalNopti} nopți`, culoare: 'navy' },
+          { label: 'Comisioane platforme', valoare: `-${fmt(totals.platforma)} RON`, sub: 'Airbnb 15% · Booking 17% + TVA 21%', culoare: 'rosu' },
+          { label: 'Net după platforme', valoare: `${fmt(totals.netPlatforme)} RON`, sub: 'baza de calcul', culoare: 'cyan' },
+          { label: 'Curățenie + utilități', valoare: `-${fmt(costuri)} RON`, sub: includeChelt ? 'curățenii finalizate / Cheltuieli' : 'fără Cheltuieli', culoare: 'aur' },
+          ...(cuCom ? [{ label: `Comision AB Homes ${comisionAB}%`, valoare: `-${fmt(comAB)} RON`, sub: 'din net după costuri', culoare: 'violet' as const }] : []),
+          { label: cuCom ? 'Net proprietar' : 'Net final', valoare: `${fmt(netProp)} RON`, sub: 'de plătit', culoare: 'verde' },
+        ],
+        rezervari: { cap, randuri: rez, total: tot, dreapta: [2, 5, 6, 7, 8, 9] },
+        situatie,
+        platforme: { cap: ['Platformă','Rezervări','Brut total','Com. platformă','TVA 21%','Total dedus','Net după'], randuri: plat,
+          total: ['TOTAL', String(rezIncluse.length), fmt(totals.brut), '-'+fmt(totals.com), '-'+fmt(totals.tva), '-'+fmt(totals.platforma), fmt(totals.netPlatforme)] },
+        decont: dec.length > 1 ? { randuri: dec, total: ['Sumă de plătit proprietarului', `${fmt(netProp + plus - minus)} RON`] } : null,
+        notaCheltuieli: includeChelt ? 'curățenie / utilități incluse' : 'fără cheltuieli din Cheltuieli',
       })
-
-      doc.save(`Raport_${tipRaport}_${aptNume.replace(/[\[\] ]/g,'_')}_${period}.pdf`)
       show('success','PDF exportat!')
     } catch { show('error','Eroare export') }
     setExporting(false)
@@ -866,12 +806,14 @@ export default function RapoartePage() {
         {generated && (
           <div style={{ display:'grid', gridTemplateColumns: tipRaport==='cu_comision' ? 'repeat(6,1fr)' : 'repeat(5,1fr)', gap:8 }}>
             {[
-              { label:'Total brut', value:fmt(totals.brut), color:'#FFFFFF', sub:`${rezIncluse.length} rez.${rezIncluse.length!==rezervari.length?` · ${rezervari.length-rezIncluse.length} exclusă(e)`:''}` },
-              { label:'Medie / zi', value: totals.totalNopti>0 ? fmt(Math.round(totals.brut/totals.totalNopti*100)/100)+' RON' : '—', color:'rgba(159,215,255,0.8)', sub:`${totals.totalNopti} nopți totale` },
+              { label:'Total brut', value:fmt(totals.brut), color:'#FFFFFF', sub:`${rezIncluse.length} rez.${rezIncluse.length!==rezervari.length?` · ${rezervari.length-rezIncluse.length} exclusă(e)`:''} · ${totals.totalNopti} nopți${totals.totalNopti>0?` · ${fmt(Math.round(totals.brut/totals.totalNopti*100)/100)}/zi`:''}` },
               { label:'Com. platforme + TVA', value:`-${fmt(totals.platforma)}`, color:'#F87171', sub:'Airbnb 15% / Booking 17% + TVA 21%' },
               { label:'Net după platforme', value:fmt(totals.netPlatforme), color:'#FCD34D', sub:'baza de calcul' },
-              ...(tipRaport==='cu_comision' ? [{ label:`Com. AB Homes ${comisionAB}%`, value:`-${fmt(totals.comisionAB)}`, color:'#F87171', sub:'din net platforme' }] : []),
-              { label: tipRaport==='cu_comision' ? '✓ Net proprietar' : '✓ Net final', value:fmt(totals.netFinal), color:'#4ADE80', sub:'de plătit' },
+              // aceleași cifre ca „Situație Fiscală” / PDF: curățenia (finalizate / Cheltuieli / estimare) și utilitățile
+              // se scad înainte de comisionul AB (cerut direct: „refă calculele și tabelele”)
+              { label:'Curățenie + utilități', value:`-${fmt(rezumatLoc.costuri)}`, color:'#E3C77A', sub: rezumatLoc.finalizate ? 'curățenii finalizate în aplicație' : includeChelt ? 'estimare / Cheltuieli' : 'estimare curățenie' },
+              ...(tipRaport==='cu_comision' ? [{ label:`Com. AB Homes ${comisionAB}%`, value:`-${fmt(rezumatLoc.comAB)}`, color:'#F87171', sub:'din net după costuri' }] : []),
+              { label: tipRaport==='cu_comision' ? '✓ Net proprietar' : '✓ Net final', value:fmt(rezumatLoc.net), color:'#4ADE80', sub:'de plătit' },
             ].map(s => (
               <div key={s.label} style={{ ...panel, padding:'12px 14px' }}>
                 <div style={{ fontSize:10, color:'rgba(159,215,255,0.45)', marginBottom:4 }}>{s.label}</div>
@@ -1003,7 +945,12 @@ export default function RapoartePage() {
                               <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>Net după platforme</td>
                               <td style={{ padding:'8px 14px', fontFamily:'monospace', fontWeight:700, color:'#FCD34D', textAlign:'right' }}>{fmt(l.netDupaPlatforme)}</td>
                             </tr>
-                            {l.curatenieDinChelt ? l.cheltCuratenie.map((c:any) => (
+                            {l.curatenieSursa === 'finalizate' ? (
+                              <tr data-curatenii-finalizate>
+                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>{textFinalizate(l)}</td>
+                                <td style={{ padding:'8px 14px', fontFamily:'monospace', color: l.curatenieTotal>0?'#F87171':'rgba(159,215,255,0.35)', textAlign:'right' }}>{l.curatenieTotal>0?`-${fmt(l.curatenieTotal)}`:'0,00'}</td>
+                              </tr>
+                            ) : l.curatenieDinChelt ? l.cheltCuratenie.map((c:any) => (
                               <tr key={c.id} data-chelt-raport>
                                 <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>{detaliuChelt(c)} <span style={{ opacity:0.7 }}>· din Cheltuieli, {c.data}</span></td>
                                 <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(Number(c.valoare)||0)}</td>
@@ -1020,7 +967,7 @@ export default function RapoartePage() {
                                 <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(Number(c.valoare)||0)}</td>
                               </tr>
                             ))}
-                            {includeChelt && !l.curatenieDinChelt && l.cheltUtilitati.length === 0 && (
+                            {includeChelt && l.curatenieSursa === 'estimare' && l.cheltUtilitati.length === 0 && (
                               <tr><td colSpan={5} style={{ padding:'6px 14px', fontSize:11, color:'rgba(159,215,255,0.35)' }}>Nicio cheltuială de curățenie / utilități în Cheltuieli pentru perioadă — dacă le adaugi acolo, apar aici după „Generează”.</td></tr>
                             )}
                             {tipRaport==='cu_comision' && (
@@ -1122,13 +1069,17 @@ export default function RapoartePage() {
                         <span style={{ color:'rgba(159,215,255,0.5)' }}>- Platforme+TVA</span>
                         <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(totalPlatforme)}</span>
                       </div>
+                      {rezumatLoc.costuri > 0 && <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
+                        <span style={{ color:'rgba(159,215,255,0.5)' }}>- Curățenie + utilități</span>
+                        <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(rezumatLoc.costuri)}</span>
+                      </div>}
                       <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:4 }}>
                         <span style={{ color:'rgba(159,215,255,0.5)' }}>- Com. AB Homes</span>
-                        <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(totalComAB)}</span>
+                        <span style={{ color:'#F87171', fontFamily:'monospace' }}>-{fmt(rezumatLoc.comAB)}</span>
                       </div>
                       <div style={{ borderTop:'1px solid rgba(159,215,255,0.1)', paddingTop:4, display:'flex', justifyContent:'space-between', fontSize:12, fontWeight:700 }}>
                         <span style={{ color:'rgba(159,215,255,0.6)' }}>Net proprietari</span>
-                        <span style={{ color:'#4ADE80', fontFamily:'monospace' }}>{fmt(netFinal)}</span>
+                        <span style={{ color:'#4ADE80', fontFamily:'monospace' }}>{fmt(rezumatLoc.net)}</span>
                       </div>
                     </div>
                   </div>
@@ -1142,11 +1093,11 @@ export default function RapoartePage() {
       {generated && (
         <div style={{ padding:'0 20px 40px' }}>
           <CalculatorDecontat
-              netFinal={totals.netFinal}
+              netFinal={rezumatLoc.net}
               perioada={`${periodStart} — ${periodEnd}`}
               contabilitate={calcContabilitate} setContabilitate={setCalcContabilitate}
               curatenie={calcCuratenie} setCuratenie={setCalcCuratenie}
-              curatenieNota={curatenieAuto ? `auto: ${curatenieAuto.text} finalizate${Number(calcCuratenie)!==curatenieAuto.total?` = ${fmt(curatenieAuto.total)} (modificat manual)`:''}` : ''}
+              curatenieNota={curatenieAuto ? `${curatenieAuto.text} finalizate — deja scăzute în net; aici doar curățenie suplimentară` : ''}
               lenjerii={calcLenjerii} setLenjerii={setCalcLenjerii}
               promovare={calcPromovare} setPromovare={setCalcPromovare}
               incasatCash={calcIncasatCash} setIncasatCash={setCalcIncasatCash}
@@ -1207,7 +1158,7 @@ function CalculatorDecontat({ netFinal, perioada, contabilitate, setContabilitat
 
         {/* Net de baza */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:'rgba(74,222,128,0.06)', border:'0.5px solid rgba(74,222,128,0.2)', borderRadius:8 }}>
-          <span style={{ fontSize:13, color:'rgba(159,215,255,0.6)' }}>Net după platforme și comision AB</span>
+          <span style={{ fontSize:13, color:'rgba(159,215,255,0.6)' }}>Net după platforme, curățenie / utilități și comision AB</span>
           <span style={{ fontSize:18, fontWeight:700, color:'#4ADE80', fontFamily:'monospace' }}>{fmtR(netFinal)} RON</span>
         </div>
 
