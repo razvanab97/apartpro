@@ -452,10 +452,14 @@ export default function RapoartePage() {
           const curatenieTotal = cuTaxa ? finalizate.reduce((t, c) => t + (Number(c.suma) || 0), 0)
             : curatenieDinChelt ? cheltCuratenie.reduce((t, c) => t + (Number(c.valoare) || 0), 0) : costCuratenie * nrRezervari
           const utilitatiTotal = cheltUtilitati.reduce((t, c) => t + (Number(c.valoare) || 0), 0)
-          const netDupaCosturi = netDupaPlatforme - curatenieTotal - utilitatiTotal
-          const comAB = tipRaport==='cu_comision' ? netDupaCosturi * ((Number(comisionAB)||0)/100) : 0
-          const netProprietar = netDupaCosturi - comAB
-          return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, curatenieDinChelt, curatenieSursa, finalizate, tarifTaxa: aptCuTaxa[e.apt?.id] || 0, cheltCuratenie, cheltUtilitati, utilitatiTotal, netDupaCosturi, comAB, netProprietar, nrRezervari }
+          // comisionul AB se calculează DOAR din net după platforme; curățenia / utilitățile se scad după comision, din ce
+          // îi revine proprietarului (cerut direct: „curățenia nu are treabă cu calculul comisionului, e separat. După ce
+          // avem finalul după comision, cât avem de dat la proprietar, de acolo se scad utilitățile și curățeniile”)
+          const comAB = tipRaport==='cu_comision' ? netDupaPlatforme * ((Number(comisionAB)||0)/100) : 0
+          const dupaComision = netDupaPlatforme - comAB
+          const netDupaCosturi = dupaComision - curatenieTotal - utilitatiTotal
+          const netProprietar = netDupaCosturi
+          return { ...e, abNet, bkNet, privatNet, netDupaPlatforme, costCuratenie, curatenieTotal, curatenieDinChelt, curatenieSursa, finalizate, tarifTaxa: aptCuTaxa[e.apt?.id] || 0, cheltCuratenie, cheltUtilitati, utilitatiTotal, netDupaCosturi, dupaComision, comAB, netProprietar, nrRezervari }
         })
         .sort((a,b)=>(a.apt?.nota||'').localeCompare(b.apt?.nota||''))
     })()
@@ -483,7 +487,7 @@ export default function RapoartePage() {
         if (cuCom) row.push(`-${fmt(c)}`)
         row.push(fmt(net-c)); return row
       })
-      const cap = ['Client','Perioadă','Nopți','Canal','Apt','Brut','Com. platformă','Net platformă', ...(cuCom?[`Com. AB ${comisionAB}%`]:[]), 'Net înainte de costuri']
+      const cap = ['Client','Perioadă','Nopți','Canal','Apt','Brut','Com. platformă','Net platformă', ...(cuCom?[`Com. AB ${comisionAB}%`]:[]), 'Rămas după comision']
       const tot = ['TOTAL', '', String(totals.totalNopti), '', '', fmt(totals.brut), `-${fmt(totals.platforma)}`, fmt(totals.netPlatforme), ...(cuCom?[`-${fmt(totals.comisionAB)}`]:[]), fmt(totals.netFinal)]
       const situatie: LocatiePdf[] = locatii.map(l => {
         const randuri: LocatiePdf['randuri'] = [
@@ -492,11 +496,12 @@ export default function RapoartePage() {
           { text: 'Privat / direct', rez: String(l.privatN), generat: fmt(l.privat), comision: '—', net: fmt(l.privatNet) },
           { text: 'Net după platforme', net: fmt(l.netDupaPlatforme), tip: 'subtotal' },
         ].filter(x => x.tip || Number(x.rez) > 0) as LocatiePdf['randuri']
+        if (cuCom) { randuri.push({ text: `Comision AB Homes ${comisionAB}% (din net după platforme)`, net: `-${fmt(l.comAB)}`, tip: 'comision' })
+          randuri.push({ text: 'Rămas după comision (înainte de curățenie / utilități)', net: fmt(l.dupaComision), tip: 'subtotal' }) }
         if (l.curatenieSursa === 'finalizate') randuri.push({ text: textFinalizate(l), net: l.curatenieTotal>0?`-${fmt(l.curatenieTotal)}`:'0,00', tip: 'cost' })
         else if (l.curatenieSursa === 'cheltuieli') l.cheltCuratenie.forEach((c: any) => randuri.push({ text: `${detaliuChelt(c)} · Cheltuieli, ${c.data}`, net: `-${fmt(Number(c.valoare)||0)}`, tip: 'cost' }))
         else if (l.costCuratenie > 0) randuri.push({ text: `Curățenii (estimare) — ${l.nrRezervari} × ${fmt(l.costCuratenie)} RON`, net: `-${fmt(l.curatenieTotal)}`, tip: 'cost' })
         l.cheltUtilitati.forEach((c: any) => randuri.push({ text: `${detaliuChelt(c)} · Cheltuieli, ${c.data}`, net: `-${fmt(Number(c.valoare)||0)}`, tip: 'cost' }))
-        if (cuCom) randuri.push({ text: `Comision AB Homes ${comisionAB}% (din net ${l.curatenieTotal>0||l.utilitatiTotal>0?'după costuri':'după platforme'})`, net: `-${fmt(l.comAB)}`, tip: 'comision' })
         return { titlu: `${l.apt?.nota ? l.apt.nota + ' · ' : ''}${String(l.apt?.nume || '').trim()}`, nrRez: l.nrRezervari, randuri, net: `${fmt(l.netProprietar)} RON`, etichetaNet: cuCom ? 'Net proprietar' : 'Net final' }
       })
       const plat = PLATFORME.map(pl => {
@@ -522,7 +527,7 @@ export default function RapoartePage() {
           { label: 'Comisioane platforme', valoare: `-${fmt(totals.platforma)} RON`, sub: 'Airbnb 15% · Booking 17% + TVA 21%', culoare: 'rosu' },
           { label: 'Net după platforme', valoare: `${fmt(totals.netPlatforme)} RON`, sub: 'baza de calcul', culoare: 'cyan' },
           { label: 'Curățenie + utilități', valoare: `-${fmt(costuri)} RON`, sub: includeChelt ? 'curățenii finalizate / Cheltuieli' : 'fără Cheltuieli', culoare: 'aur' },
-          ...(cuCom ? [{ label: `Comision AB Homes ${comisionAB}%`, valoare: `-${fmt(comAB)} RON`, sub: 'din net după costuri', culoare: 'violet' as const }] : []),
+          ...(cuCom ? [{ label: `Comision AB Homes ${comisionAB}%`, valoare: `-${fmt(comAB)} RON`, sub: 'din net după platforme', culoare: 'violet' as const }] : []),
           { label: cuCom ? 'Net proprietar' : 'Net final', valoare: `${fmt(netProp)} RON`, sub: 'de plătit', culoare: 'verde' },
         ],
         rezervari: { cap, randuri: rez, total: tot, dreapta: [2, 5, 6, 7, 8, 9] },
@@ -823,7 +828,7 @@ export default function RapoartePage() {
               // aceleași cifre ca „Situație Fiscală” / PDF: curățenia (finalizate / Cheltuieli / estimare) și utilitățile
               // se scad înainte de comisionul AB (cerut direct: „refă calculele și tabelele”)
               { label:'Curățenie + utilități', value:`-${fmt(rezumatLoc.costuri)}`, color:'#E3C77A', sub: rezumatLoc.finalizate ? 'curățenii finalizate în aplicație' : includeChelt ? 'estimare / Cheltuieli' : 'estimare curățenie' },
-              ...(tipRaport==='cu_comision' ? [{ label:`Com. AB Homes ${comisionAB}%`, value:`-${fmt(rezumatLoc.comAB)}`, color:'#F87171', sub:'din net după costuri' }] : []),
+              ...(tipRaport==='cu_comision' ? [{ label:`Com. AB Homes ${comisionAB}%`, value:`-${fmt(rezumatLoc.comAB)}`, color:'#F87171', sub:'din net după platforme' }] : []),
               { label: tipRaport==='cu_comision' ? '✓ Net proprietar' : '✓ Net final', value:fmt(rezumatLoc.net), color:'#4ADE80', sub:'de plătit' },
             ].map(s => (
               <div key={s.label} style={{ ...panel, padding:'12px 14px' }}>
@@ -956,6 +961,16 @@ export default function RapoartePage() {
                               <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>Net după platforme</td>
                               <td style={{ padding:'8px 14px', fontFamily:'monospace', fontWeight:700, color:'#FCD34D', textAlign:'right' }}>{fmt(l.netDupaPlatforme)}</td>
                             </tr>
+                            {tipRaport==='cu_comision' && (<>
+                              <tr>
+                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>Com. AB Homes {comisionAB}% (din net după platforme)</td>
+                                <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(l.comAB)}</td>
+                              </tr>
+                              <tr data-dupa-comision style={{ background:'rgba(14,27,43,0.3)' }}>
+                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontWeight:600, color:'rgba(159,215,255,0.6)' }}>Rămas după comision (de dat proprietarului, înainte de costuri)</td>
+                                <td style={{ padding:'8px 14px', fontFamily:'monospace', fontWeight:700, color:'#E8F4FF', textAlign:'right' }}>{fmt(l.dupaComision)}</td>
+                              </tr>
+                            </>)}
                             {l.curatenieSursa === 'finalizate' ? (
                               <tr data-curatenii-finalizate>
                                 <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>{textFinalizate(l)}</td>
@@ -980,12 +995,6 @@ export default function RapoartePage() {
                             ))}
                             {includeChelt && l.curatenieSursa === 'estimare' && l.cheltUtilitati.length === 0 && (
                               <tr><td colSpan={5} style={{ padding:'6px 14px', fontSize:11, color:'rgba(159,215,255,0.35)' }}>Nicio cheltuială de curățenie / utilități în Cheltuieli pentru perioadă — dacă le adaugi acolo, apar aici după „Generează”.</td></tr>
-                            )}
-                            {tipRaport==='cu_comision' && (
-                              <tr>
-                                <td colSpan={4} style={{ padding:'8px 14px', fontSize:12, fontStyle:'italic', color:'rgba(159,215,255,0.5)' }}>Com. AB Homes {comisionAB}% (din net {l.curatenieTotal>0||l.utilitatiTotal>0?'după costuri':'după platforme'})</td>
-                                <td style={{ padding:'8px 14px', fontFamily:'monospace', color:'#F87171', textAlign:'right' }}>-{fmt(l.comAB)}</td>
-                              </tr>
                             )}
                             <tr style={{ borderTop:'1px solid rgba(159,215,255,0.15)' }}>
                               <td colSpan={4} style={{ padding:'9px 14px', fontSize:13, fontWeight:700, color:'rgba(214,228,244,0.8)' }}>{tipRaport==='cu_comision'?'Net proprietar':'Net final'}</td>

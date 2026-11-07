@@ -57,13 +57,15 @@ export function decontComision(apt: any, rezervari: any[], start: string, end: s
   const curatenie = curatenieEvidenta ? curatenieEvidenta.total : costRez * nrCheckout
   const curatenieText = curatenieEvidenta ? `${curatenieEvidenta.nr} ${curatenieEvidenta.nr === 1 ? 'curățenie' : 'curățenii'} (evidență)` : costRez ? `${nrCheckout} × ${costRez} RON` : 'fără cost setat'
   const p = (Number(apt.comision_procent) || 0) / 100, fix = Number(apt.comision_fix) || 0
-  let baza = netPlatforme - curatenie, comision = 0
+  // comisionul nu se calculează din curățenie (cerut direct: „curățenia nu are treabă cu calculul comisionului, e separat;
+  // după comision, din ce avem de dat proprietarului se scad utilitățile și curățeniile”) - baza = net după platforme
+  let baza = netPlatforme, comision = 0
   if (tip === 'procent_brut') { baza = brut; comision = brut * p }
   else if (tip === 'procent_net_platforme') { baza = netPlatforme; comision = netPlatforme * p }
   else if (tip === 'procent_net_dupa_costuri') comision = baza * p
   else if (tip === 'fix_lunar') comision = fix
   else if (tip === 'mixt') comision = fix + baza * p
-  const comisionText = tip === 'fix_lunar' ? `fix ${fix} RON` : tip === 'mixt' ? `${fix} RON + ${apt.comision_procent}% net după costuri` : `${apt.comision_procent}% ${TIP_COMISION_LABEL[tip]?.replace('% ', '') || ''}`
+  const comisionText = tip === 'fix_lunar' ? `fix ${fix} RON` : tip === 'mixt' ? `${fix} RON + ${apt.comision_procent}% din net după platforme` : tip === 'procent_net_dupa_costuri' ? `${apt.comision_procent}% din net după platforme` : `${apt.comision_procent}% ${TIP_COMISION_LABEL[tip]?.replace('% ', '') || ''}`
   // proprietarul primeste: net dupa platforme − curatenie − comision AB (indiferent pe ce se calculeaza comisionul)
   const deVirat = netPlatforme - curatenie - comision
   return { nrRezervari: rezervari.filter(r => proRata(r, start, endEx) > 0 || (r.data_checkout >= start && r.data_checkout <= end)).length, nrCheckout, brut: r2(brut), comPlatforme: r2(com), tvaIntracom: r2(tva), netPlatforme: r2(netPlatforme),
