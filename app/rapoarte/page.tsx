@@ -197,6 +197,10 @@ export default function RapoartePage() {
   // cheltuielile din Cheltuieli pentru locațiile și perioada raportului (curățenie, spălătorie, utilități)
   const [cheltRaport, setCheltRaport] = useState<any[]>([])
   const [includeChelt, setIncludeChelt] = useState(true)
+  // căutare în lista de locații (cerut direct: „să avem și bara de căutare aici”) - după cod sau nume, fără diacritice
+  const [cautaLoc, setCautaLoc] = useState('')
+  const norm = (t: any) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const locGasite = apartamente.filter(a => !cautaLoc.trim() || norm(`${a.nota || ''} ${a.nume || ''}`).includes(norm(cautaLoc.trim())))
   // regula curățeniei (Curățenie → Taxe): la apartamentele cu taxă activă (ex. N45 70 RON, Cherry 3 75 RON) curățenia
   // se scade când e marcată „Gata” în aplicație - cerut direct: „la N45 și Cherry să se respecte regula curățeniei”
   const [curatFinalizate, setCuratFinalizate] = useState<CurateniaTaxata[]>([])
@@ -703,12 +707,19 @@ export default function RapoartePage() {
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
                 <label style={{ fontSize:11, color:'rgba(159,215,255,0.5)' }}>Locații <span style={{color: selectedApts.length===0?'#FCD34D':'#4ADE80', fontWeight:600}}>({selectedApts.length === 0 ? '⚠ niciuna selectată = TOATE' : selectedApts.length + ' selectate'})</span></label>
                 <div style={{ display:'flex', gap:6 }}>
-                  <button onClick={() => setSelectedApts(apartamente.map(a=>a.id))} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>Selectează toate</button>
-                  <button onClick={() => setSelectedApts([])} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(252,211,77,0.08)', border:'1px solid rgba(252,211,77,0.2)', color:'rgba(252,211,77,0.6)', cursor:'pointer' }}>Deselectează tot</button>
+                  <button onClick={() => setSelectedApts(prev => cautaLoc.trim() ? Array.from(new Set([...prev, ...locGasite.map(a=>a.id)])) : apartamente.map(a=>a.id))} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(77,163,255,0.1)', border:'1px solid rgba(77,163,255,0.2)', color:'#7BC8FF', cursor:'pointer' }}>{cautaLoc.trim() ? `Selectează găsite (${locGasite.length})` : 'Selectează toate'}</button>
+                  <button onClick={() => setSelectedApts(prev => cautaLoc.trim() ? prev.filter(id => !locGasite.some(a => a.id === id)) : [])} style={{ fontSize:10, padding:'2px 8px', borderRadius:5, background:'rgba(252,211,77,0.08)', border:'1px solid rgba(252,211,77,0.2)', color:'rgba(252,211,77,0.6)', cursor:'pointer' }}>{cautaLoc.trim() ? 'Deselectează găsite' : 'Deselectează tot'}</button>
                 </div>
               </div>
+              <div style={{ position:'relative', marginBottom:8, maxWidth:360 }}>
+                <input data-cauta-locatie value={cautaLoc} onChange={e=>setCautaLoc(e.target.value)} placeholder="Caută locație — cod sau nume (ex. N45, Cherry)"
+                  onKeyDown={e=>{ if (e.key==='Enter' && locGasite.length===1) { const id=locGasite[0].id; setSelectedApts(prev => prev.includes(id) ? prev : [...prev, id]) } if (e.key==='Escape') setCautaLoc('') }}
+                  style={{ width:'100%', fontSize:12, padding:'7px 30px 7px 10px', borderRadius:8 }}/>
+                {cautaLoc && <button type="button" onClick={()=>setCautaLoc('')} title="Golește" style={{ position:'absolute', right:6, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'rgba(159,215,255,0.6)', cursor:'pointer', fontSize:14, padding:2 }}>×</button>}
+              </div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                {apartamente.map(a => (
+                {cautaLoc.trim() && locGasite.length === 0 && <span style={{ fontSize:11, color:'rgba(159,215,255,0.45)' }}>Nicio locație găsită pentru „{cautaLoc}”</span>}
+                {locGasite.map(a => (
                   <button key={a.id} onClick={() => setSelectedApts(prev => prev.includes(a.id) ? prev.filter(x=>x!==a.id) : [...prev, a.id])} style={{
                     fontSize:11, padding:'4px 10px', borderRadius:7, cursor:'pointer',
                     background: selectedApts.includes(a.id) ? 'rgba(77,163,255,0.18)' : 'rgba(214,228,244,0.05)',
