@@ -59,6 +59,7 @@ const TARI = ['Romania', 'Republica Moldova', 'Germania', 'Italia', 'Franta', 'S
 type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string }
 const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '' }
 const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
+const CHEIE_DATA_EMITERE = 'factura_rh_ultima_data_aleasa'
 const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
 const TON_FACT: Record<string, string> = { nefacturat: 'gray', de_facturat: 'amber', facturata: 'green' }
 
@@ -240,6 +241,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         setUltimaFact(ok ? { stare: 'ok', data: o.ultima?.data, numar: o.ultima?.numar } : { stare: 'eroare', eroare: o.error || 'eroare' })
       }).catch(e => { if (!anulat) setUltimaFact({ stare: 'eroare', eroare: e instanceof Error ? e.message : 'eroare' }) })
     }
+    // Data emiterii porneste de la ultima data aleasa (cerut direct: „la data emiterii să fie mereu ultima pe care am setat-o”)
+    // - in setari, aceeasi pe orice dispozitiv; niciodata in viitor (ziua de azi e limita)
+    if (editing.canal === 'airbnb' && !editing.factura_numar) supabase.from('setari').select('valoare').eq('cheie', CHEIE_DATA_EMITERE).maybeSingle().then(({ data }) => {
+      const d = String(data?.valoare || '')
+      if (!anulat && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= aziRo()) setDataEmitere(d)
+    })
     // domiciliul clientului folosit data trecuta (se salveaza la emitere)
     supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
       if (anulat || !data?.valoare) return
@@ -310,6 +317,10 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură RH…' :
     ultimaFact.stare === 'eroare' ? `Nu am putut verifica ultima factură RH (${ultimaFact.eroare}) — nu emitem fără verificare` :
     ultimaFact.data && dataEmitere < ultimaFact.data ? `Interzis: data e înaintea ultimei facturi RH (${ultimaFact.data.split('-').reverse().join('.')}) — alege această dată sau una ulterioară` : null
+  const alegeDataEmitere = (d: string) => {
+    setDataEmitere(d)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= aziRo()) void supabase.from('setari').upsert({ cheie: CHEIE_DATA_EMITERE, valoare: d }, { onConflict: 'cheie' }).then(() => {})   // builderul Supabase porneste cererea doar la then
+  }
   const setClient = (p: Partial<ClientFactura>) => setClientFact(c => ({ ...c, ...p }))
   const zz = (d: string) => d ? d.split('-').reverse().join('.') : ''
 
@@ -326,6 +337,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       set(patch)
       setOriginal((o: any) => ({ ...o, ...patch }))
       setUltimaCerere(x => x + 1)
+      alegeDataEmitere(dataEmitere)   // data folosita ramane cea propusa data viitoare
       setFactura({ etapa: 'idle', info: out.avertisment || (out.dejaEmisa ? 'Factura era deja emisă' : 'Factura a fost emisă și trimisă în SPV') })
       onReload?.()
     } catch (e) {
@@ -570,7 +582,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                           })}
                         </div>
                       )}
-                      <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} min={ultimaFact.data || undefined} max={aziRo()} onChange={e => setDataEmitere(e.target.value)} /></div>
+                      <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} min={ultimaFact.data || undefined} max={aziRo()} onChange={e => alegeDataEmitere(e.target.value)} /></div>
                       <div><Label>Adresă (opțional)</Label><input value={clientFact.adresa} placeholder="stradă, număr — dacă o știi" onChange={e => setClient({ adresa: e.target.value })} /></div>
                     </div>
                     <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.45 }}>Domiciliul real al oaspetelui (pe Airbnb: profilul oaspetelui → „Locuiește în …”). Apare pe factură și ajunge în SPV.</div>
