@@ -182,6 +182,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
   const [dataEmitere, setDataEmitere] = useState('')
+  // ultima factura din seria RH (din Oblio): nu se poate emite cu data mai veche
+  const [ultimaFact, setUltimaFact] = useState<{ stare: 'incarc' | 'ok' | 'eroare'; data?: string; numar?: string; eroare?: string }>({ stare: 'incarc' })
+  const [ultimaCerere, setUltimaCerere] = useState(0)
 
   // La fiecare deschidere: randurile pliabile pornesc deschise doar daca au valori; se retine starea
   // salvata a rezervarii (factura se emite din datele SALVATE, deci modificarile nesalvate o blocheaza)
@@ -209,13 +212,20 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       const v = data?.valoare != null && data.valoare !== '' ? Number(data.valoare) : ''
       setSumaFact(v === '' || isNaN(v as number) ? '' : v); setSumaFactSalvata(v === '' || isNaN(v as number) ? '' : v)
     })
+    if (editing.canal === 'airbnb' && !editing.factura_numar) {
+      setUltimaFact({ stare: 'incarc' })
+      fetch('/api/factura-oblio', { cache: 'no-store' }).then(r => r.json().then(o => ({ ok: r.ok, o }))).then(({ ok, o }) => {
+        if (anulat) return
+        setUltimaFact(ok ? { stare: 'ok', data: o.ultima?.data, numar: o.ultima?.numar } : { stare: 'eroare', eroare: o.error || 'eroare' })
+      }).catch(e => { if (!anulat) setUltimaFact({ stare: 'eroare', eroare: e instanceof Error ? e.message : 'eroare' }) })
+    }
     // domiciliul clientului folosit data trecuta (se salveaza la emitere)
     supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
       if (anulat || !data?.valoare) return
       try { setClientFact({ ...CLIENT_GOL, ...JSON.parse(data.valoare) }) } catch { /* ignorat */ }
     })
     return () => { anulat = true }
-  }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editing?.id, editing?.canal, ultimaCerere])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // salvarea: întâi suma de facturat (dacă rezervarea există), apoi rezervarea
   async function salveazaTot() {
@@ -275,7 +285,10 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
     eRomania(clientFact.tara) && !clientFact.judet ? 'Alege județul de domiciliu al clientului' :
     !clientFact.localitate.trim() ? 'Completează localitatea de domiciliu a clientului' :
-    !dataEmitere ? 'Alege data emiterii' : dataEmitere > aziRo() ? 'Data emiterii nu poate fi în viitor' : null
+    !dataEmitere ? 'Alege data emiterii' : dataEmitere > aziRo() ? 'Data emiterii nu poate fi în viitor' :
+    ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură RH…' :
+    ultimaFact.stare === 'eroare' ? `Nu am putut verifica ultima factură RH (${ultimaFact.eroare}) — nu emitem fără verificare` :
+    ultimaFact.data && dataEmitere < ultimaFact.data ? `Interzis: data e înaintea ultimei facturi RH (${ultimaFact.data.split('-').reverse().join('.')}) — alege această dată sau una ulterioară` : null
   const setClient = (p: Partial<ClientFactura>) => setClientFact(c => ({ ...c, ...p }))
   const zz = (d: string) => d ? d.split('-').reverse().join('.') : ''
 
@@ -291,6 +304,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       const patch = { factura_serie: out.serie, factura_numar: out.numar, factura_link: out.link, status_facturare: 'facturata' }
       set(patch)
       setOriginal((o: any) => ({ ...o, ...patch }))
+      setUltimaCerere(x => x + 1)
       setFactura({ etapa: 'idle', info: out.avertisment || (out.dejaEmisa ? 'Factura era deja emisă' : 'Factura a fost emisă și trimisă în SPV') })
       onReload?.()
     } catch (e) {
@@ -500,6 +514,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               ) : (<>
                 {editing.canal === 'airbnb' && (
                   <div data-client-factura style={{ marginBottom: 10 }}>
+                    <div data-ultima-factura style={{ fontSize: 12, marginBottom: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${ultimaFact.stare === 'eroare' ? C.red : C.line}`, color: ultimaFact.stare === 'eroare' ? C.red : C.muted, lineHeight: 1.45 }}>
+                      {ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură din seria RH…'
+                        : ultimaFact.stare === 'eroare' ? <>Ultima factură RH nu a putut fi verificată: {ultimaFact.eroare}</>
+                        : ultimaFact.data ? <>Ultima factură RH: <b style={{ color: C.text }}>{ultimaFact.numar}</b> din <b style={{ color: C.text }}>{zz(ultimaFact.data)}</b> · nu se poate factura cu o dată mai veche</>
+                        : 'Nicio factură emisă încă în seria RH'}
+                    </div>
                     <div className="rz-grid rz-2">
                       <div><Label>Țara clientului</Label>
                         <input list="rz-tari" value={clientFact.tara} onChange={e => setClient({ tara: e.target.value, ...(eRomania(e.target.value) ? {} : { judet: '' }) })} />
@@ -511,7 +531,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                           : <input value={clientFact.judet} placeholder="opțional (regiune)" onChange={e => setClient({ judet: e.target.value })} />}
                       </div>
                       <div><Label>Localitate</Label><input value={clientFact.localitate} placeholder={clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani'} onChange={e => setClient({ localitate: e.target.value })} /></div>
-                      <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} max={aziRo()} onChange={e => setDataEmitere(e.target.value)} /></div>
+                      <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} min={ultimaFact.data || undefined} max={aziRo()} onChange={e => setDataEmitere(e.target.value)} /></div>
                       <div style={{ gridColumn: '1 / -1' }}><Label>Adresă (opțional)</Label><input value={clientFact.adresa} placeholder="stradă, număr — dacă o știi" onChange={e => setClient({ adresa: e.target.value })} /></div>
                     </div>
                     <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.45 }}>Domiciliul real al oaspetelui (pe Airbnb: profilul oaspetelui → „Locuiește în …”). Apare pe factură și ajunge în SPV.</div>
