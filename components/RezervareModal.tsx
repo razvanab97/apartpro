@@ -4,7 +4,9 @@ import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZ
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle, Phone, MessageCircle, Globe, Handshake, CircleDot } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
+import { TARI, oraseTara } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
+import { salveazaRezervare } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -55,7 +57,6 @@ const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber'
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
 const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
-const TARI = ['Romania', 'Republica Moldova', 'Germania', 'Italia', 'Franta', 'Spania', 'Marea Britanie', 'Austria', 'Belgia', 'Olanda', 'Ungaria', 'Bulgaria', 'Grecia', 'Polonia', 'Ucraina', 'Israel', 'Statele Unite ale Americii', 'Elvetia', 'Danemarca', 'Suedia', 'Irlanda', 'Portugalia', 'Cehia', 'Turcia']
 type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string }
 const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '' }
 const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
@@ -198,8 +199,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
   // recalculeaza singur cand se schimba datele; cand se scrie direct totalul, pretul se deduce din el
   const [pretNoapte, setPretNoapte] = useState<number | '' | null>(null)
+  const [auto, setAuto] = useState<{ stare: 'idle' | 'salvez' | 'salvat' | 'eroare'; mesaj?: string; ora?: string }>({ stare: 'idle' })
+  const autoInZbor = useRef(false), autoSalvate = useRef(false)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
+  const [altaTara, setAltaTara] = useState(false)   // tara scrisa de mana (nu e in lista)
   const [dataEmitere, setDataEmitere] = useState('')
   // sugestii de localitati pe judet (lista din Generator locatii + adresele extrase din acte) - se incarca o data
   const [locIncarcate, setLocIncarcate] = useState(false)
@@ -222,7 +226,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setSumaFact(''); setSumaFactSalvata('')
       setShowIncasat(Number(editing?.suma_incasata) > 0 && Number(editing?.suma_incasata) !== Number(editing?.valoare_bruta))
       setFactura({ etapa: 'idle' })
-      setClientFact(CLIENT_GOL); setDataEmitere(aziRo())
+      setClientFact(CLIENT_GOL); setAltaTara(false); setDataEmitere(aziRo())
+      setAuto({ stare: 'idle' })
     }
   }
 
@@ -250,10 +255,51 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     // domiciliul clientului folosit data trecuta (se salveaza la emitere)
     supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
       if (anulat || !data?.valoare) return
-      try { setClientFact({ ...CLIENT_GOL, ...JSON.parse(data.valoare) }) } catch { /* ignorat */ }
+      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
     })
     return () => { anulat = true }
   }, [open, editing?.id, editing?.canal, ultimaCerere])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Salvare automata (cerut direct: „să se salveze automat modificările făcute - adăugăm cod de rezervare, se salvează,
+  // adăugăm alt preț, se salvează”): la o rezervare EXISTENTA, fiecare modificare se scrie singura la ~0,9 s dupa ultima
+  // tastare (rezervarea + suma de facturat). Rezervarile noi se creeaza in continuare cu „Salvează rezervarea”.
+  const curat = (r: any) => { if (!r) return ''; const { apartament: _a, proprietar: _p, updated_at: _u, ...rest } = r; return JSON.stringify(rest) }
+  const arePending = () => !!editing?.id && !!original && (curat(editing) !== curat(original) || String(sumaFact) !== String(sumaFactSalvata))
+  async function salveazaAuto(): Promise<boolean> {
+    if (!editing?.id || autoInZbor.current || !arePending()) return true
+    autoInZbor.current = true
+    const instantaneu = editing, sumaAcum = sumaFact
+    setAuto({ stare: 'salvez' })
+    try {
+      if (String(sumaAcum) !== String(sumaFactSalvata)) {
+        const cheie = `suma_facturare_${instantaneu.id}`
+        const { error } = sumaAcum === '' || !(Number(sumaAcum) > 0)
+          ? await supabase.from('setari').delete().eq('cheie', cheie)
+          : await supabase.from('setari').upsert({ cheie, valoare: String(sumaAcum) }, { onConflict: 'cheie' })
+        if (error) { setAuto({ stare: 'eroare', mesaj: error.message }); return false }
+        setSumaFactSalvata(sumaAcum)
+      }
+      if (curat(instantaneu) !== curat(original)) {
+        const err = await salveazaRezervare(instantaneu, apartamente)
+        if (err) { setAuto({ stare: 'eroare', mesaj: err }); return false }
+        setOriginal(instantaneu)
+      }
+      autoSalvate.current = true
+      setAuto({ stare: 'salvat', ora: new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) })
+      return true
+    } finally { autoInZbor.current = false }
+  }
+  useEffect(() => {
+    if (!open || !editing?.id || !arePending()) return
+    const t = setTimeout(() => { void salveazaAuto() }, 900)
+    return () => clearTimeout(t)
+  }, [open, editing, sumaFact, sumaFactSalvata, original, auto.stare])  // eslint-disable-line react-hooks/exhaustive-deps
+  // inchiderea: ce n-a apucat sa se salveze se salveaza acum; lista se reincarca daca s-a salvat ceva
+  async function inchide() {
+    if (arePending()) await salveazaAuto()
+    if (autoSalvate.current) { autoSalvate.current = false; onReload?.() }
+    onClose()
+  }
 
   // salvarea: întâi suma de facturat (dacă rezervarea există), apoi rezervarea
   async function salveazaTot() {
@@ -270,12 +316,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') void inchide()
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); salveazaTot() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose, onSave, sumaFact, sumaFactSalvata, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, onClose, onSave, sumaFact, sumaFactSalvata, editing, original])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open || !editing) return null
 
@@ -304,6 +350,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const campuriFactura = ['cod_rezervare_platforma', 'valoare_bruta', 'nume_client', 'data_checkin', 'data_checkout', 'canal', 'apartament_id', 'nr_persoane', 'telefon_client']
   const nesalvat = (!!original && campuriFactura.some(k => String(original[k] ?? '') !== String(editing[k] ?? ''))) || String(sumaFact) !== String(sumaFactSalvata)
   const deFacturat = Number(sumaFact) > 0 ? Number(sumaFact) : Number(editing.valoare_bruta) || 0
+  const eRo = !altaTara && eRomania(clientFact.tara)
+  const sugestiiLoc = eRo ? (clientFact.judet ? localitatiJudet(clientFact.judet) : []) : oraseTara(clientFact.tara)
   const motivFaraFactura =
     !editing.id ? 'Salvează întâi rezervarea' :
     editing.canal !== 'airbnb' ? 'Facturarea automată e doar pentru rezervările Airbnb' :
@@ -311,7 +359,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
     nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
-    eRomania(clientFact.tara) && !clientFact.judet ? 'Alege județul de domiciliu al clientului' :
+    altaTara && !clientFact.tara.trim() ? 'Scrie țara clientului' :
+    eRo && !clientFact.judet ? 'Alege județul de domiciliu al clientului' :
     !clientFact.localitate.trim() ? 'Completează localitatea de domiciliu a clientului' :
     !dataEmitere ? 'Alege data emiterii' : dataEmitere > aziRo() ? 'Data emiterii nu poate fi în viitor' :
     ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură RH…' :
@@ -346,7 +395,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   }
 
   return (
-    <div className="rz" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="rz" onClick={e => { if (e.target === e.currentTarget) void inchide() }}>
       <style>{CSS}</style>
       <div className="rz-panel">
         {/* ── Antet ── */}
@@ -367,7 +416,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               <span style={{ color: C.faint }}> · </span>{Number(editing.nr_persoane) || 1} pers.
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Închide" className="rz-x"><X size={16} /></button>
+          <button type="button" onClick={() => void inchide()} aria-label="Închide" className="rz-x"><X size={16} /></button>
         </header>
 
         <div className="rz-body">
@@ -562,21 +611,27 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                     </div>
                     <div className="rz-grid rz-2">
                       <div><Label>Țara clientului</Label>
-                        <input list="rz-tari" value={clientFact.tara} onChange={e => setClient({ tara: e.target.value, ...(eRomania(e.target.value) ? {} : { judet: '' }) })} />
-                        <datalist id="rz-tari">{TARI.map(t => <option key={t} value={t} />)}</datalist>
+                        <select data-tara value={altaTara ? '__alta__' : (TARI.find(t => t.localeCompare(clientFact.tara.trim(), 'ro', { sensitivity: 'base' }) === 0) || '__alta__')}
+                          onChange={e => { const v = e.target.value
+                            if (v === '__alta__') { setAltaTara(true); setClient({ tara: '', judet: '', localitate: '' }); return }
+                            setAltaTara(false); setClient({ tara: v, ...(v !== clientFact.tara ? { judet: '', localitate: '' } : {}) }) }}>
+                          {TARI.map(t => <option key={t} value={t}>{t}</option>)}
+                          <option value="__alta__">Altă țară…</option>
+                        </select>
+                        {altaTara && <input data-tara-alta value={clientFact.tara} placeholder="scrie țara (ex. Noua Zeelandă)" onChange={e => setClient({ tara: e.target.value })} style={{ marginTop: 6 }} />}
                       </div>
-                      <div><Label>Județ</Label>
-                        {eRomania(clientFact.tara)
+                      <div><Label>{eRo ? 'Județ' : 'Regiune / stat'}</Label>
+                        {eRo
                           ? <select value={clientFact.judet} onChange={e => { const j = e.target.value; setClient({ judet: j, ...(clientFact.localitate && !localitatiJudet(j).some(l => l.localeCompare(clientFact.localitate.trim(), 'ro', { sensitivity: 'base' }) === 0) && localitatiJudet(clientFact.judet).some(l => l.localeCompare(clientFact.localitate.trim(), 'ro', { sensitivity: 'base' }) === 0) ? { localitate: '' } : {}) }) }}><option value="">— alege —</option>{JUDETE.map(j => <option key={j} value={j}>{j}</option>)}</select>
-                          : <input value={clientFact.judet} placeholder="opțional (regiune)" onChange={e => setClient({ judet: e.target.value })} />}
+                          : <input value={clientFact.judet} placeholder="opțional" onChange={e => setClient({ judet: e.target.value })} />}
                       </div>
-                      <div style={{ gridColumn: '1 / -1' }}><Label>Localitate</Label><input list="rz-localitati" value={clientFact.localitate} placeholder={clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani'} onChange={e => setClient({ localitate: e.target.value })} />
-                        <datalist id="rz-localitati">{(eRomania(clientFact.tara) ? localitatiJudet(clientFact.judet) : []).map(l => <option key={l} value={l} />)}</datalist>
+                      <div style={{ gridColumn: '1 / -1' }}><Label>{eRo ? 'Localitate' : 'Oraș'}</Label><input list="rz-localitati" value={clientFact.localitate} placeholder={eRo ? (clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani') : 'orașul de domiciliu'} onChange={e => setClient({ localitate: e.target.value })} />
+                        <datalist id="rz-localitati">{sugestiiLoc.map(l => <option key={l} value={l} />)}</datalist>
                       </div>
-                      {eRomania(clientFact.tara) && clientFact.judet && localitatiJudet(clientFact.judet).length > 0 && (
+                      {sugestiiLoc.length > 0 && (
                         <div data-sugestii-localitati style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: -6 }}>
-                          <span style={{ fontSize: 11, color: C.faint }}>Localități în {clientFact.judet}:</span>
-                          {localitatiJudet(clientFact.judet).map(l => {
+                          <span style={{ fontSize: 11, color: C.faint }}>{eRo ? `Localități în ${clientFact.judet}:` : `Orașe în ${clientFact.tara}:`}</span>
+                          {sugestiiLoc.map(l => {
                             const ales = clientFact.localitate.trim().localeCompare(l, 'ro', { sensitivity: 'base' }) === 0
                             return <button key={l} type="button" className="rz-sug" aria-pressed={ales} onClick={() => setClient({ localitate: l })}>{l}</button>
                           })}
@@ -591,7 +646,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               {factura.etapa === 'confirm' ? (
                 <div className="rz-confirm">
                   <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{editing.nume_client}</b> ({[clientFact.localitate, clientFact.judet, eRomania(clientFact.tara) ? '' : clientFact.tara].filter(Boolean).join(', ')}), <b>{fmt(deFacturat)} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>, cu data <b>{zz(dataEmitere)}</b>?
+                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{editing.nume_client}</b> ({[clientFact.localitate, clientFact.judet, eRo ? '' : clientFact.tara].filter(Boolean).join(', ')}), <b>{fmt(deFacturat)} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>, cu data <b>{zz(dataEmitere)}</b>?
                     <div style={{ fontSize: 11, color: C.amber, marginTop: 4 }}>Se trimite automat în SPV — nu se poate retrage din aplicație.</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -617,7 +672,14 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
 
         {/* ── Subsol ── */}
         <footer className="rz-foot">
-          <span className="rz-hint">Esc închide · ⌘S salvează</span>
+          {editing.id ? (
+            <span data-auto-salvare className="rz-auto" style={{ color: auto.stare === 'eroare' ? C.red : auto.stare === 'salvat' ? C.green : C.faint }}>
+              {auto.stare === 'salvez' || (auto.stare !== 'eroare' && arePending()) ? <><Loader2 size={12} className="rz-spin" /> Se salvează…</>
+                : auto.stare === 'salvat' ? `✓ Salvat automat · ${auto.ora}`
+                : auto.stare === 'eroare' ? `Nesalvat: ${auto.mesaj}`
+                : 'Modificările se salvează automat'}
+            </span>
+          ) : <span className="rz-hint">Esc închide · ⌘S salvează</span>}
           {/* confirmare pentru client (poza / PDF) - doar pentru rezervari salvate */}
           {editing.apartament_id && telProp && (
             telProp.tel
@@ -630,7 +692,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
               style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
           )}
-          <button type="button" className="rz-btn" onClick={onClose} style={{ padding: '10px 18px' }}>Anulează</button>
+          <button type="button" className="rz-btn" onClick={() => void inchide()} style={{ padding: '10px 18px' }}>{editing.id ? 'Închide' : 'Anulează'}</button>
           <button type="button" className="rz-btn rz-btn-primary" onClick={salveazaTot} disabled={saving}>
             {saving ? <><Loader2 size={14} className="rz-spin" /> Se salvează…</> : 'Salvează rezervarea'}
           </button>
@@ -720,6 +782,7 @@ const CSS = `
 .rz-msg-err{color:${C.red}}
 .rz-spin{animation:spin 1s linear infinite}
 .rz-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid ${C.line};background:rgba(6,14,26,0.7)}
+.rz-auto{margin-right:auto;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;min-width:0}
 .rz-hint{margin-right:auto;font-size:11px;color:${C.faint}}
 @media (max-width:900px){
   .rz{padding:0;align-items:flex-end}
