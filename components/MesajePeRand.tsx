@@ -9,7 +9,7 @@ export type MesajRand = {
   id: string; rawId: string; categorie: string; titluCategorie: string; nume: string; nota?: string; linie2?: string
   telefon: string; mesaj: string; faraTelefon?: boolean; trimis: boolean; apt?: string
   // starea curateniei azi la apartament (Sosiri): gata -> mesajul urca primul, in ordinea orei la care s-a terminat
-  curatenie?: { status: string; ora?: string | null }
+  curatenie?: { status: string; ora?: string | null; din?: string }   // din = curatata intr-o zi anterioara (dd.mm)
 }
 export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
 export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
@@ -299,7 +299,7 @@ export default function MesajePeRand(p: {
                 </div>
                 {fila === 'sos' && curent.curatenie && (() => {
                   const st = curent.curatenie.status
-                  const [txt, c, bg] = st === 'gata' ? [`🧹 Curățenie gata${curent.curatenie.ora ? ' · ' + curent.curatenie.ora.slice(0, 5) : ''}`, '#4ADE80', 'rgba(74,222,128,0.14)']
+                  const [txt, c, bg] = st === 'gata' ? [curent.curatenie.din ? `🧹 Curățată din ${curent.curatenie.din}` : `🧹 Curățenie gata${curent.curatenie.ora ? ' · ' + curent.curatenie.ora.slice(0, 5) : ''}`, '#4ADE80', 'rgba(74,222,128,0.14)']
                     : st === 'inceput' ? ['🧹 Curățenie în lucru', '#FCD34D', 'rgba(252,211,77,0.14)'] : [st === 'anulat' ? '🧹 Fără curățenie azi' : '🧹 Curățenie neîncepută', 'rgba(159,215,255,0.6)', 'rgba(159,215,255,0.08)']
                   return <span style={{ fontSize: 11.5, fontWeight: 800, color: c, background: bg, borderRadius: 20, padding: '4px 10px', whiteSpace: 'nowrap' }}>{txt}</span>
                 })()}

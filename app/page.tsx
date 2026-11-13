@@ -190,6 +190,31 @@ export default function DashboardPage() {
     setCuratenieGataIds(new Set(rows.filter((s:any)=>s.status==='gata').map((s:any)=>s.apartament_id)))
     setEliberateIds(new Set(rows.filter((s:any)=>s.eliberat).map((s:any)=>s.apartament_id)))
     setCuratenieAzi(Object.fromEntries(rows.map((s:any)=>[s.apartament_id,{status:s.status,ora:s.ora_gata||null}]))) }
+  // Locatii curatate din zilele trecute (cerut direct: „unele locații au fost curățate de ieri sau zilele trecute, pentru
+  // acelea să apară direct mesajul cu datele de acces”, ex. VM07): sosire azi, nimeni nu pleaca azi din apartament, iar
+  // ultima curatenie „gata” e dupa ultima plecare -> e pregatita de dinainte. aptId -> data curateniei
+  const [curatateInainte,setCuratateInainte]=useState<Record<string,string>>({})
+  useEffect(()=>{
+    const ids=[...new Set(checkinAzi.map((r:any)=>r.apartament?.id).filter(Boolean))] as string[]
+    if(!ids.length){ setCuratateInainte({}); return }
+    const azi=aziLocal(), d=new Date(azi+'T12:00:00'); d.setDate(d.getDate()-180)
+    const deLa=format(d,'yyyy-MM-dd')
+    void Promise.all([
+      supabase.from('rezervari').select('apartament_id,data_checkout,camera_semnalata').in('apartament_id',ids).gte('data_checkout',deLa).lte('data_checkout',azi).neq('status_rezervare','anulata').order('data_checkout',{ascending:false}),
+      supabase.from('curatenie_status').select('apartament_id,data').in('apartament_id',ids).eq('status','gata').gte('data',deLa).lt('data',azi).order('data',{ascending:false}),
+    ]).then(([{data:rz,error:e1},{data:cs,error:e2}])=>{ if(e1||e2) return
+      const out:Record<string,string>={}
+      for(const id of ids){
+        const co=(rz||[]).filter((r:any)=>r.apartament_id===id&&r.camera_semnalata!=='NEALOCAT')
+        if(co.some((r:any)=>r.data_checkout===azi)) continue   // pleaca cineva azi -> decide curatenia de azi
+        const ultimCO=co[0]?.data_checkout, ultimGata=(cs||[]).find((s:any)=>s.apartament_id===id)?.data
+        if(ultimGata&&(!ultimCO||ultimGata>=ultimCO)) out[id]=ultimGata
+      }
+      setCuratateInainte(out)
+    }).catch(()=>{})
+  },[checkinAzi])
+  // gata azi SAU curatata de dinainte (si nu a inceput intre timp o curatenie noua azi)
+  const curatGata=(aid?:string)=>!!aid&&(curatenieGataIds.has(aid)||(!!curatateInainte[aid]&&curatenieAzi[aid]?.status!=='inceput'))
   const citesteCuratenie=()=>supabase.from('curatenie_status').select('apartament_id,status,eliberat,ora_gata').eq('data',aziLocal()).then(({data})=>aplicaCuratenie(data))
   const [gataBannerDismissed,setGataBannerDismissed]=useState(()=>{
     try{return localStorage.getItem('gata_banner_'+aziLocal())==='1'}catch{return false}
@@ -362,7 +387,7 @@ export default function DashboardPage() {
   const [oraAcum,setOraAcum]=useState(()=>new Date().getHours())
   useEffect(()=>{ const id=setInterval(()=>setOraAcum(new Date().getHours()),30000); return ()=>clearInterval(id) },[])
   const dupaCheckin = oraAcum>=ORA_CHECKIN
-  const gataCheckinsAzi = checkinAzi.filter((r:any)=>dupaCheckin||(r.apartament?.id&&curatenieGataIds.has(r.apartament.id)))
+  const gataCheckinsAzi = checkinAzi.filter((r:any)=>dupaCheckin||curatGata(r.apartament?.id))
   // Si rezervarile FARA telefon intra in mesaje (cerut direct: Booking nu mai trimite toate numerele) -
   // apar marcate "fara numar", cu camp de completat manual, nu dispar din lista
   const coMesajeTrimise = toateTrimise(checkoutAzi,'co-')
@@ -383,7 +408,7 @@ export default function DashboardPage() {
     checkinAzi.forEach((r:any)=>{
       // dupa 15:00 SAU cu curatenia gata: confirmarea netrimisa nu mai are rost, ramane doar mesajul cu datele de acces
       // (cerut direct: „n-are sens să apară ambele”)
-      if((dupaCheckin||(r.apartament?.id&&curatenieGataIds.has(r.apartament.id)))&&!mesajeSentIds.has('ci-'+r.id)) return
+      if((dupaCheckin||curatGata(r.apartament?.id))&&!mesajeSentIds.has('ci-'+r.id)) return
       const id='ci-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'checkin',icon:'👋',accent:'#E3C77A',titluCategorie:'Check-in',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
@@ -417,7 +442,7 @@ export default function DashboardPage() {
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
     return tasks
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,ghidApts,mesajOverrides,dupaCheckin,mesajeSentIds])
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,ghidApts,curatateInainte,curatenieAzi,curatenieGataIds,mesajOverrides,dupaCheckin,mesajeSentIds])
   // reminder de check-out pentru un apartament deja eliberat (si netrimis) -> scos automat
   const eliberatAuto=(t:MesajTask)=>t.categorie==='checkout'&&!mesajeSentIds.has(t.id)&&!!checkoutAzi.find((r:any)=>r.id===t.rawId&&eliberateIds.has(r.apartament?.id))
   const mesajeTasks = useMemo(()=>mesajeTasksToate.filter(t=>!mesajeAnulateIds.has(t.id)&&!eliberatAuto(t)),
@@ -1560,7 +1585,7 @@ export default function DashboardPage() {
       {mesajeListOpen&&(
         <MesajePeRand
           tasks={mesajeTasks.map(t=>{ const r=(t.categorie==='checkin'||t.categorie==='gata')?checkinAzi.find((x:any)=>x.id===t.rawId):null; const aid=r?.apartament?.id
-            return {...t,trimis:mesajeSentIds.has(t.id),curatenie:r?(curatenieAzi[aid]||{status:'neinceput'}):undefined} })}
+            return {...t,trimis:mesajeSentIds.has(t.id),curatenie:r?((curatateInainte[aid]&&!['gata','inceput'].includes(curatenieAzi[aid]?.status))?{status:'gata',ora:'00:00',din:curatateInainte[aid].slice(8,10)+'.'+curatateInainte[aid].slice(5,7)}:(curatenieAzi[aid]||{status:'neinceput'})):undefined} })}
           numereLipsa={numereLipsa}
           telSugestii={telSugestii}
           filaInitiala={mesajeFila}
