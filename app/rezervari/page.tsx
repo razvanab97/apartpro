@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
 import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 import RezervareModal from '@/components/RezervareModal'
+import FacturaManuala from '@/components/FacturaManuala'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
@@ -51,6 +52,8 @@ export default function RezervariPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterApt, setFilterApt] = useState('')
   const [searchNume, setSearchNume] = useState('')
+  // factura fara rezervare (cautare fara rezultat → „Generează factură”), cu textul cautat ca punct de plecare
+  const [facturaManuala, setFacturaManuala] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
@@ -146,7 +149,8 @@ export default function RezervariPage() {
     if (vechiIncarcate || t.length < 3) return
     const id = setTimeout(async () => {
       const sigur = t.replace(/[%,()*]/g, ' ').trim(), cif = t.replace(/[^0-9]/g, '')
-      const ors = [`nume_client.ilike.%${sigur}%`]
+      // si dupa codul rezervarii (cerut direct: „să căutăm rezervarea și după codul rezervării”) + observatii (ex. „AIRBNB: HM…”)
+      const ors = [`nume_client.ilike.%${sigur}%`, `cod_rezervare_platforma.ilike.%${sigur}%`, `observatii.ilike.%${sigur}%`]
       if (cif.length >= 4) ors.push(`telefon_client.ilike.%${cif}%`)
       const { data } = await supabase.from('rezervari').select(SELECT_LISTA).lt('data_checkout', deLa).or(ors.join(',')).order('data_checkin', { ascending: false }).limit(300)
       if (data?.length) setRezervari(prev => imbina(prev, data))
@@ -185,9 +189,12 @@ export default function RezervariPage() {
     if (filterCanal && r.canal !== filterCanal) return false
     if (filterStatus && r.status_rezervare !== filterStatus) return false
     if (filterApt && r.apartament_id !== filterApt) return false
-    if (searchNume && !r.nume_client?.toLowerCase().includes(searchNume.toLowerCase()) && !r.telefon_client?.includes(searchNume)) return false
-    if (dateFrom && r.data_checkin < dateFrom) return false
-    if (dateTo && r.data_checkin > dateTo) return false
+    const q = searchNume.trim().toLowerCase()
+    // potrivire pe codul rezervarii -> se arata indiferent de intervalul de date (altfel ar parea ca lipseste si s-ar factura din nou)
+    const peCod = q.length >= 4 && (String(r.cod_rezervare_platforma || '').toLowerCase().includes(q) || String(r.observatii || '').toLowerCase().includes(q))
+    if (q && !peCod && !r.nume_client?.toLowerCase().includes(q) && !r.telefon_client?.includes(searchNume.trim())) return false
+    if (!peCod && dateFrom && r.data_checkin < dateFrom) return false
+    if (!peCod && dateTo && r.data_checkin > dateTo) return false
     return true
   }).sort((a, b) => {
     // Ordine cronologica (cerut direct: "foarte dezordonate"): dupa check-in, apoi check-out,
@@ -298,7 +305,7 @@ export default function RezervariPage() {
         <div className="flex flex-wrap gap-3 mb-5">
           <input
             value={searchNume} onChange={e=>setSearchNume(e.target.value)}
-            placeholder="🔍 Caută client sau telefon..."
+            placeholder="🔍 Caută client, telefon sau cod rezervare..."
             style={{ padding:'6px 12px', borderRadius:8, border:'1px solid rgba(100,160,255,0.2)', background:'rgba(20,38,65,0.8)', color:'rgba(214,228,244,0.9)', fontSize:13, outline:'none', minWidth:220 }}
           />
           <select value={filterApt} onChange={e=>setFilterApt(e.target.value)} style={{ width: 200 }}>
@@ -394,7 +401,15 @@ export default function RezervariPage() {
 
         <div className="bg-[#161b27] border border-[#2a3350] rounded-[14px] overflow-hidden">
           {filtered.length === 0 ? (
+            searchNume.trim() ? (
+              <EmptyState icon={<CalendarCheck size={48}/>} title={`Nicio rezervare pentru „${searchNume.trim()}”`} desc="Dacă trebuie totuși facturată, generezi factura direct, cu detaliile de facturare."
+                action={<div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
+                  <Button variant="primary" onClick={()=>setFacturaManuala(searchNume.trim())}>🧾 Generează factură</Button>
+                  <Button variant="ghost" icon={<Plus size={14}/>} onClick={openNew}>Adaugă rezervare</Button>
+                </div>}/>
+            ) : (
             <EmptyState icon={<CalendarCheck size={48}/>} title="Nicio rezervare" desc="Adaugă prima rezervare" action={<Button variant="primary" icon={<Plus size={14}/>} onClick={openNew}>Adaugă rezervare</Button>}/>
+            )
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table>
@@ -509,6 +524,7 @@ export default function RezervariPage() {
         </div>
       </div>
 
+      {facturaManuala !== null && <FacturaManuala initial={facturaManuala} onClose={()=>setFacturaManuala(null)} />}
       <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
         onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
         saving={saving} onSave={save} onClose={()=>setOpen(false)} onReload={load} />

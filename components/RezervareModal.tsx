@@ -31,7 +31,7 @@ type Props = {
   extra?: (editing: any) => ReactNode
 }
 
-const C = {
+export const C = {
   text: '#EAF4FF',
   text2: 'rgba(214,228,244,0.75)',
   muted: 'rgba(159,215,255,0.5)',
@@ -56,13 +56,13 @@ const TON_PLATA: Record<string, string> = { neplatit: 'red', avans: 'amber', ach
 const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber', decontat: 'green' }
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
-const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
+export const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
 // pj = factura pe firma (cerut direct: „factură pe PJ - adăugăm CUI și primim toată informația”), datele din ANAF
-type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string; pj?: boolean; cui?: string; firma?: string; regCom?: string; platitorTva?: boolean }
-const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '', pj: false, cui: '', firma: '', regCom: '', platitorTva: false }
-const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
-const CHEIE_DATA_EMITERE = 'factura_rh_ultima_data_aleasa'
-const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
+export type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string; pj?: boolean; cui?: string; firma?: string; regCom?: string; platitorTva?: boolean }
+export const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '', pj: false, cui: '', firma: '', regCom: '', platitorTva: false }
+export const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
+export const CHEIE_DATA_EMITERE = 'factura_rh_ultima_data_aleasa'
+export const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
 const TON_FACT: Record<string, string> = { nefacturat: 'gray', de_facturat: 'amber', facturata: 'green' }
 
 // Alegerea platformei (cerut direct: „la ales platforma să fie mai dinamic, să arate o imagine în dreptul fiecărei
@@ -96,7 +96,7 @@ const COSTURI: [string, string][] = [
 const fmt = (n: number) => (Number(n) || 0).toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtZi = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) : '—'
 
-function Label({ children, right }: { children: ReactNode; right?: ReactNode }) {
+export function Label({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
       <span className="rz-lbl">{children}</span>
@@ -770,7 +770,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
 
 const pill = (t: { c: string; bg: string; b: string }): React.CSSProperties => ({ color: t.c, background: t.bg, borderColor: t.b })
 
-const CSS = `
+export const CSS = `
 .rz{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;
   background:rgba(4,10,20,0.74);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .rz-panel{width:1080px;max-width:100%;height:min(860px,94vh);display:flex;flex-direction:column;overflow:hidden;
