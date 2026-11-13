@@ -51,6 +51,14 @@ const TONE: Record<string, { c: string; bg: string; b: string }> = {
 const TON_REZ: Record<string, string> = { cerere: 'amber', confirmata: 'green', anulata: 'red', finalizata: 'blue' }
 const TON_PLATA: Record<string, string> = { neplatit: 'red', avans: 'amber', achitat: 'green' }
 const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber', decontat: 'green' }
+// Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
+// județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
+const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
+const TARI = ['Romania', 'Republica Moldova', 'Germania', 'Italia', 'Franta', 'Spania', 'Marea Britanie', 'Austria', 'Belgia', 'Olanda', 'Ungaria', 'Bulgaria', 'Grecia', 'Polonia', 'Ucraina', 'Israel', 'Statele Unite ale Americii', 'Elvetia', 'Danemarca', 'Suedia', 'Irlanda', 'Portugalia', 'Cehia', 'Turcia']
+type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string }
+const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '' }
+const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
+const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
 const TON_FACT: Record<string, string> = { nefacturat: 'gray', de_facturat: 'amber', facturata: 'green' }
 
 // Eticheta/placeholder pentru codul rezervarii, dupa canal - numarul de la platforma (nu ID-ul 5starDesk)
@@ -172,6 +180,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // recalculeaza singur cand se schimba datele; cand se scrie direct totalul, pretul se deduce din el
   const [pretNoapte, setPretNoapte] = useState<number | '' | null>(null)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
+  const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
+  const [dataEmitere, setDataEmitere] = useState('')
 
   // La fiecare deschidere: randurile pliabile pornesc deschise doar daca au valori; se retine starea
   // salvata a rezervarii (factura se emite din datele SALVATE, deci modificarile nesalvate o blocheaza)
@@ -187,6 +197,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setSumaFact(''); setSumaFactSalvata('')
       setShowIncasat(Number(editing?.suma_incasata) > 0 && Number(editing?.suma_incasata) !== Number(editing?.valoare_bruta))
       setFactura({ etapa: 'idle' })
+      setClientFact(CLIENT_GOL); setDataEmitere(aziRo())
     }
   }
 
@@ -197,6 +208,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       if (anulat) return
       const v = data?.valoare != null && data.valoare !== '' ? Number(data.valoare) : ''
       setSumaFact(v === '' || isNaN(v as number) ? '' : v); setSumaFactSalvata(v === '' || isNaN(v as number) ? '' : v)
+    })
+    // domiciliul clientului folosit data trecuta (se salveaza la emitere)
+    supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
+      if (anulat || !data?.valoare) return
+      try { setClientFact({ ...CLIENT_GOL, ...JSON.parse(data.valoare) }) } catch { /* ignorat */ }
     })
     return () => { anulat = true }
   }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -256,14 +272,19 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     !String(editing.cod_rezervare_platforma || '').trim() ? 'Completează codul rezervării Airbnb' :
     !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
-    nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' : null
+    nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
+    eRomania(clientFact.tara) && !clientFact.judet ? 'Alege județul de domiciliu al clientului' :
+    !clientFact.localitate.trim() ? 'Completează localitatea de domiciliu a clientului' :
+    !dataEmitere ? 'Alege data emiterii' : dataEmitere > aziRo() ? 'Data emiterii nu poate fi în viitor' : null
+  const setClient = (p: Partial<ClientFactura>) => setClientFact(c => ({ ...c, ...p }))
+  const zz = (d: string) => d ? d.split('-').reverse().join('.') : ''
 
   async function emiteFactura() {
     setFactura({ etapa: 'trimit' })
     try {
       const res = await fetch('/api/factura-oblio', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rezervareId: editing.id }),
+        body: JSON.stringify({ rezervareId: editing.id, dataEmitere, client: clientFact }),
       })
       const out = await res.json().catch(() => ({}))
       if (!res.ok || !out.numar) { setFactura({ etapa: 'idle', eroare: out.error || `Eroare ${res.status}` }); return }
@@ -476,10 +497,30 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                     </a>
                   )}
                 </div>
-              ) : factura.etapa === 'confirm' ? (
+              ) : (<>
+                {editing.canal === 'airbnb' && (
+                  <div data-client-factura style={{ marginBottom: 10 }}>
+                    <div className="rz-grid rz-2">
+                      <div><Label>Țara clientului</Label>
+                        <input list="rz-tari" value={clientFact.tara} onChange={e => setClient({ tara: e.target.value, ...(eRomania(e.target.value) ? {} : { judet: '' }) })} />
+                        <datalist id="rz-tari">{TARI.map(t => <option key={t} value={t} />)}</datalist>
+                      </div>
+                      <div><Label>Județ</Label>
+                        {eRomania(clientFact.tara)
+                          ? <select value={clientFact.judet} onChange={e => setClient({ judet: e.target.value })}><option value="">— alege —</option>{JUDETE.map(j => <option key={j} value={j}>{j}</option>)}</select>
+                          : <input value={clientFact.judet} placeholder="opțional (regiune)" onChange={e => setClient({ judet: e.target.value })} />}
+                      </div>
+                      <div><Label>Localitate</Label><input value={clientFact.localitate} placeholder={clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani'} onChange={e => setClient({ localitate: e.target.value })} /></div>
+                      <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} max={aziRo()} onChange={e => setDataEmitere(e.target.value)} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><Label>Adresă (opțional)</Label><input value={clientFact.adresa} placeholder="stradă, număr — dacă o știi" onChange={e => setClient({ adresa: e.target.value })} /></div>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.45 }}>Domiciliul real al oaspetelui (pe Airbnb: profilul oaspetelui → „Locuiește în …”). Apare pe factură și ajunge în SPV.</div>
+                  </div>
+                )}
+              {factura.etapa === 'confirm' ? (
                 <div className="rz-confirm">
                   <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{editing.nume_client}</b>, <b>{fmt(Number(editing.valoare_bruta))} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>?
+                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{editing.nume_client}</b> ({[clientFact.localitate, clientFact.judet, eRomania(clientFact.tara) ? '' : clientFact.tara].filter(Boolean).join(', ')}), <b>{fmt(deFacturat)} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>, cu data <b>{zz(dataEmitere)}</b>?
                     <div style={{ fontSize: 11, color: C.amber, marginTop: 4 }}>Se trimite automat în SPV — nu se poate retrage din aplicație.</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -496,6 +537,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                   {motivFaraFactura && <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>{motivFaraFactura}</div>}
                 </>
               )}
+              </>)}
               {factura.eroare && <div className="rz-msg rz-msg-err"><AlertTriangle size={13} /> {factura.eroare}</div>}
               {factura.info && <div className="rz-msg">{factura.info}</div>}
             </Group>

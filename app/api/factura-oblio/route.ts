@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 // Oblio (AB Textile, seria RH, SPV automat - setarile stau in ContaFlow), apoi salveaza aici seria,
 // numarul si linkul PDF si marcheaza rezervarea „Facturată”. Secretul nu ajunge niciodata in browser.
 export async function POST(req: NextRequest) {
-  const { rezervareId } = await req.json().catch(() => ({}))
+  const { rezervareId, dataEmitere, client } = await req.json().catch(() => ({}))
   if (!rezervareId) return NextResponse.json({ error: 'Lipsește rezervarea' }, { status: 400 })
 
   const url = process.env.CONTAFLOW_URL
@@ -22,6 +22,13 @@ export async function POST(req: NextRequest) {
   }
   if (r.status_rezervare === 'anulata') return NextResponse.json({ error: 'Rezervarea e anulată' }, { status: 400 })
 
+  // domiciliul real al clientului (cerut pentru SPV) + data emiterii alese in fereastra rezervarii; se pastreaza la
+  // rezervare (setari client_factura_<id>), ca sa nu le mai scrii a doua oara
+  const cl = { tara: String(client?.tara || '').trim(), judet: String(client?.judet || '').trim(), localitate: String(client?.localitate || '').trim(), adresa: String(client?.adresa || '').trim() }
+  const eRo = !cl.tara || /^rom[aâ]nia$/i.test(cl.tara)
+  const lipsa = [eRo && !cl.judet && 'județul clientului', !cl.localitate && 'localitatea clientului', !/^\d{4}-\d{2}-\d{2}$/.test(String(dataEmitere || '')) && 'data emiterii'].filter(Boolean)
+  if (lipsa.length) return NextResponse.json({ error: `Completează: ${lipsa.join(', ')}` }, { status: 400 })
+  await supabase.from('setari').upsert({ cheie: `client_factura_${r.id}`, valoare: JSON.stringify(cl) }, { onConflict: 'cheie' })
   const nopti = Math.max(0, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
   // suma de facturat scrisă la rezervare (setari suma_facturare_<id>), altfel totalul rezervării (valoarea brută)
   const { data: sf } = await supabase.from('setari').select('valoare').eq('cheie', `suma_facturare_${r.id}`).maybeSingle()
@@ -44,6 +51,8 @@ export async function POST(req: NextRequest) {
         nopti,
         persoane: r.nr_persoane,
         suma: sumaFacturare,
+        dataEmitere,
+        client: { ...cl, tara: eRo ? 'Romania' : cl.tara },
       }),
     })
   } catch (e) {
