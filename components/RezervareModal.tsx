@@ -57,8 +57,9 @@ const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber'
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
 const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
-type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string }
-const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '' }
+// pj = factura pe firma (cerut direct: „factură pe PJ - adăugăm CUI și primim toată informația”), datele din ANAF
+type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string; pj?: boolean; cui?: string; firma?: string; regCom?: string; platitorTva?: boolean }
+const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '', pj: false, cui: '', firma: '', regCom: '', platitorTva: false }
 const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
 const CHEIE_DATA_EMITERE = 'factura_rh_ultima_data_aleasa'
 const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
@@ -203,6 +204,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const autoInZbor = useRef(false), autoSalvate = useRef(false)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
+  const [firmaStare, setFirmaStare] = useState<{ incarc?: boolean; eroare?: string; avert?: string }>({})
   const [altaTara, setAltaTara] = useState(false)   // tara scrisa de mana (nu e in lista)
   // datele de facturare ale clientului se salveaza la rezervare odata cu restul (cerut direct: „dacă am setat deja
   // informațiile de facturare, când dau salvează sau se închide pagina, să rămână salvate, să nu stau să reselectez”)
@@ -229,7 +231,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setSumaFact(''); setSumaFactSalvata('')
       setShowIncasat(Number(editing?.suma_incasata) > 0 && Number(editing?.suma_incasata) !== Number(editing?.valoare_bruta))
       setFactura({ etapa: 'idle' })
-      setClientFact(CLIENT_GOL); setClientSalvat(JSON.stringify(CLIENT_GOL)); setAltaTara(false); setDataEmitere(aziRo())
+      setClientFact(CLIENT_GOL); setClientSalvat(JSON.stringify(CLIENT_GOL)); setAltaTara(false); setFirmaStare({}); setDataEmitere(aziRo())
       setAuto({ stare: 'idle' })
     }
   }
@@ -380,6 +382,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
     nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
+    clientFact.pj && !String(clientFact.cui || '').trim() ? 'Scrie CUI-ul firmei' :
+    clientFact.pj && !String(clientFact.firma || '').trim() ? 'Caută firma după CUI (sau scrie denumirea)' :
     altaTara && !clientFact.tara.trim() ? 'Scrie țara clientului' :
     eRo && !clientFact.judet ? 'Alege județul de domiciliu al clientului' :
     !clientFact.localitate.trim() ? 'Completează localitatea de domiciliu a clientului' :
@@ -393,6 +397,17 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= aziRo()) void supabase.from('setari').upsert({ cheie: CHEIE_DATA_EMITERE, valoare: d }, { onConflict: 'cheie' }).then(() => {})   // builderul Supabase porneste cererea doar la then
   }
   const setClient = (p: Partial<ClientFactura>) => setClientFact(c => ({ ...c, ...p }))
+  async function cautaFirma() {
+    setFirmaStare({ incarc: true })
+    try {
+      const res = await fetch('/api/firma?cui=' + encodeURIComponent(String(clientFact.cui || '')), { cache: 'no-store' })
+      const o = await res.json()
+      if (!res.ok) { setFirmaStare({ eroare: o.error || 'Căutarea a eșuat' }); return }
+      setAltaTara(false)
+      setClient({ cui: o.cui, firma: o.firma, regCom: o.regCom, platitorTva: o.platitorTva, tara: 'Romania', judet: o.judet, localitate: o.localitate, adresa: o.adresa })
+      setFirmaStare({ avert: o.radiata ? 'Atenție: firma apare RADIATĂ la ANAF' : o.inactiva ? 'Atenție: firma apare INACTIVĂ la ANAF' : undefined })
+    } catch (e) { setFirmaStare({ eroare: e instanceof Error ? e.message : 'Căutarea a eșuat' }) }
+  }
   const zz = (d: string) => d ? d.split('-').reverse().join('.') : ''
 
   async function emiteFactura() {
@@ -637,6 +652,28 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                         : ultimaFact.data ? <>Ultima factură RH: <b style={{ color: C.text }}>{ultimaFact.numar}</b> din <b style={{ color: C.text }}>{zz(ultimaFact.data)}</b> · nu se poate factura cu o dată mai veche</>
                         : 'Nicio factură emisă încă în seria RH'}
                     </div>
+                    <label className="rz-check" data-pj style={{ marginBottom: 10 }}>
+                      <input type="checkbox" checked={!!clientFact.pj} onChange={e => { const pj = e.target.checked; setFirmaStare({}); setClient(pj ? { pj, tara: 'Romania' } : { pj }); if (pj) setAltaTara(false) }} />
+                      Client persoană juridică (factură pe firmă)
+                    </label>
+                    {clientFact.pj && (
+                      <div data-firma style={{ marginBottom: 12, padding: 10, borderRadius: 10, border: `1px solid ${C.line}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                          <div style={{ flex: 1 }}><Label>CUI firmă</Label><input data-cui value={clientFact.cui || ''} placeholder="ex. RO24837298" onChange={e => setClient({ cui: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void cautaFirma() } }} /></div>
+                          <button type="button" className="rz-btn" onClick={() => void cautaFirma()} disabled={firmaStare.incarc || !String(clientFact.cui || '').trim()} style={{ padding: '10px 14px' }}>
+                            {firmaStare.incarc ? <><Loader2 size={13} className="rz-spin" /> Caut…</> : 'Caută la ANAF'}
+                          </button>
+                        </div>
+                        <div><Label>Denumire firmă</Label><input data-denumire-firma value={clientFact.firma || ''} placeholder="se completează din ANAF" onChange={e => setClient({ firma: e.target.value })} /></div>
+                        <div className="rz-grid rz-2">
+                          <div><Label>Nr. Reg. Com.</Label><input value={clientFact.regCom || ''} onChange={e => setClient({ regCom: e.target.value })} /></div>
+                          <div><Label>TVA</Label><select value={clientFact.platitorTva ? 'da' : 'nu'} onChange={e => setClient({ platitorTva: e.target.value === 'da' })}><option value="nu">neplătitoare de TVA</option><option value="da">plătitoare de TVA (RO)</option></select></div>
+                        </div>
+                        {firmaStare.eroare && <div style={{ fontSize: 11.5, color: C.red }}>{firmaStare.eroare}</div>}
+                        {firmaStare.avert && <div style={{ fontSize: 11.5, color: C.amber }}>{firmaStare.avert}</div>}
+                        <div style={{ fontSize: 11, color: C.faint }}>Adresa sediului se completează mai jos (județ, localitate, adresă). Sub denumire, pe factură, rămân oaspetele și codul rezervării.</div>
+                      </div>
+                    )}
                     <div className="rz-grid rz-2">
                       <div><Label>Țara clientului</Label>
                         <select data-tara value={altaTara ? '__alta__' : (TARI.find(t => t.localeCompare(clientFact.tara.trim(), 'ro', { sensitivity: 'base' }) === 0) || '__alta__')}
@@ -674,7 +711,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               {factura.etapa === 'confirm' ? (
                 <div className="rz-confirm">
                   <div style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{editing.nume_client}</b> ({[clientFact.localitate, clientFact.judet, eRo ? '' : clientFact.tara].filter(Boolean).join(', ')}), <b>{fmt(deFacturat)} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>, cu data <b>{zz(dataEmitere)}</b>?
+                    Emiți factura <b>RH</b> pe <b>AB Textile</b> pentru <b>{clientFact.pj && clientFact.firma ? `${clientFact.firma} (CUI ${clientFact.cui})` : editing.nume_client}</b> ({[clientFact.localitate, clientFact.judet, eRo ? '' : clientFact.tara].filter(Boolean).join(', ')}), <b>{fmt(deFacturat)} RON</b>, rezervare Airbnb <b className="rz-mono">{editing.cod_rezervare_platforma}</b>, cu data <b>{zz(dataEmitere)}</b>?
                     <div style={{ fontSize: 11, color: C.amber, marginTop: 4 }}>Se trimite automat în SPV — nu se poate retrage din aplicație.</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>

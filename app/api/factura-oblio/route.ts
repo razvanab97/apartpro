@@ -39,9 +39,9 @@ export async function POST(req: NextRequest) {
 
   // domiciliul real al clientului (cerut pentru SPV) + data emiterii alese in fereastra rezervarii; se pastreaza la
   // rezervare (setari client_factura_<id>), ca sa nu le mai scrii a doua oara
-  const cl = { tara: String(client?.tara || '').trim(), judet: String(client?.judet || '').trim(), localitate: String(client?.localitate || '').trim(), adresa: String(client?.adresa || '').trim() }
+  const cl = { tara: String(client?.tara || '').trim(), judet: String(client?.judet || '').trim(), localitate: String(client?.localitate || '').trim(), adresa: String(client?.adresa || '').trim(), pj: !!client?.pj, cui: String(client?.cui || '').trim(), firma: String(client?.firma || '').trim(), regCom: String(client?.regCom || '').trim(), platitorTva: !!client?.platitorTva }
   const eRo = !cl.tara || /^rom[aâ]nia$/i.test(cl.tara)
-  const lipsa = [eRo && !cl.judet && 'județul clientului', !cl.localitate && 'localitatea clientului', !/^\d{4}-\d{2}-\d{2}$/.test(String(dataEmitere || '')) && 'data emiterii'].filter(Boolean)
+  const lipsa = [eRo && !cl.judet && 'județul clientului', !cl.localitate && 'localitatea clientului', !/^\d{4}-\d{2}-\d{2}$/.test(String(dataEmitere || '')) && 'data emiterii', cl.pj && !cl.cui && 'CUI-ul firmei', cl.pj && !cl.firma && 'denumirea firmei'].filter(Boolean)
   if (lipsa.length) return NextResponse.json({ error: `Completează: ${lipsa.join(', ')}` }, { status: 400 })
   await supabase.from('setari').upsert({ cheie: `client_factura_${r.id}`, valoare: JSON.stringify(cl) }, { onConflict: 'cheie' })
   const nopti = Math.max(0, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
