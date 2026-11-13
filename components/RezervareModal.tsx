@@ -204,6 +204,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
   const [altaTara, setAltaTara] = useState(false)   // tara scrisa de mana (nu e in lista)
+  // datele de facturare ale clientului se salveaza la rezervare odata cu restul (cerut direct: „dacă am setat deja
+  // informațiile de facturare, când dau salvează sau se închide pagina, să rămână salvate, să nu stau să reselectez”)
+  const [clientSalvat, setClientSalvat] = useState(JSON.stringify(CLIENT_GOL))
   const [dataEmitere, setDataEmitere] = useState('')
   // sugestii de localitati pe judet (lista din Generator locatii + adresele extrase din acte) - se incarca o data
   const [locIncarcate, setLocIncarcate] = useState(false)
@@ -226,7 +229,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setSumaFact(''); setSumaFactSalvata('')
       setShowIncasat(Number(editing?.suma_incasata) > 0 && Number(editing?.suma_incasata) !== Number(editing?.valoare_bruta))
       setFactura({ etapa: 'idle' })
-      setClientFact(CLIENT_GOL); setAltaTara(false); setDataEmitere(aziRo())
+      setClientFact(CLIENT_GOL); setClientSalvat(JSON.stringify(CLIENT_GOL)); setAltaTara(false); setDataEmitere(aziRo())
       setAuto({ stare: 'idle' })
     }
   }
@@ -255,7 +258,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     // domiciliul clientului folosit data trecuta (se salveaza la emitere)
     supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
       if (anulat || !data?.valoare) return
-      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
+      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setClientSalvat(JSON.stringify(c)); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
     })
     return () => { anulat = true }
   }, [open, editing?.id, editing?.canal, ultimaCerere])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -264,7 +267,15 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // adăugăm alt preț, se salvează”): la o rezervare EXISTENTA, fiecare modificare se scrie singura la ~0,9 s dupa ultima
   // tastare (rezervarea + suma de facturat). Rezervarile noi se creeaza in continuare cu „Salvează rezervarea”.
   const curat = (r: any) => { if (!r) return ''; const { apartament: _a, proprietar: _p, updated_at: _u, ...rest } = r; return JSON.stringify(rest) }
-  const arePending = () => !!editing?.id && !!original && (curat(editing) !== curat(original) || String(sumaFact) !== String(sumaFactSalvata))
+  const clientDeSalvat = () => JSON.stringify(clientFact) !== clientSalvat
+  async function salveazaClient(): Promise<string | null> {
+    if (!editing?.id || !clientDeSalvat()) return null
+    const c = clientFact
+    const { error } = await supabase.from('setari').upsert({ cheie: `client_factura_${editing.id}`, valoare: JSON.stringify(c) }, { onConflict: 'cheie' })
+    if (!error) setClientSalvat(JSON.stringify(c))
+    return error ? error.message : null
+  }
+  const arePending = () => !!editing?.id && !!original && (curat(editing) !== curat(original) || String(sumaFact) !== String(sumaFactSalvata) || clientDeSalvat())
   async function salveazaAuto(): Promise<boolean> {
     if (!editing?.id || autoInZbor.current || !arePending()) return true
     autoInZbor.current = true
@@ -279,6 +290,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         if (error) { setAuto({ stare: 'eroare', mesaj: error.message }); return false }
         setSumaFactSalvata(sumaAcum)
       }
+      const eCl = await salveazaClient()
+      if (eCl) { setAuto({ stare: 'eroare', mesaj: eCl }); return false }
       if (curat(instantaneu) !== curat(original)) {
         const err = await salveazaRezervare(instantaneu, apartamente)
         if (err) { setAuto({ stare: 'eroare', mesaj: err }); return false }
@@ -293,13 +306,20 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     if (!open || !editing?.id || !arePending()) return
     const t = setTimeout(() => { void salveazaAuto() }, 900)
     return () => clearTimeout(t)
-  }, [open, editing, sumaFact, sumaFactSalvata, original, auto.stare])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editing, sumaFact, sumaFactSalvata, original, auto.stare, clientFact, clientSalvat])  // eslint-disable-line react-hooks/exhaustive-deps
   // inchiderea: ce n-a apucat sa se salveze se salveaza acum; lista se reincarca daca s-a salvat ceva
   async function inchide() {
     if (arePending()) await salveazaAuto()
     if (autoSalvate.current) { autoSalvate.current = false; onReload?.() }
     onClose()
   }
+
+  // ultima factura RH necitita (ex. Oblio indisponibil) -> se reincearca singur la 20 s, cat timp fereastra e deschisa
+  useEffect(() => {
+    if (!open || ultimaFact.stare !== 'eroare') return
+    const t = setTimeout(() => setUltimaCerere(x => x + 1), 20000)
+    return () => clearTimeout(t)
+  }, [open, ultimaFact])
 
   // salvarea: întâi suma de facturat (dacă rezervarea există), apoi rezervarea
   async function salveazaTot() {
@@ -310,6 +330,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         : await supabase.from('setari').upsert({ cheie, valoare: String(sumaFact) }, { onConflict: 'cheie' })
       if (!error) setSumaFactSalvata(sumaFact)
     }
+    await salveazaClient()
     onSave()
   }
 
@@ -364,7 +385,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     !clientFact.localitate.trim() ? 'Completează localitatea de domiciliu a clientului' :
     !dataEmitere ? 'Alege data emiterii' : dataEmitere > aziRo() ? 'Data emiterii nu poate fi în viitor' :
     ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură RH…' :
-    ultimaFact.stare === 'eroare' ? `Nu am putut verifica ultima factură RH (${ultimaFact.eroare}) — nu emitem fără verificare` :
+    // (cerut direct: „să putem genera factura și, imediat ce avem din nou tokenul, să primim informația actualizată”) - lista
+    // necitita nu mai blocheaza: ContaFlow verifica oricum data fata de ultima factura RH chiar inainte de emitere
     ultimaFact.data && dataEmitere < ultimaFact.data ? `Interzis: data e înaintea ultimei facturi RH (${ultimaFact.data.split('-').reverse().join('.')}) — alege această dată sau una ulterioară` : null
   const alegeDataEmitere = (d: string) => {
     setDataEmitere(d)
@@ -381,7 +403,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         body: JSON.stringify({ rezervareId: editing.id, dataEmitere, client: clientFact }),
       })
       const out = await res.json().catch(() => ({}))
-      if (!res.ok || !out.numar) { setFactura({ etapa: 'idle', eroare: out.error || `Eroare ${res.status}` }); return }
+      if (!res.ok || !out.numar) {
+        // refuz pentru data: ContaFlow intoarce si ultima factura RH -> caseta se actualizeaza pe loc
+        if (out.ultima?.data) setUltimaFact({ stare: 'ok', data: out.ultima.data, numar: out.ultima.numar })
+        setFactura({ etapa: 'idle', eroare: out.error || `Eroare ${res.status}` }); return
+      }
       const patch = { factura_serie: out.serie, factura_numar: out.numar, factura_link: out.link, status_facturare: 'facturata' }
       set(patch)
       setOriginal((o: any) => ({ ...o, ...patch }))
@@ -603,9 +629,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               ) : (<>
                 {editing.canal === 'airbnb' && (
                   <div data-client-factura style={{ marginBottom: 10 }}>
-                    <div data-ultima-factura style={{ fontSize: 12, marginBottom: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${ultimaFact.stare === 'eroare' ? C.red : C.line}`, color: ultimaFact.stare === 'eroare' ? C.red : C.muted, lineHeight: 1.45 }}>
+                    <div data-ultima-factura style={{ fontSize: 12, marginBottom: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${ultimaFact.stare === 'eroare' ? C.amber : C.line}`, color: ultimaFact.stare === 'eroare' ? C.amber : C.muted, lineHeight: 1.45 }}>
                       {ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură din seria RH…'
-                        : ultimaFact.stare === 'eroare' ? <>Ultima factură RH nu a putut fi verificată: {ultimaFact.eroare}</>
+                        : ultimaFact.stare === 'eroare' ? <>Ultima factură RH nu s-a putut citi acum ({ultimaFact.eroare}). Se reîncearcă automat; poți emite oricum — data e verificată la emitere. <button type="button" className="rz-sug" onClick={() => setUltimaCerere(x => x + 1)} style={{ marginLeft: 4 }}>Reîncearcă</button></>
                         : ultimaFact.data ? <>Ultima factură RH: <b style={{ color: C.text }}>{ultimaFact.numar}</b> din <b style={{ color: C.text }}>{zz(ultimaFact.data)}</b> · nu se poate factura cu o dată mai veche</>
                         : 'Nicio factură emisă încă în seria RH'}
                     </div>

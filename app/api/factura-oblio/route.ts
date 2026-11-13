@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ContaFlow nu răspunde: ' + (e instanceof Error ? e.message : '') }, { status: 502 })
   }
   const out = await resp.json().catch(() => ({ error: `ContaFlow a răspuns ${resp.status}` }))
-  if (!resp.ok || !out.numar) return NextResponse.json({ error: out.error || 'Emiterea a eșuat' }, { status: resp.status >= 400 ? resp.status : 502 })
+  if (!resp.ok || !out.numar) return NextResponse.json({ error: out.error || 'Emiterea a eșuat', ultima: out.ultima || null }, { status: resp.status >= 400 ? resp.status : 502 })
 
   const { error: errSalv } = await supabase.from('rezervari').update({
     factura_serie: out.serie, factura_numar: out.numar, factura_link: out.link,
