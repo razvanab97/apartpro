@@ -6,6 +6,7 @@ import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, Co
 import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCircle } from 'lucide-react'
 import RezervareModal from '@/components/RezervareModal'
 import FacturaManuala from '@/components/FacturaManuala'
+import FacturiGata from '@/components/FacturiGata'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
@@ -347,6 +348,9 @@ export default function RezervariPage() {
             <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('');setDateFrom('');setDateTo('')}}>✕ Reset</Button>
           )}
         </div>
+
+        {/* Facturi Airbnb gata de emis: propuneri invatate + emitere dintr-un click */}
+        <FacturiGata rezervari={rezervari} modalDeschis={open} onDeschide={openEdit} onReload={load} />
 
         {/* De facturat, grupate pe lună */}
         {deFacturat.length > 0 && (
