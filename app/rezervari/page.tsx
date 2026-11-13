@@ -8,6 +8,8 @@ import RezervareModal from '@/components/RezervareModal'
 import FacturaManuala from '@/components/FacturaManuala'
 import FacturiGata from '@/components/FacturiGata'
 import ImportAirbnb from '@/components/ImportAirbnb'
+import CoadaFacturare from '@/components/CoadaFacturare'
+import { citesteCoada } from '@/lib/coadaAirbnb'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
@@ -59,6 +61,10 @@ export default function RezervariPage() {
   const [presetManuala, setPresetManuala] = useState<{ nume: string; cod: string; suma: number } | undefined>()
   const [importAirbnb, setImportAirbnb] = useState(false)
   const reincarcaLaInchidere = useRef(false)
+  const [coadaAirbnb, setCoadaAirbnb] = useState(false)
+  const [pendinteAirbnb, setPendinteAirbnb] = useState<number | null>(null)
+  // cate facturi Airbnb asteapta in coada (ultima numaratoare salvata; se recalculeaza la deschiderea cozii)
+  useEffect(() => { if (!coadaAirbnb && !importAirbnb) citesteCoada().then(c => setPendinteAirbnb(c.randuri.length ? c.pendinte ?? null : 0)).catch(() => {}) }, [coadaAirbnb, importAirbnb])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
@@ -166,6 +172,13 @@ export default function RezervariPage() {
 
   function openNew() { setEditing({...emptyRez}); setOpen(true) }
   function openEdit(r: any) { setEditing({...r}); setOpen(true) }
+  // rezervarea proaspat citita, deschisa direct la Factură (din Raport Airbnb / coada); lista se reincarca la inchiderea ei
+  async function deschideLaFactura(id: string, reincarca: boolean) {
+    const { data } = await supabase.from('rezervari').select(SELECT_LISTA).eq('id', id).single()
+    if (!data) { show('error', 'Rezervarea nu s-a putut deschide'); return }
+    if (reincarca) reincarcaLaInchidere.current = true
+    openEdit(data); setTimeout(()=>document.querySelector('[data-sectiune-factura]')?.scrollIntoView({behavior:'smooth',block:'start'}),350)
+  }
 
   const onAptChange = (aptId: string) => setEditing((prev: any) => cuApartament(prev, aptId, apartamente))
   const recalcComisionPlatforma = (brut: number|'', pct: number|'') => setEditing((prev: any) => cuComision(prev, brut, pct))
@@ -293,6 +306,7 @@ export default function RezervariPage() {
                 </button>
               </>
             )}
+            <Button variant="ghost" onClick={()=>setCoadaAirbnb(true)}>🧾 Facturare Airbnb{pendinteAirbnb ? ` · ${pendinteAirbnb}` : ''}</Button>
             <Button variant="ghost" onClick={()=>setImportAirbnb(true)}>📥 Raport Airbnb</Button>
             <Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Rezervare nouă</Button>
           </div>
@@ -535,13 +549,10 @@ export default function RezervariPage() {
 
       {facturaManuala !== null && <FacturaManuala initial={facturaManuala} preset={presetManuala} onClose={()=>{ setFacturaManuala(null); setPresetManuala(undefined) }} />}
       {importAirbnb && <ImportAirbnb onClose={()=>setImportAirbnb(false)} onReload={load} onManuala={p=>{ setImportAirbnb(false); setPresetManuala(p); setFacturaManuala(p.cod) }}
-        onDeschide={async (id, reincarca)=>{
-          // rezervarea proaspat citita (dupa pregatire), deschisa direct la Factură; lista se reincarca la inchiderea ei
-          const { data } = await supabase.from('rezervari').select(SELECT_LISTA).eq('id', id).single()
-          if (!data) { show('error', 'Rezervarea nu s-a putut deschide'); return }
-          setImportAirbnb(false); if (reincarca) reincarcaLaInchidere.current = true
-          openEdit(data); setTimeout(()=>document.querySelector('[data-sectiune-factura]')?.scrollIntoView({behavior:'smooth',block:'start'}),350)
-        }} />}
+        onCoada={()=>{ setImportAirbnb(false); setCoadaAirbnb(true) }}
+        onDeschide={(id, reincarca)=>{ setImportAirbnb(false); void deschideLaFactura(id, reincarca) }} />}
+      {coadaAirbnb && <CoadaFacturare onClose={()=>setCoadaAirbnb(false)} onReload={load} onImport={()=>{ setCoadaAirbnb(false); setImportAirbnb(true) }}
+        onDeschide={id=>{ setCoadaAirbnb(false); void deschideLaFactura(id, true) }} />}
       <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
         onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
         saving={saving} onSave={save} onClose={()=>{ setOpen(false); if (reincarcaLaInchidere.current) { reincarcaLaInchidere.current = false; load() } }} onReload={load} />
