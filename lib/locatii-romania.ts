@@ -402,3 +402,25 @@ export function generateBatch(used: Set<number>, n=4, judet?: string): AdresaCar
   }
   return res
 }
+
+// Sugestii de localitati la facturare (cerut direct: „când selectez județul, să recomande și localitățile pe care le avem
+// acolo”): localitatile din lista de mai sus + cele din adresele extrase din acte, plus resedinta judetului. Doar o lista
+// de alegere - pe factura se trece localitatea REALA a oaspetelui. Bucuresti -> sectoarele (asa le cere Oblio / SPV).
+const RESEDINTE: Record<string, string> = {
+  alba: 'Alba Iulia', arad: 'Arad', arges: 'Pitești', bacau: 'Bacău', bihor: 'Oradea', 'bistrita-nasaud': 'Bistrița', botosani: 'Botoșani',
+  braila: 'Brăila', brasov: 'Brașov', buzau: 'Buzău', 'caras-severin': 'Reșița', calarasi: 'Călărași', cluj: 'Cluj-Napoca', constanta: 'Constanța',
+  covasna: 'Sfântu Gheorghe', dambovita: 'Târgoviște', dolj: 'Craiova', galati: 'Galați', giurgiu: 'Giurgiu', gorj: 'Târgu Jiu', harghita: 'Miercurea Ciuc',
+  hunedoara: 'Deva', ialomita: 'Slobozia', iasi: 'Iași', ilfov: 'Buftea', maramures: 'Baia Mare', mehedinti: 'Drobeta-Turnu Severin', mures: 'Târgu Mureș',
+  neamt: 'Piatra Neamț', olt: 'Slatina', prahova: 'Ploiești', 'satu mare': 'Satu Mare', salaj: 'Zalău', sibiu: 'Sibiu', suceava: 'Suceava',
+  teleorman: 'Alexandria', timis: 'Timișoara', tulcea: 'Tulcea', vaslui: 'Vaslui', valcea: 'Râmnicu Vâlcea', vrancea: 'Focșani',
+}
+export function localitatiJudet(judet: string): string[] {
+  const k = normalizeCounty(judet || '')
+  if (!k) return []
+  if (k === 'bucuresti') return ['Sector 1', 'Sector 2', 'Sector 3', 'Sector 4', 'Sector 5', 'Sector 6']
+  const out: string[] = []
+  const adauga = (l: string) => { const t = (l || '').trim(); if (t && !out.some(x => x.localeCompare(t, 'ro', { sensitivity: 'base' }) === 0)) out.push(t) }
+  if (RESEDINTE[k]) adauga(RESEDINTE[k])
+  for (const loc of allLocs()) if (normalizeCounty(loc.judet) === k) adauga(loc.localitate)
+  return out
+}

@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
-import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle } from 'lucide-react'
+import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle, Phone, MessageCircle, Globe, Handshake, CircleDot } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
+import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import ConfirmareClient from '@/components/ConfirmareClient'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
@@ -60,6 +61,23 @@ const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', 
 const aziRo = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Bucharest' })
 const eRomania = (t: string) => !t.trim() || /^rom[aâ]nia$/i.test(t.trim())
 const TON_FACT: Record<string, string> = { nefacturat: 'gray', de_facturat: 'amber', facturata: 'green' }
+
+// Alegerea platformei (cerut direct: „la ales platforma să fie mai dinamic, să arate o imagine în dreptul fiecărei
+// platforme, sau culoarea potrivită”): butoane cu insigna si culoarea fiecarei platforme in loc de lista simpla.
+// c = culoarea insignei, t = culoarea textului pe fundalul inchis (Booking e prea inchis ca text)
+const PLATFORME: Record<string, { c: string; t: string; semn: ReactNode }> = {
+  airbnb: { c: '#FF5A5F', t: '#FF7A7E', semn: <b style={{ fontSize: 12, fontWeight: 900, letterSpacing: '-.02em' }}>A</b> },
+  booking: { c: '#003580', t: '#6EA8FF', semn: <b style={{ fontSize: 11, fontWeight: 900, letterSpacing: '-.04em' }}>B<span style={{ color: '#5BC0F8' }}>.</span></b> },
+  direct: { c: '#16A34A', t: '#4ADE80', semn: <Handshake size={13} /> },
+  telefon: { c: '#0EA5E9', t: '#7DD3FC', semn: <Phone size={12} /> },
+  whatsapp: { c: '#25D366', t: '#4ADE80', semn: <MessageCircle size={13} /> },
+  site: { c: '#8B5CF6', t: '#C4B5FD', semn: <Globe size={13} /> },
+}
+const platforma = (k: string) => PLATFORME[k] || { c: '#64748B', t: '#CBD5E1', semn: <CircleDot size={12} /> }
+function InsignaPlatforma({ k, size = 22 }: { k: string; size?: number }) {
+  const p = platforma(k)
+  return <span aria-hidden style={{ width: size, height: size, borderRadius: 6, background: p.c, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: `0 0 0 1px ${p.c}55, 0 2px 8px ${p.c}40` }}>{p.semn}</span>
+}
 
 // Eticheta/placeholder pentru codul rezervarii, dupa canal - numarul de la platforma (nu ID-ul 5starDesk)
 const COD_CANAL: Record<string, { label: string; ph: string }> = {
@@ -182,6 +200,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
   const [dataEmitere, setDataEmitere] = useState('')
+  // sugestii de localitati pe judet (lista din Generator locatii + adresele extrase din acte) - se incarca o data
+  const [locIncarcate, setLocIncarcate] = useState(false)
+  useEffect(() => { if (open && !locIncarcate) void loadExtraLocs().finally(() => setLocIncarcate(true)) }, [open, locIncarcate])
   // ultima factura din seria RH (din Oblio): nu se poate emite cu data mai veche
   const [ultimaFact, setUltimaFact] = useState<{ stare: 'incarc' | 'ok' | 'eroare'; data?: string; numar?: string; eroare?: string }>({ stare: 'incarc' })
   const [ultimaCerere, setUltimaCerere] = useState(0)
@@ -324,7 +345,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
                 {editing.nume_client || 'Client nou'}
               </h2>
-              <span className="rz-pill" style={pill(TONE.blue)}>{CANALE_LABEL[editing.canal] || editing.canal}</span>
+              <span className="rz-pill" style={{ ...pill({ c: platforma(editing.canal).t, bg: `${platforma(editing.canal).c}26`, b: `${platforma(editing.canal).c}80` }), display: 'inline-flex', alignItems: 'center', gap: 5 }}><InsignaPlatforma k={editing.canal} size={15} />{CANALE_LABEL[editing.canal] || editing.canal}</span>
               {editing.cod_rezervare_platforma && <span className="rz-pill rz-mono" style={pill(TONE.amber)}># {editing.cod_rezervare_platforma}</span>}
             </div>
             <div style={{ fontSize: 13, color: C.text2, marginTop: 4 }}>
@@ -341,7 +362,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
           {/* ── Stanga: ce se completeaza ── */}
           <div className="rz-main">
             <Group title="Rezervare" first>
-              <div className="rz-grid" style={{ gridTemplateColumns: '1.4fr 1fr' }}>
+              <div className="rz-grid">
                 <div>
                   <Label>Apartament *</Label>
                   <select value={editing.apartament_id || ''} onChange={e => onAptChange(e.target.value)}>
@@ -351,11 +372,18 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 </div>
                 <div>
                   <Label>Canal</Label>
-                  <select value={editing.canal} onChange={e => set({ canal: e.target.value })}>
-                    {/* Canale din afara listei (ex. „intern” din calendar) raman selectate, nu apar ca Booking */}
-                    {editing.canal && !CANALE_LABEL[editing.canal] && <option value={editing.canal}>{editing.canal.charAt(0).toUpperCase() + editing.canal.slice(1)}</option>}
-                    {Object.entries(CANALE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
+                  <div className="rz-canale" role="radiogroup" aria-label="Canal">
+                    {/* Canale din afara listei (ex. „intern” din calendar) raman selectate, ca buton separat */}
+                    {[...(editing.canal && !CANALE_LABEL[editing.canal] ? [[editing.canal, editing.canal.charAt(0).toUpperCase() + editing.canal.slice(1)]] : []), ...Object.entries(CANALE_LABEL)].map(([k, v]) => {
+                      const p = platforma(k), ales = editing.canal === k
+                      return (
+                        <button key={k} type="button" role="radio" aria-checked={ales} data-canal={k} className="rz-canal" onClick={() => set({ canal: k })}
+                          style={ales ? { borderColor: p.c, background: `${p.c}24`, color: p.t, boxShadow: `0 0 0 1px ${p.c} inset` } : undefined}>
+                          <InsignaPlatforma k={k} /><span>{v}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
               <div className="rz-grid rz-dates" style={{ marginTop: 12 }}>
@@ -527,12 +555,23 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                       </div>
                       <div><Label>Județ</Label>
                         {eRomania(clientFact.tara)
-                          ? <select value={clientFact.judet} onChange={e => setClient({ judet: e.target.value })}><option value="">— alege —</option>{JUDETE.map(j => <option key={j} value={j}>{j}</option>)}</select>
+                          ? <select value={clientFact.judet} onChange={e => { const j = e.target.value; setClient({ judet: j, ...(clientFact.localitate && !localitatiJudet(j).some(l => l.localeCompare(clientFact.localitate.trim(), 'ro', { sensitivity: 'base' }) === 0) && localitatiJudet(clientFact.judet).some(l => l.localeCompare(clientFact.localitate.trim(), 'ro', { sensitivity: 'base' }) === 0) ? { localitate: '' } : {}) }) }}><option value="">— alege —</option>{JUDETE.map(j => <option key={j} value={j}>{j}</option>)}</select>
                           : <input value={clientFact.judet} placeholder="opțional (regiune)" onChange={e => setClient({ judet: e.target.value })} />}
                       </div>
-                      <div><Label>Localitate</Label><input value={clientFact.localitate} placeholder={clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani'} onChange={e => setClient({ localitate: e.target.value })} /></div>
+                      <div style={{ gridColumn: '1 / -1' }}><Label>Localitate</Label><input list="rz-localitati" value={clientFact.localitate} placeholder={clientFact.judet === 'Bucuresti' ? 'ex. Sector 3' : 'ex. Pașcani'} onChange={e => setClient({ localitate: e.target.value })} />
+                        <datalist id="rz-localitati">{(eRomania(clientFact.tara) ? localitatiJudet(clientFact.judet) : []).map(l => <option key={l} value={l} />)}</datalist>
+                      </div>
+                      {eRomania(clientFact.tara) && clientFact.judet && localitatiJudet(clientFact.judet).length > 0 && (
+                        <div data-sugestii-localitati style={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: -6 }}>
+                          <span style={{ fontSize: 11, color: C.faint }}>Localități în {clientFact.judet}:</span>
+                          {localitatiJudet(clientFact.judet).map(l => {
+                            const ales = clientFact.localitate.trim().localeCompare(l, 'ro', { sensitivity: 'base' }) === 0
+                            return <button key={l} type="button" className="rz-sug" aria-pressed={ales} onClick={() => setClient({ localitate: l })}>{l}</button>
+                          })}
+                        </div>
+                      )}
                       <div><Label>Data emiterii</Label><input type="date" value={dataEmitere} min={ultimaFact.data || undefined} max={aziRo()} onChange={e => setDataEmitere(e.target.value)} /></div>
-                      <div style={{ gridColumn: '1 / -1' }}><Label>Adresă (opțional)</Label><input value={clientFact.adresa} placeholder="stradă, număr — dacă o știi" onChange={e => setClient({ adresa: e.target.value })} /></div>
+                      <div><Label>Adresă (opțional)</Label><input value={clientFact.adresa} placeholder="stradă, număr — dacă o știi" onChange={e => setClient({ adresa: e.target.value })} /></div>
                     </div>
                     <div style={{ fontSize: 11, color: C.faint, marginTop: 6, lineHeight: 1.45 }}>Domiciliul real al oaspetelui (pe Airbnb: profilul oaspetelui → „Locuiește în …”). Apare pe factură și ajunge în SPV.</div>
                   </div>
@@ -648,6 +687,15 @@ const CSS = `
 .rz .rz-check input{width:16px;height:16px;padding:0;accent-color:#22C55E}
 .rz-invoice{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);font-size:13px}
 .rz-confirm{padding:12px 13px;border-radius:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.3)}
+.rz-sug{padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(214,228,244,0.75);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.rz-sug:hover{background:rgba(77,163,255,0.1);border-color:rgba(77,163,255,0.4);color:#CFE4FF}
+.rz-sug[aria-pressed=true]{background:rgba(77,163,255,0.18);border-color:#4DA3FF;color:#CFE4FF}
+.rz-canale{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.rz-canal{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.025);color:rgba(214,228,244,0.62);font-family:inherit;font-size:13px;font-weight:650;cursor:pointer;text-align:left;transition:background .15s,border-color .15s,color .15s,transform .1s}
+.rz-canal span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rz-canal:hover{background:rgba(255,255,255,0.05);color:rgba(232,240,250,0.9)}
+.rz-canal:active{transform:scale(.98)}
+.rz-canal:focus-visible{outline:2px solid #4DA3FF;outline-offset:2px}
 .rz-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 13px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;
   cursor:pointer;text-decoration:none;color:${C.text2};background:rgba(255,255,255,0.04);border:1px solid rgba(159,215,255,0.2)}
 .rz-btn:hover:not(:disabled){color:${C.text};border-color:rgba(159,215,255,0.35)}
@@ -674,6 +722,7 @@ const CSS = `
 }
 @media (max-width:520px){
   .rz-2{grid-template-columns:1fr}
+  .rz-canale{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rz-dates{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .rz-nights{display:none}
   .rz-status{grid-template-columns:1fr}
