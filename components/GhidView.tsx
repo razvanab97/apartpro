@@ -64,6 +64,7 @@ const CSS = `
 .gh figure .vlbl{position:absolute;left:10px;top:10px;max-width:calc(100% - 20px);z-index:2;display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:12px;background:rgba(10,8,6,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,102,0,.5);color:#F7F3EC;font-size:13.5px;font-weight:700;line-height:1.25;pointer-events:none;transition:opacity .25s}
 .gh figure .vlbl i{font-style:normal;color:var(--acc);font-size:11px}
 .gh figure.playing .vlbl{opacity:0}
+.gh-legal{margin:22px auto 6px;max-width:560px;text-align:center;font-size:11.5px;line-height:1.55;color:var(--faint);opacity:.9}
 .gh-rules{margin-top:44px;border-top:1px solid var(--line);padding-top:26px}
 .gh-rules h2,.gh-end h2{margin:0 0 12px;font-family:var(--disp);font-weight:400;font-size:30px;letter-spacing:.02em;color:var(--ink)}
 .gh-rules ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
@@ -212,6 +213,11 @@ export default function GhidView({ g: gTot, fix = true, limbaStart }: { g: Ghid;
           </section>
         )}
         {t(g.final_ro, g.final_en) && <footer>{t(g.final_ro, g.final_en)}</footer>}
+        {/* declaratie de acceptare a regulilor - la toate ghidurile, mic, jos (cerut direct: „oaspetele confirmă că a luat la
+            cunoștință și acceptă regulile locației, răspunzând conform legii pentru nerespectarea lor”) */}
+        <p className="gh-legal" data-legal>{t(
+          'Prin accesarea și utilizarea acestui ghid, precum și prin cazarea în locație, oaspetele confirmă că a luat la cunoștință, a înțeles și acceptă integral regulile locației și instrucțiunile de mai sus. Oaspetele răspunde, conform legislației în vigoare, pentru nerespectarea acestora și pentru eventualele prejudicii produse locației, bunurilor din dotare sau terților, pe durata întregii șederi.',
+          'By accessing and using this guide and by staying at the property, the guest confirms that they have read, understood and fully accept the house rules and the instructions above. The guest is liable, in accordance with the applicable law, for any failure to comply with them and for any damage caused to the property, its contents or third parties during the entire stay.')}</p>
       </div>
       {mare && (
         <div className="gh-lb" onClick={() => setMare(null)}>
