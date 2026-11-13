@@ -29,7 +29,7 @@ const ETICHETA: Record<Stare, { t: string; c: string }> = {
 }
 const cheieFact = (serie?: string | null, nr?: string | null) => `${serie || 'RH'} ${String(nr || '').trim()}`.replace(/\s+/g, ' ').toUpperCase()
 
-export default function ImportAirbnb({ onClose, onReload, onManuala }: { onClose: () => void; onReload: () => void; onManuala: (p: { nume: string; cod: string; suma: number }) => void }) {
+export default function ImportAirbnb({ onClose, onReload, onManuala, onDeschide }: { onClose: () => void; onReload: () => void; onManuala: (p: { nume: string; cod: string; suma: number }) => void; onDeschide: (rezId: string, reincarca: boolean) => void }) {
   const [linii, setLinii] = useState<Linie[] | null>(null)
   const [fisier, setFisier] = useState('')
   const [eroare, setEroare] = useState('')
@@ -103,17 +103,15 @@ export default function ImportAirbnb({ onClose, onReload, onManuala }: { onClose
   }
 
   const dePregatit = (linii || []).filter(l => l.stare === 'de_pregatit' && bife[l.r.cod])
-  async function pregateste() {
-    if (!dePregatit.length) return
-    setLucrez(true); setMesaj('')
-    try {
-      const ids = dePregatit.map(l => l.rez!.id)
+  // pregatirea (backup -> cod / canal / „de facturat” -> suma de facturat = castigul brut Airbnb)
+  async function pregatesteLinii(lista: Linie[]): Promise<number> {
+      const ids = lista.map(l => l.rez!.id)
       const { data: vechi } = await supabase.from('rezervari').select('id,cod_rezervare_platforma,canal,status_facturare').in('id', ids)
       const { data: sumeVechi } = await supabase.from('setari').select('cheie,valoare').in('cheie', ids.map(id => `suma_facturare_${id}`))
       const { error: eb } = await supabase.from('setari').upsert({ cheie: `import_airbnb_backup_${new Date().toISOString()}`, valoare: JSON.stringify({ fisier, rezervari: vechi, sume: sumeVechi }) }, { onConflict: 'cheie' })
       if (eb) throw new Error('Backup-ul nu s-a putut salva: ' + eb.message)
       let ok = 0
-      for (const l of dePregatit) {
+      for (const l of lista) {
         const rez = l.rez!
         const patch: Record<string, string> = { status_facturare: 'de_facturat' }
         if (!rez.cod_rezervare_platforma) patch.cod_rezervare_platforma = l.r.cod
@@ -125,8 +123,26 @@ export default function ImportAirbnb({ onClose, onReload, onManuala }: { onClose
         ok++; setSchimbat(true)
         setLinii(ls => ls && ls.map(x => x.r.cod === l.r.cod ? { ...x, stare: 'pregatita', detaliu: `${rez.nume_client} · ${fmt(l.r.brut)} RON · gata de emis la ${zz(plusZile(l.r.checkout, ZILE_DUPA_CHECKOUT))}` } : x))
       }
+      return ok
+  }
+  async function pregateste() {
+    if (!dePregatit.length) return
+    setLucrez(true); setMesaj('')
+    try {
+      const ok = await pregatesteLinii(dePregatit)
       setMesaj(`✓ ${ok} ${ok === 1 ? 'rezervare pregătită' : 'rezervări pregătite'}. Le găsești în „Facturi Airbnb gata de emis”: cele cu domiciliul cunoscut se emit dintr-un click, la celelalte completezi domiciliul o dată.`)
       setSchimbat(true)
+    } catch (e) { setMesaj('⚠ ' + (e instanceof Error ? e.message : 'Eroare')) }
+    finally { setLucrez(false) }
+  }
+  // click pe client (cerut direct: „să intrăm direct în facturare - apăsăm pe client, se deschide zona de facturare”):
+  // nefacturata -> se pregateste intai (suma, cod, canal), apoi se deschide rezervarea la Factură
+  async function deschide(l: Linie) {
+    if (!l.rez) return
+    setLucrez(true); setMesaj('')
+    try {
+      if (l.stare === 'de_pregatit') await pregatesteLinii([l])
+      onDeschide(l.rez.id, schimbat || l.stare === 'de_pregatit')
     } catch (e) { setMesaj('⚠ ' + (e instanceof Error ? e.message : 'Eroare')) }
     finally { setLucrez(false) }
   }
@@ -163,7 +179,12 @@ export default function ImportAirbnb({ onClose, onReload, onManuala }: { onClose
                 <div key={l.r.cod} data-linie={l.r.cod} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(159,215,255,0.06)', flexWrap: 'wrap' }}>
                   {g.s === 'de_pregatit' && <input type="checkbox" aria-label={`Pregătește ${l.r.oaspete}`} checked={!!bife[l.r.cod]} onChange={e => setBife(b => ({ ...b, [l.r.cod]: e.target.checked }))} style={{ width: 16, height: 16 }} />}
                   <div style={{ flex: '1 1 300px', minWidth: 0 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{l.r.oaspete} <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{l.r.cod}</span></div>
+                    <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600 }}>{l.rez && g.s !== 'alta_firma'
+                      ? <button type="button" data-deschide-rez disabled={lucrez} onClick={() => void deschide(l)} title={g.s === 'de_pregatit' ? 'Pregătește și deschide rezervarea la Factură' : 'Deschide rezervarea la Factură'}
+                          style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: lucrez ? 'wait' : 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(123,200,255,0.5)', textUnderlineOffset: 3 }}>{l.r.oaspete}</button>
+                      : g.s === 'lipsa'
+                        ? <button type="button" onClick={() => { if (schimbat) onReload(); onManuala({ nume: l.r.oaspete, cod: l.r.cod, suma: l.r.brut }) }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(123,200,255,0.5)', textUnderlineOffset: 3 }}>{l.r.oaspete}</button>
+                        : l.r.oaspete} <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>{l.r.cod}</span></div>
                     <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{zz(l.r.checkin)} → {zz(l.r.checkout)} · {l.detaliu}</div>
                   </div>
                   <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{fmt(l.r.brut)}</div>

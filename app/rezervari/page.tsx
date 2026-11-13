@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase, Rezervare, Apartament, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_FACTURARE_LABEL, LUNI, normalizeWaPhone, notificaProprietar, pretRezervareText } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Button, Badge, CanalBadge, EmptyState, PageLoading, Toast, useToast, ConfirmDialog, Card, ConnectionError } from '@/components/ui'
@@ -58,6 +58,7 @@ export default function RezervariPage() {
   const [facturaManuala, setFacturaManuala] = useState<string | null>(null)
   const [presetManuala, setPresetManuala] = useState<{ nume: string; cod: string; suma: number } | undefined>()
   const [importAirbnb, setImportAirbnb] = useState(false)
+  const reincarcaLaInchidere = useRef(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
@@ -533,10 +534,17 @@ export default function RezervariPage() {
       </div>
 
       {facturaManuala !== null && <FacturaManuala initial={facturaManuala} preset={presetManuala} onClose={()=>{ setFacturaManuala(null); setPresetManuala(undefined) }} />}
-      {importAirbnb && <ImportAirbnb onClose={()=>setImportAirbnb(false)} onReload={load} onManuala={p=>{ setImportAirbnb(false); setPresetManuala(p); setFacturaManuala(p.cod) }} />}
+      {importAirbnb && <ImportAirbnb onClose={()=>setImportAirbnb(false)} onReload={load} onManuala={p=>{ setImportAirbnb(false); setPresetManuala(p); setFacturaManuala(p.cod) }}
+        onDeschide={async (id, reincarca)=>{
+          // rezervarea proaspat citita (dupa pregatire), deschisa direct la Factură; lista se reincarca la inchiderea ei
+          const { data } = await supabase.from('rezervari').select(SELECT_LISTA).eq('id', id).single()
+          if (!data) { show('error', 'Rezervarea nu s-a putut deschide'); return }
+          setImportAirbnb(false); if (reincarca) reincarcaLaInchidere.current = true
+          openEdit(data); setTimeout(()=>document.querySelector('[data-sectiune-factura]')?.scrollIntoView({behavior:'smooth',block:'start'}),350)
+        }} />}
       <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
         onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
-        saving={saving} onSave={save} onClose={()=>setOpen(false)} onReload={load} />
+        saving={saving} onSave={save} onClose={()=>{ setOpen(false); if (reincarcaLaInchidere.current) { reincarcaLaInchidere.current = false; load() } }} onReload={load} />
 
       <ConfirmDialog open={!!deleteId} onClose={()=>setDeleteId(null)} onConfirm={deleteRez}
         title="Șterge rezervare" message="Sigur vrei să ștergi această rezervare?" />
