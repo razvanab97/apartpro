@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, normalizeWaPhone, numVal, numInput, aziLocal } from '@/lib/supabase'
+import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
 import { Toast, useToast, ConnectionError } from '@/components/ui'
 import { MessageCircle, BedDouble, RefreshCw, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -440,7 +441,7 @@ export default function CuratenePage() {
     const waMsg = template
       .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
       .replace(/\{apartament\}/gi, apt?.nume || apt?.nota || '')
-    setWaGataInfo({ apt, rez: ciRez, msg: waMsg, tip: 'checkin' })
+    setWaGataInfo({ apt, rez: ciRez, msg: cuLinkGhid(waMsg, apt, await aptCuGhid().catch(() => null)), tip: 'checkin' })
   }
 
   function buildWaCheckout(apt: any, coRez: any) {

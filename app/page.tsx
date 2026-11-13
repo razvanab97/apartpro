@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
+import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
@@ -177,6 +178,8 @@ export default function DashboardPage() {
     try{return localStorage.getItem('co_banner_'+aziLocal())==='1'}catch{return false}
   })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
+  // apartamentele cu ghid de check-in -> linkul ghidului intra in mesajul „Date acces” (lib/ghidLink.ts)
+  const [ghidApts,setGhidApts]=useState<Set<string>>(new Set())
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
   // apartamente marcate „Eliberat” azi in Curatenie -> reminderul de check-out al oaspetelui iese singur din mesaje
   // (cerut direct: „nu mai avem de ce să-l trimitem dacă s-a eliberat”)
@@ -388,7 +391,7 @@ export default function DashboardPage() {
       const id='gata-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'gata',icon:'🔑',accent:'#7BC8FF',titluCategorie:'Acces',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgGataAcces(r,sabloaneGata)})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??cuLinkGhid(msgGataAcces(r,sabloaneGata),r.apartament,ghidApts)})
     })
     propNotif.forEach((r:any)=>{
       const tel=r.apartament?.proprietar?.telefon
@@ -411,7 +414,7 @@ export default function DashboardPage() {
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
     return tasks
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,mesajOverrides,dupaCheckin,mesajeSentIds])
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,ghidApts,mesajOverrides,dupaCheckin,mesajeSentIds])
   // reminder de check-out pentru un apartament deja eliberat (si netrimis) -> scos automat
   const eliberatAuto=(t:MesajTask)=>t.categorie==='checkout'&&!mesajeSentIds.has(t.id)&&!!checkoutAzi.find((r:any)=>r.id===t.rawId&&eliberateIds.has(r.apartament?.id))
   const mesajeTasks = useMemo(()=>mesajeTasksToate.filter(t=>!mesajeAnulateIds.has(t.id)&&!eliberatAuto(t)),
@@ -660,6 +663,7 @@ export default function DashboardPage() {
       ;(sgD||[]).forEach((s:any)=>{ if(s.text) gMap[s.apartament_id||'__global__']=s.text })
       setSabloaneGata(gMap)
     })
+    void aptCuGhid().then(setGhidApts).catch(()=>{})
 
     // Prognoza: venitul firmei din luna viitoare, pe aceeasi baza ca "Incasari" - noptile din luna viitoare
     // ale fiecarei rezervari (si cele lungi incepute luna asta, ex. BOLOCA 17 oct-31 dec), net de comisionul
@@ -855,7 +859,7 @@ export default function DashboardPage() {
         <div style={{display:'flex',gap:6,flexWrap:'wrap' as const}}>
           {isCI&&(<>
             {statusOrButton('ci-',waLink(phone,msgCheckin(r,sabloaneSetari.checkin_confirmare)),<MessageCircle size={12}/>,'Confirmare','rgba(252,211,77,0.9)','rgba(252,211,77,0.08)')}
-            {statusOrButton('gata-',waLink(phone,msgAcces(r,sabloaneSetari.checkin_acces)),<Key size={12}/>,'Date acces','rgba(77,163,255,0.9)','rgba(77,163,255,0.08)')}
+            {statusOrButton('gata-',waLink(phone,cuLinkGhid(msgAcces(r,sabloaneSetari.checkin_acces),r.apartament,ghidApts)),<Key size={12}/>,'Date acces','rgba(77,163,255,0.9)','rgba(77,163,255,0.08)')}
           </>)}
           {!isCI&&statusOrButton('co-',waLink(phone,msgCheckoutGen(r,sabloaneCO)),<LogOut size={12}/>,'Check-out','rgba(192,132,252,0.9)','rgba(192,132,252,0.08)')}
         </div>

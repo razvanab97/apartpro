@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { CHEIE_BLOCARI, parseBlocari, blocataIn, type Blocare } from '@/lib/blocariProprietar'
 import { pregatesteCaptura, citesteRezervare, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
+import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
 import RezervareEditor from '@/components/RezervareEditor'
@@ -222,6 +223,7 @@ export default function CalendarPage() {
   const [sabloaneSetari, setSabloaneSetari] = useState<Record<string,string>>({})
   const [sabloaneCO, setSabloaneCO] = useState<Record<string,string>>({})
   const [sabloaneGata, setSabloaneGata] = useState<Record<string,string>>({})
+  const [ghidApts, setGhidApts] = useState<Set<string>>(new Set())   // apartamentele cu ghid de check-in (lib/ghidLink.ts)
   const [sabloanePop, setSabloanePop] = useState<any>(null)
   const [sabloaneApt, setSabloaneApt] = useState<any[]>([])
 
@@ -254,6 +256,7 @@ export default function CalendarPage() {
       for(const s of data||[]) m[s.apartament_id||'__global__']=s.text
       setSabloaneGata(m)
     })
+    void aptCuGhid().then(setGhidApts).catch(()=>{})
   }, [])
 
   async function deschideSabloane(aptId:string, r?:any){
@@ -1126,6 +1129,7 @@ Echipa AB Homes Iași`)}
       {editId&&(
         <RezervareEditor rezervareId={editId} onClose={()=>setEditId(null)} onSaved={load}
           extra={(r:any)=>{
+            const aptG = apts.find((a:any)=>a.id===(r.apartament?.id||r.apartament_id)) || r.apartament
             const btn = (bg:string,color:string):React.CSSProperties=>({display:'flex',alignItems:'center',gap:5,padding:'7px 11px',borderRadius:8,border:`1px solid ${color}`,background:bg,color,fontSize:12,fontWeight:600,cursor:'pointer',textDecoration:'none',whiteSpace:'nowrap' as const})
             return (
               <div>
@@ -1133,8 +1137,8 @@ Echipa AB Homes Iași`)}
                   <div style={{ display:'flex',gap:6,flexWrap:'wrap' as const }}>
                     <a href={waLink(r.telefon_client, msgConfirmareRezervare(r))} target="_blank" rel="noreferrer" style={btn('rgba(74,222,128,0.1)','#4ADE80')}><Check size={12}/>Confirmare rezervare</a>
                     <a href={waLink(r.telefon_client, msgCheckin(r, sabloaneSetari.checkin_confirmare))} target="_blank" rel="noreferrer" style={btn('rgba(252,211,77,0.08)','rgba(252,211,77,0.9)')}><MessageCircle size={12}/>Reminder sosire</a>
-                    <a href={waLink(r.telefon_client, msgAcces(r, sabloaneSetari.checkin_acces))} target="_blank" rel="noreferrer" style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}><Key size={12}/>Date acces</a>
-                    <a href={waLink(r.telefon_client, msgGataAcces(r, sabloaneGata))} target="_blank" rel="noreferrer" style={btn('rgba(74,222,128,0.08)','rgba(74,222,128,0.9)')}><CheckCircle2 size={12}/>Gata locația</a>
+                    <a href={waLink(r.telefon_client, cuLinkGhid(msgAcces(r, sabloaneSetari.checkin_acces), aptG, ghidApts))} target="_blank" rel="noreferrer" style={btn('rgba(77,163,255,0.08)','rgba(77,163,255,0.9)')}><Key size={12}/>Date acces</a>
+                    <a href={waLink(r.telefon_client, cuLinkGhid(msgGataAcces(r, sabloaneGata), aptG, ghidApts))} target="_blank" rel="noreferrer" style={btn('rgba(74,222,128,0.08)','rgba(74,222,128,0.9)')}><CheckCircle2 size={12}/>Gata locația</a>
                     <a href={waLink(r.telefon_client, msgCheckoutGen(r, sabloaneCO))} target="_blank" rel="noreferrer" style={btn('rgba(192,132,252,0.08)','rgba(192,132,252,0.9)')}><LogOut size={12}/>Check-out</a>
                     {r.apartament_id && (
                       <button type="button" onClick={()=>deschideSabloane(r.apartament_id, r)} style={btn('rgba(159,215,255,0.06)','rgba(159,215,255,0.5)')}><FileText size={12}/>Alte șabloane</button>

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, normalizeWaPhone, aziLocal } from '@/lib/supabase'
+import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
 import { ConnectionError } from '@/components/ui'
 import { salveazaTaxaCuratenie, stergeTaxaCuratenie } from '@/lib/taxeCuratenie'
 
@@ -305,7 +306,7 @@ export default function StaffPage() {
     const waMsg = template
       .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
       .replace(/\{apartament\}/gi, aptObj?.nume || aptObj?.nota || '')
-    setWaGataInfo({ apt: aptObj, rez: ciRez, msg: waMsg })
+    setWaGataInfo({ apt: aptObj, rez: ciRez, msg: cuLinkGhid(waMsg, aptObj || { id: aptId }, await aptCuGhid().catch(() => null)) })
   }
 
   async function setStatus(aptId:string, status:'inceput'|'gata') {
