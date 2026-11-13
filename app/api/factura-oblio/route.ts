@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic'
 // numarul si linkul PDF si marcheaza rezervarea „Facturată”. Secretul nu ajunge niciodata in browser.
 // GET = ultima factura din seria RH, citita din Oblio prin ContaFlow (cerut direct: „să apară care e ultima dată când s-a
 // facturat - să nu facturăm înapoi de ultima dată facturată, e interzis”). ContaFlow refuza oricum o data mai veche.
-export async function GET() {
+// ?lista=1 = toate facturile RH cu suma reala din Oblio (comparatia cu raportul de castiguri Airbnb)
+export async function GET(req: NextRequest) {
   const url = process.env.CONTAFLOW_URL
   const secret = process.env.CONTAFLOW_FACTURARE_SECRET
   if (!url || !secret) return NextResponse.json({ error: 'Facturarea nu e configurată (CONTAFLOW_URL / CONTAFLOW_FACTURARE_SECRET)' }, { status: 500 })
   try {
-    const res = await fetch(`${url.replace(/\/$/, '')}/api/oblio/factura-cazare`, { headers: { 'x-apartpro-secret': secret }, cache: 'no-store' })
+    const res = await fetch(`${url.replace(/\/$/, '')}/api/oblio/factura-cazare${req.nextUrl.searchParams.get('lista') ? '?lista=1' : ''}`, { headers: { 'x-apartpro-secret': secret }, cache: 'no-store' })
     const out = await res.json().catch(() => ({ error: `ContaFlow a răspuns ${res.status}` }))
     return NextResponse.json(out, { status: res.ok ? 200 : (res.status >= 400 ? res.status : 502) })
   } catch (e) {

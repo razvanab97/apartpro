@@ -13,12 +13,12 @@ import { C, CSS, JUDETE, Label, CLIENT_GOL, aziRo, eRomania, CHEIE_DATA_EMITERE,
 
 const eq = (a: string, b: string) => a.trim().localeCompare(b.trim(), 'ro', { sensitivity: 'base' }) === 0
 
-export default function FacturaManuala({ initial, onClose }: { initial: string; onClose: () => void }) {
+export default function FacturaManuala({ initial, onClose, preset }: { initial: string; onClose: () => void; preset?: { nume?: string; cod?: string; suma?: number } }) {
   const pareCod = /^[A-Z0-9]{6,}$/i.test(initial.trim()) && /\d/.test(initial)
-  const [nume, setNume] = useState(pareCod ? '' : initial.trim())
-  const [cod, setCod] = useState(pareCod ? initial.trim().toUpperCase() : '')
+  const [nume, setNume] = useState(preset?.nume ?? (pareCod ? '' : initial.trim()))
+  const [cod, setCod] = useState(preset?.cod ?? (pareCod ? initial.trim().toUpperCase() : ''))
   const [canal, setCanal] = useState<'airbnb' | 'booking'>(/^\d+$/.test(initial.trim()) ? 'booking' : 'airbnb')
-  const [suma, setSuma] = useState('')
+  const [suma, setSuma] = useState(preset?.suma ? String(preset.suma) : '')
   const [dataEmitere, setDataEmitere] = useState(aziRo())
   const [cl, setCl] = useState<ClientFactura>(CLIENT_GOL)
   const [altaTara, setAltaTara] = useState(false)

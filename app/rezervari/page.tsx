@@ -7,6 +7,7 @@ import { Plus, CalendarCheck, Edit2, Trash2, ChevronDown, ChevronUp, MessageCirc
 import RezervareModal from '@/components/RezervareModal'
 import FacturaManuala from '@/components/FacturaManuala'
 import FacturiGata from '@/components/FacturiGata'
+import ImportAirbnb from '@/components/ImportAirbnb'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
@@ -55,6 +56,8 @@ export default function RezervariPage() {
   const [searchNume, setSearchNume] = useState('')
   // factura fara rezervare (cautare fara rezultat → „Generează factură”), cu textul cautat ca punct de plecare
   const [facturaManuala, setFacturaManuala] = useState<string | null>(null)
+  const [presetManuala, setPresetManuala] = useState<{ nume: string; cod: string; suma: number } | undefined>()
+  const [importAirbnb, setImportAirbnb] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
@@ -289,6 +292,7 @@ export default function RezervariPage() {
                 </button>
               </>
             )}
+            <Button variant="ghost" onClick={()=>setImportAirbnb(true)}>📥 Raport Airbnb</Button>
             <Button variant="primary" icon={<Plus size={15}/>} onClick={openNew}>Rezervare nouă</Button>
           </div>
         } />
@@ -408,7 +412,7 @@ export default function RezervariPage() {
             searchNume.trim() ? (
               <EmptyState icon={<CalendarCheck size={48}/>} title={`Nicio rezervare pentru „${searchNume.trim()}”`} desc="Dacă trebuie totuși facturată, generezi factura direct, cu detaliile de facturare."
                 action={<div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
-                  <Button variant="primary" onClick={()=>setFacturaManuala(searchNume.trim())}>🧾 Generează factură</Button>
+                  <Button variant="primary" onClick={()=>{ setPresetManuala(undefined); setFacturaManuala(searchNume.trim()) }}>🧾 Generează factură</Button>
                   <Button variant="ghost" icon={<Plus size={14}/>} onClick={openNew}>Adaugă rezervare</Button>
                 </div>}/>
             ) : (
@@ -528,7 +532,8 @@ export default function RezervariPage() {
         </div>
       </div>
 
-      {facturaManuala !== null && <FacturaManuala initial={facturaManuala} onClose={()=>setFacturaManuala(null)} />}
+      {facturaManuala !== null && <FacturaManuala initial={facturaManuala} preset={presetManuala} onClose={()=>{ setFacturaManuala(null); setPresetManuala(undefined) }} />}
+      {importAirbnb && <ImportAirbnb onClose={()=>setImportAirbnb(false)} onReload={load} onManuala={p=>{ setImportAirbnb(false); setPresetManuala(p); setFacturaManuala(p.cod) }} />}
       <RezervareModal open={open} editing={editing} setEditing={setEditing} apartamente={apartamente}
         onAptChange={onAptChange} recalcComisionPlatforma={recalcComisionPlatforma} calcul={c}
         saving={saving} onSave={save} onClose={()=>setOpen(false)} onReload={load} />
