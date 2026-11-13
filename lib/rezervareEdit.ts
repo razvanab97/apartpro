@@ -1,4 +1,5 @@
 import { supabase, calculeazaDecont, type Apartament } from '@/lib/supabase'
+import { comisionPlatforma, procentPlatforma } from '@/lib/comisionPlatforma'
 
 // Logica formularului complet de rezervare, comuna paginii Rezervari si calendarului (butonul
 // „Editează” din cardul rezervarii) - aceeasi salvare in ambele locuri, nu doua variante diferite.
@@ -11,20 +12,18 @@ export function cuApartament(prev: any, aptId: string, apartamente: Apartament[]
     ...prev,
     apartament_id: aptId,
     proprietar_id: apt?.proprietar_id || '',
-    comision_platforma_procent: aptId.includes('booking') ? 15 : 0,
+    // (inainte: procentul se reseta la 0 la orice schimbare de apartament - comisionul platformei nu tine de apartament)
   }
 }
 
+// Schimbarea canalului: Airbnb 15% / Booking 17% + TVA 21% din comision; celelalte canale fara comision de platforma
+export function cuCanal(prev: any, canal: string) {
+  return { ...prev, canal, ...comisionPlatforma(Number(prev.valoare_bruta) || 0, procentPlatforma(canal)) }
+}
+
 export function cuComision(prev: any, brut: number | '', pct: number | '') {
-  const val = Number(brut || 0) * Number(pct || 0) / 100
-  const tva = val * 0.19
-  return {
-    ...prev,
-    valoare_bruta: brut,
-    comision_platforma_procent: pct,
-    comision_platforma_valoare: Math.round(val * 100) / 100,
-    tva_comision_platforma: Math.round(tva * 100) / 100,
-  }
+  // TVA intracomunitar 21% din comision (inainte 19%)
+  return { ...prev, valoare_bruta: brut, ...comisionPlatforma(Number(brut || 0), Number(pct || 0)), comision_platforma_procent: pct }
 }
 
 export function decont(editing: any, apartamente: Apartament[]) {

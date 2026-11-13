@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, ArrowRight, X, Users, CalendarCheck, Phone, Mail, Globe } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { cuComisionImplicit } from '@/lib/comisionPlatforma'
 
 /* ── helpers ── */
 function parseDate(s: string): string {
@@ -112,7 +113,7 @@ export function TabRezervari() {
         }).eq('id',existingId)
         error?err++:upd++
       } else {
-        const {error} = await supabase.from('rezervari').insert({ apartament_id:r.apartament_id||null, canal:r.canal, nume_client:r.nume_client, data_checkin:r.data_checkin, data_checkout:r.data_checkout, nr_persoane:r.nr_persoane||1, valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata, moneda:'RON', status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare, status_decont:'nedecontat', observatii:[r.tip_camera,r.camera,r.observatii].filter(Boolean).join(' | ')||null })
+        const {error} = await supabase.from('rezervari').insert(cuComisionImplicit({ apartament_id:r.apartament_id||null, canal:r.canal, nume_client:r.nume_client, data_checkin:r.data_checkin, data_checkout:r.data_checkout, nr_persoane:r.nr_persoane||1, valoare_bruta:r.valoare_bruta, suma_incasata:r.suma_incasata, moneda:'RON', status_plata:r.suma_incasata>0?'achitat':'neplatit', status_rezervare:r.status_rezervare, status_decont:'nedecontat', observatii:[r.tip_camera,r.camera,r.observatii].filter(Boolean).join(' | ')||null }))
         error?err++:ok++
       }
     }

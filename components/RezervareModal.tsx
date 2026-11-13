@@ -6,7 +6,7 @@ import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import { TARI, oraseTara } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
-import { salveazaRezervare } from '@/lib/rezervareEdit'
+import { salveazaRezervare, cuCanal } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -438,7 +438,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                     {[...(editing.canal && !CANALE_LABEL[editing.canal] ? [[editing.canal, editing.canal.charAt(0).toUpperCase() + editing.canal.slice(1)]] : []), ...Object.entries(CANALE_LABEL)].map(([k, v]) => {
                       const p = platforma(k), ales = editing.canal === k
                       return (
-                        <button key={k} type="button" role="radio" aria-checked={ales} data-canal={k} className="rz-canal" onClick={() => set({ canal: k })}
+                        <button key={k} type="button" role="radio" aria-checked={ales} data-canal={k} className="rz-canal" onClick={() => setEditing((prev: any) => cuCanal(prev, k))}
                           style={ales ? { borderColor: p.c, background: `${p.c}24`, color: p.t, boxShadow: `0 0 0 1px ${p.c} inset` } : undefined}>
                           <InsignaPlatforma k={k} /><span>{v}</span>
                         </button>

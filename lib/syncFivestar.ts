@@ -1,4 +1,5 @@
 import { supabase, corecteazaTelefon } from '@/lib/supabase'
+import { cuComisionImplicit } from '@/lib/comisionPlatforma'
 
 export type SyncResult = {
   total: number
@@ -376,7 +377,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
       // (Inainte asteptau decizie manuala in "De verificat" - toate s-au dovedit rezervari reale, iar
       // cele netratate lipseau din calendar, ex. Duguleanu C64 9-10 oct.)
       if (blocate.length) res.logs.push({ type:'info', msg: `ℹ ${numeClient} (${checkin}) — pe aceleași date există și ID ${blocate.map((r:any)=>idsDinObs(r.observatii).join(',')).join(', ')} (altă rezervare); importată separat` })
-      const { error } = await supabase.from('rezervari').insert({
+      const { error } = await supabase.from('rezervari').insert(cuComisionImplicit({
         apartament_id: aptId,
         canal,
         nume_client: numeClient,
@@ -391,7 +392,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
         status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
         status_decont: 'nedecontat',
         observatii: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
-      })
+      }))
       if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
       else {
         if (idExternValid) {
@@ -585,12 +586,12 @@ export async function alocaNealocata(n: Nealocata, aptId: string): Promise<strin
     const { error } = await supabase.from('rezervari').update({ apartament_id: aptId, ...marcaj }).eq('id', n.rid)
     return error ? error.message : null
   }
-  const { error } = await supabase.from('rezervari').insert({
+  const { error } = await supabase.from('rezervari').insert(cuComisionImplicit({
     apartament_id: aptId, canal: n.canal, nume_client: n.nume, data_checkin: n.checkin, data_checkout: n.checkout,
     suma_incasata: n.pret, valoare_bruta: n.pret, moneda: 'RON', telefon_client: n.telefon, nr_persoane: n.nrPersoane,
     status_rezervare: n.statusNou, status_plata: n.pret > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat',
     observatii: ['nealocată 5SD', n.id5sd, n.status5sd].filter(Boolean).join(' | '), ...marcaj,
-  })
+  }))
   if (error) return error.message
   await eliminaDubluriProaspete(n.id5sd)
   return null

@@ -6,6 +6,7 @@ import { Button, Toast, useToast } from '@/components/ui'
 import { RefreshCw, CheckCircle2, AlertCircle, Loader2, Phone, CalendarCheck, Users } from 'lucide-react'
 import { TabRezervari, TabClienti } from '../import/page'
 import { syncFivestar, fmt5star, fetchOneBookingById, idsDinObs, citesteListaSetari, scrieListaSetari, CHEIE_DE_VERIFICAT, CHEIE_SARITE, type SyncResult, type DeVerificat } from '@/lib/syncFivestar'
+import { cuComisionImplicit } from '@/lib/comisionPlatforma'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -64,8 +65,8 @@ function DeVerificatPanel({ apts, refreshKey, show, panel }: { apts:{id:string;n
       } else {
         const { data: exista } = await supabase.from('rezervari').select('id,observatii').ilike('observatii', `%${x.id5sd}%`).limit(10)
         if (!(exista||[]).some((r:any) => idsDinObs(r.observatii).includes(x.id5sd))) {
-          const { error } = await supabase.from('rezervari').insert({ ...campuri, moneda:'RON', telefon_client: x.telefon, nr_persoane: x.nrPersoane,
-            status_rezervare: x.statusNou, status_plata: (Number(x.pret)||0) > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat', observatii: x.obs || null })
+          const { error } = await supabase.from('rezervari').insert(cuComisionImplicit({ ...campuri, moneda:'RON', telefon_client: x.telefon, nr_persoane: x.nrPersoane,
+            status_rezervare: x.statusNou, status_plata: (Number(x.pret)||0) > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat', observatii: x.obs || null }))
           if (error) { show('error', error.message); return }
         }
       }
