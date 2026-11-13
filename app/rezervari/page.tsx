@@ -367,7 +367,9 @@ export default function RezervariPage() {
                         {list.map((r:any) => (
                           <div key={r.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid rgba(159,215,255,0.06)',gap:10,flexWrap:'wrap'}}>
                             <div>
-                              <span style={{fontSize:13,color:'var(--text)',fontWeight:500}}>{r.nume_client}</span>
+                              {/* click pe nume -> rezervarea, derulata la Factură (cerut direct: „să apăsăm pe numele clientului și să se deschidă pagina rezervării, să putem factura”) */}
+                              <button type="button" data-deschide-factura onClick={()=>{ openEdit(r); setTimeout(()=>document.querySelector('[data-sectiune-factura]')?.scrollIntoView({behavior:'smooth',block:'start'}),350) }}
+                                title="Deschide rezervarea, la factură" style={{fontSize:13,color:'var(--text)',fontWeight:600,background:'none',border:'none',padding:0,cursor:'pointer',textDecoration:'underline',textDecorationColor:'rgba(123,200,255,0.45)',textUnderlineOffset:3,fontFamily:'inherit'}}>{r.nume_client}</button>
                               <span style={{fontSize:11,color:'var(--text3)',marginLeft:8}}>{r.apartament?.nume||'—'} · {r.data_checkin} → {r.data_checkout}</span>
                             </div>
                             <div style={{display:'flex',alignItems:'center',gap:10}}>

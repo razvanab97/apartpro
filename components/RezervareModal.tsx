@@ -408,7 +408,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         if (out.ultima?.data) setUltimaFact({ stare: 'ok', data: out.ultima.data, numar: out.ultima.numar })
         setFactura({ etapa: 'idle', eroare: out.error || `Eroare ${res.status}` }); return
       }
-      const patch = { factura_serie: out.serie, factura_numar: out.numar, factura_link: out.link, status_facturare: 'facturata' }
+      // si data emiterii (inainte lipsea din patch -> salvarea automata o rescria cu gol)
+      const patch = { factura_serie: out.serie, factura_numar: out.numar, factura_link: out.link, status_facturare: 'facturata', factura_emisa_la: new Date().toISOString() }
       set(patch)
       setOriginal((o: any) => ({ ...o, ...patch }))
       setUltimaCerere(x => x + 1)
@@ -612,6 +613,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               </div>
             </Group>
 
+            <div data-sectiune-factura style={{ scrollMarginTop: 8 }} />
             <Group title="Factură">
               {editing.factura_numar ? (
                 <div className="rz-invoice">

@@ -12,7 +12,9 @@ export function comisionPlatforma(brut: number, procent: number) {
 // La o rezervare noua (sincronizare 5starDesk, import, Sync): Airbnb / Booking fara comision completat il primesc
 // din procentul platformei; un comision deja completat ramane neatins.
 export function cuComisionImplicit<T extends Record<string, unknown>>(row: T): T {
-  const pct = procentPlatforma(row.canal as string), brut = Number(row.valoare_bruta) || 0
-  if (!pct || !(brut > 0) || Number(row.comision_platforma_valoare) > 0) return row
-  return { ...row, ...comisionPlatforma(brut, pct) }
+  // rezervarile Airbnb noi intra direct „De facturat” (cerut direct; factura RH se emite din aplicatie)
+  const r: T = row.canal === 'airbnb' && (!row.status_facturare || row.status_facturare === 'nefacturat') ? { ...row, status_facturare: 'de_facturat' } : row
+  const pct = procentPlatforma(r.canal as string), brut = Number(r.valoare_bruta) || 0
+  if (!pct || !(brut > 0) || Number(r.comision_platforma_valoare) > 0) return r
+  return { ...r, ...comisionPlatforma(brut, pct) }
 }

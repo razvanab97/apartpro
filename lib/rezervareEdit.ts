@@ -18,7 +18,8 @@ export function cuApartament(prev: any, aptId: string, apartamente: Apartament[]
 
 // Schimbarea canalului: Airbnb 15% / Booking 17% + TVA 21% din comision; celelalte canale fara comision de platforma
 export function cuCanal(prev: any, canal: string) {
-  return { ...prev, canal, ...comisionPlatforma(Number(prev.valoare_bruta) || 0, procentPlatforma(canal)) }
+  const fact = canal === 'airbnb' && (!prev.status_facturare || prev.status_facturare === 'nefacturat') ? { status_facturare: 'de_facturat' } : {}
+  return { ...prev, canal, ...fact, ...comisionPlatforma(Number(prev.valoare_bruta) || 0, procentPlatforma(canal)) }
 }
 
 export function cuComision(prev: any, brut: number | '', pct: number | '') {
@@ -68,6 +69,8 @@ export function payloadRezervare(editing: any, apartamente: Apartament[]) {
     suma_platita_proprietar: editing.platit_proprietar ? (Number(editing.suma_platita_proprietar) || 0) : null,
     data_plata_proprietar: editing.platit_proprietar ? (editing.data_plata_proprietar || new Date().toISOString().slice(0, 10)) : null,
   }
+  // rezervare Airbnb noua -> „De facturat”
+  if (!editing.id && payload.canal === 'airbnb' && (!payload.status_facturare || payload.status_facturare === 'nefacturat')) payload.status_facturare = 'de_facturat'
   for (const k of ['id', 'apartament', 'proprietar', 'nr_nopti', 'created_at', 'updated_at', 'rezervare_id']) delete payload[k]
   return payload
 }
