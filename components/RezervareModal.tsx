@@ -6,7 +6,7 @@ import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import { TARI, oraseTara } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
-import { salveazaRezervare, cuCanal } from '@/lib/rezervareEdit'
+import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -221,9 +221,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // salvata a rezervarii (factura se emite din datele SALVATE, deci modificarile nesalvate o blocheaza)
   const deschidere = open ? String(editing?.id || 'nou') : null
   const [ultimaDeschidere, setUltimaDeschidere] = useState<string | null>(null)
+  // rezervarea noua tocmai creata la „Emite factură” primeste id - e aceeasi fereastra, nu o redeschidere (fara resetare)
+  const idCreat = useRef<string | null>(null)
   if (deschidere !== ultimaDeschidere) {
+    const continuare = ultimaDeschidere === 'nou' && !!deschidere && deschidere === idCreat.current
     setUltimaDeschidere(deschidere)
-    if (deschidere) {
+    if (deschidere && !continuare) {
       setShowCosturi(totalCosturi > 0)
       setShowComision(comision > 0)
       setOriginal(editing)
@@ -244,6 +247,17 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       const v = data?.valoare != null && data.valoare !== '' ? Number(data.valoare) : ''
       setSumaFact(v === '' || isNaN(v as number) ? '' : v); setSumaFactSalvata(v === '' || isNaN(v as number) ? '' : v)
     })
+    // domiciliul clientului folosit data trecuta (se salveaza la emitere)
+    supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
+      if (anulat || !data?.valoare) return
+      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setClientSalvat(JSON.stringify(c)); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
+    })
+    return () => { anulat = true }
+  }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ultima factura RH + data emiterii propusa - si la rezervarile noi, nesalvate inca
+  useEffect(() => {
+    if (!open || !editing) return
+    let anulat = false
     if (editing.canal === 'airbnb' && !editing.factura_numar) {
       setUltimaFact({ stare: 'incarc' })
       fetch('/api/factura-oblio', { cache: 'no-store' }).then(r => r.json().then(o => ({ ok: r.ok, o }))).then(({ ok, o }) => {
@@ -257,13 +271,8 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       const d = String(data?.valoare || '')
       if (!anulat && /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= aziRo()) setDataEmitere(d)
     })
-    // domiciliul clientului folosit data trecuta (se salveaza la emitere)
-    supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
-      if (anulat || !data?.valoare) return
-      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setClientSalvat(JSON.stringify(c)); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
-    })
     return () => { anulat = true }
-  }, [open, editing?.id, editing?.canal, ultimaCerere])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editing?.canal, !!editing?.factura_numar, ultimaCerere])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Salvare automata (cerut direct: „să se salveze automat modificările făcute - adăugăm cod de rezervare, se salvează,
   // adăugăm alt preț, se salvează”): la o rezervare EXISTENTA, fiecare modificare se scrie singura la ~0,9 s dupa ultima
@@ -376,12 +385,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const eRo = !altaTara && eRomania(clientFact.tara)
   const sugestiiLoc = eRo ? (clientFact.judet ? localitatiJudet(clientFact.judet) : []) : oraseTara(clientFact.tara)
   const motivFaraFactura =
-    !editing.id ? 'Salvează întâi rezervarea' :
+    !editing.id && validareRezervare(editing) ? validareRezervare(editing) :
     editing.canal !== 'airbnb' ? 'Facturarea automată e doar pentru rezervările Airbnb' :
     !String(editing.cod_rezervare_platforma || '').trim() ? 'Completează codul rezervării Airbnb' :
     !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
-    nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
+    editing.id && nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
     clientFact.pj && !String(clientFact.cui || '').trim() ? 'Scrie CUI-ul firmei' :
     clientFact.pj && !String(clientFact.firma || '').trim() ? 'Caută firma după CUI (sau scrie denumirea)' :
     altaTara && !clientFact.tara.trim() ? 'Scrie țara clientului' :
@@ -413,9 +422,21 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   async function emiteFactura() {
     setFactura({ etapa: 'trimit' })
     try {
+      // rezervare noua (cerut direct: „de ce nu pot salva?” - butonul cerea intai salvarea): se creeaza acum, apoi se factureaza
+      let rezervareId = editing.id
+      if (!rezervareId) {
+        const { data: nou, error } = await supabase.from('rezervari').insert(payloadRezervare(editing, apartamente)).select('id').single()
+        if (error || !nou) { setFactura({ etapa: 'idle', eroare: 'Rezervarea nu s-a putut salva: ' + (error?.message || 'eroare') }); return }
+        rezervareId = nou.id; idCreat.current = nou.id
+        if (Number(sumaFact) > 0) await supabase.from('setari').upsert({ cheie: `suma_facturare_${nou.id}`, valoare: String(sumaFact) }, { onConflict: 'cheie' })
+        await supabase.from('setari').upsert({ cheie: `client_factura_${nou.id}`, valoare: JSON.stringify(clientFact) }, { onConflict: 'cheie' })
+        const cuId = { ...editing, id: nou.id }
+        setEditing(cuId); setOriginal(cuId); setSumaFactSalvata(sumaFact); setClientSalvat(JSON.stringify(clientFact))
+        autoSalvate.current = true
+      }
       const res = await fetch('/api/factura-oblio', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rezervareId: editing.id, dataEmitere, client: clientFact }),
+        body: JSON.stringify({ rezervareId, dataEmitere, client: clientFact }),
       })
       const out = await res.json().catch(() => ({}))
       if (!res.ok || !out.numar) {
