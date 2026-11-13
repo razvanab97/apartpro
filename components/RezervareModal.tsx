@@ -223,6 +223,10 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [ultimaDeschidere, setUltimaDeschidere] = useState<string | null>(null)
   // rezervarea noua tocmai creata la „Emite factură” primeste id - e aceeasi fereastra, nu o redeschidere (fara resetare)
   const idCreat = useRef<string | null>(null)
+  // Enter = salveaza rezervarea, Enter dublu = emite factura (cerut direct: „butonul enter să salveze rezervarea și dublu
+  // enter să confirme factura”). Primul Enter asteapta putin: daca vine al doilea, nu se mai salveaza/inchide ci se factureaza.
+  const tasta = useRef<{ enter?: () => void; dublu?: () => void; confirm?: () => void }>({})
+  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   if (deschidere !== ultimaDeschidere) {
     const continuare = ultimaDeschidere === 'nou' && !!deschidere && deschidere === idCreat.current
     setUltimaDeschidere(deschidere)
@@ -350,9 +354,18 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') void inchide()
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); salveazaTot() }
+      if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing || e.repeat || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return
+      const t = e.target as HTMLElement | null
+      // textarea = rand nou; pe butoane / linkuri Enter le apasa pe ele; ferestrele peste formular (confirmare client) au tastele lor
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'A' || t.isContentEditable)) return
+      if (document.querySelector('.rz-panel ~ *:not(style)')) return
+      e.preventDefault()
+      if (tasta.current.confirm) { if (enterTimer.current) clearTimeout(enterTimer.current); enterTimer.current = null; tasta.current.confirm(); return }
+      if (enterTimer.current) { clearTimeout(enterTimer.current); enterTimer.current = null; tasta.current.dublu?.(); return }
+      enterTimer.current = setTimeout(() => { enterTimer.current = null; tasta.current.enter?.() }, 350)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); if (enterTimer.current) { clearTimeout(enterTimer.current); enterTimer.current = null } }
   }, [open, onClose, onSave, sumaFact, sumaFactSalvata, editing, original])  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open || !editing) return null
@@ -384,13 +397,13 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const deFacturat = Number(sumaFact) > 0 ? Number(sumaFact) : Number(editing.valoare_bruta) || 0
   const eRo = !altaTara && eRomania(clientFact.tara)
   const sugestiiLoc = eRo ? (clientFact.judet ? localitatiJudet(clientFact.judet) : []) : oraseTara(clientFact.tara)
+  const MOTIV_NESALVAT = 'Salvează întâi modificările — factura se emite din datele salvate'
   const motivFaraFactura =
     !editing.id && validareRezervare(editing) ? validareRezervare(editing) :
     editing.canal !== 'airbnb' ? 'Facturarea automată e doar pentru rezervările Airbnb' :
     !String(editing.cod_rezervare_platforma || '').trim() ? 'Completează codul rezervării Airbnb' :
     !(deFacturat > 0) ? 'Completează valoarea brută sau suma de facturat' :
     editing.status_rezervare === 'anulata' ? 'Rezervarea e anulată' :
-    editing.id && nesalvat ? 'Salvează întâi modificările — factura se emite din datele salvate' :
     clientFact.pj && !String(clientFact.cui || '').trim() ? 'Scrie CUI-ul firmei' :
     clientFact.pj && !String(clientFact.firma || '').trim() ? 'Caută firma după CUI (sau scrie denumirea)' :
     altaTara && !clientFact.tara.trim() ? 'Scrie țara clientului' :
@@ -400,7 +413,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     ultimaFact.stare === 'incarc' ? 'Se verifică ultima factură RH…' :
     // (cerut direct: „să putem genera factura și, imediat ce avem din nou tokenul, să primim informația actualizată”) - lista
     // necitita nu mai blocheaza: ContaFlow verifica oricum data fata de ultima factura RH chiar inainte de emitere
-    ultimaFact.data && dataEmitere < ultimaFact.data ? `Interzis: data e înaintea ultimei facturi RH (${ultimaFact.data.split('-').reverse().join('.')}) — alege această dată sau una ulterioară` : null
+    ultimaFact.data && dataEmitere < ultimaFact.data ? `Interzis: data e înaintea ultimei facturi RH (${ultimaFact.data.split('-').reverse().join('.')}) — alege această dată sau una ulterioară` :
+    // la final: asa Enter dublu stie ca singura piedica e salvarea (o face el, apoi emite)
+    editing.id && nesalvat ? MOTIV_NESALVAT : null
   const alegeDataEmitere = (d: string) => {
     setDataEmitere(d)
     if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= aziRo()) void supabase.from('setari').upsert({ cheie: CHEIE_DATA_EMITERE, valoare: d }, { onConflict: 'cheie' }).then(() => {})   // builderul Supabase porneste cererea doar la then
@@ -455,6 +470,20 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     } catch (e) {
       setFactura({ etapa: 'idle', eroare: e instanceof Error ? e.message : 'Emiterea a eșuat' })
     }
+  }
+
+  // ce fac Enter / Enter dublu cu starea de acum (efectul de taste citeste mereu valorile curente de aici)
+  tasta.current = {
+    enter: () => { if (!saving && factura.etapa !== 'trimit') void salveazaTot() },
+    dublu: () => {
+      if (factura.etapa === 'trimit') return
+      if (editing.factura_numar) { setFactura({ etapa: 'idle', info: `Factura ${editing.factura_serie || ''} ${editing.factura_numar} e deja emisă` }); return }
+      // singura piedica = modificari inca nesalvate automat: se salveaza acum, apoi se emite
+      if (motivFaraFactura === MOTIV_NESALVAT && !autoInZbor.current) { void salveazaAuto().then(ok => { if (ok) void emiteFactura() }); return }
+      if (motivFaraFactura) { setFactura({ etapa: 'idle', eroare: `Enter dublu: factura nu se poate emite — ${motivFaraFactura}` }); return }
+      void emiteFactura()
+    },
+    confirm: factura.etapa === 'confirm' && !motivFaraFactura ? () => void emiteFactura() : undefined,
   }
 
   return (
@@ -765,7 +794,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 : auto.stare === 'eroare' ? `Nesalvat: ${auto.mesaj}`
                 : 'Modificările se salvează automat'}
             </span>
-          ) : <span className="rz-hint">Esc închide · ⌘S salvează</span>}
+          ) : <span className="rz-hint">Esc închide · Enter salvează · Enter ×2 emite factura</span>}
           {/* confirmare pentru client (poza / PDF) - doar pentru rezervari salvate */}
           {editing.apartament_id && telProp && (
             telProp.tel
