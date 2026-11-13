@@ -321,13 +321,16 @@ export default function DashboardPage() {
     setCheckinAzi(upd); setCheckoutAzi(upd)
     return true
   }
-  // Curatenia gata se reciteste periodic, ca datele de acces sa intre singure in coada cand staff-ul termina
+  // Curatenia gata se reciteste periodic, ca datele de acces sa intre singure in coada cand staff-ul termina.
+  // Cu „Mesaje de azi” deschis: la 8 secunde (cerut direct: „să apară aici informațiile de acces imediat ce locația e
+  // setată în aplicație ca e gata” - cartonasul „Confirmare” devine „Date acces” fara reincarcare); altfel la 30s.
+  // Si imediat cand revii pe tab / in aplicatie.
   useEffect(()=>{
-    const id=setInterval(()=>{
-      citesteCuratenie()
-    },60000)
-    return ()=>clearInterval(id)
-  },[])
+    const id=setInterval(()=>{ if(document.visibilityState==='visible') citesteCuratenie() },mesajeListOpen?8000:30000)
+    const laRevenire=()=>{ if(document.visibilityState==='visible') citesteCuratenie() }
+    document.addEventListener('visibilitychange',laRevenire); window.addEventListener('focus',laRevenire)
+    return ()=>{ clearInterval(id); document.removeEventListener('visibilitychange',laRevenire); window.removeEventListener('focus',laRevenire) }
+  },[mesajeListOpen]) // eslint-disable-line react-hooks/exhaustive-deps
   function updateMesajOverride(id:string,patch:{telefon?:string;mesaj?:string}){
     setMesajOverrides(prev=>({...prev,[id]:{...prev[id],...patch}}))
   }

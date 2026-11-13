@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // "Mesaje pe rand" (cerut direct, varianta de telefon aleasa): un singur mesaj pe ecran, gata scris,
 // cu un buton mare "Trimite pe WhatsApp" care il marcheaza trimis si aduce urmatorul. File dupa
@@ -88,6 +88,16 @@ export default function MesajePeRand(p: {
   const tinutTask = tinut ? p.tasks.find(t => t.id === tinut) || null : null
   const curent = fila === 'numere' ? null : (revazut || tinutTask || coada[idxCoada] || null)
   useEffect(() => { setConfirmSterge(false) }, [curent?.id])
+  // Curatenia s-a terminat cat timp te uitai la confirmarea oaspetelui (ci-X) -> ea iese din coada si intra „Date acces”
+  // (gata-X), urcat primul; ramai pe acelasi oaspete, acum cu mesajul de acces, in loc sa sari la altcineva
+  const ultimCurent = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = ultimCurent.current
+    ultimCurent.current = curent?.id || null
+    if (!prev?.startsWith('ci-') || prev === curent?.id || p.tasks.some(t => t.id === prev)) return
+    const i = coada.findIndex(t => t.id === 'gata-' + prev.slice(3))
+    if (i >= 0) { setRevId(null); setPoz(z => ({ ...z, [cheiePoz]: i })); ultimCurent.current = coada[i].id }
+  })
   function mergiLa(d: number) {
     setRevId(null); setToast(null)
     if (tinutTask) {
