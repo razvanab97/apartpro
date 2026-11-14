@@ -113,6 +113,7 @@ export default function EditorGhid() {
     const sarcini: { ro: string; pune: (en: string) => void }[] = []
     const adauga = (ro: string, en: string, pune: (en: string) => void) => { if (ro?.trim() && !en?.trim()) sarcini.push({ ro, pune }) }
     adauga(g!.sub_ro, g!.sub_en, en => set({ sub_en: en }))
+    adauga(g!.bun_venit_ro || '', g!.bun_venit_en || '', en => set({ bun_venit_en: en }))
     adauga(g!.acces_nota_ro, g!.acces_nota_en, en => set({ acces_nota_en: en }))
     adauga(g!.final_ro, g!.final_en, en => set({ final_en: en }))
     g!.acces.forEach((a, i) => adauga(a.ro, a.en, en => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, en } : y) } : x)))
@@ -153,6 +154,7 @@ export default function EditorGhid() {
       <div style={card}>
         {camp('Titlu (mare, sus)', g.titlu, v => set({ titlu: v }), { ph: 'GREEN STATION' })}
         {camp('Subtitlu' + lb, gv('sub'), v => set({ [k('sub')]: v } as any), { ph: 'Bloc I4 · scara C · etaj 1 · apartament 8' })}
+        {camp('Mesaj de bun venit (sub titlu, opțional)' + lb, gv('bun_venit'), v => set({ [k('bun_venit')]: v } as any), { rows: 3, ph: 'Bine ați venit! Ne bucurăm să vă avem ca oaspeți…' })}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: 8 }}>
           {camp('Check-in de la', g.checkin, v => set({ checkin: v }), { ph: '15:00' })}
           {camp('Check-out până la', g.checkout, v => set({ checkout: v }), { ph: '11:00' })}

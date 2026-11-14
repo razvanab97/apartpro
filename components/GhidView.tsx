@@ -26,6 +26,7 @@ const CSS = `
 .gh-eye{margin:0 0 10px;font-weight:700;font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--acc)}
 .gh h1{margin:0;font-family:var(--disp);font-weight:400;font-size:clamp(46px,13vw,96px);line-height:.92;letter-spacing:.01em;color:var(--ink);text-wrap:balance;text-shadow:0 6px 34px rgba(0,0,0,.45)}
 .gh-sub{margin:12px 0 0;color:var(--dim);font-weight:600}
+.gh-welcome{margin:26px auto 0;max-width:30em;padding:16px 20px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:15.5px;line-height:1.65;font-weight:500;white-space:pre-line;text-wrap:pretty}
 .gh-badges{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:18px}
 .gh-badge{display:inline-flex;gap:7px;padding:8px 16px;border-radius:50px;border:1px solid var(--line2);background:var(--panel);font-weight:700;font-size:14px}
 .gh-badge.hot{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 8px 22px rgba(255,102,0,.32)}
@@ -133,6 +134,7 @@ export default function GhidView({ g: gTot, fix = true, limbaStart }: { g: Ghid;
             {g.checkin && <span className="gh-badge hot">{t('Check-in de la', 'Check-in from')} {g.checkin}</span>}
             {g.checkout && <span className="gh-badge"><span className="k">{t('Check-out până la', 'Check-out by')}</span> {g.checkout}</span>}
           </div>
+          {t(g.bun_venit_ro || '', g.bun_venit_en || '') && <p className="gh-welcome">{t(g.bun_venit_ro || '', g.bun_venit_en || '')}</p>}
         </header>
 
         {acces.length > 0 && (

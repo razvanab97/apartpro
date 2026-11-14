@@ -17,6 +17,8 @@ export type Acces = { ro: string; en: string; valoare: string; cod: boolean; asc
 export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string; icon?: string; grup?: 'sedere' | 'plecare'; important?: boolean; ascuns?: boolean }
 export type Ghid = {
   titlu: string; sub_ro: string; sub_en: string; checkin: string; checkout: string
+  // mesaj de bun venit sub titlu (cerut direct: „în prima parte un mesaj de bun găsit, ceva foarte drăguț”) - optional
+  bun_venit_ro?: string; bun_venit_en?: string
   acces: Acces[]; acces_nota_ro: string; acces_nota_en: string
   pasi: Pas[]; reguli: Regula[]; telefon: string; final_ro: string; final_en: string; fundal: string
   actualizat?: string
