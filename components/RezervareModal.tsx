@@ -53,6 +53,7 @@ const TONE: Record<string, { c: string; bg: string; b: string }> = {
 }
 const TON_REZ: Record<string, string> = { cerere: 'amber', confirmata: 'green', anulata: 'red', finalizata: 'blue' }
 const TON_PLATA: Record<string, string> = { neplatit: 'red', avans: 'amber', achitat: 'green' }
+const METODE_AVANS = ['Transfer bancar', 'Numerar', 'Card', 'Revolut', 'Altă metodă']
 const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber', decontat: 'green' }
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
@@ -371,6 +372,16 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   if (!open || !editing) return null
 
   const set = (patch: Record<string, any>) => setEditing((prev: any) => ({ ...prev, ...patch }))
+  // avansul potriveste singur statusul platii si pune data de azi la primul avans (ambele se pot schimba de mana)
+  const setAvans = (v: number | '') => setEditing((prev: any) => {
+    const av = Number(v) || 0, totalRez = Number(prev.valoare_bruta) || 0, st = prev.status_plata
+    // „Achitat” pus de avans (avansul acoperea totalul) se retrage odata cu avansul; „Achitat” pus de mana ramane
+    const achitatDinAvans = st === 'achitat' && totalRez > 0 && (Number(prev.avans) || 0) >= totalRez
+    const status = av > 0 && totalRez > 0 && av >= totalRez ? 'achitat'
+      : av > 0 ? (st === 'achitat' && !achitatDinAvans ? 'achitat' : 'avans')
+      : st === 'avans' || achitatDinAvans ? 'neplatit' : st
+    return { ...prev, avans: v, avans_data: av > 0 ? (prev.avans_data || aziRo()) : null, ...(av > 0 ? {} : { avans_metoda: null }), status_plata: status }
+  })
   const apt = apartamente.find(a => a.id === editing.apartament_id)
   const nopti = editing.data_checkin && editing.data_checkout
     ? Math.max(0, Math.round((new Date(editing.data_checkout).getTime() - new Date(editing.data_checkin).getTime()) / 86400000))
@@ -616,6 +627,26 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                   </div>
                 </div>
                 <div><Label>Taxă curățenie</Label><Money value={editing.taxa_curatenie_incasata} suffix={moneda} onChange={v => set({ taxa_curatenie_incasata: v })} /></div>
+              </div>
+              {/* Avans (cerut direct: „la rezervări să avem și o secțiune unde se trece avansul”): suma, data, cum s-a plătit,
+                  restul de plată; statusul „Plată” se potrivește singur (Neplatit → Avans → Achitat) */}
+              <div data-avans style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${Number(editing.avans) > 0 ? 'rgba(245,180,60,0.35)' : 'rgba(255,255,255,0.08)'}`, background: Number(editing.avans) > 0 ? 'rgba(245,180,60,0.06)' : 'transparent' }}>
+                <div className="rz-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
+                  <div data-avans-suma><Label>Avans încasat</Label><Money value={editing.avans ?? ''} suffix={moneda} onChange={v => setAvans(v)} /></div>
+                  <div><Label>Data avansului</Label><input data-avans-data type="date" value={editing.avans_data || ''} max={aziRo()} onChange={e => set({ avans_data: e.target.value || null })} /></div>
+                  <div><Label>Plătit prin</Label>
+                    <select data-avans-metoda value={editing.avans_metoda || ''} onChange={e => set({ avans_metoda: e.target.value || null })}>
+                      <option value="">—</option>{METODE_AVANS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {Number(editing.avans) > 0 && (() => {
+                  const totalRez = Number(editing.valoare_bruta) || 0, rest = Math.round((totalRez - Number(editing.avans)) * 100) / 100
+                  return <div data-rest-plata style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, fontSize: 12.5 }}>
+                    <span style={{ color: C.faint }}>Rest de plată la sosire</span>
+                    <b style={{ color: rest > 0 ? C.amber : C.green, fontVariantNumeric: 'tabular-nums' }}>{rest > 0 ? `${fmt(rest)} ${moneda}` : rest < 0 ? `avansul depășește totalul cu ${fmt(-rest)} ${moneda}` : 'achitat integral'}</b>
+                  </div>
+                })()}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
                 <Fold title="Încasat efectiv" open={showIncasat} onToggle={() => setShowIncasat(x => !x)}

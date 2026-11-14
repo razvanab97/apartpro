@@ -80,7 +80,8 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
   const aptId = apt?.id || rezervare.apartament_id
   const totalImplicit = nr(rezervare.valoare_bruta) || nr(rezervare.suma_incasata)
   // platit = suma incasata; daca rezervarea e marcata „achitat” fara suma incasata, se considera achitata integral
-  const achitatImplicit = nr(rezervare.suma_incasata) || (rezervare.status_plata === 'achitat' ? totalImplicit : 0)
+  // avansul trecut la rezervare are prioritate (cat timp rezervarea nu e marcata „Achitat”)
+  const achitatImplicit = nr(rezervare.avans) > 0 && rezervare.status_plata !== 'achitat' ? nr(rezervare.avans) : nr(rezervare.suma_incasata) || (rezervare.status_plata === 'achitat' ? totalImplicit : 0)
   const [limba, setLimba] = useState<Limba>('ro')
   const [prenume, setPrenume] = useState(() => prenumeImplicit(rezervare.nume_client, rezervare.canal))
   const [oraCi, setOraCi] = useState('15:00')

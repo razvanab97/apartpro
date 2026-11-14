@@ -477,7 +477,7 @@ export default function RezervariPage() {
                       <td><span style={{ fontFamily: 'monospace', color: 'var(--green)', fontWeight: 600 }}>{Number(r.suma_incasata).toLocaleString('ro-RO')}</span><br/><span style={{ fontSize: 11, color: 'var(--text3)' }}>{r.moneda}</span></td>
                       <td style={{ color: 'var(--text3)', fontSize: 12 }}><span style={{ color: 'var(--green)', fontFamily: 'monospace' }}>{Number(r.suma_proprietar).toLocaleString('ro-RO')} RON</span></td>
                       <td><Badge color={STATUS_COLOR[r.status_rezervare]||'gray'}>{STATUS_REZERVARE_LABEL[r.status_rezervare]||r.status_rezervare}</Badge></td>
-                      <td><Badge color={PLATA_COLOR[r.status_plata]||'gray'}>{STATUS_PLATA_LABEL[r.status_plata]||r.status_plata}</Badge></td>
+                      <td><Badge color={PLATA_COLOR[r.status_plata]||'gray'}>{STATUS_PLATA_LABEL[r.status_plata]||r.status_plata}</Badge>{Number(r.avans) > 0 && r.status_plata !== 'achitat' && <div data-avans-lista style={{ fontSize: 11, color: '#FCD34D', marginTop: 3, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>avans {Number(r.avans).toLocaleString('ro-RO')} · rest {Math.max(0, (Number(r.valoare_bruta) || 0) - Number(r.avans)).toLocaleString('ro-RO')}</div>}</td>
                       <td><Badge color={DECONT_COLOR[r.status_decont]||'gray'}>{r.status_decont}</Badge></td>
                       <td><Badge color={FACTURARE_COLOR[r.status_facturare]||'gray'}>{STATUS_FACTURARE_LABEL[r.status_facturare]||'Nefacturat'}</Badge></td>
                       <td onClick={e=>e.stopPropagation()}>
