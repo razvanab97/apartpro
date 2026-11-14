@@ -441,7 +441,7 @@ export default function CuratenePage() {
     const waMsg = template
       .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
       .replace(/\{apartament\}/gi, apt?.nume || apt?.nota || '')
-    setWaGataInfo({ apt, rez: ciRez, msg: cuLinkGhid(waMsg, apt, await aptCuGhid().catch(() => null)), tip: 'checkin' })
+    setWaGataInfo({ apt, rez: ciRez, msg: cuLinkGhid(waMsg, apt, await aptCuGhid().catch(() => null), true), tip: 'checkin' })
   }
 
   function buildWaCheckout(apt: any, coRez: any) {

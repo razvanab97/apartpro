@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
-import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
+import { aptCuGhid, cuLinkGhid, type InfoGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
@@ -179,7 +179,7 @@ export default function DashboardPage() {
   })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
   // apartamentele cu ghid de check-in -> linkul ghidului intra in mesajul „Date acces” (lib/ghidLink.ts)
-  const [ghidApts,setGhidApts]=useState<Map<string,string>>(new Map())
+  const [ghidApts,setGhidApts]=useState<Map<string,InfoGhid>>(new Map())
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
   // apartamente marcate „Eliberat” azi in Curatenie -> reminderul de check-out al oaspetelui iese singur din mesaje
   // (cerut direct: „nu mai avem de ce să-l trimitem dacă s-a eliberat”)
@@ -419,7 +419,7 @@ export default function DashboardPage() {
       const id='gata-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'gata',icon:'🔑',accent:'#7BC8FF',titluCategorie:'Acces',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??cuLinkGhid(msgGataAcces(r,sabloaneGata),r.apartament,ghidApts)})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??cuLinkGhid(msgGataAcces(r,sabloaneGata),r.apartament,ghidApts,true)})
     })
     propNotif.forEach((r:any)=>{
       const tel=r.apartament?.proprietar?.telefon

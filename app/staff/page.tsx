@@ -306,7 +306,7 @@ export default function StaffPage() {
     const waMsg = template
       .replace(/\{nume\}/gi, (ciRez.nume_client||'').split(' ')[0])
       .replace(/\{apartament\}/gi, aptObj?.nume || aptObj?.nota || '')
-    setWaGataInfo({ apt: aptObj, rez: ciRez, msg: cuLinkGhid(waMsg, aptObj || { id: aptId }, await aptCuGhid().catch(() => null)) })
+    setWaGataInfo({ apt: aptObj, rez: ciRez, msg: cuLinkGhid(waMsg, aptObj || { id: aptId }, await aptCuGhid().catch(() => null), true) })
   }
 
   async function setStatus(aptId:string, status:'inceput'|'gata') {
