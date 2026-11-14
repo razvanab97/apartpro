@@ -223,7 +223,7 @@ export default function CalendarPage() {
   const [sabloaneSetari, setSabloaneSetari] = useState<Record<string,string>>({})
   const [sabloaneCO, setSabloaneCO] = useState<Record<string,string>>({})
   const [sabloaneGata, setSabloaneGata] = useState<Record<string,string>>({})
-  const [ghidApts, setGhidApts] = useState<Set<string>>(new Set())   // apartamentele cu ghid de check-in (lib/ghidLink.ts)
+  const [ghidApts, setGhidApts] = useState<Map<string, string>>(new Map())   // apartamentele cu ghid de check-in (lib/ghidLink.ts)
   const [sabloanePop, setSabloanePop] = useState<any>(null)
   const [sabloaneApt, setSabloaneApt] = useState<any[]>([])
 

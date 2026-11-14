@@ -179,7 +179,7 @@ export default function DashboardPage() {
   })
   const [sabloaneGata,setSabloaneGata]=useState<Record<string,string>>({})
   // apartamentele cu ghid de check-in -> linkul ghidului intra in mesajul „Date acces” (lib/ghidLink.ts)
-  const [ghidApts,setGhidApts]=useState<Set<string>>(new Set())
+  const [ghidApts,setGhidApts]=useState<Map<string,string>>(new Map())
   const [curatenieGataIds,setCuratenieGataIds]=useState<Set<string>>(new Set())
   // apartamente marcate „Eliberat” azi in Curatenie -> reminderul de check-out al oaspetelui iese singur din mesaje
   // (cerut direct: „nu mai avem de ce să-l trimitem dacă s-a eliberat”)

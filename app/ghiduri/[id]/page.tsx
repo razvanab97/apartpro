@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PageHeader } from '@/components/Layout'
 import GhidView from '@/components/GhidView'
-import { citesteGhid, salveazaGhid, versiuneGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
+import { citesteGhid, salveazaGhid, versiuneGhid, ghidNou, aptDupaCod, linkGhid, pasGol, incarcaMedia, codLink, normLinkScurt, LIMITA_VIDEO_MB, type Ghid, type Pas } from '@/lib/ghid'
+import { supabase } from '@/lib/supabase'
 import { ArrowUp, ArrowDown, X, Plus, Upload, Loader2, Copy, ExternalLink, Languages, Check, Star, Film, Eye, EyeOff } from 'lucide-react'
 
 // Editorul ghidului de check-in (cerut direct: „o modalitate de modificare text și de adăugat alte poze”).
@@ -35,6 +36,17 @@ export default function EditorGhid() {
   // versiunea din baza pe care am deschis-o / salvat-o ultima data; daca intre timp altcineva a salvat alta, nu suprascriem
   const baza = useRef<string | null>(null)
   const [conflict, setConflict] = useState(false)
+  // linkurile deja folosite (codurile apartamentelor + linkurile scurte ale altor ghiduri) -> avertisment la dubluri
+  const [ocupate, setOcupate] = useState<Record<string, string>>({})
+  useEffect(() => {
+    ;(async () => {
+      const [{ data: a }, { data: s }] = await Promise.all([supabase.from('apartamente').select('id,nota,nume'), supabase.from('setari').select('cheie,valoare').like('cheie', 'ghid_apt_%')])
+      const o: Record<string, string> = {}, nume: Record<string, string> = {}
+      for (const x of a || []) { nume[x.id] = x.nume; if (x.nota) o[String(x.nota).toUpperCase()] = x.id }
+      for (const x of s || []) { try { const l = String(JSON.parse(x.valoare)?.link_scurt || '').trim(); if (l) o[l.toUpperCase()] = String(x.cheie).slice('ghid_apt_'.length) } catch { /* ignor */ } }
+      setOcupate(Object.fromEntries(Object.entries(o).map(([k, id]) => [k, id + '|' + (nume[id] || '')])))
+    })()
+  }, [])
 
   useEffect(() => {
     ;(async () => {
@@ -91,7 +103,7 @@ export default function EditorGhid() {
   const k = (base: string): string => `${base}_${l}`
   const gv = (base: string): string => (g as any)[k(base)] || ''
   const pv = (p: Pas, base: string): string => (p as any)[k(base)] || ''
-  const link = linkGhid(apt)
+  const link = linkGhid(apt, g.link_scurt)
 
   async function adaugaMedia(i: number, files: FileList | File[]) {
     const lista = Array.from(files)
@@ -154,7 +166,16 @@ export default function EditorGhid() {
       <div style={card}>
         {camp('Titlu (mare, sus)', g.titlu, v => set({ titlu: v }), { ph: 'GREEN STATION' })}
         {camp('Subtitlu' + lb, gv('sub'), v => set({ [k('sub')]: v } as any), { ph: 'Bloc I4 · scara C · etaj 1 · apartament 8' })}
-        {camp('Mesaj de bun venit (sub titlu, opțional)' + lb, gv('bun_venit'), v => set({ [k('bun_venit')]: v } as any), { rows: 3, ph: 'Bine ați venit! Ne bucurăm să vă avem ca oaspeți…' })}
+        {(() => {
+          const l = (g.link_scurt || '').trim(), alt = l ? ocupate[l.toUpperCase()] : undefined, altul = alt && alt.split('|')[0] !== apt.id ? alt.split('|')[1] || 'alt apartament' : null
+          return <div>
+            {camp('Link scurt pentru oaspeți (ex. Cherry3)', g.link_scurt || '', v => set({ link_scurt: normLinkScurt(v) }), { ph: codLink(apt).length > 20 ? 'NumeProprietate' : codLink(apt), mono: true })}
+            <div data-link-scurt-info style={{ fontSize: 11.5, marginTop: 4, color: altul ? '#F87171' : 'rgba(159,215,255,0.55)' }}>
+              {altul ? `Linkul „${l}” e deja folosit de ${altul} — alege altul` : l.length === 1 ? 'Minim 2 caractere' : `Linkul: ${link.replace('https://', '')}${l ? ' · linkul vechi merge în continuare' : ''}`}
+            </div>
+          </div>
+        })()}
+        {camp('Mesaj de bun venit (deasupra titlului, opțional)' + lb, gv('bun_venit'), v => set({ [k('bun_venit')]: v } as any), { rows: 3, ph: 'Bine ați venit! Ne bucurăm să vă avem ca oaspeți…' })}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: 8 }}>
           {camp('Check-in de la', g.checkin, v => set({ checkin: v }), { ph: '15:00' })}
           {camp('Check-out până la', g.checkout, v => set({ checkout: v }), { ph: '11:00' })}

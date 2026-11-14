@@ -11,7 +11,7 @@ type Apt = { id: string; nota: string | null; nume: string; status: string }
 
 export default function Ghiduri() {
   const [apts, setApts] = useState<Apt[] | null>(null)
-  const [info, setInfo] = useState<Record<string, { pasi: number; poze: number; video: number; actualizat?: string }>>({})
+  const [info, setInfo] = useState<Record<string, { pasi: number; poze: number; video: number; actualizat?: string; scurt?: string }>>({})
   const [copiat, setCopiat] = useState<string | null>(null)
   useEffect(() => {
     ;(async () => {
@@ -22,7 +22,7 @@ export default function Ghiduri() {
       const m: typeof info = {}
       for (const r of s || []) {
         try { const g = JSON.parse(r.valoare); const media = (g.pasi || []).flatMap((p: any) => p.media || [])
-          m[r.cheie.replace('ghid_apt_', '')] = { pasi: (g.pasi || []).length, poze: media.filter((x: any) => x.tip === 'img').length, video: media.filter((x: any) => x.tip === 'video').length, actualizat: g.actualizat } } catch {}
+          m[r.cheie.replace('ghid_apt_', '')] = { pasi: (g.pasi || []).length, poze: media.filter((x: any) => x.tip === 'img').length, video: media.filter((x: any) => x.tip === 'video').length, actualizat: g.actualizat, scurt: g.link_scurt } } catch {}
       }
       setInfo(m)
       setApts(((a || []) as Apt[]).sort((x, y) => Number(!!m[y.id]) - Number(!!m[x.id]) || Number(x.status === 'inactiv') - Number(y.status === 'inactiv')))
@@ -34,7 +34,7 @@ export default function Ghiduri() {
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12, alignItems: 'start' }}>
         {!apts && <div style={{ color: 'rgba(159,215,255,0.6)', display: 'flex', gap: 8, alignItems: 'center' }}><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Se încarcă…</div>}
         {apts?.map(a => {
-          const i = info[a.id], link = linkGhid(a)
+          const i = info[a.id], link = linkGhid(a, i?.scurt)
           return (
             <div key={a.id} style={{ background: 'rgba(14,27,48,0.6)', border: `1px solid ${i ? 'rgba(255,138,61,0.35)' : 'rgba(159,215,255,0.12)'}`, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, opacity: a.status === 'inactiv' && !i ? 0.6 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

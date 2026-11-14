@@ -8,7 +8,13 @@ export async function incarcaGhidPublic(codBrut: string): Promise<{ apt: { id: s
   const cod = decodeURIComponent(codBrut || '').trim()
   if (!cod || cod.length > 60) return null
   const { data: apts } = await supabase.from('apartamente').select('id,nota,nume')
-  const apt = (apts || []).find((a: any) => a.id === cod) || (apts || []).find((a: any) => (a.nota || '').toUpperCase() === cod.toUpperCase())
+  let apt = (apts || []).find((a: any) => a.id === cod) || (apts || []).find((a: any) => (a.nota || '').toUpperCase() === cod.toUpperCase())
+  // linkul scurt al ghidului (ex. Cherry3), fara diferenta intre litere mari / mici
+  if (!apt) {
+    const { data: ghiduri } = await supabase.from('setari').select('cheie,valoare').like('cheie', 'ghid_apt_%')
+    const g = (ghiduri || []).find((s: any) => { try { return String(JSON.parse(s.valoare)?.link_scurt || '').trim().toUpperCase() === cod.toUpperCase() } catch { return false } })
+    if (g) apt = (apts || []).find((a: any) => a.id === String(g.cheie).slice('ghid_apt_'.length))
+  }
   if (!apt) return null
   const { data } = await supabase.from('setari').select('valoare').eq('cheie', 'ghid_apt_' + apt.id).maybeSingle()
   if (!data?.valoare) return null

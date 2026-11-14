@@ -19,6 +19,8 @@ export type Ghid = {
   titlu: string; sub_ro: string; sub_en: string; checkin: string; checkout: string
   // mesaj de bun venit sub titlu (cerut direct: „în prima parte un mesaj de bun găsit, ceva foarte drăguț”) - optional
   bun_venit_ro?: string; bun_venit_en?: string
+  // link scurt pentru oaspeti (cerut direct: „fă link-ul scurt, cu denumirea proprietății”), ex. Cherry3 -> abhomes-checkin.vercel.app/Cherry3
+  link_scurt?: string
   acces: Acces[]; acces_nota_ro: string; acces_nota_en: string
   pasi: Pas[]; reguli: Regula[]; telefon: string; final_ro: string; final_en: string; fundal: string
   actualizat?: string
@@ -52,6 +54,8 @@ export function ghidNou(nume = ''): Ghid {
 }
 
 export const cheieGhid = (aptId: string) => 'ghid_apt_' + aptId
+// linkul scurt: fara diacritice / spatii, doar litere, cifre si cratima (asa il accepta adresa oaspetilor)
+export const normLinkScurt = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').replace(/[^A-Za-z0-9-]/g, '').replace(/-{2,}/g, '-').slice(0, 60)
 
 export async function citesteGhid(aptId: string): Promise<Ghid | null> {
   const { data } = await supabase.from('setari').select('valoare').eq('cheie', cheieGhid(aptId)).maybeSingle()
@@ -83,7 +87,7 @@ export const codLink = (a: { id: string; nota: string | null }) => a.nota || a.i
 // linkul trimis oaspetilor - pe adresa lor dedicata (fara apartpro.work, care e sistemul intern)
 import { GHID_BAZA } from '@/lib/gazdeGhid'
 export { GHID_BAZA }
-export const linkGhid = (a: { id: string; nota: string | null }) => `${GHID_BAZA}/${codLink(a)}`
+export const linkGhid = (a: { id: string; nota: string | null }, scurt?: string | null) => `${GHID_BAZA}/${(scurt || '').trim() || codLink(a)}`
 
 // Incarcare poza / video: pozele se micsoreaza in browser (max 1800 px, JPEG) ca pagina sa se deschida repede pe telefon
 async function micsoreaza(file: File): Promise<Blob> {
