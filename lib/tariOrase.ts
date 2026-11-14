@@ -3,7 +3,7 @@
 // Orasele sunt doar sugestii: pe factura se trece orasul REAL al oaspetelui (se poate scrie oricare).
 export const TARI_ORASE: Record<string, string[]> = {
   'Romania': [],
-  'Republica Moldova': ['Chișinău', 'Bălți', 'Tiraspol', 'Bender', 'Cahul', 'Ungheni', 'Soroca', 'Orhei', 'Comrat', 'Edineț'],
+  'Moldova': ['Chișinău', 'Bălți', 'Tiraspol', 'Bender', 'Cahul', 'Ungheni', 'Soroca', 'Orhei', 'Comrat', 'Edineț'],
   'Ucraina': ['Kiev', 'Odesa', 'Harkov', 'Lviv', 'Dnipro', 'Cernăuți', 'Zaporijjia', 'Ivano-Frankivsk', 'Ujhorod', 'Izmail'],
   'Ungaria': ['Budapesta', 'Debrecen', 'Szeged', 'Miskolc', 'Pécs', 'Győr', 'Nyíregyháza'],
   'Bulgaria': ['Sofia', 'Plovdiv', 'Varna', 'Burgas', 'Ruse', 'Stara Zagora'],
@@ -23,7 +23,7 @@ export const TARI_ORASE: Record<string, string[]> = {
   'Belgia': ['Bruxelles', 'Antwerpen', 'Gent', 'Liège', 'Charleroi'],
   'Olanda': ['Amsterdam', 'Rotterdam', 'Haga', 'Utrecht', 'Eindhoven'],
   'Luxemburg': ['Luxemburg', 'Esch-sur-Alzette'],
-  'Marea Britanie': ['Londra', 'Birmingham', 'Manchester', 'Leeds', 'Glasgow', 'Liverpool', 'Edinburgh', 'Bristol'],
+  'Regatul Unit': ['Londra', 'Birmingham', 'Manchester', 'Leeds', 'Glasgow', 'Liverpool', 'Edinburgh', 'Bristol'],
   'Irlanda': ['Dublin', 'Cork', 'Limerick', 'Galway'],
   'Danemarca': ['Copenhaga', 'Aarhus', 'Odense'],
   'Suedia': ['Stockholm', 'Göteborg', 'Malmö', 'Uppsala'],
@@ -72,3 +72,7 @@ export const TARI_ORASE: Record<string, string[]> = {
 }
 export const TARI = Object.keys(TARI_ORASE).sort((a, b) => a === 'Romania' ? -1 : b === 'Romania' ? 1 : a.localeCompare(b, 'ro'))
 export const oraseTara = (tara: string) => TARI_ORASE[Object.keys(TARI_ORASE).find(t => t.localeCompare(tara.trim(), 'ro', { sensitivity: 'base' }) === 0) || ''] || []
+// denumiri vechi / uzuale -> numele din Oblio (cerut direct: „Marea Britanie să se transforme în Regatul Unit, că așa se
+// regăsește în Oblio, și Rep. Moldova în Moldova simplu”); domiciliile deja salvate cu numele vechi se convertesc la citire
+const ALIAS: Record<string, string> = { 'marea britanie': 'Regatul Unit', 'anglia': 'Regatul Unit', 'uk': 'Regatul Unit', 'united kingdom': 'Regatul Unit', 'great britain': 'Regatul Unit', 'republica moldova': 'Moldova', 'rep. moldova': 'Moldova', 'rep moldova': 'Moldova', 'r. moldova': 'Moldova' }
+export const taraOblio = (t: string) => ALIAS[t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()] || t

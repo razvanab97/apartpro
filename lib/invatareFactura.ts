@@ -3,6 +3,7 @@
 // Prefixul telefonului da doar un indiciu de tara (nu se trece pe factura fara sa-l confirmi tu).
 // Regula de emitere (cerut direct): factura se emite la 2 zile dupa check-out, dar niciodata inaintea ultimei facturi RH.
 import type { ClientFactura } from '@/components/RezervareModal'
+import { taraOblio } from '@/lib/tariOrase'
 
 export const ZILE_DUPA_CHECKOUT = 2
 
@@ -11,9 +12,9 @@ export const normTel = (t?: string | null) => { const d = String(t || '').replac
 export const normNume = (n?: string | null) => String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ')
 
 const PREFIX: Record<string, string> = {
-  '40': 'Romania', '373': 'Republica Moldova', '380': 'Ucraina', '36': 'Ungaria', '359': 'Bulgaria', '381': 'Serbia', '30': 'Grecia', '90': 'Turcia',
+  '40': 'Romania', '373': 'Moldova', '380': 'Ucraina', '36': 'Ungaria', '359': 'Bulgaria', '381': 'Serbia', '30': 'Grecia', '90': 'Turcia',
   '48': 'Polonia', '420': 'Cehia', '421': 'Slovacia', '43': 'Austria', '49': 'Germania', '41': 'Elvetia', '39': 'Italia', '34': 'Spania', '351': 'Portugalia',
-  '33': 'Franta', '32': 'Belgia', '31': 'Olanda', '352': 'Luxemburg', '44': 'Marea Britanie', '353': 'Irlanda', '45': 'Danemarca', '46': 'Suedia', '47': 'Norvegia',
+  '33': 'Franta', '32': 'Belgia', '31': 'Olanda', '352': 'Luxemburg', '44': 'Regatul Unit', '353': 'Irlanda', '45': 'Danemarca', '46': 'Suedia', '47': 'Norvegia',
   '358': 'Finlanda', '385': 'Croatia', '386': 'Slovenia', '370': 'Lituania', '371': 'Letonia', '372': 'Estonia', '357': 'Cipru', '356': 'Malta', '972': 'Israel',
   '1': 'Statele Unite ale Americii', '61': 'Australia', '971': 'Emiratele Arabe Unite', '86': 'China', '81': 'Japonia', '91': 'India', '82': 'Coreea de Sud',
   '55': 'Brazilia', '54': 'Argentina', '52': 'Mexic', '20': 'Egipt', '212': 'Maroc', '216': 'Tunisia', '962': 'Iordania', '961': 'Liban', '995': 'Georgia',
@@ -73,5 +74,6 @@ export function propune(r: any, salvat: ClientFactura | null, invatate: Invatat[
   if (sursa === 'nume') verifica.push('domiciliu luat după nume — verifică dacă e aceeași persoană')
   const taraTelefon = taraDinTelefon(r.telefon_client)
   if (client && taraTelefon && !eRomaniaT(client.tara) !== (taraTelefon !== 'Romania') && sursa !== 'salvat') verifica.push(`telefonul e din ${taraTelefon}`)
+  if (client) client = { ...client, tara: taraOblio(client.tara || '') }
   return { client, sursa, din, taraTelefon, suma, dataEmitere: dataEmitere > azi ? gataLa : dataEmitere, gataLa, mutata: dataEmitere !== gataLa, probleme, verifica }
 }

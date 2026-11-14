@@ -4,7 +4,7 @@ import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZ
 import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle, Phone, MessageCircle, Globe, Handshake, CircleDot } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
-import { TARI, oraseTara } from '@/lib/tariOrase'
+import { TARI, oraseTara, taraOblio } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare } from '@/lib/rezervareEdit'
 
@@ -254,7 +254,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     // domiciliul clientului folosit data trecuta (se salveaza la emitere)
     supabase.from('setari').select('valoare').eq('cheie', `client_factura_${editing.id}`).maybeSingle().then(({ data }) => {
       if (anulat || !data?.valoare) return
-      try { const c = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }; setClientFact(c); setClientSalvat(JSON.stringify(c)); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
+      try { const c0 = { ...CLIENT_GOL, ...JSON.parse(data.valoare) }, c = { ...c0, tara: taraOblio(String(c0.tara || '')) }; setClientFact(c); setClientSalvat(JSON.stringify(c)); setAltaTara(!!c.tara.trim() && !TARI.some(t => t.localeCompare(c.tara.trim(), 'ro', { sensitivity: 'base' }) === 0)) } catch { /* ignorat */ }
     })
     return () => { anulat = true }
   }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
