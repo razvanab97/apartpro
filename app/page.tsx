@@ -311,13 +311,19 @@ export default function DashboardPage() {
     salveazaStareMesaj(id,null)
   }
   // Ascunde mesajul din lista de azi (nu se sterge nimic din rezervare/proprietar)
+  // „Proprietar · rezervare nouă” nu e legat de o zi (ramane pana e notificat) -> stergerea se salveaza si pe
+  // rezervare (proprietar_notificat), altfel revenea a doua zi (cerut direct: „le tot șterg și nu se salvează”).
+  // Ramane in lista de azi la „Șterse azi”, de unde „Readu” il pune inapoi si in baza.
+  const propNouId=(id:string)=>id.startsWith('propn-')?id.slice(6):null
   function anuleazaMesaj(id:string){
     setMesajeAnulateIds(prev=>{ const n=new Set(prev); n.add(id); return n })
     salveazaStareMesaj(id,'s')
+    const rid=propNouId(id); if(rid) supabase.from('rezervari').update({proprietar_notificat:true}).eq('id',rid).then(()=>{})
   }
   function restaureazaMesaj(id:string){
     setMesajeAnulateIds(prev=>{ const n=new Set(prev); n.delete(id); return n })
     salveazaStareMesaj(id,null)
+    const rid=propNouId(id); if(rid) supabase.from('rezervari').update({proprietar_notificat:false}).eq('id',rid).then(()=>{})
   }
   // Fila deschisa in "Mesaje pe rand" (si deep-link din notificare: /?mesaje=sosiri)
   const [mesajeFila,setMesajeFila]=useState<FilaMesaje>('dim')
@@ -532,6 +538,7 @@ export default function DashboardPage() {
         .select('id,nume_client,data_checkin,data_checkout,nr_nopti,nr_persoane,valoare_bruta,suma_incasata,moneda,apartament:apartamente!inner(id,nume,nota,proprietar:proprietari!inner(id,nume,telefon))')
         .or('proprietar_notificat.is.null,proprietar_notificat.eq.false')
         .neq('status_rezervare','anulata')
+        .gte('data_checkout',aziLocal()) // rezervarile deja terminate nu mai au rost ca „rezervare nouă” catre proprietar
       setPropNotif((data||[]).filter((r:any)=>notificaProprietar(r)))
     }catch{}
   }
