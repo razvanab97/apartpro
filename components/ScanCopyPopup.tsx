@@ -15,11 +15,11 @@ import { pregatesteCaptura, citesteRezervare, MAX_CAPTURI, type Captura } from '
 // nume/telefon/preț/cod/date/oaspeți dintr-o rezervare Airbnb/Booking, sau nume/CNP/adresă
 // dintr-un buletin, direct în formularul acelui sistem — indiferent care e el.
 type RezRaw = { nume_client:string; adulti:number; copii:number; data_checkin:string; data_checkout:string; nr_nopti:number|null; pret_total:number|null; moneda:string|null; apartament_text:string|null; cod:string|null; telefon?:string|null }
-type CiRaw = { nume:string; cnp:string; serie:string; numar:string; judet:string; localitate:string; strada:string; telefon?:string }
+type CiRaw = { nume:string; cnp:string; serie:string; numar:string; judet:string; localitate:string; strada:string; telefon?:string; tip_act?:'buletin'|'pasaport'; tara?:string; cnp_verificat?:boolean }
 type Apt = { id:string; nota:string|null; nume:string }
 
 type RezForm = { aptId:string; nume:string; telefon:string; pret:string; cod:string; checkin:string; checkout:string; adulti:string; copii:string; canal:string; moneda:string }
-type CiForm = { nume:string; cnp:string; serieNumar:string; telefon:string; judet:string; localitate:string; strada:string }
+type CiForm = { nume:string; cnp:string; serieNumar:string; telefon:string; judet:string; localitate:string; strada:string; pasaport?:boolean; tara?:string; cnpNesigur?:boolean }
 const emptyRezForm: RezForm = { aptId:'', nume:'', telefon:'', pret:'', cod:'', checkin:'', checkout:'', adulti:'', copii:'', canal:'airbnb', moneda:'RON' }
 const CANALE_SCAN: [string, string][] = [['airbnb','Airbnb'], ['booking','Booking'], ['direct','Direct']]
 
@@ -141,6 +141,7 @@ export default function ScanCopyPopup() {
           judet: r.judet || '',
           localitate: r.localitate || '',
           strada: r.strada || '',
+          pasaport: r.tip_act === 'pasaport', tara: r.tara || '', cnpNesigur: !!r.cnp && r.cnp_verificat === false,
         })
         // Adresa reala de pe buletin creste pool-ul generatorului de adrese
         // (Șabloane → Generator Locații), cerut direct — best-effort, nu blochează UI-ul
@@ -276,7 +277,7 @@ export default function ScanCopyPopup() {
         status_facturare: 'nefacturat',
         // datele din buletin raman pe rezervare (tabela n-are coloane dedicate) - utile la facturare / declarare
         observatii: dinCI
-          ? ['Creată din buletin', ciForm.serieNumar && `Buletin ${ciForm.serieNumar}`, ciForm.cnp && `CNP ${ciForm.cnp}`,
+          ? [ciForm.pasaport ? 'Creată din pașaport' : 'Creată din buletin', ciForm.serieNumar && `${ciForm.pasaport ? 'Pașaport' : 'Buletin'} ${ciForm.serieNumar}`, ciForm.pasaport && ciForm.tara && ciForm.tara !== 'ROU' && `Cetățenie ${ciForm.tara}`, ciForm.cnp && `CNP ${ciForm.cnp}`,
              [ciForm.strada, ciForm.localitate, ciForm.judet && `jud. ${ciForm.judet}`].filter(Boolean).join(', ')].filter(Boolean).join(' · ')
           : 'Creată din captură',
       }
@@ -371,7 +372,7 @@ export default function ScanCopyPopup() {
         </button>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Preia din captură" subtitle="Scanează o rezervare sau un buletin, editează dacă e nevoie, apoi copiază fiecare câmp — pentru 5starDesk, ERP sau orice alt sistem extern" width="340px">
+      <Modal open={open} onClose={() => setOpen(false)} title="Preia din captură" subtitle="Scanează o rezervare, un buletin sau un pașaport, editează dacă e nevoie, apoi copiază fiecare câmp — pentru 5starDesk, ERP sau orice alt sistem extern" width="340px">
         <div style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 10, background: 'rgba(14,27,43,0.5)', marginBottom: 14 }}>
           {(['rezervare', 'buletin'] as const).map(m => (
             <button key={m} onClick={() => switchMode(m)} style={{
@@ -379,13 +380,13 @@ export default function ScanCopyPopup() {
               background: mode === m ? 'rgba(196,181,253,0.18)' : 'transparent',
               color: mode === m ? '#C4B5FD' : 'rgba(159,215,255,0.45)',
             }}>
-              {m === 'rezervare' ? '📋 Rezervare' : '🪪 Buletin'}
+              {m === 'rezervare' ? '📋 Rezervare' : '🪪 Buletin / pașaport'}
             </button>
           ))}
         </div>
 
         <div style={{ fontSize: 11, color: 'rgba(159,215,255,0.4)', marginBottom: 12 }}>
-          {mode === 'rezervare' ? 'Capturi din Airbnb sau Booking — poți pune mai multe pentru aceeași rezervare (check-in, telefon, sumă…), informația se combină' : 'Poză a actului de identitate (buletin)'}
+          {mode === 'rezervare' ? 'Capturi din Airbnb sau Booking — poți pune mai multe pentru aceeași rezervare (check-in, telefon, sumă…), informația se combină' : 'Poză a actului de identitate — buletin sau pașaport (românesc ori străin)'}
         </div>
 
         {mode === 'rezervare' && capturi.length > 0 && (
@@ -463,7 +464,9 @@ export default function ScanCopyPopup() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <CopyRow label="Nume" value={ciForm.nume} onChange={v => setCiForm(f => ({ ...f, nume: v }))} />
             <CopyRow label="CNP" value={ciForm.cnp} onChange={v => setCiForm(f => ({ ...f, cnp: v }))} />
-            <CopyRow label="Serie/Număr" value={ciForm.serieNumar} onChange={v => setCiForm(f => ({ ...f, serieNumar: v }))} />
+            {ciForm.pasaport && <div data-act-pasaport style={{ fontSize: 11.5, fontWeight: 700, color: '#C4B5FD' }}>🛂 Pașaport{ciForm.tara ? ' · ' + ciForm.tara : ''} — fără adresă pe act</div>}
+            {ciForm.cnpNesigur && <div style={{ fontSize: 11.5, color: '#FCD34D' }}>⚠ CNP-ul citit nu trece verificarea — compară-l cu actul</div>}
+            <CopyRow label={ciForm.pasaport ? 'Nr. pașaport' : 'Serie/Număr'} value={ciForm.serieNumar} onChange={v => setCiForm(f => ({ ...f, serieNumar: v }))} />
             <CopyRow label="Telefon" value={ciForm.telefon} onChange={v => setCiForm(f => ({ ...f, telefon: v }))} placeholder="completează manual" />
             <CopyRow label="Județ" value={ciForm.judet} onChange={v => setCiForm(f => ({ ...f, judet: v }))} />
             <CopyRow label="Localitate" value={ciForm.localitate} onChange={v => setCiForm(f => ({ ...f, localitate: v }))} />

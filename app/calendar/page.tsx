@@ -900,7 +900,7 @@ export default function CalendarPage() {
 
                 {/* Foto buletin */}
                 <div style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Foto buletin (opțional)</div>
+                  <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em' }}>Foto buletin / pașaport (opțional)</div>
                   <input ref={ciRef} type="file" accept="image/*" onChange={e=>e.target.files?.[0]&&scanCI(e.target.files[0])} style={{ display:'none' }}/>
                   {ciPreview
                     ? <div style={{ position:'relative',borderRadius:8,overflow:'hidden',border:'1px solid rgba(124,58,237,0.3)' }}>
@@ -914,7 +914,7 @@ export default function CalendarPage() {
                       </div>
                     : <button onClick={()=>ciRef.current?.click()}
                         style={{ width:'100%',padding:'9px',borderRadius:8,border:'1px dashed rgba(124,58,237,0.3)',background:'rgba(124,58,237,0.05)',color:'rgba(167,139,250,0.6)',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:7 }}>
-                        📷 Fotografiază buletin
+                        📷 Fotografiază buletin / pașaport
                       </button>
                   }
                   {ciScanError && <div style={{ fontSize:11,color:'#F87171',marginTop:5 }}>{ciScanError}</div>}

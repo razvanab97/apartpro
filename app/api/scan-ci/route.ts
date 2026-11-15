@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { citesteMrz, cnpValid, majuscule } from '@/lib/actIdentitate'
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
@@ -10,32 +11,34 @@ export async function POST(req: NextRequest) {
     const { base64Data, mimeType } = await req.json()
     if (!base64Data) return NextResponse.json({ success: false, error: 'No image' }, { status: 400 })
 
-    const prompt = 'Ești expert în citirea actelor de identitate românești. Din această imagine extrage:\n' +
-      '- Numele complet (Prenume Nume)\n' +
-      '- CNP-ul (13 cifre)\n' +
-      '- Seria (2 litere) și numărul (6 cifre) actului, separat\n' +
-      '- Județul din secțiunea Domiciliu\n' +
-      '- Localitatea/orașul din secțiunea Domiciliu\n' +
-      '- Strada, cu tot ce urmează după (nr., bloc, ap.) din secțiunea Domiciliu\n' +
-      '- Telefon, DOAR dacă apare explicit vizibil undeva în imagine, altfel string gol\n' +
-      'Răspunde STRICT doar cu JSON, fără nimic altceva: {"nume":"Ion Popescu","cnp":"1234567890123",' +
-      '"serie":"XZ","numar":"123456","judet":"Iași","localitate":"Iași","strada":"Str. Exemplu nr. 1",' +
-      '"telefon":""}. ' +
+    // buletin SAU pasaport (cerut direct: „asta e un pașaport, să știe sistemul să le citească și pe acestea”)
+    const prompt = 'Ești expert în citirea actelor de identitate (buletin / carte de identitate românească SAU pașaport, românesc ori străin). Din această imagine extrage:\n' +
+      '- tip_act: "buletin" sau "pasaport" (pașaportul are „PAȘAPORT / PASSPORT” și rânduri care încep cu P<)\n' +
+      '- Numele complet: Prenume Nume, cu cratimele exact ca pe act (ex. „Ana-Maria Popescu”)\n' +
+      '- CNP-ul (13 cifre): la buletin câmpul CNP; la pașaportul românesc câmpul 5 „Cod Numeric Personal”. La pașaport străin, gol\n' +
+      '- Seria (2 litere) și numărul (6 cifre) la buletin; la PAȘAPORT seria e gol, iar numărul = numărul pașaportului (ex. 051234567)\n' +
+      '- Cetățenia / țara emitentă (codul de 3 litere din act, ex. ROU, MDA, GBR)\n' +
+      '- Județul, localitatea și strada (cu nr., bloc, ap.) din secțiunea Domiciliu — DOAR la buletin; pașaportul nu are adresă: string gol (NU pune locul nașterii)\n' +
+      '- Telefon, DOAR dacă apare explicit vizibil în imagine, altfel string gol\n' +
+      '- mrz: rândurile de jos ale actului (zona cu <<<), fiecare rând exact cum e scris, caracter cu caracter, ca listă de stringuri; listă goală dacă nu există\n' +
+      'Răspunde STRICT doar cu JSON, fără nimic altceva: {"tip_act":"buletin","nume":"Ion Popescu","cnp":"1234567890123",' +
+      '"serie":"XZ","numar":"123456","tara":"ROU","judet":"Iași","localitate":"Iași","strada":"Str. Exemplu nr. 1",' +
+      '"telefon":"","mrz":[]}. ' +
       'Dacă nu poți citi clar un câmp, pune string gol pentru el. Nu inventa date.'
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch((process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1') + '/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_KEY}` },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         temperature: 0,
-        max_tokens: 200,
+        max_tokens: 600,
         response_format: { type: 'json_object' },
         messages: [{
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Data}` } },
+            { type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Data}`, detail: 'high' } },
           ],
         }],
       }),
@@ -51,23 +54,31 @@ export async function POST(req: NextRequest) {
     let parsed: any = {}
     try { parsed = JSON.parse(rawText) } catch {}
 
-    if (parsed.nume) {
-      parsed.nume = String(parsed.nume)
-        .split(' ')
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ')
-        .trim()
-    }
-
+    // zona de jos a actului (MRZ) are cifre de control: numarul actului si CNP-ul de acolo au prioritate cand se verifica
+    const mrz = citesteMrz(parsed.mrz)
+    const pasaport = parsed.tip_act === 'pasaport' || mrz?.tip === 'pasaport'
+    let cnp = String(parsed.cnp || '').replace(/\D/g, '')
+    if (!cnpValid(cnp) && cnpValid(mrz?.nrPersonal)) cnp = mrz!.nrPersonal!
+    let numar = String(parsed.numar || '').replace(/\s/g, '')
+    // la pasaport numarul din MRZ (verificat) castiga; la buletin il folosim doar daca AI-ul n-a citit numarul
+    if (mrz?.numar && (pasaport || !numar)) numar = pasaport ? mrz.numar : mrz.numar.replace(/^[A-Z]{2}/, '')
+    let nume = String(parsed.nume || '').trim()
+    if (!nume && mrz) nume = `${mrz.prenume} ${mrz.numeFamilie}`
+    nume = majuscule(nume)
+    const tara = String(parsed.tara || mrz?.tara || '').toUpperCase().slice(0, 3)
     return NextResponse.json({
       success: true,
-      nume: parsed.nume || '',
-      cnp: parsed.cnp || '',
-      serie: parsed.serie || '',
-      numar: parsed.numar || '',
-      judet: parsed.judet || '',
-      localitate: parsed.localitate || '',
-      strada: parsed.strada || '',
+      tip_act: pasaport ? 'pasaport' : 'buletin',
+      nume,
+      cnp,
+      cnp_verificat: cnpValid(cnp),
+      serie: pasaport ? '' : (parsed.serie || ''),
+      numar,
+      numar_verificat: !!mrz?.numar,
+      tara,
+      judet: pasaport ? '' : (parsed.judet || ''),
+      localitate: pasaport ? '' : (parsed.localitate || ''),
+      strada: pasaport ? '' : (parsed.strada || ''),
       telefon: parsed.telefon || '',
       raw: rawText,
     })
