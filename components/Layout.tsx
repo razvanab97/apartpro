@@ -17,7 +17,7 @@ import {
   LayoutDashboard, Building2, Users, CalendarCheck, Inbox,
   Receipt, FileText, Settings, CheckSquare, TrendingUp,
   Upload, RefreshCw, CalendarDays, Menu, X, ChevronRight
-, Zap, Megaphone, MapPin } from 'lucide-react'
+, Zap, Megaphone, MapPin, MessageSquareHeart } from 'lucide-react'
 
 const navItems = [
   { href: '/',            icon: LayoutDashboard, label: 'Dashboard',      group: 'P', bottom: true },
@@ -29,6 +29,7 @@ const navItems = [
   { href: '/marketing',   icon: Megaphone,       label: 'Generator Marketing', group: 'O', bottom: false },
   { href: '/curatenie',   icon: Zap,         label: 'Curățenie',      group: 'O', bottom: true },
   { href: '/ghiduri',     icon: MapPin,      label: 'Ghiduri check-in', group: 'O', bottom: false },
+  { href: '/sugestii-oaspeti', icon: MessageSquareHeart, label: 'Sugestii oaspeți', group: 'O', bottom: false },
   { href: '/apartamente', icon: Building2,       label: 'Apartamente',    group: 'P', bottom: false },
   { href: '/proprietari', icon: Users,           label: 'Proprietari',    group: 'P', bottom: false },
   { href: '/sync',        icon: RefreshCw,       label: 'Sync 5starDesk', group: 'P', bottom: false },
@@ -95,6 +96,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   if (pathname?.startsWith('/ghid/')) return <>{children}</>
   // calendarul proprietarului (/p/<token>, link public) - la fel, fara interfata de admin
   if (pathname?.startsWith('/p/')) return <>{children}</>
+  // formularul public de sugestii pentru oaspeti - fara interfata de admin
+  if (pathname === '/sugestii') return <>{children}</>
   if (typeof window !== 'undefined' && !isStaff) { try { localStorage.setItem('apartpro_admin', '1') } catch {} }
 
   return (
