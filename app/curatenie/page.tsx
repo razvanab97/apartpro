@@ -1,4 +1,5 @@
 'use client'
+import { plecarePlanificata } from '@/lib/eliberare'
 import { useEffect, useRef, useState } from 'react'
 import { supabase, normalizeWaPhone, numVal, numInput, aziLocal } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
@@ -957,7 +958,7 @@ export default function CuratenePage() {
                       background:eliberat.has(apt.id)?'rgba(74,222,128,0.12)':'rgba(252,211,77,0.08)',
                       color:eliberat.has(apt.id)?'#4ADE80':'#FCD34D',
                       fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                    {eliberat.has(apt.id)?'✓ Eliberat':'🚪 Eliberat?'}
+                    {eliberat.has(apt.id)?(plecarePlanificata(staffStatus[apt.id],selectedDate)?`🕐 Pleacă la ${staffStatus[apt.id].eliberat_la}`:'✓ Eliberat'):'🚪 Eliberat?'}
                   </button>
                   <button onClick={()=>setSpecialStatus(apt.id, '', special==='anulat'?null:'anulat')}
                     style={{flex:1,padding:'8px 6px',borderRadius:9,fontSize:11,fontWeight:700,cursor:'pointer',

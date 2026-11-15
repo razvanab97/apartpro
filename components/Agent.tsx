@@ -5,8 +5,9 @@ import { supabase, type Apartament } from '@/lib/supabase'
 import { SELECT_REZERVARE, cuApartament, payloadRezervare, salveazaRezervare } from '@/lib/rezervareEdit'
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
+import { marcheazaEliberat, anuleazaEliberat } from '@/lib/eliberare'
 import { pregatesteCaptura, miniatura, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
-import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo } from 'lucide-react'
+import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo, DoorOpen } from 'lucide-react'
 
 // Asistentul AB Homes (cerut direct: agent personal care vede tot ce se intampla in platforma si poate face /
 // anula / muta rezervari si pregati mesaje). Serverul (/api/agent) citeste baza si PROPUNE actiuni; aici le
@@ -57,6 +58,10 @@ async function executaCard(c: Card, fortat: boolean): Promise<{ text: string; un
     if (error) throw new Error(error.message)
     return { text: `task creat: „${p.titlu}”`, undo: { tip: 'task', id: data.id } }
   }
+  if (c.actiune === 'eliberare') {
+    const { ora, viitor, prev } = await marcheazaEliberat(p.apartament_id, p.nota || '', p.data, p.ora || null)
+    return { text: viitor ? `${p.nota} marcat în Curățenie: oaspeții pleacă la ${ora}` : `${p.nota} marcat eliberat în Curățenie (${ora})`, undo: { tip: 'eliberare', apartament_id: p.apartament_id, data: p.data, prev } }
+  }
   // actiuni pe o rezervare existenta: incarcam randul complet + apartamentele si salvam ca formularul
   const [{ data: r, error: e1 }, apts] = await Promise.all([supabase.from('rezervari').select(SELECT_REZERVARE).eq('id', c.rezervare_id).single(), incarcaApts()])
   if (e1 || !r) throw new Error('Rezervarea nu mai există')
@@ -93,6 +98,7 @@ async function anuleazaActiune(u: any) {
     if (error) throw new Error(error.message)
     return
   }
+  if (u.tip === 'eliberare') { await anuleazaEliberat(u.apartament_id, u.data, u.prev); return }
   if (u.tip === 'task') { const { error } = await supabase.from('taskuri').delete().eq('id', u.id); if (error) throw new Error(error.message); return }
   if (u.tip === 'camp') { const { error } = await supabase.from('rezervari').update(u.prev).eq('id', u.id); if (error) throw new Error(error.message); return }
   const [{ data: r }, apts] = await Promise.all([supabase.from('rezervari').select(SELECT_REZERVARE).eq('id', u.id).single(), incarcaApts()])
@@ -145,7 +151,7 @@ function Text({ t, onRez }: { t: string; onRez: (id: string) => void }) {
   })}</>
 }
 
-const ICON: Record<string, any> = { creare: CalendarPlus, anulare: Ban, mutare: MoveRight, modificare: Pencil, task: ListTodo }
+const ICON: Record<string, any> = { creare: CalendarPlus, anulare: Ban, mutare: MoveRight, modificare: Pencil, task: ListTodo, eliberare: DoorOpen }
 
 export default function Agent() {
   const pathname = usePathname()
@@ -193,7 +199,7 @@ export default function Agent() {
 
   async function trimite(text?: string) {
     const imgs = text == null ? atasate : []
-    const t = ((text ?? input).trim()) || (imgs.length ? 'Creează rezervarea din capturile atașate' : '')
+    const t = ((text ?? input).trim()) || (imgs.length ? 'Procesează capturile atașate (rezervare nouă din Airbnb / Booking / buletin, sau mesajul unui oaspete că pleacă)' : '')
     if (!t || loading || pregatesc) return
     setInput(''); setAtasate([])
     const mini = imgs.length ? (await Promise.all(imgs.map(c => miniatura(c)))).filter(Boolean) : undefined
@@ -391,6 +397,10 @@ export default function Agent() {
                   {m.role === 'user' ? m.content : <Text t={m.content} onRez={setRezDeschisa} />}
                 </div>
                 {m.role === 'assistant' && !m.nota && m.content.length > 3 && <div style={{ marginTop: 4, opacity: 0.75 }}><Copiaza mic eticheta="Copiază tot" v={m.content.replace(/\[\[rez:[^|]+\|([^\]]+)\]\]/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`\n]+)`/g, '$1').replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')} /></div>}
+                {(() => { // mai multe plecari dintr-o captura (lista WhatsApp) -> confirmate dintr-un click
+                  const lista = (m.cards || []).map((c, ci) => ({ c, ci })).filter(x => x.c.actiune === 'eliberare' && x.c.stare === 'asteapta' && !x.c.blocat)
+                  return lista.length >= 2 ? <button data-confirma-toate disabled={!!busy} onClick={async () => { for (const x of lista) await confirma(mi, x.ci) }} style={{ ...btn('linear-gradient(135deg,#22C55E,#16A34A)', '#FFFFFF', 'transparent'), marginTop: 8, width: '100%' }}>{busy ? <Loader2 size={13} className="ag-spin" /> : <Check size={14} />} Confirmă toate plecările ({lista.length})</button> : null
+                })()}
                 {m.cards?.map((c, ci) => c.tip === 'actiune' ? cardActiune(c, mi, ci)
                   : c.tip === 'mesaj' ? cardMesaj(c, mi, ci)
                   : c.tip === 'confirmare' ? <button key={ci} onClick={() => setConfId(c.rezervare_id)} style={{ ...btn('linear-gradient(135deg,rgba(37,99,235,0.2),rgba(124,58,237,0.2))', '#7DD3FC', 'rgba(56,189,248,0.4)'), marginTop: 8, width: '100%' }}>✦ Deschide confirmarea pentru {c.titlu} (poză / PDF)</button>

@@ -1,4 +1,5 @@
 'use client'
+import { plecarePlanificata } from '@/lib/eliberare'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, normalizeWaPhone, aziLocal } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid } from '@/lib/ghidLink'
@@ -700,7 +701,9 @@ export default function StaffPage() {
                       {st?.status==='doar_lenjerie'&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(167,139,250,0.15)',color:'#A78BFA',fontWeight:700,border:'1px solid rgba(167,139,250,0.3)'}}>Doar lenjerie</span>}
                       {ramasita&&!isGata&&(()=>{const z=Math.round((new Date(data).getTime()-new Date(ramasita.dataCheckout).getTime())/86400000);return<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(248,113,113,0.2)',color:'#FCA5A5',fontWeight:700,border:'1px solid rgba(248,113,113,0.4)'}}>{'⚠ '+(z===1?'de ieri':z===2?'de alaltaieri':`de ${z} zile`)}</span>})()}
                       {ci&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.25)'}}>URGENT</span>}
-                      {st?.eliberat&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>{'Eliberat'+(st.eliberat_la?' '+st.eliberat_la:'')}</span>}
+                      {st?.eliberat&&(plecarePlanificata(st,data)
+                        ?<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(252,211,77,0.15)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(252,211,77,0.3)'}}>{'🕐 Pleacă la '+st.eliberat_la}</span>
+                        :<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(74,222,128,0.15)',color:'#4ADE80',fontWeight:700,border:'1px solid rgba(74,222,128,0.25)'}}>{'Eliberat'+(st.eliberat_la?' '+st.eliberat_la:'')}</span>)}
                       {baniPending[apt.id]&&<span style={{fontSize:10,padding:'1px 7px',borderRadius:20,background:'rgba(77,163,255,0.18)',color:'#FCD34D',fontWeight:700,border:'1px solid rgba(77,163,255,0.4)'}}>{'💰 '+Number(baniPending[apt.id].suma).toFixed(0)+' RON de încasat'}</span>}
                     </div>
                   </div>

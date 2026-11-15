@@ -141,6 +141,10 @@ const TOOLS = [
     pret_total: N('valoare brută totală, opțional'), incasat: N('suma încasată, opțional'), status_plata: S('neplatit | avans | achitat (opțional)'),
     observatii_adauga: S('text de adăugat la observații (opțional)'),
   }, ['rezervare_id']),
+  fn('propune_eliberare', 'PROPUNE marcarea în Curățenie că oaspeții au plecat / pleacă (apartamentul apare liber pentru curățenie). Folosește-l când utilizatorul trimite captura unui mesaj de la oaspete (WhatsApp / SMS / notificare) despre plecare, sau spune că un oaspete a plecat. Identifică rezervarea după telefon (din captură) sau apartament.', {
+    telefon: S('numărul expeditorului din captură, ex. +40 751 305 969 (opțional)'), apartament: S('cod / nume apartament (opțional)'), rezervare_id: S('id rezervare, dacă îl știi (opțional)'),
+    ora: S('HH:MM — DOAR dacă mesajul spune ora plecării (ex. „la ora 11:00 o să părăsim” → 11:00); fără oră = au plecat acum'), data: S('YYYY-MM-DD, implicit azi'),
+  }),
   fn('propune_task', 'PROPUNE un task / reminder în lista de Task-uri.', { titlu: S('titlu'), descriere: S('opțional'), prioritate: S('urgenta | normala | scazuta'), data_limita: S('YYYY-MM-DD opțional') }, ['titlu']),
   fn('arata_mesaj', 'Afișează un mesaj gata de trimis clientului / proprietarului, cu butoane Copiază și WhatsApp. Folosește-l ORI de câte ori scrii un mesaj de trimis.', {
     text: S('textul mesajului, exact cum se trimite'), telefon: S('numărul destinatarului (opțional)'), titlu: S('ex. „Date de acces — Ramona”'), rezervare_id: S('opțional'),
@@ -430,6 +434,36 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       cards.push({ tip: 'actiune', actiune: 'modificare', titlu: 'Modifică rezervarea', rezervare_id: r.id, randuri: rand, avertismente: [], payload: p })
       return { propunere_afisata: true }
     }
+    case 'propune_eliberare': {
+      const zi = ISO.test(a.data || '') ? a.data : azi
+      const cif = curat(a.telefon).replace(/[^0-9]/g, '').slice(-9)
+      let rez: any[] = []
+      if (a.rezervare_id) { const { data } = await supabase.from('rezervari').select(SEL).eq('id', a.rezervare_id).limit(1); rez = data || [] }
+      else {
+        // oaspetii din casa in ziua respectiva (pleaca azi sau stau mai departe), dupa telefon si / sau apartament
+        // telefoanele sunt salvate in formate diferite („+40 751 305 969”, „0751305969”) -> comparam doar cifrele, aici
+        let q = supabase.from('rezervari').select(SEL).lt('data_checkin', zi).gte('data_checkout', zi).neq('status_rezervare', 'anulata').order('data_checkout').limit(200)
+        if (a.apartament) { const apt = gasesteApt(await apartamente(true), a.apartament); if (!apt) return { eroare: `Nu găsesc apartamentul „${a.apartament}”.` }; q = q.eq('apartament_id', apt.id) }
+        else if (cif.length < 6) return { eroare: 'Am nevoie de telefonul oaspetelui (din captură) sau de apartament.' }
+        rez = (await q).data || []
+        if (cif.length >= 6) rez = rez.filter((r: any) => String(r.telefon_client || '').replace(/[^0-9]/g, '').endsWith(cif))
+        // cei care pleaca in ziua respectiva au prioritate
+        if (rez.length > 1 && rez.some(r => r.data_checkout === zi)) rez = rez.filter(r => r.data_checkout === zi)
+      }
+      if (!rez.length) return { eroare: `Nu găsesc niciun oaspete ${cif.length >= 6 ? `cu telefonul ${curat(a.telefon)} ` : ''}cazat pe ${zi}. Caută cu cauta_rezervari sau întreabă apartamentul.` }
+      if (rez.length > 1) return { mai_multe: rez.map(compact), mesaj: 'Mai multe rezervări potrivite — întreabă care.' }
+      const r = rez[0], mo = /^(\d{1,2})(?:[:.h](\d{2}))?$/.exec(curat(a.ora)), ora = mo && +mo[1] < 24 && +(mo[2] || 0) < 60 ? `${mo[1].padStart(2, '0')}:${mo[2] || '00'}` : null
+      const { data: st } = await supabase.from('curatenie_status').select('eliberat,eliberat_la,co_tarziu').eq('apartament_id', r.apartament_id).eq('data', zi).maybeSingle()
+      const av: string[] = []
+      if (r.data_checkout !== zi) av.push(`Check-out-ul din rezervare e pe ${r.data_checkout}, nu pe ${zi} — plecare mai devreme?`)
+      if (st?.eliberat) av.push(`E deja marcat eliberat${st.eliberat_la ? ' (' + st.eliberat_la + ')' : ''} — se suprascrie ora.`)
+      if (ora && ora > '11:00') av.push(`Pleacă după 11:00 — se trece și ca checkout târziu (${ora}).`)
+      const apt = Array.isArray(r.apartament) ? r.apartament[0] : r.apartament
+      cards.push({ tip: 'actiune', actiune: 'eliberare', titlu: ora ? `Pleacă la ${ora} — marchează în Curățenie` : 'Au plecat — marchează eliberat în Curățenie', rezervare_id: r.id,
+        randuri: [['Client', null, curat(r.nume_client)], ['Apartament', null, etApt(r.apartament)], ['Telefon', null, r.telefon_client || '—'], ['Data', null, zi], ['Plecare', null, ora ? `la ${ora}` : 'acum (ora confirmării)']],
+        avertismente: av, payload: { apartament_id: r.apartament_id, nota: apt?.nota || apt?.nume || '', data: zi, ora } })
+      return { propunere_afisata: true, rezervare: compact(r), avertismente: av }
+    }
     case 'propune_task': {
       const prio = ['urgenta', 'normala', 'scazuta'].includes(a.prioritate) ? a.prioritate : 'normala'
       cards.push({ tip: 'actiune', actiune: 'task', titlu: 'Task nou', randuri: [['Titlu', null, curat(a.titlu)], ['Prioritate', null, prio], ['Termen', null, a.data_limita || '—']], avertismente: [],
@@ -458,7 +492,7 @@ ${ctx?.pagina ? `Utilizatorul e acum pe pagina: ${ctx.pagina}.` : ''}${ctx?.reze
 
 REGULI:
 1. Nu ghici date din sistem — folosește întotdeauna uneltele (rezervări, disponibilitate, apartamente, statistici). Poți chema mai multe unelte la rând.
-2. Pentru orice schimbare (rezervare nouă, anulare, mutare, modificare, task) folosești uneltele propune_* — ele afișează un card pe care utilizatorul îl CONFIRMĂ. Nu spune niciodată că ai făcut o schimbare; spune „Ți-am pregătit … — confirmă mai jos”.
+2. Pentru orice schimbare (rezervare nouă, anulare, mutare, modificare, task, eliberare în Curățenie) folosești uneltele propune_* — ele afișează un card pe care utilizatorul îl CONFIRMĂ. Nu spune niciodată că ai făcut o schimbare; spune „Ți-am pregătit … — confirmă mai jos”.
 3. Dacă o căutare găsește mai multe rezervări potrivite, întreabă care (dă variantele scurt) înainte de a propune ceva. Dacă lipsesc date esențiale (apartament, perioadă, nume), întreabă.
 4. Când trimitem ceva clientului / proprietarului, scrii mesajul și îl afișezi cu arata_mesaj (telefonul din rezervare). Pentru mesajele standard (confirmare, date de acces, reminder, check-out, review) pornește ÎNTOTDEAUNA de la sabloane_mesaje cu rezervare_id — textul vine deja completat; păstrează-l (inclusiv salutul cu prenumele) și adaptează doar ce cere situația. Mesajele: profesionale, empatice, plăcute, cu emoji-uri moderate, semnate „Echipa AB Homes Iași”; în limba clientului dacă e străin (traduci șablonul). Nu inventa coduri de acces: dacă șablonul are locuri „_completați_” și apartamentul are instrucțiuni de check-in, completează din ele; altfel lasă-le și spune-i utilizatorului să le completeze în card.
 5. Pentru confirmarea oficială (poză / PDF) folosește arata_confirmare_client.
@@ -470,7 +504,8 @@ REGULI:
 11. Linkurile le scrii simplu, întregi (https://…) — aplicația le pune singură buton „Copiază”. Codurile, parolele Wi-Fi, adresele, IBAN-urile, telefoanele sau orice altă valoare pe care utilizatorul o poate copia le pui între \`backticks\` (câte una) — devin buton de copiere. Nu scrie „[Copy]” sau „copiază de aici”.
 12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.
 13. Dacă utilizatorul atașează capturi (Airbnb, Booking, alt site) sau poza unui buletin și cere o rezervare: citește din imagini numele, datele (anul: cea mai apropiată dată viitoare; „Sosește mâine” = mâine), nr. de oaspeți, telefonul, codul rezervării și suma — la Airbnb suma plătită de oaspete („Oaspetele a plătit” → Total), nu câștigul gazdei; din buletin: numele, CNP-ul și adresa. Ce scrie utilizatorul în mesaj (apartament, date, cost, avans) are prioritate față de imagini. Canal: airbnb pentru Airbnb / cod HM…, booking pentru Booking / cod numeric, altfel direct. În observații pui codul rezervării și, la buletin, CNP-ul. Apartamentul îl iei din mesaj sau din titlul anunțului din captură (potrivește-l cu lista_apartamente). Dacă ai apartamentul, numele și datele, apelează DIRECT propune_rezervare_noua, fără alte întrebări; dacă lipsește ceva esențial, întreabă doar ce lipsește. Spune pe scurt ce ai citit din capturi.
-14. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.`
+14. Dacă utilizatorul atașează captura unui mesaj de la oaspete (WhatsApp, SMS, notificare pe telefon) despre plecare (ex. „la ora 11:00 o să părăsim locația”, „am plecat, cheia e în locker”): citește numărul expeditorului din captură și apelează DIRECT propune_eliberare cu telefonul — cu ora DOAR dacă mesajul spune o oră de plecare; fără oră = au plecat acum. Același lucru dacă utilizatorul scrie că un oaspete a plecat / pleacă la o anumită oră. Ora din captura telefonului (ceasul de sus, „acum 17 m”, ora conversației din listă) NU e ora plecării. O captură cu LISTA de conversații WhatsApp poate avea mai mulți oaspeți: apelează propune_eliberare SEPARAT pentru fiecare conversație al cărei mesaj spune că pleacă / a plecat („la ora 10 vom părăsi apartamentul” → 10:00, „we checked out” → fără oră); ignoră conversațiile care nu sunt despre plecare (apeluri, alte subiecte). Dacă un număr nu se potrivește cu niciun oaspete cazat, spune-o scurt la final. Apoi rezumă într-o listă ce ai citit.
+15. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.`
 }
 
 async function apelOpenAI(body: any) {
