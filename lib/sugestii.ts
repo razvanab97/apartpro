@@ -25,3 +25,20 @@ export type Sugestie = {
   apartament: string | null; data_checkout: string | null; nota: number | null; categorii: string[] | null; text: string; limba: string | null
   status: 'noua' | 'rezolvata'; nota_interna: string | null
 }
+
+// Mesajul de multumire dupa plecare (textul utilizatorului) - acelasi in „Mesaje de azi” (fila Mulțumiri) si in Asistent
+export const MSG_MULTUMIRE = 'Ne-a făcut plăcere să fim, pentru o vreme, adresa dumneavoastră din Iași.\n\nSperăm că plecați cu bateriile puțin mai încărcate și măcar cu o amintire frumoasă din acest oraș.\n\nIar dacă vă întoarceți, acum aveți pe cineva aici. Scrieți-ne direct pe WhatsApp și găsim din nou un loc potrivit.\n\nDrum bun și toate cele bune! Data viitoare, să aveți mai mult timp de stat.\n\nP.S. Lucrăm la câteva îmbunătățiri ale locației. Dacă aveți sugestii, ne-ar ajuta mult să ni le lăsați aici (durează un minut): '+LINK_SUGESTII
+
+// Starea mesajelor de azi (aceeasi inregistrare ca in Dashboard: setari „mesaje_zi_AAAA-LL-ZZ”, {idMesaj: {s:'t'|'s', la}}).
+// Folosita de Asistent: o multumire trimisa de acolo nu mai apare de trimis in „Mesaje de azi”.
+export async function marcheazaMesajZi(id: string, s: 't' | 's' | null) {
+  const { supabase } = await import('@/lib/supabase')
+  const d = new Date(), cheie = `mesaje_zi_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const { data, error } = await supabase.from('setari').select('valoare').eq('cheie', cheie).maybeSingle()
+  if (error) throw new Error(error.message)
+  let st: Record<string, any> = {}
+  try { st = JSON.parse(data?.valoare || '{}') || {} } catch {}
+  if (s) st[id] = { s, la: new Date().toISOString() }; else delete st[id]
+  const { error: e2 } = await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify(st) }, { onConflict: 'cheie' })
+  if (e2) throw new Error(e2.message)
+}

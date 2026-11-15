@@ -461,7 +461,7 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       const apt = Array.isArray(r.apartament) ? r.apartament[0] : r.apartament
       cards.push({ tip: 'actiune', actiune: 'eliberare', titlu: ora ? `Pleacă la ${ora} — marchează în Curățenie` : 'Au plecat — marchează eliberat în Curățenie', rezervare_id: r.id,
         randuri: [['Client', null, curat(r.nume_client)], ['Apartament', null, etApt(r.apartament)], ['Telefon', null, r.telefon_client || '—'], ['Data', null, zi], ['Plecare', null, ora ? `la ${ora}` : 'acum (ora confirmării)']],
-        avertismente: av, payload: { apartament_id: r.apartament_id, nota: apt?.nota || apt?.nume || '', data: zi, ora } })
+        avertismente: av, payload: { apartament_id: r.apartament_id, nota: apt?.nota || apt?.nume || '', data: zi, ora, rezervare_id: r.id, nume: curat(r.nume_client), telefon: r.telefon_client || '', checkout_azi: r.data_checkout === zi } })
       return { propunere_afisata: true, rezervare: compact(r), avertismente: av }
     }
     case 'propune_task': {

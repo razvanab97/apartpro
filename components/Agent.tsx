@@ -6,6 +6,8 @@ import { SELECT_REZERVARE, cuApartament, payloadRezervare, salveazaRezervare } f
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import { marcheazaEliberat, anuleazaEliberat } from '@/lib/eliberare'
+import { MSG_MULTUMIRE, marcheazaMesajZi } from '@/lib/sugestii'
+import { majuscule } from '@/lib/actIdentitate'
 import { pregatesteCaptura, miniatura, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo, DoorOpen } from 'lucide-react'
 
@@ -232,6 +234,16 @@ export default function Agent() {
       await scrieJurnal([{ id: jid, ts: Date.now(), actiune: c.actiune, titlu: c.titlu, descriere: (c.randuri || []).map((r: any[]) => `${r[0]}: ${r[1] ? r[1] + ' → ' : ''}${r[2]}`).join(' · '), undo }, ...j])
       actualizeazaCard(mi, ci, { stare: 'gata', info: text.replace(/\[\[rez:[^|]+\|([^\]]+)\]\]/g, '$1'), jurnalId: jid })
       setMsgs(ms => [...ms, { role: 'assistant', content: `✓ Gata: ${text}.`, ts: Date.now(), nota: true }])
+      // dupa plecare: recomandarea de a trimite mesajul de multumire (cerut direct: „când se setează check-out-ul făcut,
+      // să apară și recomandarea să trimitem mesajul de mulțumire”) - acelasi text ca in „Mesaje de azi” → Mulțumiri
+      if (c.actiune === 'eliberare') {
+        const p = c.payload || {}, prenume = majuscule(String(p.nume || '').split(/\s+/)[0])
+        const viitor = /pleacă la/.test(text)
+        setMsgs(ms => [...ms, { role: 'assistant', ts: Date.now(),
+          content: viitor ? `🙏 Recomand și mesajul de mulțumire pentru ${prenume || 'oaspete'} — trimite-l după ora ${p.ora}, când a plecat:` : `🙏 Recomand să-i trimiți și mesajul de mulțumire lui ${prenume || 'oaspete'}:`,
+          cards: [{ tip: 'mesaj', titlu: `Mulțumire după plecare — ${p.nume || ''}${p.nota ? ' · ' + p.nota : ''}`, text: MSG_MULTUMIRE, telefon: p.telefon || null, rezervare_id: p.rezervare_id || null,
+            idMesajZi: p.checkout_azi && p.rezervare_id ? 'mul-' + p.rezervare_id : null }] }])
+      }
       window.dispatchEvent(new CustomEvent('rezervari:modificate'))
     } catch (e: any) {
       actualizeazaCard(mi, ci, { stare: 'eroare', info: e.message })
@@ -319,8 +331,13 @@ export default function Agent() {
           style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(159,215,255,0.12)', background: 'rgba(5,12,24,0.6)', color: '#E8F4FF', fontSize: 12.5, lineHeight: 1.5, fontFamily: 'inherit', outline: 'none' }} />
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
           <button onClick={() => navigator.clipboard.writeText(c.text).then(() => { setCopiatK(k); setTimeout(() => setCopiatK(x => x === k ? null : x), 1800) }).catch(() => {})} style={{ ...btn('rgba(77,163,255,0.1)', '#7BC8FF', 'rgba(77,163,255,0.3)'), flex: 1 }}>{copiat ? <Check size={13} /> : <Copy size={13} />} {copiat ? 'Copiat' : 'Copiază'}</button>
-          {tel.length >= 9 && <a href={`https://wa.me/${tel}?text=${encodeURIComponent(c.text)}`} target="_blank" rel="noreferrer" style={{ ...btn('#25D366', '#03250F', 'transparent'), flex: 1.3 }}><MessageCircle size={13} /> Trimite pe WhatsApp</a>}
+          {tel.length >= 9 && <a href={`https://wa.me/${tel}?text=${encodeURIComponent(c.text)}`} target="_blank" rel="noreferrer" data-wa-mesaj
+            // trimisa din Asistent -> bifata si in „Mesaje de azi” (nu mai apare de trimis acolo)
+            onClick={() => { if (c.idMesajZi) marcheazaMesajZi(c.idMesajZi, 't').then(() => actualizeazaCard(mi, ci, { trimis: true })).catch(() => {}) }}
+            style={{ ...btn('#25D366', '#03250F', 'transparent'), flex: 1.3 }}><MessageCircle size={13} /> Trimite pe WhatsApp</a>}
         </div>
+        {c.trimis && <div data-mesaj-trimis style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: '#4ADE80' }}>✓ Marcat trimis și în „Mesaje de azi”</div>}
+        {!tel && <div style={{ marginTop: 6, fontSize: 11.5, color: '#FCD34D' }}>Rezervarea nu are telefon — copiază mesajul și trimite-l manual.</div>}
       </div>
     )
   }

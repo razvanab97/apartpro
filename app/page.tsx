@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid, type InfoGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
-import { LINK_SUGESTII } from '@/lib/sugestii'
+import { MSG_MULTUMIRE } from '@/lib/sugestii'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -395,7 +395,6 @@ export default function DashboardPage() {
   useEffect(()=>{ const id=setInterval(()=>setOraAcum(new Date().getHours()),30000); return ()=>clearInterval(id) },[])
   const dupaCheckin = oraAcum>=ORA_CHECKIN
   const ORA_MULTUMIRE = 16
-  const MSG_MULTUMIRE = 'Ne-a făcut plăcere să fim, pentru o vreme, adresa dumneavoastră din Iași.\n\nSperăm că plecați cu bateriile puțin mai încărcate și măcar cu o amintire frumoasă din acest oraș.\n\nIar dacă vă întoarceți, acum aveți pe cineva aici. Scrieți-ne direct pe WhatsApp și găsim din nou un loc potrivit.\n\nDrum bun și toate cele bune! Data viitoare, să aveți mai mult timp de stat.\n\nP.S. Lucrăm la câteva îmbunătățiri ale locației. Dacă aveți sugestii, ne-ar ajuta mult să ni le lăsați aici (durează un minut): '+LINK_SUGESTII
   const gataCheckinsAzi = checkinAzi.filter((r:any)=>dupaCheckin||curatGata(r.apartament?.id))
   // Si rezervarile FARA telefon intra in mesaje (cerut direct: Booking nu mai trimite toate numerele) -
   // apar marcate "fara numar", cu camp de completat manual, nu dispar din lista
