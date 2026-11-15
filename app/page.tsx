@@ -147,6 +147,8 @@ function msgProprietar(r:any){
 export default function DashboardPage() {
   const [loading,setLoading]=useState(true)
   const [loadError,setLoadError]=useState(false)
+  // Aceeasi luna din anul trecut, pe luna intreaga (cerut direct: „la fiecare secțiune să scrie mic vs x suma sau cifra 2025”)
+  const [statsAT,setStatsAT]=useState<null|{an:number;apartamente:number;rezervari:number;incNet:number;incBrut:number;comisioane:number;grad:number;taskuri:number|null}>(null)
   const [stats,setStats]=useState({apartamenteActive:0,rezervariActive:0,incasariLuna:0,incasariNet:0,incasariNetFiltrat:0,incasariBrutFiltrat:0,comisioaneLuna:0,deconturiNeplata:0,taskuriUrgente:0,gradOcupare:0})
   const [rezervariRecente,setRezervariRecente]=useState<any[]>([])
   const [checkinAzi,setCheckinAzi]=useState<any[]>([])
@@ -689,6 +691,27 @@ export default function DashboardPage() {
       zileOcupate += nopti
     }
     const gradOcupareReal = totalZileApartamente > 0 ? Math.round((zileOcupate / totalZileApartamente) * 100) : 0
+    // Aceeasi luna, anul trecut (luna intreaga) - aceleasi formule ca mai sus; non-blocking
+    void (async()=>{ try{
+      const anAT=an-1, primaAT=`${anAT}-${pad(luna)}-01`, ultimaAT=ultimaZiLunaStr(anAT,luna), primaDupaAT=format(new Date(anAT,luna,1),'yyyy-MM-dd'), zileAT=new Date(anAT,luna,0).getDate()
+      const [{data:rAT},{count:cAT}]=await Promise.all([
+        supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,camera_semnalata').lte('data_checkin',ultimaAT).gt('data_checkout',primaAT).neq('status_rezervare','anulata').limit(5000),
+        supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaAT).lte('data_checkin',ultimaAT),
+      ])
+      const noptiIn=(r:any)=>{ const ci=r.data_checkin<primaAT?primaAT:r.data_checkin, co=r.data_checkout>primaDupaAT?primaDupaAT:r.data_checkout; return Math.max(0,Math.ceil((new Date(co).getTime()-new Date(ci).getTime())/86400000)) }
+      const pr=(r:any)=>{ const brut=Number(r.suma_incasata||0), tot=Number(r.nr_nopti||0)||Math.max(1,Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)), n=noptiIn(r)
+        if(n<=0) return 0; if(n>=tot) return brut; return Math.round(brut/tot*n*100)/100 }
+      const cam=(rAT||[]).filter(activaPeCamera)
+      const fil=cam.filter((r:any)=>!idsComision.has(r.apartament_id)), cm=cam.filter((r:any)=>idsComision.has(r.apartament_id))
+      const aptsAT=new Set(cam.map((r:any)=>r.apartament_id).filter(Boolean))
+      const ocup=cam.reduce((x:number,r:any)=>x+(r.data_checkin&&r.data_checkout?noptiIn(r):0),0)
+      setStatsAT({an:anAT,apartamente:aptsAT.size,rezervari:cAT||0,
+        incNet:Math.round(fil.reduce((x:number,r:any)=>x+netPlatforma(pr(r),r.canal),0)),incBrut:Math.round(fil.reduce((x:number,r:any)=>x+pr(r),0)),
+        comisioane:Math.round(cm.reduce((x:number,r:any)=>x+comisionRez(r,pr(r)),0)+comisionFixLunar(new Set(cm.map((r:any)=>r.apartament_id)))),
+        grad:aptsAT.size?Math.round(ocup/(aptsAT.size*zileAT)*100):0,
+        // „Taskuri urgente” = cate sunt nerezolvate ACUM; starea din trecut nu se pastreaza, deci nu are cifra 2025
+        taskuri:null})
+    }catch(e){ console.warn('[an trecut]',e) } })()
     setStats({apartamenteActive:apCount||0,rezervariActive:rezLunaCount||0,incasariLuna:inc,incasariNet:Math.round(incNet),incasariNetFiltrat:filtNet,incasariBrutFiltrat:filtBrut,comisioaneLuna:com,deconturiNeplata:deconturi?.length||0,taskuriUrgente:taskCount||0,gradOcupare:gradOcupareReal})
     // Rezervarile ramase fara camera in 5starDesk (NEALOCAT) nu stau de fapt pe apartamentul din baza -
     // nu primesc mesaje cu acel apartament; le aloci intai din Calendar → "Nealocate"
@@ -1005,12 +1028,12 @@ export default function DashboardPage() {
         {/* KPI STRIP */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}} className="kpi-grid">
           {[
-            {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#7FA8E0',icon:<Building2 size={12}/>,sub:'active'},
-            {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#A9C8E8',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0]},
-            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNetFiltrat||0).toLocaleString('ro-RO')}`,accent:'#6CC28F',icon:<DollarSign size={12}/>,sub:'RON net',sub2:`brut ${(stats.incasariBrutFiltrat||0).toLocaleString('ro-RO')}`,sub2Color:'#6CC28F'},
-            {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#7FA8E0',icon:<Percent size={12}/>,sub:'RON firmă'},
-            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#6CC28F':'#D9A85C',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`},
-            {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#D97A7A':'#6CC28F',icon:<CheckSquare size={12}/>,sub:'nerezolvate'},
+            {label:'APARTAMENTE',value:stats.apartamenteActive,accent:'#7FA8E0',icon:<Building2 size={12}/>,sub:'active',at:statsAT&&{v:statsAT.apartamente,txt:`${statsAT.apartamente} cu rezervări`,acum:stats.apartamenteActive}},
+            {label:'REZERVĂRI LUNA',value:stats.rezervariActive,accent:'#A9C8E8',icon:<CalendarCheck size={12}/>,sub:lunaLabel.split(' ')[0],at:statsAT&&{v:statsAT.rezervari,txt:String(statsAT.rezervari),acum:stats.rezervariActive}},
+            {label:`ÎNCASĂRI ${lunaLabel.split(' ')[0].toUpperCase()}`,value:`${(stats.incasariNetFiltrat||0).toLocaleString('ro-RO')}`,accent:'#6CC28F',icon:<DollarSign size={12}/>,sub:'RON net',sub2:`brut ${(stats.incasariBrutFiltrat||0).toLocaleString('ro-RO')}`,sub2Color:'#6CC28F',at:statsAT&&{v:statsAT.incNet,txt:`${statsAT.incNet.toLocaleString('ro-RO')} net · brut ${statsAT.incBrut.toLocaleString('ro-RO')}`,acum:stats.incasariNetFiltrat}},
+            {label:'COMISIOANE',value:`${stats.comisioaneLuna.toLocaleString('ro-RO')}`,accent:'#7FA8E0',icon:<Percent size={12}/>,sub:'RON firmă',at:statsAT&&{v:statsAT.comisioane,txt:statsAT.comisioane.toLocaleString('ro-RO'),acum:stats.comisioaneLuna}},
+            {label:'GRAD OCUPARE',value:`${gradOcupare}%`,accent:gradOcupare>60?'#6CC28F':'#D9A85C',icon:<Activity size={12}/>,sub:`${lunaLabel.split(' ')[0]} · ${stats.apartamenteActive} ap.`,at:statsAT&&{v:statsAT.grad,txt:`${statsAT.grad}%`,acum:gradOcupare,pp:true}},
+            {label:'TASKURI URGENTE',value:stats.taskuriUrgente,accent:stats.taskuriUrgente>0?'#D97A7A':'#6CC28F',icon:<CheckSquare size={12}/>,sub:'nerezolvate',at:statsAT&&{v:null,txt:'fără istoric',acum:0}},
           ].map((k,i)=>(
             <div key={i} className="fx-panel" style={{...panel,position:'relative'}}>
               <div style={{position:'absolute',left:14,right:14,top:0,height:1,background:`linear-gradient(90deg, transparent, ${k.accent}66, transparent)`}}/>
@@ -1022,6 +1045,13 @@ export default function DashboardPage() {
                 <div style={{fontFamily:'monospace',fontSize:24,fontWeight:700,color:'#E6EAF7',letterSpacing:-0.5,lineHeight:1,textShadow:`0 0 16px ${k.accent}40`}}>{k.value}</div>
                 {(k as any).sub2&&<div style={{fontFamily:'monospace',fontSize:13,fontWeight:600,color:(k as any).sub2Color||k.accent,marginTop:3}}>{(k as any).sub2}</div>}
                 <div style={{fontSize:11.5,color:'rgba(159,215,255,0.4)',marginTop:4}}>{k.sub}</div>
+                {(()=>{ const a=(k as any).at; if(!a||!statsAT) return null
+                  // diferenta fata de anul trecut: procente (sau puncte procentuale la grad ocupare); luna curenta include si ce e deja rezervat pana la final de luna
+                  const d=a.v==null?null:a.pp?a.acum-a.v:a.v>0?Math.round((a.acum/a.v-1)*100):null
+                  return <div data-kpi-an-trecut title={`${lunaLabel.split(' ')[0]} ${statsAT.an}, luna întreagă`} style={{fontSize:11,color:'rgba(159,215,255,0.45)',marginTop:5,fontFamily:'monospace',display:'flex',gap:6,flexWrap:'wrap' as const,alignItems:'baseline'}}>
+                    <span>vs {lunaLabel.split(' ')[0]} {statsAT.an}: <b style={{color:'rgba(214,228,244,0.75)',fontWeight:600}}>{a.txt}</b></span>
+                    {d!=null&&<span style={{color:d>=0?'#6CC28F':'#E08E8E',fontWeight:600}}>{d>0?'+':''}{d}{a.pp?' pp':'%'}</span>}
+                  </div> })()}
               </div>
             </div>
           ))}
