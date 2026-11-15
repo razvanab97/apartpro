@@ -23,7 +23,7 @@ const ORD: Record<string, number> = { checkout: 0, multumire: 0.5, recenzie: 0.7
 const KIND: Record<string, { l: string; c: string; bg: string }> = {
   checkout: { l: 'Checkout', c: '#C084FC', bg: 'rgba(192,132,252,0.14)' },
   multumire: { l: 'Mulțumire · până la 16:00', c: '#6CC28F', bg: 'rgba(108,194,143,0.14)' },
-  recenzie: { l: 'Recenzie Facebook · opțional', c: '#60A5FA', bg: 'rgba(96,165,250,0.14)' },
+  recenzie: { l: 'Recenzie · opțional · până la 16:00', c: '#60A5FA', bg: 'rgba(96,165,250,0.14)' },
   checkin: { l: 'Confirmare', c: '#FCD34D', bg: 'rgba(252,211,77,0.12)' },
   gata: { l: 'Date acces', c: '#7BC8FF', bg: 'rgba(77,163,255,0.14)' },
 }

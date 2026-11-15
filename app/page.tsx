@@ -423,8 +423,9 @@ export default function DashboardPage() {
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??MSG_MULTUMIRE})
     })
     // Cererea de recenzie Facebook (cerut direct: „altă secțiune de mesaje, alegem noi pe care să trimitem în funcție de
-    // cum reacționează oaspeții”) - optionala, pentru oaspetii plecati azi; ramane toata ziua, nu intra la „de trimis”
-    checkoutAzi.forEach((r:any)=>{
+    // cum reacționează oaspeții”) - optionala, pentru oaspetii plecati azi; ca si multumirea, doar pana la 16:00
+    // (raportat direct: „trebuiau să fie active până la 16:00”), nu intra la „de trimis”
+    if(oraAcum<ORA_MULTUMIRE) checkoutAzi.forEach((r:any)=>{
       if(!mesajeSentIds.has('co-'+r.id)&&!eliberateIds.has(r.apartament?.id)) return
       const id='rec-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'recenzie',icon:'⭐',accent:'#60A5FA',titluCategorie:'Recenzie Facebook (opțional)',
