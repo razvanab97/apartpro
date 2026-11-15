@@ -12,17 +12,18 @@ export type MesajRand = {
   curatenie?: { status: string; ora?: string | null; din?: string }   // din = curatata intr-o zi anterioara (dd.mm)
 }
 export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
-export type FilaMesaje = 'dim' | 'mul' | 'sos' | 'prop' | 'numere'
+export type FilaMesaje = 'dim' | 'mul' | 'rec' | 'sos' | 'prop' | 'numere'
 
 const FILE: { k: FilaMesaje; t: string }[] = [
-  { k: 'dim', t: 'Dimineața' }, { k: 'mul', t: 'Mulțumiri' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
+  { k: 'dim', t: 'Dimineața' }, { k: 'mul', t: 'Mulțumiri' }, { k: 'rec', t: 'Recenzii' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
 ]
 // mesajele de multumire dupa plecare au fila lor (cerut direct: „să fie în secțiune separată de cele de check-out”)
-export const filaMesaj = (c: string): FilaMesaje => c === 'checkout' ? 'dim' : c === 'multumire' ? 'mul' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
-const ORD: Record<string, number> = { checkout: 0, multumire: 0.5, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
+export const filaMesaj = (c: string): FilaMesaje => c === 'checkout' ? 'dim' : c === 'multumire' ? 'mul' : c === 'recenzie' ? 'rec' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
+const ORD: Record<string, number> = { checkout: 0, multumire: 0.5, recenzie: 0.7, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
 const KIND: Record<string, { l: string; c: string; bg: string }> = {
   checkout: { l: 'Checkout', c: '#C084FC', bg: 'rgba(192,132,252,0.14)' },
   multumire: { l: 'Mulțumire · până la 16:00', c: '#6CC28F', bg: 'rgba(108,194,143,0.14)' },
+  recenzie: { l: 'Recenzie Facebook · opțional', c: '#60A5FA', bg: 'rgba(96,165,250,0.14)' },
   checkin: { l: 'Confirmare', c: '#FCD34D', bg: 'rgba(252,211,77,0.12)' },
   gata: { l: 'Date acces', c: '#7BC8FF', bg: 'rgba(77,163,255,0.14)' },
 }
@@ -123,12 +124,14 @@ export default function MesajePeRand(p: {
     if (!tintaInapoi) return
     setRevId(tintaInapoi.id); setFila(filaMesaj(tintaInapoi.categorie)); setToast(null)
   }
-  const total = p.tasks.length, trimise = p.tasks.filter(t => t.trimis).length
+  // „Recenzii” e optionala (o trimiti doar cui alegi) -> nu intra in „x/y trimise” si nu se sare automat pe ea
+  const deNumarat = p.tasks.filter(t => filaMesaj(t.categorie) !== 'rec')
+  const total = deNumarat.length, trimise = deNumarat.filter(t => t.trimis).length
 
   // Prima fila cu ceva de facut, daca cea curenta e goala la deschidere
   useEffect(() => {
     if (fila !== 'numere' && !deTrimis(fila).length) {
-      const urm = FILE.find(f => f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0)
+      const urm = FILE.find(f => f.k !== 'rec' && (f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0))
       if (urm) setFila(urm.k)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,7 +176,7 @@ export default function MesajePeRand(p: {
     setToast({ msg: `${curent.nume} — mesaj șters pentru azi`, undoId: curent.id })
   }
 
-  const urmFila = FILE.find(f => f.k !== fila && (f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0))
+  const urmFila = FILE.find(f => f.k !== fila && f.k !== 'rec' && (f.k === 'numere' ? numereRamase.length > 0 : deTrimis(f.k).length > 0))
   const K = curent ? (KIND[curent.categorie] || { l: curent.titluCategorie.replace('Proprietar · ', ''), c: '#A78BFA', bg: 'rgba(167,139,250,0.14)' }) : null
   const btn: React.CSSProperties = { border: 'none', background: 'transparent', color: 'rgba(159,215,255,0.55)', fontSize: 12, fontWeight: 700, padding: '6px 4px', cursor: 'pointer' }
 
@@ -195,14 +198,14 @@ export default function MesajePeRand(p: {
             <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>{trimise}/{total} trimise</span>
             <button onClick={p.onClose} aria-label="Închide" style={{ ...btn, fontSize: 18, padding: '0 4px' }}>✕</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3, background: '#0E1B30', borderRadius: 11, padding: 3 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 3, background: '#0E1B30', borderRadius: 11, padding: 3 }}>
             {FILE.map(f => {
               const n = f.k === 'numere' ? numereRamase.length : deTrimis(f.k).length
               const gol = f.k !== 'numere' && totalFila(f.k).length === 0
               return (
                 <button key={f.k} className={'mpr-tab' + (fila === f.k ? ' on' : '')} onClick={() => setFila(f.k)}>
                   {f.t}
-                  <small style={{ fontFamily: 'monospace', fontSize: 10.5, fontWeight: 600, color: n ? (f.k === 'numere' ? '#F87171' : '#FCD34D') : '#4ADE80' }}>{gol ? '—' : n ? n : '✓'}</small>
+                  <small style={{ fontFamily: 'monospace', fontSize: 10.5, fontWeight: 600, color: n ? (f.k === 'numere' ? '#F87171' : f.k === 'rec' ? '#60A5FA' : '#FCD34D') : '#4ADE80' }}>{gol ? '—' : n ? n : '✓'}</small>
                 </button>
               )
             })}

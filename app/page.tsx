@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid, type InfoGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
-import { MSG_MULTUMIRE } from '@/lib/sugestii'
+import { MSG_MULTUMIRE, MSG_RECENZIE_FB } from '@/lib/sugestii'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -332,7 +332,7 @@ export default function DashboardPage() {
   useEffect(()=>{
     try{
       const q=new URLSearchParams(window.location.search).get('mesaje')
-      if(q&&['dim','mul','sos','prop','numere'].includes(q)){ deschideMesaje(q as FilaMesaje); window.history.replaceState(null,'','/') }
+      if(q&&['dim','mul','rec','sos','prop','numere'].includes(q)){ deschideMesaje(q as FilaMesaje); window.history.replaceState(null,'','/') }
     }catch{}
   },[])
   // Rezervari din azi + urmatoarele 3 zile FARA telefon (cerut direct: sa le completam din timp,
@@ -421,6 +421,15 @@ export default function DashboardPage() {
       tasks.push({id,rawId:r.id,categorie:'multumire',icon:'🙏',accent:'#6CC28F',titluCategorie:'Mulțumire după plecare',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??MSG_MULTUMIRE})
+    })
+    // Cererea de recenzie Facebook (cerut direct: „altă secțiune de mesaje, alegem noi pe care să trimitem în funcție de
+    // cum reacționează oaspeții”) - optionala, pentru oaspetii plecati azi; ramane toata ziua, nu intra la „de trimis”
+    checkoutAzi.forEach((r:any)=>{
+      if(!mesajeSentIds.has('co-'+r.id)&&!eliberateIds.has(r.apartament?.id)) return
+      const id='rec-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'recenzie',icon:'⭐',accent:'#60A5FA',titluCategorie:'Recenzie Facebook (opțional)',
+        nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??MSG_RECENZIE_FB})
     })
     checkinAzi.forEach((r:any)=>{
       // dupa 15:00 SAU cu curatenia gata: confirmarea netrimisa nu mai are rost, ramane doar mesajul cu datele de acces
@@ -972,7 +981,7 @@ export default function DashboardPage() {
             deschide "Mesaje pe rand" (cerut direct: varianta de telefon, mai simplu) */}
         {(()=>{
           const ramase=(f:FilaMesaje)=>mesajeTasks.filter(t=>filaMesaj(t.categorie)===f&&!mesajeSentIds.has(t.id)).length
-          const nDim=ramase('dim'), nMul=ramase('mul'), nSos=ramase('sos'), nProp=ramase('prop'), nNr=numereLipsa.length
+          const nDim=ramase('dim'), nMul=ramase('mul'), nRec=ramase('rec'), nSos=ramase('sos'), nProp=ramase('prop'), nNr=numereLipsa.length
           const tot=nDim+nMul+nSos+nProp
           if(!mesajeTasks.length&&!nNr) return null
           const chip=(l:string,n:number,f:FilaMesaje,c:string)=>n>0&&(
@@ -984,7 +993,7 @@ export default function DashboardPage() {
               <div style={{flex:1,minWidth:150}}>
                 <div style={{fontSize:13.5,fontWeight:800,color:'#E8F4FF'}}>{tot?`${tot} ${tot===1?'mesaj':'mesaje'} de trimis azi`:'Mesajele de azi sunt trimise ✓'}</div>
                 <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginTop:6}}>
-                  {chip('Dimineața',nDim,'dim','#B29BD9')}{chip('🙏 Mulțumiri',nMul,'mul','#6CC28F')}{chip('Sosiri',nSos,'sos','#E3C77A')}{chip('Proprietari',nProp,'prop','#A497D6')}{chip('📵 Numere lipsă',nNr,'numere','#E08E8E')}
+                  {chip('Dimineața',nDim,'dim','#B29BD9')}{chip('🙏 Mulțumiri',nMul,'mul','#6CC28F')}{chip('⭐ Recenzii (opțional)',nRec,'rec','#60A5FA')}{chip('Sosiri',nSos,'sos','#E3C77A')}{chip('Proprietari',nProp,'prop','#A497D6')}{chip('📵 Numere lipsă',nNr,'numere','#E08E8E')}
                 </div>
               </div>
               {tot>0&&<button onClick={()=>deschideMesaje()} style={{padding:'10px 18px',borderRadius:10,border:'none',background:'#25D366',color:'#03250F',fontSize:13,fontWeight:800,cursor:'pointer'}}>Trimite pe rând</button>}

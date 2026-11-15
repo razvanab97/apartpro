@@ -6,7 +6,7 @@ import { SELECT_REZERVARE, cuApartament, payloadRezervare, salveazaRezervare } f
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import { marcheazaEliberat, anuleazaEliberat } from '@/lib/eliberare'
-import { MSG_MULTUMIRE, marcheazaMesajZi } from '@/lib/sugestii'
+import { MSG_MULTUMIRE, MSG_RECENZIE_FB, marcheazaMesajZi } from '@/lib/sugestii'
 import { majuscule } from '@/lib/actIdentitate'
 import { pregatesteCaptura, miniatura, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo, DoorOpen } from 'lucide-react'
@@ -242,7 +242,9 @@ export default function Agent() {
         setMsgs(ms => [...ms, { role: 'assistant', ts: Date.now(),
           content: viitor ? `🙏 Recomand și mesajul de mulțumire pentru ${prenume || 'oaspete'} — trimite-l după ora ${p.ora}, când a plecat:` : `🙏 Recomand să-i trimiți și mesajul de mulțumire lui ${prenume || 'oaspete'}:`,
           cards: [{ tip: 'mesaj', titlu: `Mulțumire după plecare — ${p.nume || ''}${p.nota ? ' · ' + p.nota : ''}`, text: MSG_MULTUMIRE, telefon: p.telefon || null, rezervare_id: p.rezervare_id || null,
-            idMesajZi: p.checkout_azi && p.rezervare_id ? 'mul-' + p.rezervare_id : null }] }])
+            idMesajZi: p.checkout_azi && p.rezervare_id ? 'mul-' + p.rezervare_id : null,
+            // cererea de recenzie e optionala: o adaugi doar daca oaspetele a reactionat bine
+            recenzie: { nume: p.nume || '', nota: p.nota || '', telefon: p.telefon || null, rezervare_id: p.rezervare_id || null, idMesajZi: p.checkout_azi && p.rezervare_id ? 'rec-' + p.rezervare_id : null } }] }])
       }
       window.dispatchEvent(new CustomEvent('rezervari:modificate'))
     } catch (e: any) {
@@ -336,6 +338,10 @@ export default function Agent() {
             onClick={() => { if (c.idMesajZi) marcheazaMesajZi(c.idMesajZi, 't').then(() => actualizeazaCard(mi, ci, { trimis: true })).catch(() => {}) }}
             style={{ ...btn('#25D366', '#03250F', 'transparent'), flex: 1.3 }}><MessageCircle size={13} /> Trimite pe WhatsApp</a>}
         </div>
+        {c.recenzie && !c.recenzieAdaugata && <button data-adauga-recenzie onClick={() => {
+            const r = c.recenzie; actualizeazaCard(mi, ci, { recenzieAdaugata: true })
+            setMsgs(ms => [...ms, { role: 'assistant', ts: Date.now(), content: '⭐ Cererea de recenzie pe Facebook:', cards: [{ tip: 'mesaj', titlu: `Recenzie Facebook — ${r.nume}${r.nota ? ' · ' + r.nota : ''}`, text: MSG_RECENZIE_FB, telefon: r.telefon, rezervare_id: r.rezervare_id, idMesajZi: r.idMesajZi }] }])
+          }} style={{ ...btn('rgba(96,165,250,0.1)', '#93C5FD', 'rgba(96,165,250,0.35)'), marginTop: 8, width: '100%' }}>⭐ Adaugă și cererea de recenzie pe Facebook</button>}
         {c.trimis && <div data-mesaj-trimis style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: '#4ADE80' }}>✓ Marcat trimis și în „Mesaje de azi”</div>}
         {!tel && <div style={{ marginTop: 6, fontSize: 11.5, color: '#FCD34D' }}>Rezervarea nu are telefon — copiază mesajul și trimite-l manual.</div>}
       </div>

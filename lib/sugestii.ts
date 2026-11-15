@@ -42,3 +42,8 @@ export async function marcheazaMesajZi(id: string, s: 't' | 's' | null) {
   const { error: e2 } = await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify(st) }, { onConflict: 'cheie' })
   if (e2) throw new Error(e2.message)
 }
+
+// Cererea de recenzie pe Facebook (textul utilizatorului) - OPTIONALA: o trimitem doar oaspetilor alesi de noi,
+// dupa cum reactioneaza (fila „Recenzii” din Mesaje de azi + butonul din Asistent dupa multumire)
+export const LINK_RECENZII_FB = 'https://www.facebook.com/abhomesro/reviews/'
+export const MSG_RECENZIE_FB = 'Părerea dumneavoastră despre ședere ne ajută atât pe noi, cât și pe viitorii oaspeți. Vă rugăm să ne lăsați o recenzie pe pagina noastră de Facebook.\n\nDeschideți linkul de mai jos și urmați pașii:\n\n„Recenzii” sau „96% recomandat”\n→ „Recomandați AB Homes IASI?”\n→ Alegeți „Da” sau „Nu”\n→ Scrieți părerea dumneavoastră\n→ Apăsați „Distribuie”\n\n' + LINK_RECENZII_FB + '\n\nVă mulțumim!'
