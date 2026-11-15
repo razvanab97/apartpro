@@ -393,6 +393,8 @@ export default function DashboardPage() {
   const [oraAcum,setOraAcum]=useState(()=>new Date().getHours())
   useEffect(()=>{ const id=setInterval(()=>setOraAcum(new Date().getHours()),30000); return ()=>clearInterval(id) },[])
   const dupaCheckin = oraAcum>=ORA_CHECKIN
+  const ORA_MULTUMIRE = 16
+  const MSG_MULTUMIRE = 'Ne-a făcut plăcere să fim, pentru o vreme, adresa dumneavoastră din Iași.\n\nSperăm că plecați cu bateriile puțin mai încărcate și măcar cu o amintire frumoasă din acest oraș.\n\nIar dacă vă întoarceți, acum aveți pe cineva aici. Scrieți-ne direct pe WhatsApp și găsim din nou un loc potrivit.\n\nDrum bun și toate cele bune! Data viitoare, să aveți mai mult timp de stat.'
   const gataCheckinsAzi = checkinAzi.filter((r:any)=>dupaCheckin||curatGata(r.apartament?.id))
   // Si rezervarile FARA telefon intra in mesaje (cerut direct: Booking nu mai trimite toate numerele) -
   // apar marcate "fara numar", cu camp de completat manual, nu dispar din lista
@@ -410,6 +412,15 @@ export default function DashboardPage() {
       tasks.push({id,rawId:r.id,categorie:'checkout',icon:'🌅',accent:'#B29BD9',titluCategorie:'Checkout',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
         telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??msgCheckoutGen(r,sabloaneCO)})
+    })
+    // Mesajul de multumire DUPA check-out (cerut direct, textul utilizatorului): apare dupa ce mesajul de check-out
+    // e trimis sau apartamentul e marcat „Eliberat” si ramane doar pana la 16:00 in ziua plecarii, apoi dispare.
+    if(oraAcum<ORA_MULTUMIRE) checkoutAzi.forEach((r:any)=>{
+      if(!mesajeSentIds.has('co-'+r.id)&&!eliberateIds.has(r.apartament?.id)) return
+      const id='mul-'+r.id, ov=mesajOverrides[id]
+      tasks.push({id,rawId:r.id,categorie:'multumire',icon:'🙏',accent:'#6CC28F',titluCategorie:'Mulțumire după plecare',
+        nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??MSG_MULTUMIRE})
     })
     checkinAzi.forEach((r:any)=>{
       // dupa 15:00 SAU cu curatenia gata: confirmarea netrimisa nu mai are rost, ramane doar mesajul cu datele de acces
@@ -448,7 +459,7 @@ export default function DashboardPage() {
         telefon:ov?.telefon??tel,mesaj:ov?.mesaj??msgCheckoutProprietar(r)})
     })
     return tasks
-  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,ghidApts,curatateInainte,curatenieAzi,curatenieGataIds,mesajOverrides,dupaCheckin,mesajeSentIds])
+  },[checkoutAzi,checkinAzi,gataCheckinsAzi,propNotif,ciProprietarAzi,coProprietarAzi,sabloaneCO,sabloaneSetari,sabloaneGata,ghidApts,curatateInainte,curatenieAzi,curatenieGataIds,mesajOverrides,dupaCheckin,mesajeSentIds,eliberateIds,oraAcum])
   // reminder de check-out pentru un apartament deja eliberat (si netrimis) -> scos automat
   const eliberatAuto=(t:MesajTask)=>t.categorie==='checkout'&&!mesajeSentIds.has(t.id)&&!!checkoutAzi.find((r:any)=>r.id===t.rawId&&eliberateIds.has(r.apartament?.id))
   const mesajeTasks = useMemo(()=>mesajeTasksToate.filter(t=>!mesajeAnulateIds.has(t.id)&&!eliberatAuto(t)),

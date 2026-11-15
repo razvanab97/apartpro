@@ -17,10 +17,11 @@ export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
 const FILE: { k: FilaMesaje; t: string }[] = [
   { k: 'dim', t: 'Dimineața' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
 ]
-export const filaMesaj = (c: string): FilaMesaje => c === 'checkout' ? 'dim' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
-const ORD: Record<string, number> = { checkout: 0, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
+export const filaMesaj = (c: string): FilaMesaje => (c === 'checkout' || c === 'multumire') ? 'dim' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
+const ORD: Record<string, number> = { checkout: 0, multumire: 0.5, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
 const KIND: Record<string, { l: string; c: string; bg: string }> = {
   checkout: { l: 'Checkout', c: '#C084FC', bg: 'rgba(192,132,252,0.14)' },
+  multumire: { l: 'Mulțumire · până la 16:00', c: '#6CC28F', bg: 'rgba(108,194,143,0.14)' },
   checkin: { l: 'Confirmare', c: '#FCD34D', bg: 'rgba(252,211,77,0.12)' },
   gata: { l: 'Date acces', c: '#7BC8FF', bg: 'rgba(77,163,255,0.14)' },
 }
