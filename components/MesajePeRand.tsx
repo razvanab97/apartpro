@@ -12,12 +12,13 @@ export type MesajRand = {
   curatenie?: { status: string; ora?: string | null; din?: string }   // din = curatata intr-o zi anterioara (dd.mm)
 }
 export type NumarLipsa = { id: string; nume_client: string; data_checkin: string; data_checkout: string; canal: string; nota?: string; apt?: string }
-export type FilaMesaje = 'dim' | 'sos' | 'prop' | 'numere'
+export type FilaMesaje = 'dim' | 'mul' | 'sos' | 'prop' | 'numere'
 
 const FILE: { k: FilaMesaje; t: string }[] = [
-  { k: 'dim', t: 'Dimineața' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
+  { k: 'dim', t: 'Dimineața' }, { k: 'mul', t: 'Mulțumiri' }, { k: 'sos', t: 'Sosiri' }, { k: 'prop', t: 'Proprietari' }, { k: 'numere', t: 'Numere lipsă' },
 ]
-export const filaMesaj = (c: string): FilaMesaje => (c === 'checkout' || c === 'multumire') ? 'dim' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
+// mesajele de multumire dupa plecare au fila lor (cerut direct: „să fie în secțiune separată de cele de check-out”)
+export const filaMesaj = (c: string): FilaMesaje => c === 'checkout' ? 'dim' : c === 'multumire' ? 'mul' : (c === 'checkin' || c === 'gata') ? 'sos' : 'prop'
 const ORD: Record<string, number> = { checkout: 0, multumire: 0.5, checkin: 1, gata: 2, 'prop-nou': 3, 'prop-ci': 4, 'prop-co': 5 }
 const KIND: Record<string, { l: string; c: string; bg: string }> = {
   checkout: { l: 'Checkout', c: '#C084FC', bg: 'rgba(192,132,252,0.14)' },
@@ -194,7 +195,7 @@ export default function MesajePeRand(p: {
             <span style={{ fontFamily: 'monospace', fontSize: 12, color: 'rgba(159,215,255,0.5)' }}>{trimise}/{total} trimise</span>
             <button onClick={p.onClose} aria-label="Închide" style={{ ...btn, fontSize: 18, padding: '0 4px' }}>✕</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 3, background: '#0E1B30', borderRadius: 11, padding: 3 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 3, background: '#0E1B30', borderRadius: 11, padding: 3 }}>
             {FILE.map(f => {
               const n = f.k === 'numere' ? numereRamase.length : deTrimis(f.k).length
               const gol = f.k !== 'numere' && totalFila(f.k).length === 0

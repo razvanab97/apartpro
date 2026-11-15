@@ -332,7 +332,7 @@ export default function DashboardPage() {
   useEffect(()=>{
     try{
       const q=new URLSearchParams(window.location.search).get('mesaje')
-      if(q&&['dim','sos','prop','numere'].includes(q)){ deschideMesaje(q as FilaMesaje); window.history.replaceState(null,'','/') }
+      if(q&&['dim','mul','sos','prop','numere'].includes(q)){ deschideMesaje(q as FilaMesaje); window.history.replaceState(null,'','/') }
     }catch{}
   },[])
   // Rezervari din azi + urmatoarele 3 zile FARA telefon (cerut direct: sa le completam din timp,
@@ -973,8 +973,8 @@ export default function DashboardPage() {
             deschide "Mesaje pe rand" (cerut direct: varianta de telefon, mai simplu) */}
         {(()=>{
           const ramase=(f:FilaMesaje)=>mesajeTasks.filter(t=>filaMesaj(t.categorie)===f&&!mesajeSentIds.has(t.id)).length
-          const nDim=ramase('dim'), nSos=ramase('sos'), nProp=ramase('prop'), nNr=numereLipsa.length
-          const tot=nDim+nSos+nProp
+          const nDim=ramase('dim'), nMul=ramase('mul'), nSos=ramase('sos'), nProp=ramase('prop'), nNr=numereLipsa.length
+          const tot=nDim+nMul+nSos+nProp
           if(!mesajeTasks.length&&!nNr) return null
           const chip=(l:string,n:number,f:FilaMesaje,c:string)=>n>0&&(
             <button key={f} onClick={()=>deschideMesaje(f)} style={{padding:'5px 10px',borderRadius:20,border:`1px solid ${c}55`,background:`${c}18`,color:c,fontSize:12.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{l} · {n}</button>
@@ -985,7 +985,7 @@ export default function DashboardPage() {
               <div style={{flex:1,minWidth:150}}>
                 <div style={{fontSize:13.5,fontWeight:800,color:'#E8F4FF'}}>{tot?`${tot} ${tot===1?'mesaj':'mesaje'} de trimis azi`:'Mesajele de azi sunt trimise ✓'}</div>
                 <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginTop:6}}>
-                  {chip('Dimineața',nDim,'dim','#B29BD9')}{chip('Sosiri',nSos,'sos','#E3C77A')}{chip('Proprietari',nProp,'prop','#A497D6')}{chip('📵 Numere lipsă',nNr,'numere','#E08E8E')}
+                  {chip('Dimineața',nDim,'dim','#B29BD9')}{chip('🙏 Mulțumiri',nMul,'mul','#6CC28F')}{chip('Sosiri',nSos,'sos','#E3C77A')}{chip('Proprietari',nProp,'prop','#A497D6')}{chip('📵 Numere lipsă',nNr,'numere','#E08E8E')}
                 </div>
               </div>
               {tot>0&&<button onClick={()=>deschideMesaje()} style={{padding:'10px 18px',borderRadius:10,border:'none',background:'#25D366',color:'#03250F',fontSize:13,fontWeight:800,cursor:'pointer'}}>Trimite pe rând</button>}
