@@ -138,6 +138,8 @@ export default function CalendarPage() {
   const [blocari, setBlocari]   = useState<Blocare[]>([])
   const [apts, setApts]         = useState<Apt[]>([])
   const [loading, setLoading]   = useState(true)
+  const [cereScrollAzi, setCereScrollAzi] = useState(0)
+  const gridRef = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [year, setYear]         = useState(new Date().getFullYear())
   const [month, setMonth]       = useState(new Date().getMonth())
@@ -491,6 +493,14 @@ export default function CalendarPage() {
   } : null
 
   const LABEL_W = 160
+  // derulare la ziua de azi: 2 zile inainte raman vizibile, langa coloana cu apartamentele (care e lipita in stanga)
+  useEffect(()=>{
+    if(!cereScrollAzi) return
+    const t=setTimeout(()=>{ const g=gridRef.current; if(!g) return
+      const x=Math.max(0,(todayDay-3)*COL_W)
+      g.scrollTo({left:x,behavior:'smooth'}) },60)
+    return ()=>clearTimeout(t)
+  },[cereScrollAzi,month,year,loading])
   const COL_W   = 44
   const ROW_H   = viewMode==='sume' ? 76 : 56
   const HDR_H   = 52
@@ -504,7 +514,9 @@ export default function CalendarPage() {
         <button onClick={prevMonth} style={{ width:34,height:34,borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',cursor:'pointer',color:'#7BC8FF',display:'flex',alignItems:'center',justifyContent:'center' }}><ChevronLeft size={16}/></button>
         <span style={{ fontSize:16,fontWeight:600,color:'#fff',minWidth:190,textAlign:'center' }}>{MONTHS[month]} {year}</span>
         <button onClick={nextMonth} style={{ width:34,height:34,borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',cursor:'pointer',color:'#7BC8FF',display:'flex',alignItems:'center',justifyContent:'center' }}><ChevronRight size={16}/></button>
-        <button onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel()}} style={{ fontSize:12,padding:'6px 14px',borderRadius:7,background:'rgba(77,163,255,0.15)',border:'1px solid rgba(77,163,255,0.3)',color:'#7BC8FF',cursor:'pointer' }}>Azi</button>
+        {/* „Vezi azi” (cerut direct: „un buton sus, Vezi azi, să ne ducă în dreptul zilei din calendar, cu bara de jos
+            deja setată, să vedem cum stăm”) - trece pe luna curenta si deruleaza grila orizontal pana la ziua de azi */}
+        <button data-vezi-azi onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel();setCereScrollAzi(n=>n+1)}} title="Du-te la ziua de azi" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.45)',color:'#4ADE80',cursor:'pointer',whiteSpace:'nowrap' }}>📍 Vezi azi</button>
 
         {/* toggle view */}
         <div style={{ display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(77,163,255,0.25)',flexShrink:0 }}>
@@ -558,15 +570,14 @@ export default function CalendarPage() {
       <div style={{ display:'flex', flex:1, overflow:'hidden', minHeight:0 }}>
 
         {/* ── Grid ── */}
-        <div style={{ flex:1, overflowX:'auto', overflowY:'auto', userSelect:'none' }}
+        <div ref={gridRef} data-grila-calendar style={{ flex:1, overflowX:'auto', overflowY:'auto', userSelect:'none' }}
           onClick={e=>{ if(!(e.target as HTMLElement).closest('[data-rez]')) setTooltip(null) }}>
-          <div style={{ minWidth: LABEL_W + zileVizibile*COL_W }}>
+          <div style={{ minWidth: LABEL_W + zileVizibile*COL_W + (viewMode==='sume'?90:0) }}>
 
             {/* Day headers */}
             <div style={{ display:'flex', position:'sticky', top:0, zIndex:15, background:'rgba(6,14,26,0.98)', borderBottom:'2px solid rgba(159,215,255,0.1)' }}>
               <div style={{ width:LABEL_W, flexShrink:0, height:HDR_H, borderRight:'1px solid rgba(159,215,255,0.1)' }}/>
 
-              {viewMode==='sume'&&<div style={{ width:90,flexShrink:0,height:HDR_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}><span style={{ fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.6)',letterSpacing:'.08em' }}>TOTAL</span></div>}
 
               {Array.from({length:zileVizibile},(_,i)=>{
                 const d   = i+1
@@ -582,7 +593,7 @@ export default function CalendarPage() {
                 const hdrBg   = isT?'rgba(74,222,128,0.08)':isWk?'rgba(107,142,255,0.06)':'transparent'
 
                 return (
-                  <div key={d}
+                  <div key={d} data-zi-azi={isT?'1':undefined}
                     onClick={()=>{ if(!isDragging) openDayInfo(d) }}
                     style={{ width:COL_W, flexShrink:0, height:HDR_H, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
                       background: selectedDay===d ? 'rgba(123,200,255,0.15)' : hdrBg,
@@ -600,6 +611,8 @@ export default function CalendarPage() {
                   </div>
                 )
               })}
+              {/* TOTAL la final, ca pe randuri (era la inceput si decala zilele din antet cu 2 coloane fata de rezervari) */}
+              {viewMode==='sume'&&<div style={{ width:90,flexShrink:0,height:HDR_H,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:12,borderLeft:'1px solid rgba(74,222,128,0.2)',background:'rgba(74,222,128,0.04)' }}><span style={{ fontSize:10,fontWeight:700,color:'rgba(74,222,128,0.6)',letterSpacing:'.08em' }}>TOTAL</span></div>}
             </div>
 
             {/* Apt rows */}
@@ -660,7 +673,7 @@ export default function CalendarPage() {
                           }
                           setIsDragging(false)
                         }}
-                        style={{ width:COL_W, flexShrink:0, height:ROW_H, position:'relative', background:cellBg, borderRight:`1px solid rgba(159,215,255,${isWk?'0.08':'0.04'})`, borderLeft: d===days+1 ? '2px solid rgba(167,139,250,0.45)' : undefined, cursor:r?'default':'crosshair', transition:'background .05s' }}>
+                        style={{ width:COL_W, flexShrink:0, height:ROW_H, position:'relative', background:cellBg, borderRight:`1px solid rgba(159,215,255,${isWk?'0.08':'0.04'})`, borderLeft: d===days+1 ? '2px solid rgba(167,139,250,0.45)' : isT ? '2px solid rgba(74,222,128,0.55)' : undefined, cursor:r?'default':'crosshair', transition:'background .05s' }}>
 
                         {/* Reservation bar */}
                         {r && isStart && (()=>{
