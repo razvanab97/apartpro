@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
   // suma de facturat scrisă la rezervare (setari suma_facturare_<id>), altfel totalul rezervării (valoarea brută)
   const { data: sf } = await supabase.from('setari').select('valoare').eq('cheie', `suma_facturare_${r.id}`).maybeSingle()
   const sumaFacturare = Number(sf?.valoare) > 0 ? Number(sf?.valoare) : (Number(r.valoare_bruta) || 0)
+  // dupa o stornare, factura noua are alta cheie de idempotenta in Oblio (altfel Oblio ar intoarce factura stornata)
+  const { data: stD } = await supabase.from('setari').select('valoare').eq('cheie', `stornari_factura_${r.id}`).maybeSingle()
+  let reemitere = 0; try { const v = JSON.parse(stD?.valoare || '[]'); if (Array.isArray(v)) reemitere = v.length } catch {}
   let resp: Response
   try {
     resp = await fetch(`${url.replace(/\/$/, '')}/api/oblio/factura-cazare`, {
@@ -68,6 +71,7 @@ export async function POST(req: NextRequest) {
         persoane: r.nr_persoane,
         suma: sumaFacturare,
         dataEmitere,
+        reemitere,
         client: { ...cl, tara: eRo ? 'Romania' : cl.tara },
       }),
     })

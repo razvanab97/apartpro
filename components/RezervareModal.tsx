@@ -204,6 +204,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [auto, setAuto] = useState<{ stare: 'idle' | 'salvez' | 'salvat' | 'eroare'; mesaj?: string; ora?: string }>({ stare: 'idle' })
   const autoInZbor = useRef(false), autoSalvate = useRef(false)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
+  // stornarea facturii emise (cerut direct: „funcția de stornare a unei facturi deja emise pe o rezervare anume”) + istoricul
+  const [storno, setStorno] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string; link?: string | null }>({ etapa: 'idle' })
+  const [stornari, setStornari] = useState<any[]>([])
   const [clientFact, setClientFact] = useState<ClientFactura>(CLIENT_GOL)
   const [firmaStare, setFirmaStare] = useState<{ incarc?: boolean; eroare?: string; avert?: string }>({})
   const [altaTara, setAltaTara] = useState(false)   // tara scrisa de mana (nu e in lista)
@@ -259,6 +262,17 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     })
     return () => { anulat = true }
   }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+  // istoricul stornarilor rezervarii (factura originala + factura de stornare, cu PDF)
+  useEffect(() => {
+    setStorno({ etapa: 'idle' }); setStornari([])
+    if (!open || !editing?.id) return
+    let anulat = false
+    supabase.from('setari').select('valoare').eq('cheie', `stornari_factura_${editing.id}`).maybeSingle().then(({ data }) => {
+      try { const v = JSON.parse(data?.valoare || '[]'); if (!anulat && Array.isArray(v)) setStornari(v) } catch {}
+    })
+    return () => { anulat = true }
+  }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ultima factura RH + data emiterii propusa - si la rezervarile noi, nesalvate inca
   useEffect(() => {
     if (!open || !editing) return
@@ -480,6 +494,26 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       onReload?.()
     } catch (e) {
       setFactura({ etapa: 'idle', eroare: e instanceof Error ? e.message : 'Emiterea a eșuat' })
+    }
+  }
+
+  async function stornezaFactura() {
+    if (!editing.id || !editing.factura_numar) return
+    setStorno({ etapa: 'trimit' })
+    try {
+      const res = await fetch('/api/factura-oblio/storno', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rezervareId: editing.id }) })
+      const out = await res.json().catch(() => ({}))
+      if (!res.ok || !out.storno?.numar) { setStorno({ etapa: 'idle', eroare: out.error || `Eroare ${res.status}` }); return }
+      // rezervarea revine la „Nefacturat” si in fereastra (si in „original”, ca salvarea automata sa nu rescrie factura veche)
+      const patch = { factura_serie: null, factura_numar: null, factura_link: null, factura_emisa_la: null, status_facturare: 'nefacturat' }
+      set(patch)
+      setOriginal((o: any) => ({ ...o, ...patch }))
+      if (Array.isArray(out.stornari)) setStornari(out.stornari)
+      setStorno({ etapa: 'idle', link: out.storno.link, info: out.avertisment || `Factura ${out.original.serie} ${out.original.numar} a fost stornată prin ${out.storno.serie} ${out.storno.numar} (trimisă în SPV). Poți emite o factură nouă.` })
+      setUltimaCerere(x => x + 1)
+      onReload?.()
+    } catch (e) {
+      setStorno({ etapa: 'idle', eroare: e instanceof Error ? e.message : 'Stornarea a eșuat' })
     }
   }
 
@@ -724,7 +758,33 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                     </a>
                   )}
                 </div>
-              ) : (<>
+              ) : null}
+              {/* Stornare factura emisa */}
+              {editing.factura_numar && editing.id && (storno.etapa === 'confirm' ? (
+                <div data-storno-confirm style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${C.red}66`, background: 'rgba(239,68,68,0.06)', fontSize: 12.5, lineHeight: 1.5, color: C.text2 }}>
+                  Stornezi factura <b style={{ color: C.text }}>{editing.factura_serie} {editing.factura_numar}</b>? Se emite în Oblio o factură <b>RH cu minus</b> (storno total, același client), cu data de azi.
+                  <div style={{ fontSize: 11, color: C.amber, marginTop: 4 }}>Se trimite automat în SPV — nu se poate retrage din aplicație. Rezervarea revine la „Nefacturat” și poți emite o factură nouă.</div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button type="button" className="rz-btn" onClick={() => setStorno({ etapa: 'idle' })}>Renunță</button>
+                    <button type="button" data-storno-da className="rz-btn" style={{ background: C.red, borderColor: C.red, color: '#fff', fontWeight: 700 }} onClick={stornezaFactura}>Da, stornează factura</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" data-storno className="rz-btn" disabled={storno.etapa === 'trimit'} onClick={() => setStorno({ etapa: 'confirm' })}
+                  style={{ width: '100%', justifyContent: 'center', marginTop: 8, color: C.red, borderColor: `${C.red}55` }}>
+                  {storno.etapa === 'trimit' ? <><Loader2 size={14} className="rz-spin" /> Se stornează…</> : '↩ Stornează factura'}
+                </button>
+              ))}
+              {storno.eroare && <div className="rz-msg rz-msg-err"><AlertTriangle size={13} /> {storno.eroare}</div>}
+              {storno.info && <div className="rz-msg" data-storno-info>{storno.info}{storno.link && <> · <a href={storno.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>PDF storno</a></>}</div>}
+              {stornari.length > 0 && (
+                <div data-istoric-stornari style={{ fontSize: 11.5, color: C.muted, margin: '8px 0', lineHeight: 1.6 }}>
+                  {stornari.map((x: any, i: number) => (
+                    <div key={i}>↩ {x.original?.link ? <a href={x.original.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{x.original?.serie} {x.original?.numar}</a> : `${x.original?.serie} ${x.original?.numar}`} stornată prin {x.storno?.link ? <a href={x.storno.link} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>{x.storno?.serie} {x.storno?.numar}</a> : `${x.storno?.serie} ${x.storno?.numar}`}{x.storno?.data ? ` · ${zz(x.storno.data)}` : ''}</div>
+                  ))}
+                </div>
+              )}
+              {!editing.factura_numar && (<>
                 {editing.canal === 'airbnb' && (
                   <div data-client-factura style={{ marginBottom: 10 }}>
                     <div data-ultima-factura style={{ fontSize: 12, marginBottom: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${ultimaFact.stare === 'eroare' ? C.amber : C.line}`, color: ultimaFact.stare === 'eroare' ? C.amber : C.muted, lineHeight: 1.45 }}>
