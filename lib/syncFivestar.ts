@@ -61,6 +61,53 @@ async function eliminaDubluriProaspete(idExtern: string): Promise<number> {
   return deSters.length
 }
 
+// ── Unire cu rezervarea creata intai in apartpro (cerut direct: „când avem aceeași rezervare, făcută întâi pe
+// XapartPro și apoi pe 5starDesk, la import, dacă se dovedește că sunt aceleași informații, să se unească cele 2
+// rezervări și să rămână doar cea creată pe apartpro ca originală, iar cealaltă cumva în spate”).
+// Originala din apartpro NU se suprascrie (nume, canal, preț, date, apartament, observații raman ale tale); primeste
+// doar ID-ul 5starDesk in observatii (+ marcajul „unită 5SD”, ca sincronizarile urmatoare sa o recunoasca) si,
+// daca ii lipsesc, telefonul / nr. de persoane. Datele din 5starDesk se pastreaza „in spate” in setari, pe rezervare.
+export const MARCAJ_UNITA = 'unită 5SD'
+export const CHEIE_UNITE = 'rez_unite_5sd'
+export type Unire5sd = { id5sd: string; nume: string; telefon: string|null; checkin: string; checkout: string; pret: number; canal: string; status: string; cod: string|null; unitaLa: string; la: string }
+export const esteUnita = (obs: any) => String(obs||'').split('|').some(x => x.trim() === MARCAJ_UNITA)
+export async function citesteUnite(): Promise<Record<string, Unire5sd>> {
+  const { data } = await supabase.from('setari').select('valoare').eq('cheie', CHEIE_UNITE).maybeSingle()
+  try { const v = JSON.parse(data?.valoare || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {} } catch { return {} }
+}
+async function salveazaUnire(rezId: string, u: Omit<Unire5sd,'unitaLa'|'la'>) {
+  const toate = await citesteUnite()   // citire proaspata (read-modify-write), ca doua sincronizari sa nu-si stearga datele
+  const prev = toate[rezId]
+  const nou: Unire5sd = { ...u, unitaLa: prev?.unitaLa || new Date().toISOString(), la: new Date().toISOString() }
+  if (prev && JSON.stringify({ ...prev, la: '' }) === JSON.stringify({ ...nou, la: '' })) return
+  toate[rezId] = nou
+  await supabase.from('setari').upsert({ cheie: CHEIE_UNITE, valoare: JSON.stringify(toate) }, { onConflict: 'cheie' })
+}
+const cifreTel9 = (t: any) => String(t||'').replace(/\D/g, '').slice(-9)
+const cuvinteNume = (n: any) => String(n||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z]+/).filter(w => w.length >= 3)
+// Cauta rezervarea creata in apartpro (fara ID 5starDesk) care e de fapt aceeasi cu rezervarea 5starDesk: pe acelasi
+// apartament, se suprapune pe date si are acelasi telefon sau un nume comun (sau exact aceleasi date); nealocata in
+// 5starDesk: acelasi check-in + telefon/nume. Doua potriviri la fel de bune -> nu se uneste nimic.
+export function alegeOriginala(cand: any[], x: { aptId: string|null; checkin: string; checkout: string; nume: string; telefon: string|null }): any|null {
+  const tel = cifreTel9(x.telefon), cuv = cuvinteNume(x.nume)
+  const scor = (r: any) => {
+    if (idsDinObs(r.observatii).length || r.status_rezervare === 'anulata') return 0
+    if (!(r.data_checkin < x.checkout && r.data_checkout > x.checkin)) return 0
+    const telEgal = tel.length === 9 && cifreTel9(r.telefon_client) === tel
+    const numeComun = cuvinteNume(r.nume_client).some(w => cuv.includes(w))
+    const aptEgal = !!x.aptId && r.apartament_id === x.aptId
+    const dateEgale = r.data_checkin === x.checkin && r.data_checkout === x.checkout
+    if (aptEgal) return (telEgal || numeComun) ? 3 + (dateEgale ? 1 : 0) + (telEgal ? 1 : 0) : (dateEgale ? 2 : 0)
+    if (!x.aptId && r.data_checkin === x.checkin && (telEgal || numeComun)) return 2 + (telEgal ? 1 : 0)
+    // pe alt apartament: doar cu acelasi telefon + nume comun + exact aceleasi date (o familie cu 2 camere pe aceleasi
+    // date nu trebuie lipita de camera gresita)
+    return dateEgale && telEgal && numeComun ? 2 : 0
+  }
+  const ok = cand.map(r => ({ r, s: scor(r) })).filter(c => c.s > 0).sort((a, b) => b.s - a.s)
+  if (!ok.length || (ok[1] && ok[1].s === ok[0].s)) return null
+  return ok[0].r
+}
+
 export function fmt5star(iso: string): string {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const d = new Date(iso)
@@ -221,6 +268,48 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
     const liber = (r:any) => { const ids = idsDinObs(r.observatii); return !idExternValid || !ids.length || ids.includes(idExtern) }
 
     if (existingById.length) (res.rezolvate ||= []).push(idExtern)
+
+    const notaApt = (id: string|null) => id ? ((apts||[]).find((a:any)=>a.id===id)?.nota || null) : null
+    const instantaneu = { id5sd: idExtern, nume: numeClient, telefon: telefon ? String(telefon) : null, checkin, checkout, pret: totalPret, canal, status: statusNou, cod: notaApt(aptId) }
+
+    // Originala din apartpro, deja unita la o sincronizare anterioara: nu i se schimba nimic din datele tale -
+    // doar statusul cazat/finalizat, telefonul / persoanele daca lipsesc; ce zice acum 5starDesk se pastreaza in spate
+    if (existingById.length && esteUnita(existingById[0].observatii) && idExternValid) {
+      const e = existingById[0], upd: any = {}
+      if (statusNou === 'finalizata' && e.status_rezervare === 'confirmata') upd.status_rezervare = 'finalizata'
+      if (telefon && !e.telefon_client) upd.telefon_client = String(telefon)
+      if (nrPersoane && !e.nr_persoane) upd.nr_persoane = nrPersoane
+      if (Object.keys(upd).length) await supabase.from('rezervari').update(upd).eq('id', e.id)
+      await salveazaUnire(e.id, instantaneu)
+      if (statusNou === 'anulata' && e.status_rezervare !== 'anulata') res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — anulată în 5starDesk, dar originala din apartpro rămâne activă — verifică` })
+      res.skipped++
+      res.logs.push({ type:'skip', msg: `🔗 ${e.nume_client} (${e.data_checkin}) — unită cu 5starDesk #${idExtern}${Object.keys(upd).length?' + actualizat ('+Object.keys(upd).join(',')+')':''}` })
+      return
+    }
+
+    // Prima intalnire: rezervarea 5starDesk are deja o pereche creata in apartpro -> se unesc, ramane cea din apartpro
+    if (!existingById.length && idExternValid && statusNou !== 'anulata' && checkin && checkout) {
+      const { data: candOrig } = await supabase.from('rezervari').select('*')
+        .lt('data_checkin', checkout).gt('data_checkout', checkin).neq('status_rezervare', 'anulata').limit(500)
+      const orig = alegeOriginala(candOrig||[], { aptId, checkin, checkout, nume: numeClient, telefon: telefon ? String(telefon) : null })
+      if (orig) {
+        const upd: any = { observatii: [orig.observatii, idExtern, MARCAJ_UNITA].filter(Boolean).join(' | ') }
+        if (telefon && !orig.telefon_client) upd.telefon_client = String(telefon)
+        if (nrPersoane && !orig.nr_persoane) upd.nr_persoane = nrPersoane
+        // pe alt apartament in 5starDesk -> nu se muta, doar se semnaleaza (Sync → „Camere semnalate”)
+        if (aptId && orig.apartament_id !== aptId && notaApt(aptId)) { upd.camera_semnalata = notaApt(aptId); upd.camera_semnalata_la = new Date().toISOString() }
+        const { error: uErr } = await supabase.from('rezervari').update(upd).eq('id', orig.id)
+        if (uErr) { const { camera_semnalata, camera_semnalata_la, ...fara } = upd; await supabase.from('rezervari').update(fara).eq('id', orig.id) }
+        await salveazaUnire(orig.id, instantaneu)
+        ;(res.rezolvate ||= []).push(idExtern)
+        res.skipped++
+        const dif = [orig.nume_client !== numeClient && `nume „${numeClient}”`, (orig.data_checkin !== checkin || orig.data_checkout !== checkout) && `date ${checkin}→${checkout}`,
+          totalPret > 0 && Math.round(Number(orig.suma_incasata)||0) !== Math.round(totalPret) && `preț ${totalPret}`, orig.canal !== canal && `canal ${canal}`,
+          aptId && orig.apartament_id !== aptId && `cameră ${notaApt(aptId)}`].filter(Boolean)
+        res.logs.push({ type:'ok', msg: `🔗 ${orig.nume_client} | ${orig.data_checkin}→${orig.data_checkout} | ${notaApt(orig.apartament_id)||''} — unită cu 5starDesk #${idExtern}; rămâne cea din apartpro${dif.length?' (în 5starDesk: '+dif.join(', ')+')':''}` })
+        return
+      }
+    }
 
     if (!aptId && !existingById.length) {
       res.skipped++

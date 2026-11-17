@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, 
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import NealocatePanel from '@/components/NealocatePanel'
+import Unire5sdInfo from '@/components/Unire5sd'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
@@ -1116,6 +1117,7 @@ Echipa AB Homes Iași`)}
             </button>
           )}
 
+          <Unire5sdInfo rez={tooltip.rez}/>
           {tooltip.rez.observatii&&(
             <div style={{ marginBottom:14,padding:'8px 10px',background:'rgba(252,211,77,0.06)',border:'1px solid rgba(252,211,77,0.15)',borderRadius:7 }}>
               <div style={{ fontSize:9,color:'rgba(252,211,77,0.6)',marginBottom:3,textTransform:'uppercase',letterSpacing:'.06em' }}>Observații</div>
