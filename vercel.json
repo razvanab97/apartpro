@@ -7,6 +7,14 @@
     {
       "path": "/api/cron-stiri?secret=apartpro-cron-2026",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron-incasari?secret=apartpro-cron-2026",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron-incasari?secret=apartpro-cron-2026",
+      "schedule": "0 14 * * *"
     }
   ]
 }

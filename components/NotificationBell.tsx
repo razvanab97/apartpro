@@ -9,6 +9,7 @@ const TIP_ICON: Record<string, string> = {
   curatenie: '🧹',
   eliberat: '🚪',
   sugestie: '💬',
+  incasare: '💰',
   task: '🔔',
   default: '📣',
 }
