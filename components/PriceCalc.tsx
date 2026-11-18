@@ -31,7 +31,8 @@ function nightsBetween(a: string, b: string): number {
   return n > 0 ? n : 0
 }
 
-function RangeCalendar({ checkin, checkout, onPick }: {
+// exportat si pentru Calendar → „Alege data” (cerut direct: „calendarul să fie interactiv, ca cel din calculator”)
+export function RangeCalendar({ checkin, checkout, onPick }: {
   checkin: string; checkout: string; onPick: (checkin: string, checkout: string) => void
 }) {
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(checkin ? new Date(checkin) : new Date()))

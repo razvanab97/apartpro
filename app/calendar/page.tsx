@@ -10,6 +10,7 @@ import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import NealocatePanel from '@/components/NealocatePanel'
 import Unire5sdInfo from '@/components/Unire5sd'
+import { RangeCalendar } from '@/components/PriceCalc'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
@@ -140,6 +141,13 @@ export default function CalendarPage() {
   const [apts, setApts]         = useState<Apt[]>([])
   const [loading, setLoading]   = useState(true)
   const [cereScrollAzi, setCereScrollAzi] = useState(0)
+  // „Alege data” (cerut direct: „să putem selecta o dată din oricare lună și să vedem cum stăm în perioada aceea; calendarul
+  // interactiv, ca cel din calculator”): o zi -> sare acolo; si a doua zi -> perioada marcata + rezumat (libere / ocupare)
+  const [scrollTinta, setScrollTinta] = useState<string|null>(null)
+  const [perioada, setPerioada] = useState<{start:string;end:string}|null>(null)
+  const [pickerData, setPickerData] = useState(false)
+  const [rezumatPer, setRezumatPer] = useState<{nopti:number;libere:string[];ocupare:number;total:number}|null>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [year, setYear]         = useState(new Date().getFullYear())
@@ -498,10 +506,38 @@ export default function CalendarPage() {
   useEffect(()=>{
     if(!cereScrollAzi) return
     const t=setTimeout(()=>{ const g=gridRef.current; if(!g) return
-      const x=Math.max(0,(todayDay-3)*COL_W)
+      // ziua tinta: cea aleasa in „Alege data” (daca e in luna afisata), altfel azi
+      const zi=scrollTinta&&Number(scrollTinta.slice(0,4))===year&&Number(scrollTinta.slice(5,7))-1===month?Number(scrollTinta.slice(8,10)):todayDay
+      const x=Math.max(0,(zi-3)*COL_W)
       g.scrollTo({left:x,behavior:'smooth'}) },60)
     return ()=>clearTimeout(t)
-  },[cereScrollAzi,month,year,loading])
+  },[cereScrollAzi,month,year,loading])  // eslint-disable-line react-hooks/exhaustive-deps
+  // inchide calendarul „Alege data” la click in afara lui
+  useEffect(()=>{
+    if(!pickerData) return
+    const f=(e:MouseEvent)=>{ if(pickerRef.current&&!pickerRef.current.contains(e.target as Node)) setPickerData(false) }
+    document.addEventListener('mousedown',f); return ()=>document.removeEventListener('mousedown',f)
+  },[pickerData])
+  // „cum stăm” in perioada aleasa: apartamente libere toata perioada + grad de ocupare (direct din baza, orice luna)
+  useEffect(()=>{
+    setRezumatPer(null)
+    if(!perioada?.end||!apts.length) return
+    let anulat=false
+    const {start,end}=perioada
+    supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,camera_semnalata').neq('status_rezervare','anulata').lt('data_checkin',end).gt('data_checkout',start).limit(2000).then(({data})=>{
+      if(anulat) return
+      const zi=(a:string,b:string)=>Math.round((new Date(b+'T12:00:00').getTime()-new Date(a+'T12:00:00').getTime())/86400000)
+      const nopti=zi(start,end), ids=new Set(apts.map(a=>a.id)), ocup:Record<string,number>={}
+      for(const r of (data||[]) as any[]){ if(r.camera_semnalata==='NEALOCAT'||!ids.has(r.apartament_id)) continue
+        const a=r.data_checkin>start?r.data_checkin:start, b=r.data_checkout<end?r.data_checkout:end
+        ocup[r.apartament_id]=Math.min(nopti,(ocup[r.apartament_id]||0)+Math.max(0,zi(a,b))) }
+      const libere=apts.filter(a=>!ocup[a.id]).map(a=>a.nota||a.nume)
+      const tot=Object.values(ocup).reduce((x,y)=>x+y,0)
+      setRezumatPer({nopti,libere,total:apts.length,ocupare:nopti*apts.length?Math.round(tot/(nopti*apts.length)*100):0})
+    })
+    return ()=>{anulat=true}
+  },[perioada?.start,perioada?.end,apts.length])  // eslint-disable-line react-hooks/exhaustive-deps
+  const inPerioada=(ds:string)=>!!perioada&&ds>=perioada.start&&ds<=(perioada.end?isoDate(+perioada.end.slice(0,4),+perioada.end.slice(5,7)-1,+perioada.end.slice(8,10)-1):perioada.start)
   const COL_W   = 44
   const ROW_H   = viewMode==='sume' ? 76 : 56
   const HDR_H   = 52
@@ -511,13 +547,26 @@ export default function CalendarPage() {
   return (
     <>
       {/* ── Nav bar ── */}
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 20px', borderBottom:'1px solid rgba(159,215,255,0.08)', background:'rgba(6,14,26,0.9)', position:'sticky', top:0, zIndex:20, flexShrink:0 }}>
+      <div className="cal-nav" style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:10, padding:'10px 20px', borderBottom:'1px solid rgba(159,215,255,0.08)', background:'rgba(6,14,26,0.9)', position:'sticky', top:0, zIndex:20, flexShrink:0 }}>
         <button onClick={prevMonth} style={{ width:34,height:34,borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',cursor:'pointer',color:'#7BC8FF',display:'flex',alignItems:'center',justifyContent:'center' }}><ChevronLeft size={16}/></button>
-        <span style={{ fontSize:16,fontWeight:600,color:'#fff',minWidth:190,textAlign:'center' }}>{MONTHS[month]} {year}</span>
+        <span className="cal-luna" style={{ fontSize:16,fontWeight:600,color:'#fff',minWidth:190,textAlign:'center' }}>{MONTHS[month]} {year}</span>
         <button onClick={nextMonth} style={{ width:34,height:34,borderRadius:8,background:'rgba(77,163,255,0.12)',border:'1px solid rgba(77,163,255,0.25)',cursor:'pointer',color:'#7BC8FF',display:'flex',alignItems:'center',justifyContent:'center' }}><ChevronRight size={16}/></button>
         {/* „Vezi azi” (cerut direct: „un buton sus, Vezi azi, să ne ducă în dreptul zilei din calendar, cu bara de jos
             deja setată, să vedem cum stăm”) - trece pe luna curenta si deruleaza grila orizontal pana la ziua de azi */}
-        <button data-vezi-azi onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel();setCereScrollAzi(n=>n+1)}} title="Du-te la ziua de azi" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.45)',color:'#4ADE80',cursor:'pointer',whiteSpace:'nowrap' }}>📍 Vezi azi</button>
+        <button data-vezi-azi onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel();setScrollTinta(null);setPerioada(null);setCereScrollAzi(n=>n+1)}} title="Du-te la ziua de azi" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.45)',color:'#4ADE80',cursor:'pointer',whiteSpace:'nowrap' }}>📍 Vezi azi</button>
+        <div ref={pickerRef} style={{ position:'relative' }}>
+          <button data-alege-data onClick={()=>setPickerData(o=>!o)} title="Alege o zi sau o perioadă din orice lună" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:perioada?'rgba(167,139,250,0.2)':'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.45)',color:'#C4B5FD',cursor:'pointer',whiteSpace:'nowrap' }}>📅 Alege data</button>
+          {pickerData&&(
+            <div data-picker-data style={{ position:'absolute',top:'calc(100% + 8px)',left:0,zIndex:60,width:300,maxWidth:'calc(100vw - 32px)',padding:14,borderRadius:12,background:'rgba(8,18,36,0.98)',border:'1px solid rgba(167,139,250,0.35)',boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
+              <RangeCalendar checkin={perioada?.start||''} checkout={perioada?.end||''} onPick={(a,b)=>{
+                setPerioada({start:a,end:b}); setScrollTinta(a)
+                setYear(+a.slice(0,4)); setMonth(+a.slice(5,7)-1); clearSel(); setCereScrollAzi(n=>n+1)
+                if(b) setPickerData(false)
+              }}/>
+              <div style={{ fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:10,lineHeight:1.45 }}>Alege o zi ca să sari acolo; alege și a doua zi (plecarea) ca să vezi cum stai pe toată perioada.</div>
+            </div>
+          )}
+        </div>
 
         {/* toggle view */}
         <div style={{ display:'flex',borderRadius:7,overflow:'hidden',border:'1px solid rgba(77,163,255,0.25)',flexShrink:0 }}>
@@ -529,7 +578,7 @@ export default function CalendarPage() {
         </div>
 
         {/* hint drag */}
-        {!selRange && <span style={{ fontSize:11,color:'rgba(159,215,255,0.3)',marginLeft:4 }}>Trage pe un apartament pentru a adăuga rezervare</span>}
+        {!selRange && <span className="cal-hint" style={{ fontSize:11,color:'rgba(159,215,255,0.3)',marginLeft:4 }}>Trage pe un apartament pentru a adăuga rezervare</span>}
 
         {/* actiune selectie */}
         {selRange && (
@@ -546,7 +595,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:14 }}>
+        <div className="cal-legenda" style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:14 }}>
           {(['airbnb','booking','direct','intern'] as const).map(k=>(
             <div key={k} style={{ display:'flex',alignItems:'center',gap:5,fontSize:11,color:'rgba(159,215,255,0.45)' }}>
               <div style={{ width:14,height:10,borderRadius:3,background:cs(k).bg }}/>{k==='intern'?'Intern':k.charAt(0).toUpperCase()+k.slice(1)}
@@ -565,6 +614,22 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {perioada&&(()=>{
+        const fz=(d:string)=>`${+d.slice(8,10)} ${MONTHS[+d.slice(5,7)-1].slice(0,3).toLowerCase()} ${d.slice(0,4)}`
+        return (
+          <div data-rezumat-perioada style={{ display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,padding:'8px 20px',borderBottom:'1px solid rgba(167,139,250,0.25)',background:'rgba(167,139,250,0.08)',fontSize:12.5,color:'rgba(214,228,244,0.85)' }}>
+            <b style={{ color:'#C4B5FD' }}>📅 {perioada.end?`${fz(perioada.start)} → ${fz(perioada.end)}`:fz(perioada.start)}</b>
+            {!perioada.end&&<span style={{ color:'rgba(159,215,255,0.5)' }}>alege și ziua plecării ca să vezi cum stai pe perioadă</span>}
+            {perioada.end&&!rezumatPer&&<span style={{ color:'rgba(159,215,255,0.5)' }}>se calculează…</span>}
+            {perioada.end&&rezumatPer&&<>
+              <span>{rezumatPer.nopti} {rezumatPer.nopti===1?'noapte':'nopți'}</span>
+              <span>· ocupare <b style={{ color:rezumatPer.ocupare>=60?'#4ADE80':'#FBBF24' }}>{rezumatPer.ocupare}%</b></span>
+              <span title={rezumatPer.libere.join(', ')}>· libere toată perioada: <b style={{ color:'#4ADE80' }}>{rezumatPer.libere.length}/{rezumatPer.total}</b>{rezumatPer.libere.length>0&&<span style={{ color:'rgba(159,215,255,0.55)' }}> ({rezumatPer.libere.join(', ')})</span>}</span>
+            </>}
+            <button data-sterge-perioada onClick={()=>{setPerioada(null);setScrollTinta(null)}} title="Șterge selecția" style={{ marginLeft:'auto',background:'none',border:'none',color:'rgba(159,215,255,0.55)',cursor:'pointer',display:'flex' }}><X size={15}/></button>
+          </div>
+        )
+      })()}
       <NealocatePanel apts={apts} onAlocat={load}/>
 
       {/* ── Layout ── */}
@@ -597,10 +662,10 @@ export default function CalendarPage() {
                   <div key={d} data-zi-azi={isT?'1':undefined}
                     onClick={()=>{ if(!isDragging) openDayInfo(d) }}
                     style={{ width:COL_W, flexShrink:0, height:HDR_H, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
-                      background: selectedDay===d ? 'rgba(123,200,255,0.15)' : hdrBg,
+                      background: selectedDay===d ? 'rgba(123,200,255,0.15)' : inPerioada(ds) ? 'rgba(167,139,250,0.22)' : hdrBg,
                       borderRight:'1px solid rgba(159,215,255,0.06)',
                       borderLeft: d===days+1 ? '2px solid rgba(167,139,250,0.55)' : undefined,
-                      borderBottom: selectedDay===d ? '2px solid #7BC8FF' : '2px solid transparent',
+                      borderBottom: selectedDay===d ? '2px solid #7BC8FF' : inPerioada(ds) ? '2px solid #A78BFA' : '2px solid transparent',
                       opacity: extra && selectedDay!==d ? 0.62 : 1,
                       cursor:'pointer', transition:'background .12s', userSelect:'none',
                       position:'relative' as const }}>
@@ -739,6 +804,7 @@ export default function CalendarPage() {
                         {isT && <div style={{ position:'absolute', top:0, bottom:0, left:'50%', width:2, background:'rgba(74,222,128,0.5)', zIndex:10, pointerEvents:'none' }}/>}
                         {isWk && !isT && <div style={{ position:'absolute', top:0, bottom:0, left:0, width:1, background:'rgba(107,142,255,0.15)', zIndex:3, pointerEvents:'none' }}/>}
                         {selectedDay===d && <div style={{ position:'absolute', top:0, bottom:0, left:0, right:0, background:'rgba(123,200,255,0.07)', borderLeft:'2px solid rgba(123,200,255,0.5)', zIndex:8, pointerEvents:'none' }}/>}
+                        {inPerioada(ds) && <div data-perioada-celula style={{ position:'absolute', top:0, bottom:0, left:0, right:0, background:'rgba(167,139,250,0.10)', zIndex:7, pointerEvents:'none' }}/>}
                       </div>
                     )
                   })}
@@ -1256,6 +1322,12 @@ Echipa AB Homes Iași`)}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; }
+        /* telefon: bara de sus trece pe mai multe randuri, fara indiciu si legenda (iesea din ecran) */
+        @media (max-width: 700px) {
+          .cal-nav { padding: 8px 12px !important; gap: 6px !important; }
+          .cal-luna { min-width: 0 !important; font-size: 14px !important; }
+          .cal-hint, .cal-legenda { display: none !important; }
+        }
       `}</style>
     </>
   )
