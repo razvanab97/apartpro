@@ -322,17 +322,25 @@ export default function MesajePeRand(p: {
                   Folosește {p.telSugestii[curent.nume]} (rezervare anterioară)
                 </button>
               )}
-              {curent.categorie === 'multumire' && (
-                <div data-variante-multumire style={{ display: 'flex', gap: 6 }}>
+              {/* Multumire (cerut direct: „să avem 2 mesaje în zona de plecare azi și să alegem pe care să-l trimitem”): ambele
+                  variante, una sub alta; apesi pe cea dorita -> „Trimite pe WhatsApp” o trimite pe ea (ultima aleasa = implicita) */}
+              {curent.categorie === 'multumire' && !editez && VARIANTE_MULTUMIRE.some(v => v.text === curent.mesaj) && (
+                <div data-variante-multumire style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                   {VARIANTE_MULTUMIRE.map(v => { const activ = curent.mesaj === v.text
-                    return <button key={v.k} data-varianta={v.k} onClick={() => { alegeVariantaMultumire(v.k); p.onUpdate(curent.id, { mesaj: v.text }) }}
-                      style={{ padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${activ ? '#6CC28F' : 'rgba(159,215,255,0.18)'}`, background: activ ? 'rgba(108,194,143,0.18)' : 'transparent', color: activ ? '#6CC28F' : 'rgba(214,228,244,0.7)' }}>{v.l}</button> })}
+                    return <button key={v.k} data-varianta={v.k} data-activ={activ ? '1' : undefined} onClick={() => { alegeVariantaMultumire(v.k); p.onUpdate(curent.id, { mesaj: v.text }) }}
+                      style={{ textAlign: 'left', cursor: 'pointer', borderRadius: 12, padding: '8px 12px 10px', border: `${activ ? 2 : 1}px solid ${activ ? '#6CC28F' : 'rgba(159,215,255,0.14)'}`, background: activ ? 'rgba(108,194,143,0.10)' : '#0A1424', opacity: activ ? 1 : 0.75, fontFamily: 'inherit' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: activ ? '#6CC28F' : 'rgba(214,228,244,0.75)' }}>{v.l}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: activ ? '#6CC28F' : 'rgba(159,215,255,0.45)' }}>{activ ? '✓ Se trimite acesta' : 'Alege acesta'}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.55, color: 'rgba(214,228,244,0.85)', whiteSpace: 'pre-wrap' }}>{v.text}</div>
+                    </button> })}
                 </div>
               )}
               {editez ? (
                 <textarea className="mpr-text" value={curent.mesaj} onChange={e => p.onUpdate(curent.id, { mesaj: e.target.value })} autoFocus
                   style={{ width: '100%', flex: 1, minHeight: 90, background: '#0A1424', border: '1px solid rgba(77,163,255,0.35)', borderRadius: 12, color: '#E8F4FF', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '10px 12px', resize: 'none', outline: 'none' }}/>
-              ) : (
+              ) : (curent.categorie === 'multumire' && VARIANTE_MULTUMIRE.some(v => v.text === curent.mesaj)) ? null : (
                 <div className="mpr-text" onClick={() => setEditez(true)} style={{ background: '#0A1424', border: '1px solid rgba(159,215,255,0.1)', borderRadius: 12, padding: '10px 12px', fontSize: 13, lineHeight: 1.6, color: 'rgba(214,228,244,0.8)', whiteSpace: 'pre-wrap', flex: 1, minHeight: 90, overflowY: 'auto', cursor: 'text' }}>{curent.mesaj}</div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
