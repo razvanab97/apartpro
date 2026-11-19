@@ -27,7 +27,22 @@ export type Sugestie = {
 }
 
 // Mesajul de multumire dupa plecare (textul utilizatorului) - acelasi in „Mesaje de azi” (fila Mulțumiri) si in Asistent
-export const MSG_MULTUMIRE = 'Ne-a făcut plăcere să fim, pentru o vreme, adresa dumneavoastră din Iași.\n\nSperăm că plecați cu bateriile puțin mai încărcate și măcar cu o amintire frumoasă din acest oraș.\n\nIar dacă vă întoarceți, acum aveți pe cineva aici. Scrieți-ne direct pe WhatsApp și găsim din nou un loc potrivit.\n\nDrum bun și toate cele bune! Data viitoare, să aveți mai mult timp de stat.\n\nP.S. Lucrăm la câteva îmbunătățiri ale locației. Dacă aveți sugestii, ne-ar ajuta mult să ni le lăsați aici (durează un minut): '+LINK_SUGESTII
+export const PS_SUGESTII = 'P.S. Lucrăm la câteva îmbunătățiri ale locației. Dacă aveți sugestii, ne-ar ajuta mult să ni le lăsați aici (durează un minut): '+LINK_SUGESTII
+export const MSG_MULTUMIRE = 'Ne-a făcut plăcere să fim, pentru o vreme, adresa dumneavoastră din Iași.\n\nSperăm că plecați cu bateriile puțin mai încărcate și măcar cu o amintire frumoasă din acest oraș.\n\nIar dacă vă întoarceți, acum aveți pe cineva aici. Scrieți-ne direct pe WhatsApp și găsim din nou un loc potrivit.\n\nDrum bun și toate cele bune! Data viitoare, să aveți mai mult timp de stat.\n\n'+PS_SUGESTII
+// Varianta standard, scurta (cerut direct: „așa cum avem mesajul de check-out frumos, vreau și un mesaj standard: Mulțumim
+// pentru ședere, sperăm că totul a fost în ordine. Vă mai așteptăm cu drag și cu altă ocazie, toate cele bune! și la final
+// partea cu P.S.”). Pe fiecare mesaj de multumire alegi varianta; ultima aleasa devine implicita (pe dispozitiv).
+export const MSG_MULTUMIRE_STANDARD = 'Vă mulțumim pentru ședere, sperăm că totul a fost în ordine.\n\nVă mai așteptăm cu drag și cu altă ocazie.\n\nToate cele bune!\n\n'+PS_SUGESTII
+export const VARIANTE_MULTUMIRE = [
+  { k: 'frumos', l: '✨ Frumos', text: MSG_MULTUMIRE },
+  { k: 'standard', l: '📝 Standard', text: MSG_MULTUMIRE_STANDARD },
+] as const
+const CHEIE_VARIANTA = 'multumire_varianta'
+export function textMultumireImplicit(): string {
+  try { if (typeof window !== 'undefined' && localStorage.getItem(CHEIE_VARIANTA) === 'standard') return MSG_MULTUMIRE_STANDARD } catch {}
+  return MSG_MULTUMIRE
+}
+export function alegeVariantaMultumire(k: string) { try { localStorage.setItem(CHEIE_VARIANTA, k) } catch {} }
 
 // Starea mesajelor de azi (aceeasi inregistrare ca in Dashboard: setari „mesaje_zi_AAAA-LL-ZZ”, {idMesaj: {s:'t'|'s', la}}).
 // Folosita de Asistent: o multumire trimisa de acolo nu mai apare de trimis in „Mesaje de azi”.

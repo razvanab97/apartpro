@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase, aziLocal, normalizeWaPhone, notificaProprietar, pretRezervareText, CANALE_LABEL } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid, type InfoGhid } from '@/lib/ghidLink'
 import { PageHeader } from '@/components/Layout'
-import { MSG_MULTUMIRE, MSG_RECENZIE_FB } from '@/lib/sugestii'
+import { textMultumireImplicit, MSG_RECENZIE_FB } from '@/lib/sugestii'
 import MesajePeRand, { filaMesaj, type FilaMesaje, type NumarLipsa } from '@/components/MesajePeRand'
 import { CanalBadge, PageLoading, ConnectionError } from '@/components/ui'
 import { Building2, CalendarCheck, TrendingUp, DollarSign, AlertCircle, CheckSquare, ArrowUpRight, LogIn, LogOut, Activity, Percent, Check, ChevronDown, AlertTriangle, MessageCircle, Key, BedDouble, Phone , RefreshCw } from 'lucide-react'
@@ -422,7 +422,7 @@ export default function DashboardPage() {
       const id='mul-'+r.id, ov=mesajOverrides[id]
       tasks.push({id,rawId:r.id,categorie:'multumire',icon:'🙏',accent:'#6CC28F',titluCategorie:'Mulțumire după plecare',
         nume:r.nume_client,nota:r.apartament?.nota,apt:r.apartament?.nume,linie2:r.apartament?.nume,
-        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??MSG_MULTUMIRE})
+        telefon:ov?.telefon??r.telefon_client??'',faraTelefon:!r.telefon_client,mesaj:ov?.mesaj??textMultumireImplicit()})
     })
     // Cererea de recenzie Facebook (cerut direct: „altă secțiune de mesaje, alegem noi pe care să trimitem în funcție de
     // cum reacționează oaspeții”) - optionala, pentru oaspetii plecati azi; ca si multumirea, doar pana la 16:00

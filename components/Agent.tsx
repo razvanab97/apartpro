@@ -6,7 +6,7 @@ import { SELECT_REZERVARE, cuApartament, payloadRezervare, salveazaRezervare } f
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import { marcheazaEliberat, anuleazaEliberat } from '@/lib/eliberare'
-import { MSG_MULTUMIRE, MSG_RECENZIE_FB, marcheazaMesajZi } from '@/lib/sugestii'
+import { textMultumireImplicit, VARIANTE_MULTUMIRE, alegeVariantaMultumire, MSG_RECENZIE_FB, marcheazaMesajZi } from '@/lib/sugestii'
 import { majuscule } from '@/lib/actIdentitate'
 import { pregatesteCaptura, miniatura, MAX_CAPTURI, type Captura } from '@/lib/capturiScan'
 import { Sparkles, X, Send, Loader2, Mic, Paperclip, Copy, Check, MessageCircle, RotateCcw, History, Trash2, Pin, AlertTriangle, CalendarPlus, Ban, MoveRight, Pencil, ListTodo, DoorOpen } from 'lucide-react'
@@ -241,7 +241,7 @@ export default function Agent() {
         const viitor = /pleacă la/.test(text)
         setMsgs(ms => [...ms, { role: 'assistant', ts: Date.now(),
           content: viitor ? `🙏 Recomand și mesajul de mulțumire pentru ${prenume || 'oaspete'} — trimite-l după ora ${p.ora}, când a plecat:` : `🙏 Recomand să-i trimiți și mesajul de mulțumire lui ${prenume || 'oaspete'}:`,
-          cards: [{ tip: 'mesaj', titlu: `Mulțumire după plecare — ${p.nume || ''}${p.nota ? ' · ' + p.nota : ''}`, text: MSG_MULTUMIRE, telefon: p.telefon || null, rezervare_id: p.rezervare_id || null,
+          cards: [{ tip: 'mesaj', titlu: `Mulțumire după plecare — ${p.nume || ''}${p.nota ? ' · ' + p.nota : ''}`, text: textMultumireImplicit(), telefon: p.telefon || null, rezervare_id: p.rezervare_id || null,
             idMesajZi: p.checkout_azi && p.rezervare_id ? 'mul-' + p.rezervare_id : null,
             // cererea de recenzie e optionala: o adaugi doar daca oaspetele a reactionat bine
             recenzie: { nume: p.nume || '', nota: p.nota || '', telefon: p.telefon || null, rezervare_id: p.rezervare_id || null, idMesajZi: p.checkout_azi && p.rezervare_id ? 'rec-' + p.rezervare_id : null } }] }])
@@ -329,6 +329,11 @@ export default function Agent() {
     return (
       <div key={ci} style={{ marginTop: 8, borderRadius: 14, border: '1px solid rgba(37,211,102,0.3)', background: 'rgba(10,30,24,0.6)', padding: 12 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: '#4ADE80', marginBottom: 6 }}>💬 {c.titlu}</div>
+        {(String(c.idMesajZi || '').startsWith('mul-') || String(c.titlu || '').startsWith('Mulțumire')) && <div data-variante-multumire style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+          {VARIANTE_MULTUMIRE.map(v => { const activ = c.text === v.text
+            return <button key={v.k} data-varianta={v.k} onClick={() => { alegeVariantaMultumire(v.k); actualizeazaCard(mi, ci, { text: v.text }) }}
+              style={{ padding: '3px 9px', borderRadius: 20, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', border: `1px solid ${activ ? '#4ADE80' : 'rgba(159,215,255,0.18)'}`, background: activ ? 'rgba(74,222,128,0.15)' : 'transparent', color: activ ? '#4ADE80' : 'rgba(214,228,244,0.7)' }}>{v.l}</button> })}
+        </div>}
         <textarea value={c.text} onChange={e => actualizeazaCard(mi, ci, { text: e.target.value })} rows={Math.min(14, String(c.text).split('\n').length + 1)}
           style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '8px 10px', borderRadius: 9, border: '1px solid rgba(159,215,255,0.12)', background: 'rgba(5,12,24,0.6)', color: '#E8F4FF', fontSize: 12.5, lineHeight: 1.5, fontFamily: 'inherit', outline: 'none' }} />
         <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>

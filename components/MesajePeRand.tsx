@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { VARIANTE_MULTUMIRE, alegeVariantaMultumire } from '@/lib/sugestii'
 
 // "Mesaje pe rand" (cerut direct, varianta de telefon aleasa): un singur mesaj pe ecran, gata scris,
 // cu un buton mare "Trimite pe WhatsApp" care il marcheaza trimis si aduce urmatorul. File dupa
@@ -320,6 +321,13 @@ export default function MesajePeRand(p: {
                 <button onClick={() => p.onUpdate(curent.id, { telefon: p.telSugestii[curent.nume] })} style={{ ...btn, alignSelf: 'flex-start', color: '#4ADE80', padding: 0 }}>
                   Folosește {p.telSugestii[curent.nume]} (rezervare anterioară)
                 </button>
+              )}
+              {curent.categorie === 'multumire' && (
+                <div data-variante-multumire style={{ display: 'flex', gap: 6 }}>
+                  {VARIANTE_MULTUMIRE.map(v => { const activ = curent.mesaj === v.text
+                    return <button key={v.k} data-varianta={v.k} onClick={() => { alegeVariantaMultumire(v.k); p.onUpdate(curent.id, { mesaj: v.text }) }}
+                      style={{ padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: `1px solid ${activ ? '#6CC28F' : 'rgba(159,215,255,0.18)'}`, background: activ ? 'rgba(108,194,143,0.18)' : 'transparent', color: activ ? '#6CC28F' : 'rgba(214,228,244,0.7)' }}>{v.l}</button> })}
+                </div>
               )}
               {editez ? (
                 <textarea className="mpr-text" value={curent.mesaj} onChange={e => p.onUpdate(curent.id, { mesaj: e.target.value })} autoFocus
