@@ -253,6 +253,8 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   const total = Math.max(0, d.total), achitat = Math.max(0, Math.min(d.achitat, total || d.achitat)), rest = Math.max(0, Math.round((total - achitat) * 100) / 100)
   const integral = total > 0 && achitat >= total
   const deP = integral ? 0 : Math.max(0, Math.min(Number(d.avansDePlata) || 0, rest || Number(d.avansDePlata) || 0))
+  // rest de plata ramas DUPA avansul de platit (ca Total = avans de platit + rest de plata, nu sa para ca se aduna peste total)
+  const restAfisat = Math.max(0, Math.round((rest - deP) * 100) / 100)
   ctx.fillStyle = '#C7CAD6'; ctx.font = LX(400, 15); spatiat(ctx, L.total, 603, 988, 3.2)
   const tg = ctx.createLinearGradient(820, 960, 995, 1000); tg.addColorStop(0, '#E8CCFF'); tg.addColorStop(1, '#C794F6')
   ctx.textAlign = 'right'; ctx.fillStyle = tg; ctx.font = LX(500, 37); ctx.fillText(fmtBani(total, d.moneda), 995, 994); ctx.textAlign = 'left'
@@ -282,7 +284,7 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   ctx.save(); ctx.strokeStyle = pb; ctx.lineWidth = 2; rr(ctx, pxx, py, pww, phh, 24); ctx.stroke(); ctx.restore()
   ctx.fillStyle = '#FFFFFF'; ctx.font = LX(500, 19)
   if (integral) { spatiat(ctx, L.integral + ' ✓', 602, py + 31, 1.2) }
-  else { spatiat(ctx, L.rest, 602, py + 31, 0.9); ctx.textAlign = 'right'; ctx.font = LX(500, 32); ctx.fillText(fmtBani(rest, d.moneda), 992, py + 36); ctx.textAlign = 'left' }
+  else { spatiat(ctx, L.rest, 602, py + 31, 0.9); ctx.textAlign = 'right'; ctx.font = LX(500, 32); ctx.fillText(fmtBani(restAfisat, d.moneda), 992, py + 36); ctx.textAlign = 'left' }
 
   // ── card compact WhatsApp
   const wx = 63, wy = 1159, ww = 975, wh = 69

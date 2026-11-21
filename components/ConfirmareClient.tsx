@@ -35,9 +35,11 @@ function pdfDinJpeg(jpeg: Uint8Array, wPx: number, hPx: number): Blob {
 
 function textConfirmare(d: DateConfirmare) {
   const L = T[d.limba], data = (iso: string) => { const z = new Date(iso + 'T12:00:00'); return `${String(z.getDate()).padStart(2, '0')} ${L.luni[z.getMonth()]} · ${L.zile[z.getDay()]}` }
-  const total = d.total, achitat = Math.min(d.achitat, total || d.achitat), rest = Math.max(0, total - achitat)
+  const total = d.total, achitat = Math.min(d.achitat, total || d.achitat)
+  const deP = total > 0 && achitat >= total ? 0 : Math.max(0, Math.min(Number(d.avansDePlata) || 0, Math.max(0, total - achitat)))
+  // rest de plata = ce ramane DUPA avansul de platit (Total = avans de platit + rest de plata)
+  const rest = Math.max(0, Math.round((total - achitat - deP) * 100) / 100)
   const plata = total > 0 && achitat >= total ? `✓ ${L.integral.toLowerCase()}` : achitat > 0 ? `${L.avans.toLowerCase()}: ${fmtBani(achitat, d.moneda)} · ${L.rest.toLowerCase()}: ${fmtBani(rest, d.moneda)}` : `${L.rest.toLowerCase()}: ${fmtBani(rest, d.moneda)}`
-  const deP = total > 0 && achitat >= total ? 0 : Math.max(0, Number(d.avansDePlata) || 0)
   const termenLung = d.avansTermen ? (() => { const z = new Date(d.avansTermen + 'T12:00:00'); return `${z.getDate()} ${L.luni[z.getMonth()]}` })() : ''
   return [
     `✅ *${L.titlu}* — AB Homes Iași`, '',
@@ -253,7 +255,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             {et('Până la data', <input data-camp="avans-termen" type="date" value={avansTermen} onChange={e => setAvansTermen(e.target.value)} style={{ ...camp, colorScheme: 'dark' }} />, '#F3A6E0')}
           </div>
           <div style={{ fontSize: 11.5, color: nr(total) > 0 && nr(achitat) >= nr(total) ? '#5EEAD4' : '#E8CCFF' }}>
-            {nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(d.total - d.achitat > 0 ? Math.round((d.total - d.achitat) * 100) / 100 : 0, d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}${d.avansDePlata && d.avansDePlata > 0 ? ` · avans de plătit ${fmtBani(d.avansDePlata, d.moneda)}${d.avansTermen ? ` până la ${ziLunaScurt(d.avansTermen)}` : ''}` : ''}`}
+            {nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(Math.max(0, Math.round((Math.max(0, d.total - d.achitat) - Math.max(0, Number(d.avansDePlata) || 0)) * 100) / 100), d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}${d.avansDePlata && d.avansDePlata > 0 ? ` · avans de plătit ${fmtBani(d.avansDePlata, d.moneda)}${d.avansTermen ? ` până la ${ziLunaScurt(d.avansTermen)}` : ''}` : ''}`}
           </div>
 
           <div data-moneda-confirmare style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
