@@ -11,6 +11,7 @@ export const T = {
     sejur: 'Sejurul dumneavoastră la AB HOMES este confirmat.', apt: 'APARTAMENT', checkin: 'CHECK-IN', checkout: 'CHECK-OUT',
     dela: 'de la ', panala: 'până la ', oaspeti: (n: number) => n === 1 ? '1 oaspete' : `${n} oaspeți`, nopti: (n: number) => n === 1 ? '1 noapte' : `${n} nopți`,
     total: 'TOTAL SEJUR', avans: 'AVANS PLĂTIT', achitat: 'ACHITAT', rest: 'REST DE PLATĂ', integral: 'ACHITAT INTEGRAL',
+    avansDe: 'AVANS DE PLĂTIT', panaScurt: 'PÂNĂ LA', avansDeText: 'Avans de plătit', panaText: 'până la',
     wa: 'Detalii pentru acces: le veți primi pe WhatsApp în ziua sosirii.', nr: 'NR. REZERVARE', motto: 'Sejurul dumneavoastră, pregătit cu grijă.',
     luni: ['ianuarie', 'februarie', 'martie', 'aprilie', 'mai', 'iunie', 'iulie', 'august', 'septembrie', 'octombrie', 'noiembrie', 'decembrie'],
     zile: ['duminică', 'luni', 'marți', 'miercuri', 'joi', 'vineri', 'sâmbătă'],
@@ -20,6 +21,7 @@ export const T = {
     sejur: 'Your stay at AB HOMES is confirmed.', apt: 'APARTMENT', checkin: 'CHECK-IN', checkout: 'CHECK-OUT',
     dela: 'from ', panala: 'until ', oaspeti: (n: number) => n === 1 ? '1 guest' : `${n} guests`, nopti: (n: number) => n === 1 ? '1 night' : `${n} nights`,
     total: 'TOTAL STAY', avans: 'DEPOSIT PAID', achitat: 'PAID', rest: 'BALANCE DUE', integral: 'PAID IN FULL',
+    avansDe: 'DEPOSIT DUE', panaScurt: 'BY', avansDeText: 'Deposit due', panaText: 'by',
     wa: 'Access details: you will receive them on WhatsApp on the day of arrival.', nr: 'BOOKING NO.', motto: 'Your stay, thoughtfully curated.',
     luni: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     zile: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
@@ -83,7 +85,12 @@ function spatiat(ctx: CanvasRenderingContext2D, t: string, x: number, y: number,
 export type DateConfirmare = {
   limba: Limba; prenume: string; nume: string; cod: string; apt: string; adresa: string
   ci: string; co: string; oraCi: string; oraCo: string; oaspeti: number; total: number; achitat: number; moneda: string
+  // avansul pe care clientul il mai are de trimis si termenul (YYYY-MM-DD); 0 / gol = fara rand
+  avansDePlata?: number; avansTermen?: string | null
+  // suma totala in moneda rezervarii, scrisa mic sub „Total sejur” cand confirmarea e afisata in alta moneda (ex. „4.805 RON”)
+  totalBaza?: string | null
 }
+export const ziLunaScurt = (iso?: string | null) => iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : ''
 
 // ─────────────────────────────────────────── desenul (dupa referinta 1098×1432) ───────────────────────────────────────────
 export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLImageElement | null) {
@@ -242,19 +249,30 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   const nN = noptiIntre(d.ci, d.co)
   ctx.fillStyle = '#F5F5FA'; ctx.font = LX(400, 25); ctx.fillText(L.oaspeti(d.oaspeti), 166, 1036); ctx.fillText(L.nopti(nN), 397, 1036)
   ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(301, 996, 1, 64); ctx.fillRect(549, 966, 1, 144)
-  // plata: total / avans / rest (sau „achitat integral”)
+  // plata: total / avans platit / avans de platit (cu termen) / rest (sau „achitat integral”)
   const total = Math.max(0, d.total), achitat = Math.max(0, Math.min(d.achitat, total || d.achitat)), rest = Math.max(0, Math.round((total - achitat) * 100) / 100)
   const integral = total > 0 && achitat >= total
+  const deP = integral ? 0 : Math.max(0, Math.min(Number(d.avansDePlata) || 0, rest || Number(d.avansDePlata) || 0))
   ctx.fillStyle = '#C7CAD6'; ctx.font = LX(400, 15); spatiat(ctx, L.total, 603, 988, 3.2)
   const tg = ctx.createLinearGradient(820, 960, 995, 1000); tg.addColorStop(0, '#E8CCFF'); tg.addColorStop(1, '#C794F6')
   ctx.textAlign = 'right'; ctx.fillStyle = tg; ctx.font = LX(500, 37); ctx.fillText(fmtBani(total, d.moneda), 995, 994); ctx.textAlign = 'left'
-  if (achitat > 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(603, 1012, 392, 1)
-    ctx.fillStyle = '#C7CAD6'; ctx.font = LX(400, 15); spatiat(ctx, integral ? L.achitat : L.avans, 603, 1042, 3.2)
-    ctx.textAlign = 'right'; ctx.fillStyle = '#D7D9E3'; ctx.font = LX(400, 22); ctx.fillText(fmtBani(achitat, d.moneda), 995, 1044); ctx.textAlign = 'left'
-  }
+  if (d.totalBaza) { ctx.fillStyle = '#9EA3B8'; ctx.font = LX(400, 13); ctx.fillText(d.totalBaza, 603, 1007) }
+  const randuri: { l: string; v: string; c: string; cl: string }[] = []
+  if (achitat > 0) randuri.push({ l: integral ? L.achitat : L.avans, v: fmtBani(achitat, d.moneda), c: '#D7D9E3', cl: '#C7CAD6' })
+  if (deP > 0) randuri.push({ l: L.avansDe + (d.avansTermen ? ` · ${L.panaScurt} ${ziLunaScurt(d.avansTermen)}` : ''), v: fmtBani(deP, d.moneda), c: '#F3A6E0', cl: '#F0C4E6' })
+  if (randuri.length) { ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(603, 1013, 392, 1) }
+  const yR = randuri.length === 2 ? [1037, 1064] : [1042]
+  randuri.forEach((r, i) => {
+    ctx.textAlign = 'right'; ctx.fillStyle = r.c; ctx.font = LX(randuri.length === 2 ? 500 : 400, randuri.length === 2 ? 20 : 22); ctx.fillText(r.v, 995, yR[i] + 2)
+    const lv = ctx.measureText(r.v).width; ctx.textAlign = 'left'
+    // eticheta se micsoreaza pana incape langa suma (ex. „AVANS DE PLĂTIT · PÂNĂ LA 25.11”)
+    let px = 15, sp = 3.2
+    const lat = () => { ctx.font = LX(400, px); return [...r.l].reduce((a, c) => a + ctx.measureText(c).width + sp, 0) - sp }
+    while (lat() > 995 - lv - 18 - 603 && (sp > 0.8 || px > 11)) { if (sp > 0.8) sp -= 0.4; else px -= 0.5 }
+    ctx.fillStyle = r.cl; spatiat(ctx, r.l, 603, yR[i], sp)
+  })
   // pastila „rest de plata” (cel mai vizibil element financiar) sau „achitat integral ✓”
-  const py = achitat > 0 ? 1063 : 1037, pxx = 578, pww = 439, phh = 48
+  const py = randuri.length === 2 ? 1077 : randuri.length ? 1063 : 1037, pxx = 578, pww = 439, phh = 48
   ctx.save(); ctx.shadowColor = integral ? 'rgba(80,230,200,0.55)' : 'rgba(199,148,246,0.6)'; ctx.shadowBlur = 18
   const pf = ctx.createLinearGradient(pxx, 0, pxx + pww, 0)
   if (integral) { pf.addColorStop(0, 'rgba(30,110,110,0.75)'); pf.addColorStop(1, 'rgba(20,50,80,0.85)') } else { pf.addColorStop(0, 'rgba(120,52,130,0.85)'); pf.addColorStop(0.55, 'rgba(70,46,120,0.85)'); pf.addColorStop(1, 'rgba(36,40,96,0.9)') }

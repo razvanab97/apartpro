@@ -11,7 +11,7 @@ import { citesteGhid, incarcaMedia } from '@/lib/ghid'
 // Se deseneaza local pe canvas, la rezolutie dubla (2196×2864) - identic pe orice telefon / browser, fara servicii externe.
 // Observatiile INTERNE ale rezervarii (CNP etc.) nu apar niciodata pe confirmare.
 
-import { SITE, WHATSAPP, T, codRezervare, nr, fmtBani, noptiIntre, prenumeImplicit, incarcaFonturi, deseneaza, type Limba, type DateConfirmare } from '@/lib/confirmareDesen'
+import { SITE, WHATSAPP, T, codRezervare, nr, fmtBani, ziLunaScurt, noptiIntre, prenumeImplicit, incarcaFonturi, deseneaza, type Limba, type DateConfirmare } from '@/lib/confirmareDesen'
 
 // PDF minim (o pagina, imaginea JPEG pe toata pagina, fara margini) - fara biblioteci
 function pdfDinJpeg(jpeg: Uint8Array, wPx: number, hPx: number): Blob {
@@ -37,6 +37,8 @@ function textConfirmare(d: DateConfirmare) {
   const L = T[d.limba], data = (iso: string) => { const z = new Date(iso + 'T12:00:00'); return `${String(z.getDate()).padStart(2, '0')} ${L.luni[z.getMonth()]} · ${L.zile[z.getDay()]}` }
   const total = d.total, achitat = Math.min(d.achitat, total || d.achitat), rest = Math.max(0, total - achitat)
   const plata = total > 0 && achitat >= total ? `✓ ${L.integral.toLowerCase()}` : achitat > 0 ? `${L.avans.toLowerCase()}: ${fmtBani(achitat, d.moneda)} · ${L.rest.toLowerCase()}: ${fmtBani(rest, d.moneda)}` : `${L.rest.toLowerCase()}: ${fmtBani(rest, d.moneda)}`
+  const deP = total > 0 && achitat >= total ? 0 : Math.max(0, Number(d.avansDePlata) || 0)
+  const termenLung = d.avansTermen ? (() => { const z = new Date(d.avansTermen + 'T12:00:00'); return `${z.getDate()} ${L.luni[z.getMonth()]}` })() : ''
   return [
     `✅ *${L.titlu}* — AB Homes Iași`, '',
     `${L.multumim}${d.prenume}!`,
@@ -45,7 +47,8 @@ function textConfirmare(d: DateConfirmare) {
     `📅 ${L.checkin}: ${data(d.ci)} · ${L.dela}${d.oraCi}`,
     `📅 ${L.checkout}: ${data(d.co)} · ${L.panala}${d.oraCo}`,
     `👥 ${L.oaspeti(d.oaspeti)} · ${L.nopti(noptiIntre(d.ci, d.co))}`,
-    `💳 ${L.total.charAt(0) + L.total.slice(1).toLowerCase()}: ${fmtBani(total, d.moneda)} · ${plata}`,
+    `💳 ${L.total.charAt(0) + L.total.slice(1).toLowerCase()}: ${fmtBani(total, d.moneda)}${d.totalBaza ? ` (${d.totalBaza})` : ''} · ${plata}`,
+    ...(deP > 0 ? [`⏳ ${L.avansDeText}: ${fmtBani(deP, d.moneda)}${termenLung ? ` ${L.panaText} ${termenLung}` : ''}`] : []),
     '', `💬 ${L.wa}`, '', SITE,
   ].join('\n')
 }
@@ -81,7 +84,11 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
   const totalImplicit = nr(rezervare.valoare_bruta) || nr(rezervare.suma_incasata)
   // platit = suma incasata; daca rezervarea e marcata „achitat” fara suma incasata, se considera achitata integral
   // avansul trecut la rezervare are prioritate (cat timp rezervarea nu e marcata „Achitat”)
-  const achitatImplicit = nr(rezervare.avans) > 0 && rezervare.status_plata !== 'achitat' ? nr(rezervare.avans) : nr(rezervare.suma_incasata) || (rezervare.status_plata === 'achitat' ? totalImplicit : 0)
+  // „Neplătit” = nimic platit (Încasat efectiv e completat implicit cu totalul, deci nu se ia de acolo -> nu mai iese „Achitat integral”)
+  const achitatImplicit = rezervare.status_plata === 'neplatit' ? 0
+    : nr(rezervare.avans) > 0 && rezervare.status_plata !== 'achitat' ? nr(rezervare.avans)
+    : rezervare.status_plata === 'avans' ? (nr(rezervare.suma_incasata) < totalImplicit ? nr(rezervare.suma_incasata) : 0)
+    : nr(rezervare.suma_incasata) || (rezervare.status_plata === 'achitat' ? totalImplicit : 0)
   const [limba, setLimba] = useState<Limba>('ro')
   const [prenume, setPrenume] = useState(() => prenumeImplicit(rezervare.nume_client, rezervare.canal))
   const [oraCi, setOraCi] = useState('15:00')
@@ -89,6 +96,20 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
   const [oaspeti, setOaspeti] = useState(String(Number(rezervare.nr_persoane) || 1))
   const [total, setTotal] = useState(String(totalImplicit || ''))
   const [achitat, setAchitat] = useState(String(Math.min(achitatImplicit, totalImplicit || achitatImplicit) || 0))
+  // avans de plata (cerut direct: „când avem avans de plată, să apară și aici informația”): implicit ce mai lipseste din
+  // „Avans de încasat” al rezervarii, cu termenul ei; se poate schimba / goli aici
+  const [avansDe, setAvansDe] = useState(() => { const l = Math.round((nr(rezervare.avans_cerut) - nr(rezervare.avans)) * 100) / 100; return rezervare.status_plata !== 'achitat' && l > 0 ? String(l) : '' })
+  const [avansTermen, setAvansTermen] = useState<string>(rezervare.avans_termen || '')
+  // moneda afisata pe confirmare (cerut direct: „să putem selecta să apară prețul și în euro sau alte monede”):
+  // sumele se scriu in moneda rezervarii, se convertesc la cursul BNR al zilei; suma in moneda rezervarii ramane scrisa mic
+  const monedaBaza = String(rezervare.moneda || 'RON').toUpperCase()
+  const [monedaAfis, setMonedaAfis] = useState(monedaBaza)
+  const [arataBaza, setArataBaza] = useState(true)
+  const [curs, setCurs] = useState<{ toate: Record<string, number>; date: string | null; aprox: boolean } | null>(null)
+  useEffect(() => { fetch('/api/curs-bnr').then(r => r.json()).then(j => j?.toate && setCurs({ toate: j.toate, date: j.date || null, aprox: !!j.error })).catch(() => {}) }, [])
+  const leiPer = (m: string) => m === 'RON' ? 1 : curs?.toate?.[m] || 0
+  const factor = monedaAfis === monedaBaza ? 1 : (leiPer(monedaBaza) && leiPer(monedaAfis) ? leiPer(monedaBaza) / leiPer(monedaAfis) : 0)
+  const monedeOptiuni = Array.from(new Set([monedaBaza, 'RON', 'EUR', 'USD', 'GBP', ...Object.keys(curs?.toate || {}).sort()]))
   const [pozaUrl, setPozaUrl] = useState('')
   const [pozeGhid, setPozeGhid] = useState<string[]>([])
   const [poza, setPoza] = useState<HTMLImageElement | null>(null)
@@ -114,8 +135,13 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
   const d: DateConfirmare = useMemo(() => ({
     limba, prenume, nume: String(rezervare.nume_client || '').trim(), cod: codRezervare(rezervare), apt: String(apt?.nume || '').trim(), adresa: String(apt?.adresa || '').trim(),
     ci: rezervare.data_checkin, co: rezervare.data_checkout, oraCi, oraCo, oaspeti: Math.max(1, Number(oaspeti) || 1),
-    total: nr(total), achitat: nr(achitat), moneda: rezervare.moneda || 'RON',
-  }), [limba, prenume, rezervare, apt, oraCi, oraCo, oaspeti, total, achitat])
+    ...(() => {
+      const f = factor || 1, afis = factor ? monedaAfis : monedaBaza, conv = (x: number) => Math.round(x * f * 100) / 100
+      return { total: conv(nr(total)), achitat: conv(nr(achitat)), avansDePlata: conv(nr(avansDe)), moneda: afis,
+        totalBaza: afis !== monedaBaza && arataBaza ? fmtBani(nr(total), monedaBaza) : null }
+    })(),
+    avansTermen: nr(avansDe) > 0 ? (avansTermen || null) : null,
+  }), [limba, prenume, rezervare, apt, oraCi, oraCo, oaspeti, total, achitat, avansDe, avansTermen, factor, monedaAfis, monedaBaza, arataBaza])
 
   useEffect(() => { let v = true; incarcaFonturi().then(() => v && setGata(true)); return () => { v = false } }, [])
   useEffect(() => {
@@ -187,7 +213,6 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
       .catch(() => flash('S-a deschis WhatsApp cu clientul — poza n-a putut fi copiată: „Descarcă PNG” și atașeaz-o'))
       .finally(() => setTrimit(false))
   }
-  const rest = Math.max(0, nr(total) - nr(achitat))
 
   const btn = (bgc: string, fg: string, br: string): React.CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '10px 12px', borderRadius: 10, border: `1px solid ${br}`, background: bgc, color: fg, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' })
   const camp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 9, background: 'rgba(20,38,65,0.8)', border: '1px solid rgba(159,215,255,0.2)', color: '#FFFFFF', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', outline: 'none' }
@@ -220,12 +245,29 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             {et('Oaspeți', <input data-camp="oaspeti" type="number" min={1} value={oaspeti} onChange={e => setOaspeti(e.target.value)} style={camp} />)}
             {et('Ora check-in', <input data-camp="ora-ci" value={oraCi} onChange={e => setOraCi(e.target.value)} style={camp} />)}
             {et('Ora check-out', <input data-camp="ora-co" value={oraCo} onChange={e => setOraCo(e.target.value)} style={camp} />)}
-            {et(`Total sejur (${d.moneda})`, <input data-camp="total" inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} style={camp} />, '#E8CCFF')}
-            {et(`Plătit / avans (${d.moneda})`, <input data-camp="achitat" inputMode="decimal" value={achitat} onChange={e => setAchitat(e.target.value)} style={camp} />, '#E8CCFF')}
+            {et(`Total sejur (${monedaBaza})`, <input data-camp="total" inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} style={camp} />, '#E8CCFF')}
+            {et(`Plătit / avans (${monedaBaza})`, <input data-camp="achitat" inputMode="decimal" value={achitat} onChange={e => setAchitat(e.target.value)} style={camp} />, '#E8CCFF')}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {et(`Avans de plătit (${monedaBaza})`, <input data-camp="avans-de-platit" inputMode="decimal" placeholder="gol = fără rând" value={avansDe} onChange={e => setAvansDe(e.target.value)} style={camp} />, '#F3A6E0')}
+            {et('Până la data', <input data-camp="avans-termen" type="date" value={avansTermen} onChange={e => setAvansTermen(e.target.value)} style={{ ...camp, colorScheme: 'dark' }} />, '#F3A6E0')}
           </div>
           <div style={{ fontSize: 11.5, color: nr(total) > 0 && nr(achitat) >= nr(total) ? '#5EEAD4' : '#E8CCFF' }}>
-            {nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(rest, d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}`}
+            {nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(d.total - d.achitat > 0 ? Math.round((d.total - d.achitat) * 100) / 100 : 0, d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}${d.avansDePlata && d.avansDePlata > 0 ? ` · avans de plătit ${fmtBani(d.avansDePlata, d.moneda)}${d.avansTermen ? ` până la ${ziLunaScurt(d.avansTermen)}` : ''}` : ''}`}
           </div>
+
+          <div data-moneda-confirmare style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+            {et('Prețul pe confirmare în', <select data-camp="moneda" value={monedaAfis} onChange={e => setMonedaAfis(e.target.value)} style={{ ...camp, colorScheme: 'dark' }}>
+              {monedeOptiuni.map(m => <option key={m} value={m} disabled={m !== monedaBaza && !(leiPer(m) && leiPer(monedaBaza))}>{m}{m === monedaBaza ? ' (moneda rezervării)' : ''}</option>)}
+            </select>)}
+            {monedaAfis !== monedaBaza && <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'rgba(214,228,244,0.8)', paddingBottom: 9, cursor: 'pointer' }}>
+              <input data-camp="arata-baza" type="checkbox" checked={arataBaza} onChange={e => setArataBaza(e.target.checked)} /> arată mic și în {monedaBaza}
+            </label>}
+          </div>
+          {monedaAfis !== monedaBaza && <div data-curs-info style={{ fontSize: 11, marginTop: -6, color: !factor ? '#F87171' : curs?.aprox ? '#FCD34D' : 'rgba(159,215,255,0.5)' }}>
+            {!factor ? 'Cursul nu s-a putut încărca — confirmarea rămâne în ' + monedaBaza
+              : `Curs BNR${curs?.date ? ' ' + curs.date.split('-').reverse().join('.') : ''}: 1 ${monedaAfis} = ${(leiPer(monedaAfis)).toLocaleString('ro-RO', { maximumFractionDigits: 4 })} RON${curs?.aprox ? ' (aproximativ — BNR indisponibil)' : ''}`}
+          </div>}
 
           {et('Poza apartamentului', <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {pozeGhid.map(u => (
