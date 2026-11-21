@@ -147,6 +147,7 @@ export type Rezervare = {
   valoare_bruta: number; taxa_curatenie_incasata: number; suma_incasata: number; moneda: string
   status_plata: string; status_rezervare: string; comision_platforma_procent: number
   avans?: number | null; avans_data?: string | null; avans_metoda?: string | null
+  avans_cerut?: number | null; avans_termen?: string | null
   comision_platforma_valoare: number; tva_comision_platforma: number; cost_curatenie: number
   cost_spalatorie: number; cost_consumabile: number; cost_mentenanta: number; alte_costuri: number
   baza_calcul_comision: number; comision_administrator: number; suma_proprietar: number

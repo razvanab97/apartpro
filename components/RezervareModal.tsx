@@ -674,6 +674,23 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                     </select>
                   </div>
                 </div>
+                {/* Avans de încasat (cerut direct: „cum avem Avans încasat, să avem și avans de încasat, până la data x”):
+                    cât trebuie să trimită clientul și până când; după termen intră în reamintirea de la 16:00 */}
+                <div className="rz-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', marginTop: 10 }}>
+                  <div data-avans-cerut><Label>Avans de încasat</Label><Money value={editing.avans_cerut ?? ''} suffix={moneda} onChange={v => set({ avans_cerut: v, ...(Number(v) > 0 ? {} : { avans_termen: null }) })} /></div>
+                  <div><Label>Până la data</Label><input data-avans-termen type="date" value={editing.avans_termen || ''} onChange={e => set({ avans_termen: e.target.value || null })} /></div>
+                </div>
+                {Number(editing.avans_cerut) > 0 && (() => {
+                  const lipsa = Math.round((Number(editing.avans_cerut) - (Number(editing.avans) || 0)) * 100) / 100
+                  const termen = editing.avans_termen as string | null, azi = aziRo()
+                  const depasit = !!termen && termen < azi, astazi = termen === azi
+                  return <div data-avans-cerut-stare data-depasit={depasit ? '1' : undefined} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, fontSize: 12.5 }}>
+                    <span style={{ color: C.faint }}>{lipsa > 0 ? 'Avans de primit' : 'Avans cerut'}</span>
+                    <b style={{ color: lipsa <= 0 ? C.green : depasit ? C.red : C.amber, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+                      {lipsa <= 0 ? '✓ primit' : `${fmt(lipsa)} ${moneda}${termen ? (depasit ? ` · termen depășit (${fmtZi(termen)})` : astazi ? ' · termen azi' : ` până la ${fmtZi(termen)}`) : ' · fără termen'}`}
+                    </b>
+                  </div>
+                })()}
                 {Number(editing.avans) > 0 && (() => {
                   const totalRez = Number(editing.valoare_bruta) || 0, rest = Math.round((totalRez - Number(editing.avans)) * 100) / 100
                   return <div data-rest-plata style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, fontSize: 12.5 }}>

@@ -75,6 +75,11 @@ export function payloadRezervare(editing: any, apartamente: Apartament[]) {
     const av = Math.round((Number(editing.avans) || 0) * 100) / 100
     Object.assign(payload, { avans: av, avans_data: av > 0 ? (editing.avans_data || new Date().toISOString().slice(0, 10)) : null, avans_metoda: av > 0 ? (editing.avans_metoda || null) : null })
   }
+  // avansul de incasat (coloanele avans_cerut / avans_termen): la fel, trimis doar daca e pus, ca fara migrare sa nu blocheze
+  if ('avans_cerut' in editing || 'avans_termen' in editing) {
+    const ac = Math.round((Number(editing.avans_cerut) || 0) * 100) / 100
+    Object.assign(payload, { avans_cerut: ac > 0 ? ac : null, avans_termen: ac > 0 ? (editing.avans_termen || null) : null })
+  }
   // rezervare Airbnb noua -> „De facturat”
   if (!editing.id && payload.canal === 'airbnb' && (!payload.status_facturare || payload.status_facturare === 'nefacturat')) payload.status_facturare = 'de_facturat'
   for (const k of ['id', 'apartament', 'proprietar', 'nr_nopti', 'created_at', 'updated_at', 'rezervare_id']) delete payload[k]
@@ -89,6 +94,7 @@ export async function salveazaRezervare(editing: any, apartamente: Apartament[])
   const { error } = editing.id
     ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
     : await supabase.from('rezervari').insert(payload)
+  if (error && /avans_cerut|avans_termen/i.test(error.message)) return 'Avansul de încasat nu se poate salva încă: rulează în Supabase migrarea (coloanele avans_cerut, avans_termen)'
   if (error && /avans/i.test(error.message)) return 'Avansul nu se poate salva încă: rulează în Supabase migrarea pentru avans (coloanele avans, avans_data, avans_metoda)'
   return error ? error.message : null
 }
