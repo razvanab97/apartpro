@@ -49,8 +49,9 @@ function textConfirmare(d: DateConfirmare) {
     `📅 ${L.checkin}: ${data(d.ci)} · ${L.dela}${d.oraCi}`,
     `📅 ${L.checkout}: ${data(d.co)} · ${L.panala}${d.oraCo}`,
     `👥 ${L.oaspeti(d.oaspeti)} · ${L.nopti(noptiIntre(d.ci, d.co))}`,
-    `💳 ${L.total.charAt(0) + L.total.slice(1).toLowerCase()}: ${fmtBani(total, d.moneda)}${d.totalBaza ? ` (${d.totalBaza})` : ''} · ${plata}`,
-    ...(deP > 0 ? [`⏳ ${L.avansDeText}: ${fmtBani(deP, d.moneda)}${termenLung ? ` ${L.panaText} ${termenLung}` : ''}`] : []),
+    // fara pret -> fara randurile de plata (ca pe poza)
+    ...(total > 0 ? [`💳 ${L.total.charAt(0) + L.total.slice(1).toLowerCase()}: ${fmtBani(total, d.moneda)}${d.totalBaza ? ` (${d.totalBaza})` : ''} · ${plata}`] : []),
+    ...(total > 0 && deP > 0 ? [`⏳ ${L.avansDeText}: ${fmtBani(deP, d.moneda)}${termenLung ? ` ${L.panaText} ${termenLung}` : ''}`] : []),
     '', `💬 ${L.wa}`, '', SITE,
   ].join('\n')
 }
@@ -254,8 +255,8 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
             {et(`Avans de plătit (${monedaBaza})`, <input data-camp="avans-de-platit" inputMode="decimal" placeholder="gol = fără rând" value={avansDe} onChange={e => setAvansDe(e.target.value)} style={camp} />, '#F3A6E0')}
             {et('Până la data', <input data-camp="avans-termen" type="date" value={avansTermen} onChange={e => setAvansTermen(e.target.value)} style={{ ...camp, colorScheme: 'dark' }} />, '#F3A6E0')}
           </div>
-          <div style={{ fontSize: 11.5, color: nr(total) > 0 && nr(achitat) >= nr(total) ? '#5EEAD4' : '#E8CCFF' }}>
-            {nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(Math.max(0, Math.round((Math.max(0, d.total - d.achitat) - Math.max(0, Number(d.avansDePlata) || 0)) * 100) / 100), d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}${d.avansDePlata && d.avansDePlata > 0 ? ` · avans de plătit ${fmtBani(d.avansDePlata, d.moneda)}${d.avansTermen ? ` până la ${ziLunaScurt(d.avansTermen)}` : ''}` : ''}`}
+          <div data-plata-info style={{ fontSize: 11.5, color: !(nr(total) > 0) ? 'rgba(159,215,255,0.6)' : nr(total) > 0 && nr(achitat) >= nr(total) ? '#5EEAD4' : '#E8CCFF' }}>
+            {!(nr(total) > 0) ? 'Fără preț — secțiunea de plată nu apare pe confirmare' : nr(total) > 0 && nr(achitat) >= nr(total) ? '✓ Pe confirmare: „Achitat integral”' : `Rest de plată pe confirmare: ${fmtBani(Math.max(0, Math.round((Math.max(0, d.total - d.achitat) - Math.max(0, Number(d.avansDePlata) || 0)) * 100) / 100), d.moneda)}${nr(achitat) > 0 ? '' : ' (fără rândul „Avans plătit”)'}${d.avansDePlata && d.avansDePlata > 0 ? ` · avans de plătit ${fmtBani(d.avansDePlata, d.moneda)}${d.avansTermen ? ` până la ${ziLunaScurt(d.avansTermen)}` : ''}` : ''}`}
           </div>
 
           <div data-moneda-confirmare style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>

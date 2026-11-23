@@ -238,19 +238,30 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   sticla(fx, fy, fw, fh, fr, [[0, 'rgba(105,201,255,0.55)'], [0.5, 'rgba(255,255,255,0.10)'], [1, 'rgba(199,148,246,0.85)']], [fx, fy + fh, fx + fw, fy], ff)
   reflex(fx, fy, fw, fh, fr, fx + 60, fy, 300, 'rgba(105,201,255,0.14)')
   reflex(fx, fy, fw, fh, fr, fx + fw - 80, fy, 320, 'rgba(199,148,246,0.20)')
-  // oaspete (pictograma persoana) | noapte (luna)
-  ctx.save(); ctx.strokeStyle = '#F5F5FA'; ctx.lineWidth = 2.6; ctx.lineCap = 'round'
-  ctx.beginPath(); ctx.arc(125, 1018, 11, 0, Math.PI * 2); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(106, 1046); ctx.quadraticCurveTo(106, 1031, 125, 1031); ctx.quadraticCurveTo(144, 1031, 144, 1046); ctx.closePath(); ctx.stroke()
-  { const cx = 352, cy = 1027, R = 18, a1 = -Math.PI * 0.30, a2 = Math.PI * 0.36
+  // fara pret (totalul sters / 0) -> partea de plata nu apare deloc (cerut direct: „când ștergem prețul, să dispară și
+  // din confirmare secțiunea de plată”); oaspetii si noptile se centreaza atunci pe cele doua jumatati ale cardului
+  const total = Math.max(0, d.total), faraPret = !(total > 0)
+  const nN = noptiIntre(d.ci, d.co)
+  ctx.font = LX(400, 25)
+  const wO = 41 + ctx.measureText(L.oaspeti(d.oaspeti)).width, wN = 45 + ctx.measureText(L.nopti(nN)).width
+  const dxO = faraPret ? Math.round(fx + fw / 4 - wO / 2 - 106) : 0, dxN = faraPret ? Math.round(fx + fw * 3 / 4 - wN / 2 - 334) : 0
+  // oaspete (pictograma persoana) | noapte (luna); fara pret coboara putin, ca sa stea pe mijlocul cardului
+  const dy = faraPret ? 11 : 0
+  ctx.save(); ctx.translate(0, dy); ctx.save(); ctx.strokeStyle = '#F5F5FA'; ctx.lineWidth = 2.6; ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.arc(125 + dxO, 1018, 11, 0, Math.PI * 2); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(106 + dxO, 1046); ctx.quadraticCurveTo(106 + dxO, 1031, 125 + dxO, 1031); ctx.quadraticCurveTo(144 + dxO, 1031, 144 + dxO, 1046); ctx.closePath(); ctx.stroke()
+  { const cx = 352 + dxN, cy = 1027, R = 18, a1 = -Math.PI * 0.30, a2 = Math.PI * 0.36
     ctx.lineJoin = 'round'; ctx.beginPath(); ctx.arc(cx, cy, R, a1, a2, true)
     ctx.quadraticCurveTo(cx - 6, cy + 3, cx + R * Math.cos(a1), cy + R * Math.sin(a1)); ctx.closePath(); ctx.stroke() }
   ctx.restore()
-  const nN = noptiIntre(d.ci, d.co)
-  ctx.fillStyle = '#F5F5FA'; ctx.font = LX(400, 25); ctx.fillText(L.oaspeti(d.oaspeti), 166, 1036); ctx.fillText(L.nopti(nN), 397, 1036)
-  ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(301, 996, 1, 64); ctx.fillRect(549, 966, 1, 144)
+  ctx.fillStyle = '#F5F5FA'; ctx.font = LX(400, 25); ctx.fillText(L.oaspeti(d.oaspeti), 166 + dxO, 1036); ctx.fillText(L.nopti(nN), 397 + dxN, 1036)
+  ctx.fillStyle = 'rgba(255,255,255,0.14)'
+  if (faraPret) ctx.fillRect(fx + fw / 2, 996, 1, 64)
+  else { ctx.fillRect(301, 996, 1, 64); ctx.fillRect(549, 966, 1, 144) }
+  ctx.restore()
+  if (!faraPret) {
   // plata: total / avans platit / avans de platit (cu termen) / rest (sau „achitat integral”)
-  const total = Math.max(0, d.total), achitat = Math.max(0, Math.min(d.achitat, total || d.achitat)), rest = Math.max(0, Math.round((total - achitat) * 100) / 100)
+  const achitat = Math.max(0, Math.min(d.achitat, total || d.achitat)), rest = Math.max(0, Math.round((total - achitat) * 100) / 100)
   const integral = total > 0 && achitat >= total
   const deP = integral ? 0 : Math.max(0, Math.min(Number(d.avansDePlata) || 0, rest || Number(d.avansDePlata) || 0))
   // rest de plata ramas DUPA avansul de platit (ca Total = avans de platit + rest de plata, nu sa para ca se aduna peste total)
@@ -285,6 +296,7 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   ctx.fillStyle = '#FFFFFF'; ctx.font = LX(500, 19)
   if (integral) { spatiat(ctx, L.integral + ' ✓', 602, py + 31, 1.2) }
   else { spatiat(ctx, L.rest, 602, py + 31, 0.9); ctx.textAlign = 'right'; ctx.font = LX(500, 32); ctx.fillText(fmtBani(restAfisat, d.moneda), 992, py + 36); ctx.textAlign = 'left' }
+  }
 
   // ── card compact WhatsApp
   const wx = 63, wy = 1159, ww = 975, wh = 69
