@@ -6,7 +6,8 @@ import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import { TARI, oraseTara, taraOblio } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
-import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare } from '@/lib/rezervareEdit'
+import DublareRezervare from '@/components/DublareRezervare'
+import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
@@ -158,6 +159,9 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
   const [showCosturi, setShowCosturi] = useState(false)
   const [confirmare, setConfirmare] = useState(false)
+  // „⧉ Dublează”: rezervare noua pentru acelasi client; dupa creare fereastra trece pe ea
+  const [dublare, setDublare] = useState(false)
+  const [dublataInfo, setDublataInfo] = useState<string | null>(null)
   // telefonul proprietarului apartamentului (pentru „Confirmare proprietar”, cerut direct)
   const [telProp, setTelProp] = useState<{ nume: string; tel: string | null } | null>(null)  // null = apartament fara proprietar
   useEffect(() => {
@@ -895,7 +899,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
 
         {/* ── Subsol ── */}
         <footer className="rz-foot">
-          {editing.id ? (
+          {dublataInfo ? <span data-dublata className="rz-auto" style={{ color: C.green }}>{dublataInfo}</span> : editing.id ? (
             <span data-auto-salvare className="rz-auto" style={{ color: auto.stare === 'eroare' ? C.red : auto.stare === 'salvat' ? C.green : C.faint }}>
               {auto.stare === 'salvez' || (auto.stare !== 'eroare' && arePending()) ? <><Loader2 size={12} className="rz-spin" /> Se salvează…</>
                 : auto.stare === 'salvat' ? `✓ Salvat automat · ${auto.ora}`
@@ -912,6 +916,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               : <span className="rz-btn" title={`${telProp.nume || 'Proprietarul'} nu are telefon salvat — completează-l în Proprietari`} style={{ padding: '10px 16px', opacity: 0.45, cursor: 'default' }}>🏠 Proprietar fără telefon</span>
           )}
           {editing.id && (
+            <button data-dubleaza type="button" className="rz-btn" onClick={async () => { if (arePending()) await salveazaAuto(); setDublare(true) }}
+              title="Creează o rezervare nouă pentru același client — alegi doar apartamentul și perioada"
+              style={{ padding: '10px 16px', borderColor: 'rgba(123,200,255,0.4)', color: '#7BC8FF', background: 'rgba(77,163,255,0.08)' }}>⧉ Dublează</button>
+          )}
+          {editing.id && (
             <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
               style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
           )}
@@ -921,6 +930,13 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
           </button>
         </footer>
       </div>
+      {dublare && <DublareRezervare rezervare={editing} apartamente={apartamente} onClose={() => setDublare(false)}
+        onCreata={async id => {
+          const { data } = await supabase.from('rezervari').select(SELECT_REZERVARE).eq('id', id).single()
+          autoSalvate.current = true; onReload?.()
+          setDublare(false)
+          if (data) { setEditing(data); setDublataInfo('✓ Rezervare nouă creată (dublată) — acum o editezi pe ea'); setTimeout(() => setDublataInfo(null), 7000) }
+        }} />}
       {confirmare && <ConfirmareClient rezervare={editing} apt={apartamente.find(a => a.id === editing.apartament_id) || editing.apartament || null} onClose={() => setConfirmare(false)} />}
     </div>
   )
