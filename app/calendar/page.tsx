@@ -557,13 +557,13 @@ export default function CalendarPage() {
         <div ref={pickerRef} style={{ position:'relative' }}>
           <button data-alege-data onClick={()=>setPickerData(o=>!o)} title="Alege o zi sau o perioadă din orice lună" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:perioada?'rgba(167,139,250,0.2)':'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.45)',color:'#C4B5FD',cursor:'pointer',whiteSpace:'nowrap' }}>📅 Alege data</button>
           {pickerData&&(
-            <div data-picker-data style={{ position:'absolute',top:'calc(100% + 8px)',left:0,zIndex:60,width:300,maxWidth:'calc(100vw - 32px)',padding:14,borderRadius:12,background:'rgba(8,18,36,0.98)',border:'1px solid rgba(167,139,250,0.35)',boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
+            <div data-picker-data style={{ position:'absolute',top:'calc(100% + 8px)',left:0,zIndex:60,width:330,maxWidth:'calc(100vw - 32px)',padding:14,borderRadius:12,background:'rgba(8,18,36,0.98)',border:'1px solid rgba(167,139,250,0.35)',boxShadow:'0 16px 48px rgba(0,0,0,0.6)' }}>
               <RangeCalendar checkin={perioada?.start||''} checkout={perioada?.end||''} onPick={(a,b)=>{
                 setPerioada({start:a,end:b}); setScrollTinta(a)
                 setYear(+a.slice(0,4)); setMonth(+a.slice(5,7)-1); clearSel(); setCereScrollAzi(n=>n+1)
                 if(b) setPickerData(false)
               }}/>
-              <div style={{ fontSize:11,color:'rgba(159,215,255,0.5)',marginTop:10,lineHeight:1.45 }}>Alege o zi ca să sari acolo; alege și a doua zi (plecarea) ca să vezi cum stai pe toată perioada.</div>
+              <div style={{ fontSize:11,color:'rgba(159,215,255,0.45)',marginTop:8,lineHeight:1.45 }}>O zi = sari acolo · a doua zi (plecarea) = vezi cum stai pe toată perioada.</div>
             </div>
           )}
         </div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { X, Loader2, Copy } from 'lucide-react'
 import { supabase, type Apartament } from '@/lib/supabase'
 import { payloadRezervare } from '@/lib/rezervareEdit'
+import { RangeCalendar } from '@/components/RangeCalendar'
 import { rezervareDublata, pretPeNoapte, noptiIntre, plusZile } from '@/lib/dublare'
 
 // Fereastra „⧉ Dublează” din rezervare (cerut direct: „un buton pe rezervare prin care să apăsăm și să se genereze o nouă
@@ -45,7 +46,7 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); onClose() } }; window.addEventListener('keydown', k, true); return () => window.removeEventListener('keydown', k, true) }, [onClose])
 
   const apt = apartamente.find(a => a.id === aptId)
-  const invalid = !aptId ? 'Alege apartamentul' : !ci || !co || co <= ci ? 'Check-out-ul trebuie să fie după check-in' : null
+  const invalid = !aptId ? 'Alege apartamentul' : !ci ? 'Alege ziua de check-in în calendar' : !co || co <= ci ? 'Alege și ziua de check-out în calendar' : null
   async function creeaza() {
     if (invalid || lucrez) return
     setLucrez(true); setEroare(null)
@@ -75,9 +76,9 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
           <option value="">— alege —</option>
           {apartamente.map(a => <option key={a.id} value={a.id}>{(a as any).nota ? `${(a as any).nota} · ${a.nume}` : a.nume}</option>)}
         </select>)}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {et('Check-in', <input data-dub-ci type="date" value={ci} onChange={e => { const v = e.target.value; setCi(v); if (v && (!co || co <= v)) setCo(plusZile(v, Math.max(1, n || noptiOrig))) }} style={camp} />)}
-          {et(`Check-out${n > 0 ? ` · ${n} ${n === 1 ? 'noapte' : 'nopți'}` : ''}`, <input data-dub-co type="date" value={co} min={ci ? plusZile(ci, 1) : undefined} onChange={e => setCo(e.target.value)} style={camp} />)}
+        {/* perioada: selectorul de calendar (alegi check-in, apoi check-out; un nou click reia alegerea) */}
+        <div data-dub-perioada style={{ padding: 12, borderRadius: 12, background: 'rgba(14,27,43,0.6)', border: '1px solid rgba(159,215,255,0.12)' }}>
+          <RangeCalendar checkin={ci} checkout={co} onPick={(a, b) => { setCi(a); setCo(b) }} />
         </div>
         {et(`Total (${rezervare.moneda || 'RON'})`, <input data-dub-total inputMode="decimal" value={total} placeholder="fără preț" onChange={e => { setTotal(e.target.value); setTotalManual(true) }} style={camp} />)}
         <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)', marginTop: -6 }}>

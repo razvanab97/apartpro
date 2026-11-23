@@ -2,14 +2,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Modal, FormGroup, FormRow } from '@/components/ui'
-import { Calculator, X, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react'
-import {
-  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
-  addMonths, subMonths, format, isSameMonth, isSameDay, isToday,
-} from 'date-fns'
+import { Calculator, X, ArrowLeftRight } from 'lucide-react'
+import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 
-const ZILE = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
 type Moneda = 'RON' | 'EUR' | 'USD' | 'GBP'
 type Rates = { EUR: number; USD: number; GBP: number }
@@ -31,78 +27,9 @@ function nightsBetween(a: string, b: string): number {
   return n > 0 ? n : 0
 }
 
-// exportat si pentru Calendar → „Alege data” (cerut direct: „calendarul să fie interactiv, ca cel din calculator”)
-export function RangeCalendar({ checkin, checkout, onPick }: {
-  checkin: string; checkout: string; onPick: (checkin: string, checkout: string) => void
-}) {
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(checkin ? new Date(checkin) : new Date()))
-
-  const gridStart = startOfWeek(startOfMonth(viewMonth), { weekStartsOn: 1 })
-  const gridEnd = endOfWeek(endOfMonth(viewMonth), { weekStartsOn: 1 })
-  const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
-
-  function pickDay(d: Date) {
-    const iso = format(d, 'yyyy-MM-dd')
-    if (!checkin || checkout) { onPick(iso, ''); return }
-    if (iso <= checkin) { onPick(iso, ''); return }
-    onPick(checkin, iso)
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button type="button" onClick={() => setViewMonth(m => subMonths(m, 1))} style={{
-          width: 28, height: 28, borderRadius: 8, background: 'rgba(159,215,255,0.08)',
-          border: '1px solid rgba(159,215,255,0.15)', color: 'rgba(159,215,255,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><ChevronLeft size={14} /></button>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#FFFFFF', textTransform: 'capitalize' }}>
-          {format(viewMonth, 'MMMM yyyy', { locale: ro })}
-        </span>
-        <button type="button" onClick={() => setViewMonth(m => addMonths(m, 1))} style={{
-          width: 28, height: 28, borderRadius: 8, background: 'rgba(159,215,255,0.08)',
-          border: '1px solid rgba(159,215,255,0.15)', color: 'rgba(159,215,255,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}><ChevronRight size={14} /></button>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
-        {ZILE.map((z, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: 'rgba(159,215,255,0.35)', padding: '4px 0' }}>{z}</div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
-        {days.map(d => {
-          const iso = format(d, 'yyyy-MM-dd')
-          const inMonth = isSameMonth(d, viewMonth)
-          const isCheckin = iso === checkin
-          const isCheckout = iso === checkout
-          const inRange = checkin && checkout && iso > checkin && iso < checkout
-          const endpoint = isCheckin || isCheckout
-          return (
-            <button
-              key={iso}
-              type="button"
-              onClick={() => pickDay(d)}
-              style={{
-                position: 'relative', height: 34, border: 'none', cursor: 'pointer',
-                background: endpoint ? '#4DA3FF' : inRange ? 'rgba(77,163,255,0.18)' : 'transparent',
-                color: endpoint ? '#FFFFFF' : inMonth ? '#E8F4FF' : 'rgba(159,215,255,0.25)',
-                fontSize: 12, fontWeight: endpoint ? 700 : 400,
-                borderRadius: isCheckin ? '8px 0 0 8px' : isCheckout ? '0 8px 8px 0' : inRange ? 0 : 8,
-                outline: isToday(d) && !endpoint ? '1px solid rgba(159,215,255,0.4)' : 'none',
-                outlineOffset: -1,
-              }}
-            >
-              {format(d, 'd')}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+// selectorul de perioada e acum in components/RangeCalendar.tsx (exportat si de aici, pentru importurile vechi)
+import { RangeCalendar } from '@/components/RangeCalendar'
+export { RangeCalendar }
 
 export default function PriceCalc() {
   const [open, setOpen] = useState(false)
