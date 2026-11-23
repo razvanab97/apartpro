@@ -7,6 +7,7 @@ import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import { TARI, oraseTara, taraOblio } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import DublareRezervare from '@/components/DublareRezervare'
+import DocumentConfirmare from '@/components/DocumentConfirmare'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
@@ -161,6 +162,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [confirmare, setConfirmare] = useState(false)
   // „⧉ Dublează”: rezervare noua pentru acelasi client; dupa creare fereastra trece pe ea
   const [dublare, setDublare] = useState(false)
+  const [documentConf, setDocumentConf] = useState(false)
   const [dublataInfo, setDublataInfo] = useState<string | null>(null)
   // telefonul proprietarului apartamentului (pentru „Confirmare proprietar”, cerut direct)
   const [telProp, setTelProp] = useState<{ nume: string; tel: string | null } | null>(null)  // null = apartament fara proprietar
@@ -924,6 +926,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
               style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
           )}
+          {editing.id && (
+            <button data-document-btn type="button" className="rz-btn" onClick={async () => { if (arePending()) await salveazaAuto(); setDocumentConf(true) }}
+              title="Document A4 (PDF) de confirmare a rezervării — alegi ce informații apar"
+              style={{ padding: '10px 16px', borderColor: 'rgba(94,234,212,0.4)', color: '#5EEAD4', background: 'rgba(45,212,191,0.08)' }}>📄 Document</button>
+          )}
           <button type="button" className="rz-btn" onClick={() => void inchide()} style={{ padding: '10px 18px' }}>{editing.id ? 'Închide' : 'Anulează'}</button>
           <button type="button" className="rz-btn rz-btn-primary" onClick={salveazaTot} disabled={saving}>
             {saving ? <><Loader2 size={14} className="rz-spin" /> Se salvează…</> : 'Salvează rezervarea'}
@@ -937,6 +944,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
           setDublare(false)
           if (data) { setEditing(data); setDublataInfo('✓ Rezervare nouă creată (dublată) — acum o editezi pe ea'); setTimeout(() => setDublataInfo(null), 7000) }
         }} />}
+      {documentConf && <DocumentConfirmare rezervare={editing} apt={apartamente.find(a => a.id === editing.apartament_id) || editing.apartament || null} onClose={() => setDocumentConf(false)} />}
       {confirmare && <ConfirmareClient rezervare={editing} apt={apartamente.find(a => a.id === editing.apartament_id) || editing.apartament || null} onClose={() => setConfirmare(false)} />}
     </div>
   )
