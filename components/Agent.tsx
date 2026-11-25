@@ -21,7 +21,7 @@ type Msg = { role: 'user' | 'assistant'; content: string; cards?: Card[]; nota?:
 type Ctx = { rezervare_id: string; rezervare_nume?: string } | null
 type Jurnal = { id: string; ts: number; actiune: string; titlu: string; descriere: string; undo: any; anulat?: boolean }
 
-const CHEIE_CONV = 'agent_conv_v1', CHEIE_JURNAL = 'agent_jurnal'
+const CHEIE_CONV = 'agent_conv_v1', CHEIE_JURNAL = 'agent_jurnal', CHEIE_INBOX_VAZUT = 'agent_inbox_vazut'
 const SUGESTII = ['Ce am de făcut azi?', 'Ce apartamente sunt libere weekendul ăsta?', 'Ce rezervări nu au telefon?', 'Ce aș putea îmbunătăți săptămâna asta?']
 
 // ── jurnal (setari key/value, fara migrare) ──
@@ -188,6 +188,27 @@ export default function Agent() {
   }
 
   useEffect(() => { try { const v = JSON.parse(localStorage.getItem(CHEIE_CONV) || '[]'); if (Array.isArray(v)) setMsgs(v) } catch {} }, [])
+  // mesajele „din oficiu” (reamintiri programate, încasările zilei - setari „agent_inbox”, scrise de cron): punct roșu pe
+  // buton cât timp sunt necitite; la deschidere intră în conversație, o singură dată pe dispozitiv
+  const [inboxNou, setInboxNou] = useState<{ id: string; text: string; la: string }[]>([])
+  useEffect(() => {
+    let viu = true
+    const verifica = () => Promise.resolve(supabase.from('setari').select('valoare').eq('cheie', 'agent_inbox').maybeSingle()).then(({ data }) => {
+      let l: any[] = []; try { const v = JSON.parse(data?.valoare || '[]'); if (Array.isArray(v)) l = v } catch {}
+      let vazute: string[] = []; try { vazute = JSON.parse(localStorage.getItem(CHEIE_INBOX_VAZUT) || '[]') } catch {}
+      // pe un dispozitiv nou nu umple conversatia cu tot istoricul: doar ultimele 3 zile
+      const prag = Date.now() - 3 * 86400000
+      if (viu) setInboxNou(l.filter(m => m?.id && !vazute.includes(m.id) && new Date(m.la).getTime() > prag))
+    }).catch(() => {})
+    verifica(); const t = setInterval(verifica, 10 * 60 * 1000)
+    return () => { viu = false; clearInterval(t) }
+  }, [])
+  useEffect(() => {
+    if (!open || !inboxNou.length) return
+    setMsgs(m => [...m, ...inboxNou.map(x => ({ role: 'assistant' as const, content: x.text, ts: new Date(x.la).getTime() || Date.now(), nota: true }))])
+    try { const v = JSON.parse(localStorage.getItem(CHEIE_INBOX_VAZUT) || '[]'); localStorage.setItem(CHEIE_INBOX_VAZUT, JSON.stringify([...(Array.isArray(v) ? v : []), ...inboxNou.map(x => x.id)].slice(-200))) } catch {}
+    setInboxNou([])
+  }, [open, inboxNou])
   useEffect(() => { try { localStorage.setItem(CHEIE_CONV, JSON.stringify(msgs.slice(-60))) } catch {} }, [msgs])
   useEffect(() => { if (open) setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 60) }, [msgs, open, loading])
   // contextul: ultima rezervare deschisa pe ecran (formular / calendar) - trimis de RezervareModal si Calendar
@@ -364,6 +385,7 @@ export default function Agent() {
         style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000, width: 54, height: 54, borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
           background: 'linear-gradient(135deg,#2563EB,#7C3AED)', color: '#FFFFFF', boxShadow: '0 10px 30px rgba(37,99,235,0.45)', animation: open ? 'none' : 'agPulse 3s ease-in-out infinite' }}>
         {open ? <X size={22} /> : <Sparkles size={23} />}
+        {!open && inboxNou.length > 0 && <span data-agent-inbox title={`${inboxNou.length} mesaj${inboxNou.length === 1 ? '' : 'e'} nou${inboxNou.length === 1 ? '' : 'i'}`} style={{ position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, background: '#EF4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'grid', placeItems: 'center', border: '2px solid #0A1322' }}>{inboxNou.length}</span>}
       </button>
 
       {open && (

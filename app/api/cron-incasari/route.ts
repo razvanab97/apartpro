@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { cursRezervareServer } from '@/lib/cursBnr'
+import { livreazaReamintiri, adaugaInbox } from '@/lib/reamintiri'
 
 export const dynamic = 'force-dynamic'
 const CRON_SECRET = process.env.CRON_SECRET || 'apartpro-cron-2026'
@@ -24,9 +25,12 @@ export async function GET(req: NextRequest) {
   const ora = oraRo(), azi = aziRo()
   if (!fortat && (ora < 16 || ora >= 20)) return NextResponse.json({ ok: true, sarit: `ora ${ora} la București (se trimite între 16 și 20)` })
 
+  // reamintirile programate (din Asistent) scadente azi - si cele puse in cursul zilei, dupa rularea de dimineata
+  const ream = await livreazaReamintiri(req.nextUrl.origin, { simulare }).catch(e => ({ eroare: e instanceof Error ? e.message : 'reamintiri' }))
+
   const cheie = `incasari_notif_${azi}`
   const { data: deja } = await supabase.from('setari').select('valoare').eq('cheie', cheie).maybeSingle()
-  if (deja && !simulare) return NextResponse.json({ ok: true, sarit: 'deja trimis azi', detalii: deja.valoare })
+  if (deja && !simulare) return NextResponse.json({ ok: true, sarit: 'deja trimis azi', detalii: deja.valoare, reamintiri: ream })
 
   const { data, error } = await supabase.from('rezervari')
     .select('id,nume_client,data_checkin,data_checkout,canal,status_plata,valoare_bruta,suma_incasata,moneda,avans,camera_semnalata,apartament:apartamente(nume,nota)')
@@ -54,9 +58,9 @@ export async function GET(req: NextRequest) {
   const linieAvans = (x: typeof avansuri[number]) => `${x.r.apartament?.nota || x.r.apartament?.nume || '?'} · ${x.r.nume_client} — avans ${lei(x.lipsa)} ${mon(x.r)}, ${x.r.avans_termen === azi ? 'termen azi' : `termen depășit (${ziLuna(x.r.avans_termen)})`}`
 
   if (!deIncasat.length && !avansuri.length) {
-    if (simulare) return NextResponse.json({ ok: true, simulare: true, n: 0, dejaTrimisAzi: !!deja })
+    if (simulare) return NextResponse.json({ ok: true, simulare: true, n: 0, dejaTrimisAzi: !!deja, reamintiri: ream })
     await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify({ n: 0, la: new Date().toISOString() }) }, { onConflict: 'cheie' })
-    return NextResponse.json({ ok: true, n: 0 })
+    return NextResponse.json({ ok: true, n: 0, reamintiri: ream })
   }
   // totalul in lei: rezervarile in valuta se trec la cursul BNR (fiecare rand ramane scris in moneda lui)
   const total = (await Promise.all([...deIncasat.map(async x => x.rest * await cursRezervareServer(x.r)), ...avansuri.map(async x => x.lipsa * await cursRezervareServer(x.r))])).reduce((s, v) => s + v, 0)
@@ -66,10 +70,12 @@ export async function GET(req: NextRequest) {
   const linii = [...deIncasat.map(linie), ...avansuri.map(linieAvans)]
   const corp = linii.slice(0, 4).join('\n') + (linii.length > 4 ? `\n+ încă ${linii.length - 4}` : '')
 
-  if (simulare) return NextResponse.json({ ok: true, simulare: true, dejaTrimisAzi: !!deja, ora, titlu, body: corp, clopotel: linii.map(l => `💰 ${l}`) })
+  if (simulare) return NextResponse.json({ ok: true, simulare: true, dejaTrimisAzi: !!deja, ora, titlu, body: corp, clopotel: linii.map(l => `💰 ${l}`), reamintiri: ream })
   // intai „o data pe zi” (ca doua rulari apropiate sa nu trimita de doua ori), apoi notificarile
   await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify({ n, total, la: new Date().toISOString() }) }, { onConflict: 'cheie' })
   await supabase.from('notificari').insert(linii.map(l => ({ mesaj: `💰 ${l}`, tip: 'incasare', citit: false, url: '/calendar' })))
+  // si ca mesaj in Asistent (cerut direct: „pot fi mesaje și în asistentul AI”)
+  await adaugaInbox([{ text: `${titlu}\n${linii.map(l => '• ' + l).join('\n')}` }]).catch(() => {})
   let push: any = null
   try {
     // fara „tip”: ajunge pe toate telefoanele abonate, indiferent de categoriile alese (sa nu se piarda)
@@ -77,5 +83,5 @@ export async function GET(req: NextRequest) {
       body: JSON.stringify({ title: titlu, body: corp, url: '/calendar', tag: 'incasari-' + azi }) })
     push = await res.json().catch(() => null)
   } catch (e) { push = { eroare: e instanceof Error ? e.message : 'push' } }
-  return NextResponse.json({ ok: true, n, total, push })
+  return NextResponse.json({ ok: true, n, total, push, reamintiri: ream })
 }

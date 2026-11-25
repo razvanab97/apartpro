@@ -751,15 +751,15 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                         <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: C.faint }}>%</span>
                       </div>
                     </div>
-                    <div><Label>Valoare</Label><Money value={editing.comision_platforma_valoare} onChange={v => set({ comision_platforma_valoare: v })} /></div>
-                    <div><Label>TVA / taxă</Label><Money value={editing.tva_comision_platforma} onChange={v => set({ tva_comision_platforma: v })} /></div>
+                    <div><Label>Valoare</Label><Money value={editing.comision_platforma_valoare} suffix={moneda} onChange={v => set({ comision_platforma_valoare: v })} /></div>
+                    <div><Label>TVA / taxă</Label><Money value={editing.tva_comision_platforma} suffix={moneda} onChange={v => set({ tva_comision_platforma: v })} /></div>
                   </div>
                 </Fold>
                 <Fold title="Costuri operaționale" open={showCosturi} onToggle={() => setShowCosturi(s => !s)}
                   value={totalCosturi > 0 ? <span style={{ color: C.red }}>−{fmt(totalCosturi)} RON</span> : <span style={{ color: C.faint }}>0 · editează</span>}>
                   <div className="rz-grid rz-2">
                     {COSTURI.map(([k, l]) => (
-                      <div key={k}><Label>{l}</Label><Money value={editing[k]} onChange={v => set({ [k]: v })} /></div>
+                      <div key={k}><Label>{l}</Label><Money value={editing[k]} suffix={moneda} onChange={v => set({ [k]: v })} /></div>
                     ))}
                   </div>
                 </Fold>
@@ -769,20 +769,26 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             {editing.apartament_id && calcul && (
               <Group title="Decont proprietar">
                 <div className="rz-rows">
-                  <div><span>Bază calcul</span><b>{fmt(calcul.baza)}</b></div>
-                  <div><span>Comision administrator {procentAdmin}%</span><b style={{ color: C.red }}>−{fmt(calcul.comision)}</b></div>
+                  <div><span>Bază calcul</span><b>{fmt(calcul.baza)} {moneda}</b></div>
+                  <div><span>Comision administrator {procentAdmin}%</span><b style={{ color: C.red }}>−{fmt(calcul.comision)} {moneda}</b></div>
                 </div>
-                <div className="rz-total">
+                <div className="rz-total" data-decont-virat>
                   <span>De virat proprietarului</span>
-                  <b>{fmt(calcul.suma_proprietar)} RON</b>
+                  <b>{fmt(calcul.suma_proprietar)} {moneda}</b>
                 </div>
+                {/* rezervare in valuta: decontul e in moneda ei; in Deconturi / Proprietari se trece in lei (curs BNR din ziua check-in-ului) */}
+                {moneda !== 'RON' && cursuri[moneda] > 0 && (
+                  <div data-decont-lei style={{ fontSize: 11.5, color: '#9FD7FF', marginTop: 6 }}>
+                    ≈ {fmt(Math.round(calcul.suma_proprietar * cursuri[moneda] * 100) / 100)} RON de virat la cursul BNR de azi · în Deconturi se trece în lei la cursul din ziua check-in-ului
+                  </div>
+                )}
                 <label className="rz-check">
                   <input type="checkbox" checked={!!editing.platit_proprietar}
                     onChange={e => set({ platit_proprietar: e.target.checked, suma_platita_proprietar: editing.suma_platita_proprietar ?? calcul.suma_proprietar })} />
                   Plătit către proprietar
                 </label>
                 {editing.platit_proprietar && (
-                  <div style={{ marginTop: 8 }}><Label>Sumă plătită</Label><Money value={editing.suma_platita_proprietar} onChange={v => set({ suma_platita_proprietar: v })} /></div>
+                  <div style={{ marginTop: 8 }}><Label>Sumă plătită</Label><Money value={editing.suma_platita_proprietar} suffix={moneda} onChange={v => set({ suma_platita_proprietar: v })} /></div>
                 )}
               </Group>
             )}

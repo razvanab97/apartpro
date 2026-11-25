@@ -4,6 +4,7 @@ import { rezervareDublata, pretPeNoapte } from '@/lib/dublare'
 import { agregaActivitate } from '@/lib/analizaActivitate'
 import { MSG_RECENZIE_FB } from '@/lib/sugestii'
 import { cursRezervareServer, cursServer } from '@/lib/cursBnr'
+import { adaugaReamintire, citesteReamintiri, stergeReamintire } from '@/lib/reamintiri'
 // moneda ceruta de utilizator (EUR / USD / GBP / RON) sau '' daca n-a spus
 const monedaArg = (v: any) => { const m = String(v || '').trim().toUpperCase().replace('€', 'EUR').replace(/^EURO?S?$/, 'EUR').replace(/^LEI$/, 'RON'); return ['RON', 'EUR', 'USD', 'GBP'].includes(m) ? m : '' }
 
@@ -44,13 +45,15 @@ function gasesteApt(apts: Apt[], q: any): Apt | null {
 }
 const etApt = (x: any) => { const a = Array.isArray(x) ? x[0] : x; return a ? `${a.nota ? a.nota + ' · ' : ''}${curat(a.nume)}` : '—' }
 
-const SEL = 'id,apartament_id,nume_client,telefon_client,email_client,data_checkin,data_checkout,nr_persoane,valoare_bruta,suma_incasata,moneda,status_rezervare,status_plata,canal,cod_rezervare_platforma,observatii,camera_semnalata,apartament:apartamente(nota,nume)'
+// „*” (nu lista explicita): coloanele de avans pot lipsi pana la migrare - o lista explicita ar strica toata cautarea
+const SEL = '*,apartament:apartamente(nota,nume)'
 function compact(r: any) {
   return {
     id: r.id, apartament: etApt(r.apartament), client: curat(r.nume_client), telefon: r.telefon_client || null,
     checkin: r.data_checkin, checkout: r.data_checkout, nopti: nopti(r.data_checkin, r.data_checkout), persoane: r.nr_persoane,
     valoare_bruta: Number(r.valoare_bruta) || 0, incasat: Number(r.suma_incasata) || 0, moneda: r.moneda || 'RON',
     status: r.status_rezervare, plata: r.status_plata, canal: r.canal, cod: r.cod_rezervare_platforma || null,
+    avans_incasat: Number(r.avans) || undefined, avans_de_incasat: Number(r.avans_cerut) || undefined, avans_termen: r.avans_termen || undefined,
     observatii: curat(r.observatii).slice(0, 220) || null, din_5stardesk: din5star(r.observatii),
     nealocata_5stardesk: r.camera_semnalata === 'NEALOCAT' || undefined,
   }
@@ -143,6 +146,12 @@ const TOOLS = [
     pret_total: N('total, doar dacă utilizatorul îl spune (opțional; implicit prețul pe noapte × nopți)'),
     moneda: S('RON | EUR | USD | GBP — moneda sumelor, DOAR dacă utilizatorul spune „euro” / „€” / „dolari” etc. (implicit RON); sumele rămân exact cum le spune, nu le converti'),
   }, ['rezervare_id']),
+  fn('programeaza_reamintire', 'Programează o reamintire (cerut direct: „să ne reamintească și să ne trimită un mesaj în ziua plății”): în ziua aleasă primește notificare pe telefon, în clopoțel și mesaj aici, în Asistent. Se salvează direct (nu e nevoie de confirmare).', {
+    data: S('YYYY-MM-DD — ziua reamintirii'), text: S('ce să-i amintești, scurt și concret, ex. „încasează restul de 1.200 RON de la Popescu (C64, 12-15 dec.)”'),
+    rezervare_id: S('id-ul rezervării, dacă e despre una (opțional)'),
+  }, ['data', 'text']),
+  fn('lista_reamintiri', 'Reamintirile programate care n-au fost încă trimise.'),
+  fn('sterge_reamintire', 'Șterge o reamintire programată (după id-ul din lista_reamintiri).', { id: S('id') }, ['id']),
   fn('propune_anulare', 'PROPUNE anularea unei rezervări (după confirmarea utilizatorului).', { rezervare_id: S('id'), motiv: S('opțional') }, ['rezervare_id']),
   fn('propune_mutare', 'PROPUNE mutarea unei rezervări pe alt apartament și/sau alte date. Verifică singur disponibilitatea.', {
     rezervare_id: S('id'), apartament_nou: S('cod/nume apartament nou (opțional)'), checkin_nou: S('YYYY-MM-DD (opțional)'), checkout_nou: S('YYYY-MM-DD (opțional)'),
@@ -393,6 +402,24 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       cards.push(card)
       return { propunere_afisata: true, blocata: card.blocat, avertismente: av }
     }
+    case 'programeaza_reamintire': {
+      // data reala (nu doar formatul: „2026-13-40” trecea)
+      const t = Date.parse(String(a.data) + 'T12:00:00Z')
+      if (!ISO.test(a.data || '') || isNaN(t) || new Date(t).toISOString().slice(0, 10) !== a.data) return { eroare: 'Data trebuie să fie o zi reală, YYYY-MM-DD' }
+      if (a.data < azi) return { eroare: `Data ${a.data} e în trecut — azi e ${azi}` }
+      if (!curat(a.text)) return { eroare: 'Lipsește textul reamintirii' }
+      try {
+        const r = await adaugaReamintire({ data: a.data, text: curat(a.text), rezervare_id: a.rezervare_id || null })
+        return { programata: true, id: r.id, data: r.data, text: r.text, cand: a.data === azi ? 'azi, pe la 16:00 (odată cu încasările)' : 'în dimineața zilei respective (~9-10) — notificare pe telefon, în clopoțel și mesaj în Asistent' }
+      } catch (e) { return { eroare: 'Nu s-a putut salva reamintirea: ' + (e instanceof Error ? e.message : '') } }
+    }
+    case 'lista_reamintiri': {
+      const l = (await citesteReamintiri()).filter(r => !r.trimis_la).sort((x, y) => x.data.localeCompare(y.data))
+      return { reamintiri: l.map(r => ({ id: r.id, data: r.data, text: r.text })) }
+    }
+    case 'sterge_reamintire': {
+      return (await stergeReamintire(String(a.id || ''))) ? { sters: true } : { eroare: 'Nu găsesc reamintirea — vezi lista_reamintiri' }
+    }
     case 'propune_dublare': {
       const { data: r } = await supabase.from('rezervari').select(SEL).eq('id', a.rezervare_id).maybeSingle()
       if (!r) return { eroare: 'Rezervarea nu există — caut-o întâi cu cauta_rezervari' }
@@ -552,7 +579,7 @@ REGULI:
 12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.
 13. Dacă utilizatorul atașează capturi (Airbnb, Booking, alt site) sau poza unui buletin și cere o rezervare: citește din imagini numele, datele (anul: cea mai apropiată dată viitoare; „Sosește mâine” = mâine), nr. de oaspeți, telefonul, codul rezervării și suma — la Airbnb suma plătită de oaspete („Oaspetele a plătit” → Total), nu câștigul gazdei; din buletin: numele, CNP-ul și adresa; din PAȘAPORT (are „PAȘAPORT / PASSPORT” și rânduri P<…<<< jos): numele (Prenume Nume, cu cratime), numărul pașaportului și CNP-ul (la pașaportul românesc e câmpul 5 „Cod Numeric Personal”, și apare și în ultimul rând de jos, după data expirării) — pașaportul nu are adresă, nu pune locul nașterii. Ce scrie utilizatorul în mesaj (apartament, date, cost, avans) are prioritate față de imagini. Canal: airbnb pentru Airbnb / cod HM…, booking pentru Booking / cod numeric, altfel direct. În observații pui codul rezervării și, la buletin / pașaport, CNP-ul (și numărul pașaportului). Apartamentul îl iei din mesaj sau din titlul anunțului din captură (potrivește-l cu lista_apartamente). Dacă ai apartamentul, numele și datele, apelează DIRECT propune_rezervare_noua, fără alte întrebări; dacă lipsește ceva esențial, întreabă doar ce lipsește. Spune pe scurt ce ai citit din capturi.
 14. Dacă utilizatorul atașează captura unui mesaj de la oaspete (WhatsApp, SMS, notificare pe telefon) despre plecare (ex. „la ora 11:00 o să părăsim locația”, „am plecat, cheia e în locker”): citește numărul expeditorului din captură și apelează DIRECT propune_eliberare cu telefonul — cu ora DOAR dacă mesajul spune o oră de plecare; fără oră = au plecat acum. Același lucru dacă utilizatorul scrie că un oaspete a plecat / pleacă la o anumită oră. Ora din captura telefonului (ceasul de sus, „acum 17 m”, ora conversației din listă) NU e ora plecării. O captură cu LISTA de conversații WhatsApp poate avea mai mulți oaspeți: apelează propune_eliberare SEPARAT pentru fiecare conversație al cărei mesaj spune că pleacă / a plecat („la ora 10 vom părăsi apartamentul” → 10:00, „we checked out” → fără oră); ignoră conversațiile care nu sunt despre plecare (apeluri, alte subiecte). Dacă un număr nu se potrivește cu niciun oaspete cazat, spune-o scurt la final. Apoi rezumă într-o listă ce ai citit.
-15. Cererea de recenzie pe Facebook e OPȚIONALĂ — o trimitem doar oaspeților aleși de utilizator (cei care au reacționat bine). Când o cere („trimite-i recenzia lui X”, „cere recenzie”), afișezi cu arata_mesaj EXACT textul de mai jos, cu telefonul oaspetelui; nu o propune singur.\nTEXT RECENZIE:\n${MSG_RECENZIE_FB}\n16. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.\n17. „Dublează / copiază comanda (rezervarea) lui X”, „generează încă o rezervare pentru X la ap. Y pentru azi”: caută clientul cu cauta_rezervari și apelează DIRECT propune_dublare cu rezervarea lui cea mai recentă (se copiază doar datele clientului, deci nu întreba care dintre ele, decât dacă sunt clienți DIFERIȚI cu același nume). Apartamentul și datele din mesaj („azi” = ${azi}, „mâine”, „pentru 2 nopți”); fără apartament = același; fără date = de azi, cu același nr. de nopți.\n18. Prețuri în valută: dacă utilizatorul spune suma în euro („800 euro”, „€”), dolari sau lire, trimite moneda (EUR / USD / GBP) la propune_rezervare_noua / propune_dublare / propune_modificare și suma EXACT cum a spus-o (nu o transforma în lei). Fără monedă spusă = RON (sau, la dublare, moneda rezervării copiate).`
+15. Cererea de recenzie pe Facebook e OPȚIONALĂ — o trimitem doar oaspeților aleși de utilizator (cei care au reacționat bine). Când o cere („trimite-i recenzia lui X”, „cere recenzie”), afișezi cu arata_mesaj EXACT textul de mai jos, cu telefonul oaspetelui; nu o propune singur.\nTEXT RECENZIE:\n${MSG_RECENZIE_FB}\n16. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.\n17. „Dublează / copiază comanda (rezervarea) lui X”, „generează încă o rezervare pentru X la ap. Y pentru azi”: caută clientul cu cauta_rezervari și apelează DIRECT propune_dublare cu rezervarea lui cea mai recentă (se copiază doar datele clientului, deci nu întreba care dintre ele, decât dacă sunt clienți DIFERIȚI cu același nume). Apartamentul și datele din mesaj („azi” = ${azi}, „mâine”, „pentru 2 nopți”); fără apartament = același; fără date = de azi, cu același nr. de nopți.\n18. Prețuri în valută: dacă utilizatorul spune suma în euro („800 euro”, „€”), dolari sau lire, trimite moneda (EUR / USD / GBP) la propune_rezervare_noua / propune_dublare / propune_modificare și suma EXACT cum a spus-o (nu o transforma în lei). Fără monedă spusă = RON (sau, la dublare, moneda rezervării copiate).\n19. Reamintiri: „amintește-mi / trimite-mi un mesaj pe 5 decembrie să…”, „anunță-mă în ziua plății lui X” → programeaza_reamintire (se salvează direct, confirmi în text: ziua + ce îi vei aminti). Fără dată spusă, dar despre plata unei rezervări: ziua termenului de avans (avans_termen) dacă există, altfel ziua check-in-ului; caută rezervarea cu cauta_rezervari și pune în text clientul, apartamentul, perioada și suma de încasat (în moneda rezervării). „Ce reamintiri am?” → lista_reamintiri; „șterge reamintirea …” → sterge_reamintire. Reamintirea de încasări de la 16:00 (sosiri neplătite, avansuri cu termen) merge oricum automat — nu trebuie programată.`
 }
 
 async function apelOpenAI(body: any) {
