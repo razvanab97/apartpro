@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/Layout'
 import { useToast, Toast, ConnectionError } from '@/components/ui'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react'
+import { laLei } from '@/lib/moneda'
 
 type Platforma = 'airbnb' | 'booking'
 type Tab = 'dashboard' | 'evolutie' | 'upload' | 'booking'
@@ -191,9 +192,9 @@ function BookingRapoarteContent() {
     try{
       const { from, to, payDate } = _getWeekPeriod(weekOffset)
       const { data: rez } = await supabase.from('rezervari')
-        .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
+        .select('id,observatii,nume_client,data_checkin,data_checkout,valoare_bruta,suma_incasata,moneda,status_rezervare,status_plata,nr_nopti,canal,apartament:apartamente(nota,nume)')
         .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to).order('data_checkout')
-      const mapped: BkRez[] = (rez || []).map((r: any) => {
+      const mapped: BkRez[] = (await laLei(rez)).map((r: any) => {
         const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
         const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
         const net = Math.round((brut - comision) * 100) / 100
@@ -218,9 +219,9 @@ function BookingRapoarteContent() {
       const periods: BkPerioada[] = []
       for (let i = -1; i >= -8; i--) {
         const { from, to, payDate } = _getWeekPeriod(i)
-        const { data: rez } = await supabase.from('rezervari').select('id,valoare_bruta,suma_incasata,status_plata,canal')
+        const { data: rez } = await supabase.from('rezervari').select('id,valoare_bruta,suma_incasata,moneda,data_checkin,status_plata,canal')
           .eq('canal', 'booking').neq('status_rezervare', 'anulata').gte('data_checkout', from).lte('data_checkout', to)
-        const mapped = (rez || []).map((r: any) => {
+        const mapped = (await laLei(rez)).map((r: any) => {
           const brut = Number(r.valoare_bruta || r.suma_incasata || 0)
           const comision = Math.round(brut * BOOKING_COMISION * 100) / 100
           return { ...r, _comision: comision, _net: brut - comision, _status: r.status_plata === 'incasat' ? 'incasat' : 'urmeaza' }

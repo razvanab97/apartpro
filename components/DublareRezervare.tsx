@@ -5,6 +5,7 @@ import { supabase, type Apartament } from '@/lib/supabase'
 import { payloadRezervare } from '@/lib/rezervareEdit'
 import { RangeCalendar } from '@/components/RangeCalendar'
 import { rezervareDublata, pretPeNoapte, noptiIntre, plusZile } from '@/lib/dublare'
+import { MONEDE_REZ, cursAzi } from '@/lib/moneda'
 
 // Fereastra „⧉ Dublează” din rezervare (cerut direct: „un buton pe rezervare prin care să apăsăm și să se genereze o nouă
 // rezervare pentru persoană, selectăm doar apartament și data”): alegi apartamentul + perioada, pretul vine din pretul pe
@@ -20,7 +21,18 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
   const [aptId, setAptId] = useState<string>(rezervare.apartament_id || '')
   const [ci, setCi] = useState(aziRo())
   const [co, setCo] = useState(plusZile(aziRo(), noptiOrig))
-  const pn = pretPeNoapte(rezervare)
+  const monOrig = String(rezervare.moneda || 'RON').toUpperCase()
+  // moneda rezervarii noi (cerut direct: „să putem seta prețurile și în euro”); in alta moneda, pretul pe noapte se trece
+  // la cursul BNR de azi (k = lei pentru o unitate din moneda veche / lei pentru o unitate din moneda noua)
+  const [moneda, setMoneda] = useState(monOrig)
+  const [k, setK] = useState(1)
+  useEffect(() => {
+    if (moneda === monOrig) { setK(1); return }
+    let viu = true
+    Promise.all([cursAzi(monOrig), cursAzi(moneda)]).then(([a, b]) => { if (viu) setK(a && b ? a / b : 0) })
+    return () => { viu = false }
+  }, [moneda, monOrig])
+  const pn = pretPeNoapte(rezervare) * (k || 0)   // nerotunjit, ca totalul sa iasa ca in fereastra rezervarii
   const n = ci && co ? noptiIntre(ci, co) : 0
   const [total, setTotal] = useState<string>(String(Math.round(pn * noptiOrig * 100) / 100 || ''))
   const [totalManual, setTotalManual] = useState(false)
@@ -51,7 +63,7 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
     if (invalid || lucrez) return
     setLucrez(true); setEroare(null)
     try {
-      const rand = rezervareDublata(rezervare, { apartament_id: aptId, proprietar_id: apt?.proprietar_id || null, checkin: ci, checkout: co, total: total === '' ? 0 : Number(String(total).replace(',', '.')) || 0 })
+      const rand = rezervareDublata(rezervare, { apartament_id: aptId, proprietar_id: apt?.proprietar_id || null, checkin: ci, checkout: co, total: total === '' ? 0 : Number(String(total).replace(',', '.')) || 0, moneda })
       const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(rand, apartamente)).select('id').single()
       if (error || !data) { setEroare(error?.message || 'Nu s-a putut crea'); return }
       await onCreata(data.id)
@@ -80,9 +92,14 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
         <div data-dub-perioada style={{ padding: 12, borderRadius: 12, background: 'rgba(14,27,43,0.6)', border: '1px solid rgba(159,215,255,0.12)' }}>
           <RangeCalendar checkin={ci} checkout={co} onPick={(a, b) => { setCi(a); setCo(b) }} />
         </div>
-        {et(`Total (${rezervare.moneda || 'RON'})`, <input data-dub-total inputMode="decimal" value={total} placeholder="fără preț" onChange={e => { setTotal(e.target.value); setTotalManual(true) }} style={camp} />)}
+        {et('Total', <div style={{ display: 'flex', gap: 6 }}>
+          <input data-dub-total inputMode="decimal" value={total} placeholder="fără preț" onChange={e => { setTotal(e.target.value); setTotalManual(true) }} style={{ ...camp, flex: 1, minWidth: 0 }} />
+          <select data-dub-moneda value={moneda} onChange={e => setMoneda(e.target.value)} title="Moneda rezervării noi" style={{ ...camp, width: 82, flexShrink: 0 }}>
+            {Array.from(new Set([...MONEDE_REZ, monOrig])).map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>)}
         <div style={{ fontSize: 11.5, color: 'rgba(159,215,255,0.5)', marginTop: -6 }}>
-          {pn ? `${fmt(pn)} ${rezervare.moneda || 'RON'} / noapte, ca în rezervarea din ${scurt(rezervare.data_checkin)}${totalManual ? ' · total scris de mână' : ''}` : 'Rezervarea originală n-are preț — scrie totalul (sau lasă gol)'}
+          {pn ? `${fmt(pn)} ${moneda} / noapte, ${moneda === monOrig ? 'ca' : `din ${fmt(pretPeNoapte(rezervare))} ${monOrig} la cursul BNR, ca`} în rezervarea din ${scurt(rezervare.data_checkin)}${totalManual ? ' · total scris de mână' : ''}` : moneda !== monOrig && !k ? 'Cursul BNR nu s-a putut încărca — scrie totalul' : 'Rezervarea originală n-are preț — scrie totalul (sau lasă gol)'}
         </div>
         <div style={{ fontSize: 11.5, color: 'rgba(214,228,244,0.6)', lineHeight: 1.5, padding: '8px 10px', borderRadius: 9, background: 'rgba(159,215,255,0.04)', border: '1px solid rgba(159,215,255,0.08)' }}>
           Se copiază: nume, telefon, email, {Number(rezervare.nr_persoane) || 1} pers., canal{['airbnb', 'booking'].includes(rezervare.canal) ? ' (devine Direct)' : ''} și actele din observații (CNP). Pornește <b>neplătită</b> și <b>nefacturată</b>.

@@ -8,6 +8,7 @@ import { decontComision } from '@/lib/decontComision'
 import { citesteTaxe, curateniiTaxate } from '@/lib/taxeCuratenie'
 import DeconturiContent from '@/components/DeconturiContent'
 import SituatieProprietar from '@/components/SituatieProprietar'
+import { laLei } from '@/lib/moneda'
 
 const empty: Partial<Proprietar> = { nume:'', email:'', telefon:'', iban:'', banca:'', adresa:'', cnp_cui:'', nota:'' }
 const fmtRon = (n: number) => Math.round(n).toLocaleString('ro-RO')
@@ -128,7 +129,7 @@ export default function ProprietariPage() {
       const idsCom = aptsCom.map(a => a.id)
       const cfgTaxe = await citesteTaxe()
       const [{ data: rz }, cur, { data: dp }, { data: ex }] = await Promise.all([
-        supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,status_rezervare,camera_semnalata,comision_platforma_valoare,tva_comision_platforma')
+        supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,moneda,canal,status_rezervare,camera_semnalata,comision_platforma_valoare,tva_comision_platforma')
           .in('apartament_id', idsCom).gt('data_checkout', pz).lte('data_checkin', uz).in('status_rezervare', ['confirmata', 'finalizata']),
         curateniiTaxate(pz, uz, cfgTaxe, idsCom.filter(id => cfgTaxe.apt[id])),
         supabase.from('setari').select('cheie,valoare').in('cheie', idsCom.map(id => `decont_proprietar_${id}_${an}_${luna}`)),
@@ -136,7 +137,7 @@ export default function ProprietariPage() {
         supabase.from('setari').select('valoare').eq('cheie', 'raport_rezervari_excluse').maybeSingle(),
       ])
       let excluse: string[] = []; try { excluse = JSON.parse(ex?.valoare || '[]') } catch {}
-      setRezLuna((rz || []).filter((r: any) => r.camera_semnalata !== 'NEALOCAT' && !excluse.includes(r.id)))
+      setRezLuna((await laLei(rz)).filter((r: any) => r.camera_semnalata !== 'NEALOCAT' && !excluse.includes(r.id)))
       const ce: Record<string, { total: number; nr: number }> = {}
       for (const id of idsCom.filter(id => cfgTaxe.apt[id])) { const x = cur.filter(c => c.apartament_id === id); ce[id] = { total: x.reduce((t, c) => t + c.suma, 0), nr: x.length } }
       setCurEvid(ce)

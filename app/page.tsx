@@ -12,6 +12,7 @@ import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
 import FataDeAnulTrecut from '@/components/FataDeAnulTrecut'
 import { useEvolutieLunara, GraficVenituri } from '@/components/EvolutieLunara'
+import { laLei } from '@/lib/moneda'
 
 // pastreaza o singura rezervare per apartament (evita duplicate din import/sync), preferand-o pe cea cu telefon
 // ultima zi a lunii, in local time (YYYY-MM-DD) - .toISOString() ar muta data cu o zi
@@ -661,7 +662,9 @@ export default function DashboardPage() {
       if (noptiInLuna >= totalNopti) return brut
       return Math.round(brut / totalNopti * noptiInLuna * 100) / 100
     }
-    const rezLunaToate = rezLuna||[]
+    // rezervarile in valuta -> lei (curs BNR din ziua check-in-ului)
+    const rezLunaL = await laLei(rezLuna)
+    const rezLunaToate = rezLunaL
     const rezLunaCam = rezLunaToate.filter(activaPeCamera)
     // incasari brute = suma pro-rata pentru rezervarile active in luna curenta
     const inc = rezLunaCam.reduce((s:number,r:any) => s + proRataLuna(r), 0)
@@ -695,13 +698,13 @@ export default function DashboardPage() {
     void (async()=>{ try{
       const anAT=an-1, primaAT=`${anAT}-${pad(luna)}-01`, ultimaAT=ultimaZiLunaStr(anAT,luna), primaDupaAT=format(new Date(anAT,luna,1),'yyyy-MM-dd'), zileAT=new Date(anAT,luna,0).getDate()
       const [{data:rAT},{count:cAT}]=await Promise.all([
-        supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,canal,camera_semnalata').lte('data_checkin',ultimaAT).gt('data_checkout',primaAT).neq('status_rezervare','anulata').limit(5000),
+        supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,moneda,canal,camera_semnalata').lte('data_checkin',ultimaAT).gt('data_checkout',primaAT).neq('status_rezervare','anulata').limit(5000),
         supabase.from('rezervari').select('*',{count:'exact',head:true}).neq('status_rezervare','anulata').gte('data_checkin',primaAT).lte('data_checkin',ultimaAT),
       ])
       const noptiIn=(r:any)=>{ const ci=r.data_checkin<primaAT?primaAT:r.data_checkin, co=r.data_checkout>primaDupaAT?primaDupaAT:r.data_checkout; return Math.max(0,Math.ceil((new Date(co).getTime()-new Date(ci).getTime())/86400000)) }
       const pr=(r:any)=>{ const brut=Number(r.suma_incasata||0), tot=Number(r.nr_nopti||0)||Math.max(1,Math.ceil((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000)), n=noptiIn(r)
         if(n<=0) return 0; if(n>=tot) return brut; return Math.round(brut/tot*n*100)/100 }
-      const cam=(rAT||[]).filter(activaPeCamera)
+      const cam=(await laLei(rAT)).filter(activaPeCamera)
       const fil=cam.filter((r:any)=>!idsComision.has(r.apartament_id)), cm=cam.filter((r:any)=>idsComision.has(r.apartament_id))
       const aptsAT=new Set(cam.map((r:any)=>r.apartament_id).filter(Boolean))
       const ocup=cam.reduce((x:number,r:any)=>x+(r.data_checkin&&r.data_checkout?noptiIn(r):0),0)
@@ -760,7 +763,7 @@ export default function DashboardPage() {
     const proRataLV=(r:any)=>{ const tot=Math.max(1,Math.round((new Date(r.data_checkout).getTime()-new Date(r.data_checkin).getTime())/86400000))
       const ci=r.data_checkin<primaLV?primaLV:r.data_checkin, co=r.data_checkout>primaDupaLV?primaDupaLV:r.data_checkout
       const n=Math.max(0,Math.round((new Date(co).getTime()-new Date(ci).getTime())/86400000)); return Number(r.suma_incasata||0)*Math.min(1,n/tot) }
-    const rezLVCam=(rezLV||[]).filter(activaPeCamera)
+    const rezLVCam=(await laLei(rezLV)).filter(activaPeCamera)
     const incLV = rezLVCam.reduce((s:number,r:any)=>{ const b=proRataLV(r); return s+(idsComision.has(r.apartament_id)?comisionRez(r,b):netPlatforma(b,r.canal)) },0)
       + comisionFixLunar(new Set(rezLVCam.filter((r:any)=>idsComision.has(r.apartament_id)).map((r:any)=>r.apartament_id)))
     // Cheltuieli luna precedenta pentru acoperire
@@ -787,8 +790,8 @@ export default function DashboardPage() {
     const thuD=new Date(friD); thuD.setDate(friD.getDate()+6)
     const payFriD=new Date(friD); payFriD.setDate(friD.getDate()+7)
     const fmtD=(d:Date)=>aziLocal(d)
-    const {data:bkRez}=await supabase.from('rezervari').select('valoare_bruta,suma_incasata,status_plata').eq('canal','booking').neq('status_rezervare','anulata').gte('data_checkout',fmtD(friD)).lte('data_checkout',fmtD(thuD))
-    const bkNet=(bkRez||[]).reduce((s:number,r:any)=>s+Number(r.valoare_bruta||r.suma_incasata||0)*0.83,0)
+    const {data:bkRez}=await supabase.from('rezervari').select('valoare_bruta,suma_incasata,moneda,data_checkin,status_plata').eq('canal','booking').neq('status_rezervare','anulata').gte('data_checkout',fmtD(friD)).lte('data_checkout',fmtD(thuD))
+    const bkNet=(await laLei(bkRez)).reduce((s:number,r:any)=>s+Number(r.valoare_bruta||r.suma_incasata||0)*0.83,0)
     const bkKey=`booking_period_${fmtD(friD)}`
     const {data:bkSaved}=await supabase.from('setari').select('valoare').eq('cheie',bkKey).maybeSingle()
     const bkStatus=bkSaved?.valoare||(bkRez||[]).every((r:any)=>r.status_plata==='incasat')?'incasat':'urmeaza'
@@ -810,7 +813,7 @@ export default function DashboardPage() {
     const perApt=Object.values(byApt).map(x=>({...x,net:Math.round(x.net),brut:Math.round(x.brut)})).filter(x=>x.net>0).sort((a,b)=>b.net-a.net)
     setPerAptIncome(perApt)
     // Rezervari luna pentru tabelul de verificare (checkin in luna curenta, sortate cronologic)
-    setRezLunaDsp((rezLuna||[]).filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
+    setRezLunaDsp(rezLunaL.filter((r:any)=>r.data_checkin>=primaZiLuna).sort((a:any,b:any)=>a.data_checkin.localeCompare(b.data_checkin)))
     clearTimeout(bail)
     }catch(err){console.error('[loadData]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
@@ -1433,7 +1436,7 @@ export default function DashboardPage() {
                         <td style={{padding:'8px 10px',fontSize:12,color:'rgba(159,215,255,0.55)',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis'}}>{r.apartament?.nume||'—'}</td>
                         <td style={{padding:'8px 10px',fontSize:11.5,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkin?.slice(5)}</td>
                         <td style={{padding:'8px 10px',fontSize:11.5,color:'rgba(214,228,244,0.5)',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{r.data_checkout?.slice(5)}</td>
-                        <td style={{padding:'8px 10px',fontSize:12,fontWeight:600,color:'#7FCFA0',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{Number(r.suma_incasata).toLocaleString('ro-RO')}</td>
+                        <td style={{padding:'8px 10px',fontSize:12,fontWeight:600,color:'#7FCFA0',borderBottom:'1px solid rgba(159,215,255,0.04)',fontFamily:'monospace',whiteSpace:'nowrap'}}>{Number(r.suma_incasata).toLocaleString('ro-RO')}{r.moneda&&r.moneda!=='RON'?` ${r.moneda}`:''}</td>
                         <td style={{padding:'8px 10px',borderBottom:'1px solid rgba(159,215,255,0.04)',whiteSpace:'nowrap'}}><CanalBadge canal={r.canal}/></td>
                       </tr>
                     ))

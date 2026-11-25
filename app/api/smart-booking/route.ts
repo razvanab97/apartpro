@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { cursRezervareServer } from '@/lib/cursBnr'
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
 
@@ -286,11 +287,11 @@ export async function POST(req: NextRequest) {
     for (const r of (Array.isArray(pl) ? pl : [])) if (r.pret_booking && new Date(r.updated_at).getTime() > prag && !pretBooking[r.apartament_id]) pretBooking[r.apartament_id] = Number(r.pret_booking)
   }
   const pretDirect: Record<string, number> = {}
-  const directe = await sbFetch('rezervari?select=apartament_id,suma_incasata,data_checkin,data_checkout&canal=in.(direct,intern)&status_rezervare=neq.anulata&suma_incasata=gt.0&order=data_checkin.desc&limit=300')
+  const directe = await sbFetch('rezervari?select=apartament_id,suma_incasata,moneda,data_checkin,data_checkout&canal=in.(direct,intern)&status_rezervare=neq.anulata&suma_incasata=gt.0&order=data_checkin.desc&limit=300')
   for (const r of (Array.isArray(directe) ? directe : [])) {
     if (pretDirect[r.apartament_id]) continue
     const n = Math.max(1, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
-    pretDirect[r.apartament_id] = Math.round(Number(r.suma_incasata) / n)
+    pretDirect[r.apartament_id] = Math.round(Number(r.suma_incasata) * (await cursRezervareServer(r)) / n)   // valuta -> lei
   }
   const nrPers = Number(extracted.nr_persoane) || 0
   type AptSB = { id: string; nota: string|null; nume: string; zona: string|null; adresa: string|null; capacitate_max: number|null; link_site: string|null; administrare: boolean

@@ -15,12 +15,13 @@ import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { format } from 'date-fns'
 import { ro } from 'date-fns/locale'
+import { inLei, laLei, eValuta, MONEDE_REZ } from '@/lib/moneda'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
   data_checkin: string; data_checkout: string
   canal: string; status_rezervare: string; nr_nopti?: number; nr_persoane?: number
-  suma_incasata?: number; observatii?: string
+  suma_incasata?: number; moneda?: string; observatii?: string
   suma_proprietar?: number; platit_proprietar?: boolean; suma_platita_proprietar?: number
   apartament?: any
 }
@@ -104,7 +105,7 @@ function msgConfirmareRezervare(r:any){
   const co  = r.data_checkout ? format(new Date(r.data_checkout),'dd MMMM yyyy',{locale:ro}) : ''
   const nopti = r.data_checkin && r.data_checkout ? nightsBetween(r.data_checkin, r.data_checkout) : null
   const nume = firstName(r.nume_client)
-  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}*.\n\n📅 *Check-in:* ${ci}\n📅 *Check-out:* ${co}${nopti?`\n🌙 *Nopți:* ${nopti}`:''}${r.suma_incasata?`\n💰 *Total:* ${r.suma_incasata} RON`:''}\n\nImediat ce locația e pregătită, primiți aici datele de acces.\n\nEchipa AB Homes Iași`
+  return `Bună ziua, ${nume}! 👋\n\nVă confirmăm rezervarea la *${apt}*.\n\n📅 *Check-in:* ${ci}\n📅 *Check-out:* ${co}${nopti?`\n🌙 *Nopți:* ${nopti}`:''}${r.suma_incasata?`\n💰 *Total:* ${r.suma_incasata} ${r.moneda||'RON'}`:''}\n\nImediat ce locația e pregătită, primiți aici datele de acces.\n\nEchipa AB Homes Iași`
 }
 function msgGataAcces(r:any, sabloane:Record<string,string>){
   const apt = r.apartament?.nume || 'apartament'
@@ -122,7 +123,7 @@ function esteplatforma(canal: string) { return PLATFORME_CU_COMISION.includes(ca
 function netAprox(suma: number, canal: string) { return esteplatforma(canal) ? Math.round(suma * (1 - COMISION_PLATFORMA)) : suma }
 
 function proRataMonth(r: Rez, y: number, m: number): number {
-  const brut = Number(r.suma_incasata || 0)
+  const brut = Number(inLei(r).suma_incasata || 0)   // rezervarile in valuta -> lei (curs BNR din ziua check-in-ului)
   const totalN = r.nr_nopti || Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000)
   if (!totalN || totalN <= 0) return brut
   const fd = isoDate(y, m, 1)
@@ -168,7 +169,8 @@ export default function CalendarPage() {
   // panel lateral
   const [panel, setPanel] = useState<'info'|'new'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
-  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', checkin:'', checkout:'', cnp:'', notite:'', persoane:'' })
+  const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', moneda:'RON', checkin:'', checkout:'', cnp:'', notite:'', persoane:'' })
+  const [, setCursGata] = useState(0)
   // Cauta client existent (dupa nume/telefon) in istoricul rezervarilor, cerut direct — ca sa nu
   // se retasteze de la zero un client care a mai stat la noi
   const [clientQuery, setClientQuery] = useState('')
@@ -305,6 +307,8 @@ export default function CalendarPage() {
       // Rezervarile ramase fara camera in 5starDesk nu ocupa apartamentul pe care stateau - apar sus, in
       // "Nealocate", pana le aloci (altfel se suprapuneau, ex. 5 rezervari peste BOLOCA pe C64)
       setRezAll(((r as any) || []).filter((x:any) => x.camera_semnalata !== 'NEALOCAT'))
+      // cursurile pentru rezervarile in valuta (sumele din Calendar / calculator se arata in lei) -> redesenare cand sosesc
+      if (((r as any) || []).some(eValuta)) laLei(r as any).then(() => setCursGata(x => x + 1))
       clearTimeout(bail)
     }catch(err){console.error('[calendar load]',err);clearTimeout(bail);setLoadError(true)}
     setLoading(false)
@@ -345,7 +349,7 @@ export default function CalendarPage() {
   function openNewRez(aptId:string, from:number, to:number){
     const ci = isoDate(year,month,from)
     const co = isoDate(year,month,to+1)
-    setNewRez({ aptId, nume:'', telefon:'', pret:'', checkin:ci, checkout:co, cnp:'', notite:'', persoane:'' })
+    setNewRez({ aptId, nume:'', telefon:'', pret:'', moneda:'RON', checkin:ci, checkout:co, cnp:'', notite:'', persoane:'' })
     setCiPreview(null)
     setRezCapturi([]); setRezScanError(null); setRezScanApt(null)
     setPanel('new')
@@ -368,6 +372,7 @@ export default function CalendarPage() {
       data_checkin: newRez.checkin,
       data_checkout: newRez.checkout,
       suma_incasata: parseFloat(newRez.pret) || 0,
+      ...(newRez.moneda && newRez.moneda !== 'RON' ? { moneda: newRez.moneda } : {}),
       nr_persoane: parseInt(newRez.persoane) || null,
       canal: 'intern',
       status_rezervare: 'confirmata',
@@ -1051,9 +1056,15 @@ export default function CalendarPage() {
                 {/* Pret + Persoane */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
                   <div>
-                    <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Preț total (RON)</div>
-                    <input type="number" value={newRez.pret} onChange={e=>setNewRez({...newRez,pret:e.target.value})} placeholder="0" min={0}
-                      style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',boxSizing:'border-box' }}/>
+                    <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Preț total</div>
+                    <div style={{ display:'flex',gap:4 }}>
+                    <input data-rez-noua-pret type="number" value={newRez.pret} onChange={e=>setNewRez({...newRez,pret:e.target.value})} placeholder="0" min={0}
+                      style={{ flex:1,minWidth:0,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',boxSizing:'border-box' }}/>
+                    <select data-rez-noua-moneda value={newRez.moneda} onChange={e=>setNewRez({...newRez,moneda:e.target.value})} title="Moneda prețului"
+                      style={{ width:66,background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:12,fontWeight:700,padding:'0 4px',outline:'none',colorScheme:'dark' }}>
+                      {MONEDE_REZ.map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
+                    </div>
                   </div>
                   <div>
                     <div style={{ fontSize:10,color:'rgba(159,215,255,0.45)',marginBottom:5,textTransform:'uppercase',letterSpacing:'.06em' }}>Persoane</div>
@@ -1088,7 +1099,7 @@ Vă confirmăm rezervarea la *${apts.find(a=>a.id===newRez.aptId)?.nume||'aparta
 📅 *Check-in:* ${newRez.checkin}
 📅 *Check-out:* ${newRez.checkout}
 🌙 *Nopți:* ${nightsBetween(newRez.checkin,newRez.checkout)}
-💰 *Total:* ${newRez.pret||0} RON
+💰 *Total:* ${newRez.pret||0} ${newRez.moneda||'RON'}
 
 Vă vom trimite detaliile de acces în ziua sosirii.
 
@@ -1150,7 +1161,7 @@ Echipa AB Homes Iași`)}
             </div>
             <div style={{ textAlign:'center',background:'rgba(74,222,128,0.06)',borderRadius:7,padding:'8px 4px' }}>
               <div style={{ fontSize:14,fontWeight:700,color:'#4ADE80' }}>{tooltip.rez.suma_incasata?Number(tooltip.rez.suma_incasata).toLocaleString('ro-RO'):'?'}</div>
-              <div style={{ fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.04em' }}>RON</div>
+              <div style={{ fontSize:9,color:'rgba(159,215,255,0.4)',textTransform:'uppercase',letterSpacing:'.04em' }}>{tooltip.rez.moneda||'RON'}</div>
             </div>
           </div>
 

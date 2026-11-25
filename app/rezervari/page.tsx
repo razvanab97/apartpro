@@ -11,6 +11,7 @@ import ImportAirbnb from '@/components/ImportAirbnb'
 import CoadaFacturare from '@/components/CoadaFacturare'
 import { citesteCoada } from '@/lib/coadaAirbnb'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
+import { inLei, laLei } from '@/lib/moneda'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -122,7 +123,8 @@ export default function RezervariPage() {
       const { data, error } = await filtru(supabase.from('rezervari').select(SELECT_LISTA)).order('data_checkin', { ascending: false }).order('id').range(de, de + PAGINA - 1)
       if (error) throw error
       rez.push(...(data || []))
-      if (!data || data.length < PAGINA) return rez
+      if (!data || data.length < PAGINA) { void laLei(rez)   // incarca din timp cursul pentru rezervarile in valuta (totalurile in lei)
+        return rez }
     }
   }
   const imbina = (a: any[], b: any[]) => { const m = new Map(a.map(r => [r.id, r])); for (const r of b) m.set(r.id, r); return Array.from(m.values()) }
@@ -381,7 +383,7 @@ export default function RezervariPage() {
             <div style={{padding:'12px 18px 16px'}}>
               {facturareGrupat.map(([luna, list]) => {
                 const [y,m] = luna.split('-')
-                const total = list.reduce((s,r)=>s+Number(r.suma_incasata||0),0)
+                const total = list.reduce((s,r)=>s+Number(inLei(r).suma_incasata||0),0)   // valuta -> lei
                 const expanded = expandedLuni.has(luna)
                 return (
                   <div key={luna} style={{marginBottom:10,border:'1px solid rgba(159,215,255,0.1)',borderRadius:10,overflow:'hidden'}}>

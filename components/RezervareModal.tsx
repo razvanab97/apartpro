@@ -8,6 +8,7 @@ import { TARI, oraseTara, taraOblio } from '@/lib/tariOrase'
 import ConfirmareClient from '@/components/ConfirmareClient'
 import DublareRezervare from '@/components/DublareRezervare'
 import DocumentConfirmare from '@/components/DocumentConfirmare'
+import { MONEDE_REZ, CAMPURI_BANI, cursAzi } from '@/lib/moneda'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
 
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
@@ -207,6 +208,11 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // Pretul pe noapte: cand e completat de mana, totalul (valoarea bruta) = pret × nopti si se
   // recalculeaza singur cand se schimba datele; cand se scrie direct totalul, pretul se deduce din el
   const [pretNoapte, setPretNoapte] = useState<number | '' | null>(null)
+  // moneda rezervarii (cerut direct: „să putem seta prețurile și în euro … în zonele unde setăm rezervările”): cursul BNR
+  // de azi pentru „≈ X RON” si propunerea de a transforma sumele cand schimbi moneda unei rezervari care are deja preturi
+  const [cursuri, setCursuri] = useState<Record<string, number>>({ RON: 1 })
+  const [schimbMoneda, setSchimbMoneda] = useState<{ de: string; la: string } | null>(null)
+  useEffect(() => { Promise.all(MONEDE_REZ.filter(m => m !== 'RON').map(async m => [m, await cursAzi(m)] as const)).then(v => setCursuri(c => ({ ...c, ...Object.fromEntries(v.filter(([, k]) => k > 0)) }))).catch(() => {}) }, [])
   const [auto, setAuto] = useState<{ stare: 'idle' | 'salvez' | 'salvat' | 'eroare'; mesaj?: string; ora?: string }>({ stare: 'idle' })
   const autoInZbor = useRef(false), autoSalvate = useRef(false)
   const [factura, setFactura] = useState<{ etapa: 'idle' | 'confirm' | 'trimit'; eroare?: string; info?: string }>({ etapa: 'idle' })
@@ -634,8 +640,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
           <aside className="rz-aside">
             <Group title="Încasări" first>
               <Label right={
-                <select value={moneda} onChange={e => set({ moneda: e.target.value })} className="rz-mini">
-                  <option>RON</option><option>EUR</option><option>USD</option>
+                <select data-moneda-rez value={moneda} onChange={e => {
+                  const la = e.target.value
+                  if (la !== moneda && CAMPURI_BANI.some(f => Number(editing[f]) > 0)) setSchimbMoneda({ de: moneda, la }); else setSchimbMoneda(null)
+                  set({ moneda: la })
+                }} className="rz-mini" title="Moneda rezervării — toate sumele de aici sunt în moneda aceasta">
+                  {Array.from(new Set([...MONEDE_REZ, moneda])).map(m => <option key={m}>{m}</option>)}
                 </select>
               }>Preț pe noapte × {nopti} {nopti === 1 ? 'noapte' : 'nopți'}</Label>
               <div className="rz-calc">
@@ -651,6 +661,25 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: C.faint, marginTop: 4 }}>
                 <span>preț / noapte</span><span>total rezervare (valoare brută)</span>
               </div>
+              {moneda !== 'RON' && Number(editing.valoare_bruta) > 0 && cursuri[moneda] > 0 && (
+                <div data-echiv-lei style={{ fontSize: 11.5, marginTop: 6, color: '#9FD7FF' }}>
+                  ≈ {fmt(Math.round(Number(editing.valoare_bruta) * cursuri[moneda] * 100) / 100)} RON la cursul BNR de azi ({cursuri[moneda].toLocaleString('ro-RO', { maximumFractionDigits: 4 })}) · în rapoarte se trece în lei la cursul din ziua check-in-ului
+                </div>
+              )}
+              {schimbMoneda && schimbMoneda.la === moneda && (() => {
+                const k = (cursuri[schimbMoneda.de] || 0) / (cursuri[schimbMoneda.la] || 0)
+                const conv = (v: any) => Math.round(Number(v) * k * 100) / 100
+                return (
+                  <div data-schimb-moneda style={{ marginTop: 8, padding: '8px 10px', borderRadius: 9, background: 'rgba(77,163,255,0.08)', border: '1px solid rgba(77,163,255,0.3)', fontSize: 12, color: '#D6E4F4', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span>Ai schimbat moneda din {schimbMoneda.de} în {schimbMoneda.la}. Sumele rămân cum sunt scrise{k > 0 && isFinite(k) ? <> — sau le transformi la cursul BNR ({fmt(Number(editing.valoare_bruta) || 0)} {schimbMoneda.de} → <b>{fmt(conv(editing.valoare_bruta))} {schimbMoneda.la}</b>)</> : ''}?</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {k > 0 && isFinite(k) && <button type="button" data-transforma className="rz-btn" style={{ fontSize: 12, padding: '5px 10px', borderColor: 'rgba(77,163,255,0.45)', color: '#7BC8FF' }}
+                        onClick={() => { setPretNoapte(null); setEditing((prev: any) => { const o = { ...prev }; for (const f of CAMPURI_BANI) if (Number(o[f]) > 0) o[f] = conv(o[f]); return o }); setSchimbMoneda(null) }}>↻ Transformă sumele</button>}
+                      <button type="button" className="rz-btn" style={{ fontSize: 12, padding: '5px 10px' }} onClick={() => setSchimbMoneda(null)}>Lasă-le așa</button>
+                    </div>
+                  </div>
+                )
+              })()}
               {!(Number(editing.valoare_bruta) > 0) && Number(editing.suma_incasata) > 0 && (
                 <button type="button" className="rz-btn" style={{ marginTop: 8, fontSize: 12, padding: '6px 10px' }}
                   onClick={() => { setPretNoapte(null); recalcComisionPlatforma(Number(editing.suma_incasata), editing.comision_platforma_procent) }}>
@@ -662,6 +691,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                   <Label>Sumă de facturat</Label>
                   <Money value={sumaFact} suffix={moneda} onChange={v => setSumaFact(v)} />
                   <div style={{ fontSize: 11, marginTop: 4, color: Number(sumaFact) > 0 && Number(sumaFact) !== Number(editing.valoare_bruta) ? C.amber : C.faint }}>
+                    {moneda !== 'RON' && <div data-factura-lei style={{ color: '#9FD7FF', marginBottom: 2 }}>Factura se emite în lei, la cursul BNR din data emiterii</div>}
                     {!(Number(sumaFact) > 0) ? `gol = se facturează totalul (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda})`
                       : Number(sumaFact) !== Number(editing.valoare_bruta) ? `diferă de total (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda}) cu ${fmt(Math.round((Number(sumaFact) - (Number(editing.valoare_bruta) || 0)) * 100) / 100)}` : 'egală cu totalul rezervării'}
                   </div>

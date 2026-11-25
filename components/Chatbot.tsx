@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MessageCircle, X, Send, Loader2, Phone, ExternalLink, Mic, Sparkles, Check } from 'lucide-react'
+import { laLei } from '@/lib/moneda'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -22,7 +23,7 @@ async function getContext() {
   const [{ data: apts }, { data: rez }, { data: stats }] = await Promise.all([
     supabase.from('apartamente').select('nume, nota, adresa, capacitate_max, pret_standard, dotari, reguli, instructiuni_checkin, link_site, link_booking, status').eq('status', 'activ').order('nota'),
     supabase.from('rezervari').select('apartament:apartamente(nume), data_checkin, data_checkout, status_rezervare').gte('data_checkout', today).in('status_rezervare', ['confirmata', 'finalizata']).order('data_checkin').limit(30),
-    supabase.from('rezervari').select('suma_incasata, status_rezervare').gte('data_checkin', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+    supabase.from('rezervari').select('suma_incasata, moneda, data_checkin, status_rezervare').gte('data_checkin', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
   ])
 
   const apartamenteInfo = (apts || []).map((a: any) =>
@@ -33,7 +34,7 @@ async function getContext() {
     `- ${r.apartament?.nume || '?'}: ${r.data_checkin} → ${r.data_checkout} (${r.status_rezervare})`
   ).join('\n')
 
-  const incLuna = (stats || []).filter((r: any) => ['confirmata','finalizata'].includes(r.status_rezervare)).reduce((s: number, r: any) => s + Number(r.suma_incasata || 0), 0)
+  const incLuna = (await laLei(stats)).filter((r: any) => ['confirmata','finalizata'].includes(r.status_rezervare)).reduce((s: number, r: any) => s + Number(r.suma_incasata || 0), 0)
 
   return `Ești asistentul AI al AB Homes Iași — o companie de apartamente în regim hotelier. Răspunzi în română, ești prietenos, concis și util.
 

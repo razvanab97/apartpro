@@ -434,7 +434,8 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
       if (existing[0].status_rezervare !== statusNou) updates.status_rezervare = statusNou
       if (checkin && existing[0].data_checkin !== checkin) updates.data_checkin = checkin
       if (checkout && existing[0].data_checkout !== checkout) updates.data_checkout = checkout
-      if (totalPret > 0 && Number(existing[0].suma_incasata) !== totalPret) {
+      // pretul pus de mana in alta moneda (EUR etc.) nu se suprascrie cu suma in lei din 5starDesk
+      if (totalPret > 0 && Number(existing[0].suma_incasata) !== totalPret && String(existing[0].moneda || 'RON').toUpperCase() === 'RON') {
         updates.suma_incasata = totalPret
         updates.valoare_bruta = totalPret
       }

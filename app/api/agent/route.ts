@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase'
 import { rezervareDublata, pretPeNoapte } from '@/lib/dublare'
 import { agregaActivitate } from '@/lib/analizaActivitate'
 import { MSG_RECENZIE_FB } from '@/lib/sugestii'
+import { cursRezervareServer, cursServer } from '@/lib/cursBnr'
+// moneda ceruta de utilizator (EUR / USD / GBP / RON) sau '' daca n-a spus
+const monedaArg = (v: any) => { const m = String(v || '').trim().toUpperCase().replace('€', 'EUR').replace(/^EURO?S?$/, 'EUR').replace(/^LEI$/, 'RON'); return ['RON', 'EUR', 'USD', 'GBP'].includes(m) ? m : '' }
 
 // ── Asistent AB Homes (cerut direct: „un agent personal care să vadă tot ce se întâmplă în platformă,
 // cu care să putem vorbi ca într-un chat, să facem / anulăm / mutăm rezervări și să pregătească mesaje”).
@@ -128,7 +131,7 @@ const TOOLS = [
   fn('recomandari', 'Analizează următoarele 14 zile și spune ce ar trebui făcut / îmbunătățit: rezervări fără telefon, neplătite aproape de sosire, nopți libere, cereri neatinse, nealocate.'),
   fn('propune_rezervare_noua', 'PROPUNE o rezervare nouă (utilizatorul confirmă cu un click; nu se scrie nimic până atunci).', {
     apartament: S('cod sau nume apartament'), nume_client: S('nume'), telefon: S('opțional'), checkin: S('YYYY-MM-DD'), checkout: S('YYYY-MM-DD'),
-    persoane: N('nr. oaspeți'), pret_total: N('valoare totală RON (opțional)'), canal: S('direct | airbnb | booking | intern (implicit direct)'),
+    persoane: N('nr. oaspeți'), pret_total: N('valoare totală (opțional), în moneda de la „moneda”'), moneda: S('RON | EUR | USD | GBP — moneda sumelor, DOAR dacă utilizatorul spune „euro” / „€” / „dolari” etc. (implicit RON); sumele rămân exact cum le spune, nu le converti'), canal: S('direct | airbnb | booking | intern (implicit direct)'),
     status_plata: S('neplatit | avans | achitat (implicit neplatit)'), incasat: N('suma încasată deja, ex. avansul (opțional)'), observatii: S('opțional'),
     cod_rezervare: S('codul rezervării de pe platformă, ex. Airbnb HMNYEBMCCY / Booking 6012345678 (opțional)'),
     suma_platita_oaspete: N('Airbnb / Booking: suma PLĂTITĂ DE OASPETE = de facturat (Airbnb: „Oaspetele a plătit” → Total) (opțional)'),
@@ -137,7 +140,8 @@ const TOOLS = [
   fn('propune_dublare', 'PROPUNE o rezervare NOUĂ pentru același client ca o rezervare existentă („dublează / copiază comanda / rezervarea lui X”, „încă o rezervare pentru X”): copiază numele, telefonul, emailul, persoanele, canalul și prețul pe noapte; plata / factura / codul platformei NU. Utilizatorul confirmă cu un click.', {
     rezervare_id: S('id-ul rezervării de copiat (cea mai recentă a clientului, din cauta_rezervari)'), apartament: S('cod / nume apartament nou (opțional; implicit același)'),
     checkin: S('YYYY-MM-DD (opțional; implicit azi)'), checkout: S('YYYY-MM-DD (opțional; implicit checkin + același nr. de nopți)'), nopti: N('nr. nopți, dacă e spus în loc de checkout (opțional)'),
-    pret_total: N('total RON, doar dacă utilizatorul îl spune (opțional; implicit prețul pe noapte × nopți)'),
+    pret_total: N('total, doar dacă utilizatorul îl spune (opțional; implicit prețul pe noapte × nopți)'),
+    moneda: S('RON | EUR | USD | GBP — moneda sumelor, DOAR dacă utilizatorul spune „euro” / „€” / „dolari” etc. (implicit RON); sumele rămân exact cum le spune, nu le converti'),
   }, ['rezervare_id']),
   fn('propune_anulare', 'PROPUNE anularea unei rezervări (după confirmarea utilizatorului).', { rezervare_id: S('id'), motiv: S('opțional') }, ['rezervare_id']),
   fn('propune_mutare', 'PROPUNE mutarea unei rezervări pe alt apartament și/sau alte date. Verifică singur disponibilitatea.', {
@@ -145,7 +149,7 @@ const TOOLS = [
   }, ['rezervare_id']),
   fn('propune_modificare', 'PROPUNE modificarea unor câmpuri ale unei rezervări (preț, plată, persoane, telefon, nume, email, observații).', {
     rezervare_id: S('id'), nume_client: S('opțional'), telefon: S('opțional'), email: S('opțional'), persoane: N('opțional'),
-    pret_total: N('valoare brută totală, opțional'), incasat: N('suma încasată, opțional'), status_plata: S('neplatit | avans | achitat (opțional)'),
+    pret_total: N('valoare brută totală, opțional'), incasat: N('suma încasată, opțional'), moneda: S('RON | EUR | USD | GBP — moneda sumelor, DOAR dacă utilizatorul spune „euro” / „€” / „dolari” etc. (implicit RON); sumele rămân exact cum le spune, nu le converti'), status_plata: S('neplatit | avans | achitat (opțional)'),
     observatii_adauga: S('text de adăugat la observații (opțional)'),
   }, ['rezervare_id']),
   fn('propune_eliberare', 'PROPUNE marcarea în Curățenie că oaspeții au plecat / pleacă (apartamentul apare liber pentru curățenie). Folosește-l când utilizatorul trimite captura unui mesaj de la oaspete (WhatsApp / SMS / notificare) despre plecare, sau spune că un oaspete a plecat. Identifică rezervarea după telefon (din captură) sau apartament.', {
@@ -308,14 +312,14 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       if (!an || !luna) return { eroare: 'an / luna lipsă' }
       const st = `${an}-${String(luna).padStart(2, '0')}-01`, en = luna === 12 ? `${an + 1}-01-01` : `${an}-${String(luna + 1).padStart(2, '0')}-01`
       const [{ data }, apts] = await Promise.all([
-        supabase.from('rezervari').select('canal,data_checkin,data_checkout,suma_incasata,valoare_bruta,status_rezervare').neq('status_rezervare', 'anulata').lt('data_checkin', en).gt('data_checkout', st),
+        supabase.from('rezervari').select('canal,data_checkin,data_checkout,suma_incasata,valoare_bruta,moneda,status_rezervare').neq('status_rezervare', 'anulata').lt('data_checkin', en).gt('data_checkout', st),
         apartamente(),
       ])
       let nop = 0; const canale: Record<string, number> = {}; let inc = 0
       for (const r of data || []) {
         const n = nopti(r.data_checkin > st ? r.data_checkin : st, r.data_checkout < en ? r.data_checkout : en)
         nop += n; canale[r.canal] = (canale[r.canal] || 0) + 1
-        if (r.data_checkin >= st && r.data_checkin < en) inc += Number(r.suma_incasata) || 0
+        if (r.data_checkin >= st && r.data_checkin < en) inc += (Number(r.suma_incasata) || 0) * (await cursRezervareServer(r))   // valuta -> lei
       }
       const zileLuna = nopti(st, en)
       return { luna: `${luna}/${an}`, rezervari: (data || []).length, nopti_vandute: nop, grad_ocupare_pct: apts.length ? Math.round(nop / (apts.length * zileLuna) * 100) : null, incasari_cu_checkin_in_luna_ron: Math.round(inc), pe_canale: canale, apartamente_active: apts.length }
@@ -359,6 +363,7 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       // platit − primit, plus TVA intracomunitar 21% din comision; suma primita (payout) ramane si in observatii
       const platita = Number(a.suma_platita_oaspete) || 0, primita = Number(a.suma_primita) || 0
       const total = platita || Number(a.pret_total) || 0
+      const mon = monedaArg(a.moneda) || 'RON'
       const comPlatf = platita && primita && platita > primita ? Math.round((platita - primita) * 100) / 100 : 0
       const tvaPlatf = comPlatf ? Math.round(comPlatf * 0.21 * 100) / 100 : 0
       const cod = curat(a.cod_rezervare).toUpperCase()
@@ -370,20 +375,20 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       const card = {
         tip: 'actiune', actiune: 'creare', titlu: 'Rezervare nouă', blocat: ov.length > 0,
         randuri: [['Client', null, curat(a.nume_client)], ['Telefon', null, curat(a.telefon) || '—'], ['Apartament', null, etApt(apt)],
-          ['Perioadă', null, `${a.checkin} → ${a.checkout} · ${n} nopți`], ['Oaspeți', null, String(pers)], ['Total', null, total ? `${total} RON` : '—'],
-          ['Plată', null, `${plata}${incasat ? ` · încasat ${incasat} RON` : ''}`], ['Canal', null, canal],
+          ['Perioadă', null, `${a.checkin} → ${a.checkout} · ${n} nopți`], ['Oaspeți', null, String(pers)], ['Total', null, total ? `${total} ${mon}` : '—'],
+          ['Plată', null, `${plata}${incasat ? ` · încasat ${incasat} ${mon}` : ''}`], ['Canal', null, canal],
           ...(cod ? [['Cod platformă', null, cod]] : []),
-          ...(platita ? [['De facturat (plătit de oaspete)', null, `${platita} RON`]] : []),
-          ...(primita ? [['Primit de la platformă', null, `${primita} RON`]] : []),
-          ...(comPlatf ? [['Comision platformă', null, `${comPlatf} RON + TVA intracom. ${tvaPlatf} RON`]] : [])],
+          ...(platita ? [['De facturat (plătit de oaspete)', null, `${platita} ${mon}`]] : []),
+          ...(primita ? [['Primit de la platformă', null, `${primita} ${mon}`]] : []),
+          ...(comPlatf ? [['Comision platformă', null, `${comPlatf} ${mon} + TVA intracom. ${tvaPlatf} ${mon}`]] : [])],
         avertismente: av,
         payload: { apartament_id: apt.id, proprietar_id: apt.proprietar_id, nume_client: curat(a.nume_client), telefon_client: curat(a.telefon) || null, data_checkin: a.checkin, data_checkout: a.checkout,
           // suma_incasata = valoarea rezervării peste tot în aplicație (rapoarte, statistici, deconturi) - nu 0 la neplătite
           // (raportat direct: rezervarea creată de Asistent apărea în raport fără sumă); plata reală e în status_plata
-          nr_persoane: pers, valoare_bruta: total, suma_incasata: incasat || total, canal, status_plata: plata,
+          nr_persoane: pers, valoare_bruta: total, suma_incasata: incasat || total, ...(mon !== 'RON' ? { moneda: mon } : {}), canal, status_plata: plata,
           cod_rezervare_platforma: cod || null, comision_platforma_valoare: comPlatf, tva_comision_platforma: tvaPlatf,
           comision_platforma_procent: comPlatf && total ? Math.round(comPlatf / total * 10000) / 100 : 0,
-          observatii: [curat(a.observatii), primita ? `Payout ${canal === 'booking' ? 'Booking' : 'Airbnb'} ${primita} RON · de facturat ${total} RON` : '', 'Creată de Asistent'].filter(Boolean).join(' · ') },
+          observatii: [curat(a.observatii), primita ? `Payout ${canal === 'booking' ? 'Booking' : 'Airbnb'} ${primita} ${mon} · de facturat ${total} ${mon}` : '', 'Creată de Asistent'].filter(Boolean).join(' · ') },
       }
       cards.push(card)
       return { propunere_afisata: true, blocata: card.blocat, avertismente: av }
@@ -398,7 +403,14 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       const nOrig = Math.max(1, nopti(r.data_checkin, r.data_checkout))
       const co = ISO.test(a.checkout || '') ? a.checkout : plusZile(ci, Number(a.nopti) > 0 ? Math.round(Number(a.nopti)) : nOrig)
       if (co <= ci) return { eroare: 'Checkout-ul trebuie să fie după checkin' }
-      const rand = rezervareDublata(r, { apartament_id: apt.id, proprietar_id: apt.proprietar_id, checkin: ci, checkout: co, total: a.pret_total != null ? Number(a.pret_total) : null })
+      // alta moneda decat a rezervarii copiate: totalul spus ramane ca atare; altfel pretul pe noapte se trece la cursul BNR de azi
+      const monOrig = String(r.moneda || 'RON').toUpperCase(), mon = monedaArg(a.moneda) || monOrig
+      let totalDub: number | null = a.pret_total != null ? Number(a.pret_total) : null
+      if (totalDub == null && mon !== monOrig && pretPeNoapte(r) > 0) {
+        const k1 = await cursServer(monOrig), k2 = await cursServer(mon)
+        if (k1 && k2) totalDub = Math.round(pretPeNoapte(r) * Math.max(1, nopti(ci, co)) * k1 / k2 * 100) / 100
+      }
+      const rand = rezervareDublata(r, { apartament_id: apt.id, proprietar_id: apt.proprietar_id, checkin: ci, checkout: co, total: totalDub, moneda: mon })
       const ov = await suprapuneri(apt.id, ci, co)
       const n = nopti(ci, co), pn = pretPeNoapte(r)
       const av: string[] = []
@@ -409,7 +421,7 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
         tip: 'actiune', actiune: 'creare', titlu: 'Rezervare nouă (dublată)', blocat: ov.length > 0,
         randuri: [['Client', null, rand.nume_client], ['Telefon', null, rand.telefon_client || '—'], ['Apartament', null, etApt(apt)],
           ['Perioadă', null, `${ci} → ${co} · ${n} ${n === 1 ? 'noapte' : 'nopți'}`], ['Oaspeți', null, String(rand.nr_persoane)],
-          ['Total', null, rand.valoare_bruta ? `${rand.valoare_bruta} RON${a.pret_total == null && pn ? ` (${pn}/noapte, ca înainte)` : ''}` : '—'],
+          ['Total', null, rand.valoare_bruta ? `${rand.valoare_bruta} ${rand.moneda}${a.pret_total == null && pn && mon === monOrig ? ` (${pn}/noapte, ca înainte)` : mon !== monOrig && a.pret_total == null ? ` (din ${pn} ${monOrig}/noapte, la cursul BNR)` : ''}` : '—'],
           ['Plată', null, 'neplatit'], ['Canal', null, rand.canal], ['Copiată după', null, `${etApt(r.apartament)} · ${r.data_checkin} → ${r.data_checkout}`]],
         avertismente: av, payload: rand,
       })
@@ -462,6 +474,7 @@ async function executa(name: string, a: any, cards: Card[]): Promise<any> {
       set('nr_persoane', 'Oaspeți', r.nr_persoane, a.persoane != null ? Number(a.persoane) : undefined)
       set('valoare_bruta', 'Total', r.valoare_bruta, a.pret_total != null ? Number(a.pret_total) : undefined)
       set('suma_incasata', 'Încasat', r.suma_incasata, a.incasat != null ? Number(a.incasat) : undefined)
+      if (monedaArg(a.moneda)) set('moneda', 'Monedă', r.moneda || 'RON', monedaArg(a.moneda))
       if (['neplatit', 'avans', 'achitat'].includes(a.status_plata)) set('status_plata', 'Plată', r.status_plata, a.status_plata)
       if (curat(a.observatii_adauga)) { p.observatii = [curat(r.observatii), curat(a.observatii_adauga)].filter(Boolean).join('\n'); rand.push(['Observații', '…', '+ ' + curat(a.observatii_adauga)]) }
       if (!Object.keys(p).length) return { eroare: 'Nicio modificare față de valorile actuale' }
@@ -539,7 +552,7 @@ REGULI:
 12. Linkul unui apartament îl iei ÎNTOTDEAUNA cu site_abhomes (de pe www.abhomesiasi.ro/apartamente/…), niciodată din memorie — linkurile vechi de tip abhomesiasi.ro/apN.html nu mai există. Când utilizatorul dă un link, deschide-l cu citeste_link.
 13. Dacă utilizatorul atașează capturi (Airbnb, Booking, alt site) sau poza unui buletin și cere o rezervare: citește din imagini numele, datele (anul: cea mai apropiată dată viitoare; „Sosește mâine” = mâine), nr. de oaspeți, telefonul, codul rezervării și suma — la Airbnb suma plătită de oaspete („Oaspetele a plătit” → Total), nu câștigul gazdei; din buletin: numele, CNP-ul și adresa; din PAȘAPORT (are „PAȘAPORT / PASSPORT” și rânduri P<…<<< jos): numele (Prenume Nume, cu cratime), numărul pașaportului și CNP-ul (la pașaportul românesc e câmpul 5 „Cod Numeric Personal”, și apare și în ultimul rând de jos, după data expirării) — pașaportul nu are adresă, nu pune locul nașterii. Ce scrie utilizatorul în mesaj (apartament, date, cost, avans) are prioritate față de imagini. Canal: airbnb pentru Airbnb / cod HM…, booking pentru Booking / cod numeric, altfel direct. În observații pui codul rezervării și, la buletin / pașaport, CNP-ul (și numărul pașaportului). Apartamentul îl iei din mesaj sau din titlul anunțului din captură (potrivește-l cu lista_apartamente). Dacă ai apartamentul, numele și datele, apelează DIRECT propune_rezervare_noua, fără alte întrebări; dacă lipsește ceva esențial, întreabă doar ce lipsește. Spune pe scurt ce ai citit din capturi.
 14. Dacă utilizatorul atașează captura unui mesaj de la oaspete (WhatsApp, SMS, notificare pe telefon) despre plecare (ex. „la ora 11:00 o să părăsim locația”, „am plecat, cheia e în locker”): citește numărul expeditorului din captură și apelează DIRECT propune_eliberare cu telefonul — cu ora DOAR dacă mesajul spune o oră de plecare; fără oră = au plecat acum. Același lucru dacă utilizatorul scrie că un oaspete a plecat / pleacă la o anumită oră. Ora din captura telefonului (ceasul de sus, „acum 17 m”, ora conversației din listă) NU e ora plecării. O captură cu LISTA de conversații WhatsApp poate avea mai mulți oaspeți: apelează propune_eliberare SEPARAT pentru fiecare conversație al cărei mesaj spune că pleacă / a plecat („la ora 10 vom părăsi apartamentul” → 10:00, „we checked out” → fără oră); ignoră conversațiile care nu sunt despre plecare (apeluri, alte subiecte). Dacă un număr nu se potrivește cu niciun oaspete cazat, spune-o scurt la final. Apoi rezumă într-o listă ce ai citit.
-15. Cererea de recenzie pe Facebook e OPȚIONALĂ — o trimitem doar oaspeților aleși de utilizator (cei care au reacționat bine). Când o cere („trimite-i recenzia lui X”, „cere recenzie”), afișezi cu arata_mesaj EXACT textul de mai jos, cu telefonul oaspetelui; nu o propune singur.\nTEXT RECENZIE:\n${MSG_RECENZIE_FB}\n16. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.\n17. „Dublează / copiază comanda (rezervarea) lui X”, „generează încă o rezervare pentru X la ap. Y pentru azi”: caută clientul cu cauta_rezervari și apelează DIRECT propune_dublare cu rezervarea lui cea mai recentă (se copiază doar datele clientului, deci nu întreba care dintre ele, decât dacă sunt clienți DIFERIȚI cu același nume). Apartamentul și datele din mesaj („azi” = ${azi}, „mâine”, „pentru 2 nopți”); fără apartament = același; fără date = de azi, cu același nr. de nopți.`
+15. Cererea de recenzie pe Facebook e OPȚIONALĂ — o trimitem doar oaspeților aleși de utilizator (cei care au reacționat bine). Când o cere („trimite-i recenzia lui X”, „cere recenzie”), afișezi cu arata_mesaj EXACT textul de mai jos, cu telefonul oaspetelui; nu o propune singur.\nTEXT RECENZIE:\n${MSG_RECENZIE_FB}\n16. Rezervare Airbnb din capturi — completează TOT: nume (secțiunea „Oaspeți” / „Cine vine”), date check-in / check-out (anul: cea mai apropiată dată viitoare), număr de oaspeți (dacă nu apare, 1), telefonul (din „Gestionează rezervarea” → „Numărul de telefon al oaspetelui”), codul (Confirmation code, ex. HMNYEBMCCY) în cod_rezervare, apartamentul după titlul anunțului (ex. „Minimalist Escape Retreat - Copou Park” = Minimalist Escape). Două sume diferite: suma_platita_oaspete = „Oaspetele a plătit” → Total (RON) — se facturează; suma_primita = ce primim noi = cardul „Total pentru N nopți” sau fila „Câștigi” (e mai mică, după comisionul Airbnb). Nu le inversa și nu le aduna. canal = airbnb, status_plata = achitat (Airbnb plătește el). Dacă lipsește una dintre sume, cere captura cu ea (Câștiguri → „Oaspetele a plătit”). La Booking la fel: suma_platita_oaspete = prețul plătit de oaspete, suma_primita = după comisionul Booking, codul = numărul rezervării.\n17. „Dublează / copiază comanda (rezervarea) lui X”, „generează încă o rezervare pentru X la ap. Y pentru azi”: caută clientul cu cauta_rezervari și apelează DIRECT propune_dublare cu rezervarea lui cea mai recentă (se copiază doar datele clientului, deci nu întreba care dintre ele, decât dacă sunt clienți DIFERIȚI cu același nume). Apartamentul și datele din mesaj („azi” = ${azi}, „mâine”, „pentru 2 nopți”); fără apartament = același; fără date = de azi, cu același nr. de nopți.\n18. Prețuri în valută: dacă utilizatorul spune suma în euro („800 euro”, „€”), dolari sau lire, trimite moneda (EUR / USD / GBP) la propune_rezervare_noua / propune_dublare / propune_modificare și suma EXACT cum a spus-o (nu o transforma în lei). Fără monedă spusă = RON (sau, la dublare, moneda rezervării copiate).`
 }
 
 async function apelOpenAI(body: any) {

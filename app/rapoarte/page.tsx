@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/Layout'
 import { Button, Toast, useToast } from '@/components/ui'
 import { FileText, Download, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { laLei } from '@/lib/moneda'
 
 const LUNI = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
 
@@ -268,7 +269,7 @@ export default function RapoartePage() {
     let total = 0
     while (true) {
       let q = supabase.from('rezervari')
-        .select('data_checkin,data_checkout,suma_incasata,valoare_bruta,nr_nopti,nr_persoane,canal,apartament_id')
+        .select('data_checkin,data_checkout,suma_incasata,valoare_bruta,moneda,nr_nopti,nr_persoane,canal,apartament_id')
         .gte('data_checkout', '2025-08-01')
         .lte('data_checkout', `${an+1}-12-31`)
         .neq('status_rezervare', 'anulata')
@@ -276,7 +277,8 @@ export default function RapoartePage() {
       if (graficeApts.length > 0 && graficeApts.length < allApts.length) {
         q = q.in('apartament_id', graficeApts)
       }
-      const { data, error } = await q
+      const { data: data0, error } = await q
+      const data = await laLei(data0)
 
       if (error || !data || data.length === 0) break
       total += data.length
@@ -372,7 +374,7 @@ export default function RapoartePage() {
     if (selectedApts.length > 0) qc = qc.in('apartament_id', selectedApts)
     const finalizate = citesteTaxe().then(async cfg => ({ cfg, lista: await curateniiTaxate(start, end, cfg, selectedApts.length ? selectedApts : undefined) }))
     const [{ data }, taxe, { data: ch }, fin] = await Promise.all([q, selectedApts.length && propr.size === 1 ? citesteTaxe().then(cfg => curateniiTaxate(start, end, cfg, selectedApts)) : Promise.resolve([]), qc, finalizate])
-    setRezervari(data || [])
+    setRezervari(await laLei(data))
     setCheltRaport(ch || [])
     setCuratFinalizate(fin.lista)
     setAptCuTaxa(Object.fromEntries(Object.entries(fin.cfg.apt).filter(([, t]) => t.activ).map(([id, t]) => [id, Number(t.tarif) || 0])))

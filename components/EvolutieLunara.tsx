@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { laLei } from '@/lib/moneda'
 
 // Evolutia reala pe ultimele 12 luni, pentru graficele din Dashboard (inainte: date demonstrative scrise in cod - raportat
 // direct: „ce reprezintă această secțiune? nu pare să arate evoluția de la o lună la alta”).
@@ -20,10 +21,10 @@ export function useEvolutieLunara(nrLuni = 12) {
     const start = ymd(new Date(an - 1, luna - nrLuni, 1)), end = ymd(new Date(an, luna, 1))   // incl. anul trecut pentru reper
     const rez: any[] = []
     for (let de = 0; de < 20000; de += 1000) {
-      const { data, error } = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,camera_semnalata')
+      const { data, error } = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,moneda,camera_semnalata')
         .lt('data_checkin', end).gt('data_checkout', start).neq('status_rezervare', 'anulata').order('data_checkin').range(de, de + 999)
       if (error || !data) break
-      rez.push(...data); if (data.length < 1000) break
+      rez.push(...(await laLei(data))); if (data.length < 1000) break
     }
     // fara apartamentele „Exclus din statistici” (ex. N45 - acolo firma ia doar comisionul)
     const { data: excl } = await supabase.from('apartamente').select('id').eq('exclus_statistici', true)

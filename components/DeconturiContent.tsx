@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase, calculeazaDecont } from '@/lib/supabase'
 import { Button, Badge, Modal, FormGroup, FormRow, EmptyState, PageLoading, Toast, useToast, ConnectionError } from '@/components/ui'
 import { Plus, Check, TrendingUp, FileText, Download } from 'lucide-react'
+import { laLei } from '@/lib/moneda'
 
 // Deconturile lunare ale proprietarilor (tabul Deconturi din Proprietari + pagina /deconturi)
 const LUNI = ['','Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec']
@@ -111,7 +112,7 @@ export default function DeconturiContent() {
       supabase.from('deconturi').select('suma_neta_proprietar,status,data_platii').eq('apartament_id', apt.id).eq('luna', luna).eq('an', an).maybeSingle(),
     ])
     const plata = platitDin(st?.valoare, salvat)
-    const rezervari = rez || []
+    const rezervari = await laLei(rez)   // rezervarile in valuta -> lei (curs BNR din ziua check-in-ului)
     const cheltuieli = ch || []
     const totalIncasari = rezervari.reduce((s:number,r:any) => s + Number(r.suma_incasata||0), 0)
     const totalComPlatf = rezervari.reduce((s:number,r:any) => s + Number(r.comision_platforma_valoare||0), 0)

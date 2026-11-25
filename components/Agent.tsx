@@ -50,7 +50,7 @@ async function executaCard(c: Card, fortat: boolean): Promise<{ text: string; un
   if (c.actiune === 'creare') {
     if (!fortat) { const ov = await ocupat(p.apartament_id, p.data_checkin, p.data_checkout); if (ov.length) throw new Error('Apartamentul s-a ocupat între timp: ' + ov.map((o: any) => o.nume_client).join(', ')) }
     const apts = await incarcaApts()
-    const editing = { ...p, moneda: 'RON', status_rezervare: 'confirmata', status_decont: 'nedecontat', status_facturare: 'nefacturat' }
+    const editing = { ...p, moneda: p.moneda || 'RON', status_rezervare: 'confirmata', status_decont: 'nedecontat', status_facturare: 'nefacturat' }
     const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(editing, apts)).select('id').single()
     if (error) throw new Error(error.message)
     return { text: `rezervare creată [[rez:${data.id}|${p.nume_client} · ${p.data_checkin} → ${p.data_checkout}]]`, undo: { tip: 'creare', id: data.id } }

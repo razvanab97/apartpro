@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { istoricAn } from '@/lib/cursBnr'
 
 type Rates = { EUR: number; USD: number; GBP: number }
 
@@ -21,7 +22,13 @@ function extractRate(txt: string, currency: string): number | null {
   return match ? parseFloat(match[1]) : null
 }
 
-export async function GET() {
+export async function GET(req?: NextRequest) {
+  // ?ani=2025,2026 -> istoricul zilnic (EUR / USD / GBP) pentru conversia rezervarilor in valuta la cursul zilei de check-in
+  const ani = String(req?.nextUrl?.searchParams.get('ani') || '').split(',').map(Number).filter(a => a >= 2005 && a <= new Date().getFullYear()).slice(0, 6)
+  if (ani.length) {
+    const parti = await Promise.all(Array.from(new Set(ani)).map(a => istoricAn(a)))
+    return NextResponse.json({ istoric: Object.assign({}, ...parti) })
+  }
   if (cache && Date.now() - cache.ts < CACHE_MS) {
     return NextResponse.json({ rates: cache.rates, toate: cache.toate, curs: cache.rates.EUR, date: cache.date, cached: true })
   }

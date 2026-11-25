@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { laLei } from '@/lib/moneda'
 
 // Comparatie cu anul trecut + prognoza pe luna curenta si luna viitoare (cerut direct: „o secțiune cu preconizările de
 // rezervări pe luna aceasta și luna viitoare, pe baza informațiilor din anul trecut. Gen cum stăteam anul trecut pe
@@ -36,10 +37,10 @@ function suma(rez: Rez[], start: string, end: string, aptId?: string): Cifre {
 async function toate(start: string, end: string): Promise<Rez[]> {
   const out: Rez[] = []
   for (let de = 0; de < 10000; de += 1000) {
-    const { data, error } = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,status_rezervare,camera_semnalata')
+    const { data, error } = await supabase.from('rezervari').select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,moneda,status_rezervare,camera_semnalata')
       .lt('data_checkin', end).gt('data_checkout', start).neq('status_rezervare', 'anulata').order('data_checkin').range(de, de + 999)
     if (error || !data) break
-    out.push(...(data as Rez[]))
+    out.push(...((await laLei(data)) as Rez[]))
     if (data.length < 1000) break
   }
   return out.filter(r => r.camera_semnalata !== 'NEALOCAT' && r.apartament_id)

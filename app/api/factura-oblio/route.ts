@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { cursServer } from '@/lib/cursBnr'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,7 +49,12 @@ export async function POST(req: NextRequest) {
   const nopti = Math.max(0, Math.round((new Date(r.data_checkout).getTime() - new Date(r.data_checkin).getTime()) / 86400000))
   // suma de facturat scrisă la rezervare (setari suma_facturare_<id>), altfel totalul rezervării (valoarea brută)
   const { data: sf } = await supabase.from('setari').select('valoare').eq('cheie', `suma_facturare_${r.id}`).maybeSingle()
-  const sumaFacturare = Number(sf?.valoare) > 0 ? Number(sf?.valoare) : (Number(r.valoare_bruta) || 0)
+  const sumaMoneda = Number(sf?.valoare) > 0 ? Number(sf?.valoare) : (Number(r.valoare_bruta) || 0)
+  // rezervare in valuta (EUR / USD / GBP): factura se emite in lei, la cursul BNR din data emiterii
+  const moneda = String(r.moneda || 'RON').toUpperCase()
+  const curs = moneda === 'RON' ? 1 : await cursServer(moneda, String(dataEmitere))
+  if (!curs) return NextResponse.json({ error: `Nu am găsit cursul BNR pentru ${moneda} — încearcă din nou` }, { status: 502 })
+  const sumaFacturare = Math.round(sumaMoneda * curs * 100) / 100
   // dupa o stornare, factura noua are alta cheie de idempotenta in Oblio (altfel Oblio ar intoarce factura stornata)
   const { data: stD } = await supabase.from('setari').select('valoare').eq('cheie', `stornari_factura_${r.id}`).maybeSingle()
   let reemitere = 0; try { const v = JSON.parse(stD?.valoare || '[]'); if (Array.isArray(v)) reemitere = v.length } catch {}

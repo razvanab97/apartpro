@@ -23,7 +23,7 @@ export function observatiiDublura(r: any): string {
 }
 
 // randul rezervarii noi (trecut apoi prin payloadRezervare la salvare)
-export function rezervareDublata(r: any, o: { apartament_id: string; proprietar_id?: string | null; checkin: string; checkout: string; total?: number | null }) {
+export function rezervareDublata(r: any, o: { apartament_id: string; proprietar_id?: string | null; checkin: string; checkout: string; total?: number | null; moneda?: string | null }) {
   const n = noptiIntre(o.checkin, o.checkout)
   const total = o.total != null && Number.isFinite(Number(o.total)) ? Math.max(0, Math.round(Number(o.total) * 100) / 100) : Math.round(pretPeNoapte(r) * n * 100) / 100
   return {
@@ -32,7 +32,7 @@ export function rezervareDublata(r: any, o: { apartament_id: string; proprietar_
     nr_persoane: Number(r?.nr_persoane) || 1,
     // pe Airbnb / Booking oaspetele n-a facut a doua rezervare acolo -> dublura e directa (fara comision de platforma)
     canal: ['airbnb', 'booking'].includes(r?.canal) ? 'direct' : (r?.canal || 'direct'),
-    moneda: r?.moneda || 'RON', data_checkin: o.checkin, data_checkout: o.checkout,
+    moneda: o.moneda || r?.moneda || 'RON', data_checkin: o.checkin, data_checkout: o.checkout,
     valoare_bruta: total, suma_incasata: total, taxa_curatenie_incasata: 0,
     status_rezervare: 'confirmata', status_plata: 'neplatit', status_decont: 'nedecontat', status_facturare: 'nefacturat',
     observatii: observatiiDublura(r),

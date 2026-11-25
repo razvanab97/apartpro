@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Ca
 import { supabase, LUNI } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { useToast, Toast } from '@/components/ui'
+import { laLei } from '@/lib/moneda'
 
 // disponibil_booking/disponibil_airbnb nu existau inainte de migrarea recenta — un rand scanat
 // atunci are pretul real completat, dar flagul explicit ramane null (coloana nu exista la vremea
@@ -305,10 +306,10 @@ export default function PreturiPage() {
       const ago12 = new Date(); ago12.setMonth(ago12.getMonth()-12)
       const dateStart = fmt(ago12)
       const { data: rez } = await supabase.from('rezervari')
-        .select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,status_rezervare')
+        .select('apartament_id,data_checkin,data_checkout,nr_nopti,suma_incasata,moneda,status_rezervare')
         .gte('data_checkin', dateStart).neq('status_rezervare','anulata')
         .order('data_checkin',{ascending:true})
-      setStratRezervari(rez || [])
+      setStratRezervari(await laLei(rez))   // rezervarile in valuta -> lei
       setStratLoaded(true)
     }catch(err){console.error('[preturi loadStrategie]',err)}
     setLoadingStrat(false)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { cursRezervareServer } from '@/lib/cursBnr'
 
 export const dynamic = 'force-dynamic'
 const CRON_SECRET = process.env.CRON_SECRET || 'apartpro-cron-2026'
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   if (deja && !simulare) return NextResponse.json({ ok: true, sarit: 'deja trimis azi', detalii: deja.valoare })
 
   const { data, error } = await supabase.from('rezervari')
-    .select('id,nume_client,data_checkin,data_checkout,canal,status_plata,valoare_bruta,suma_incasata,avans,camera_semnalata,apartament:apartamente(nume,nota)')
+    .select('id,nume_client,data_checkin,data_checkout,canal,status_plata,valoare_bruta,suma_incasata,moneda,avans,camera_semnalata,apartament:apartamente(nume,nota)')
     .neq('status_rezervare', 'anulata').lte('data_checkin', azi).gt('data_checkout', azi).limit(500)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const deIncasat = (data || []).filter((r: any) => r.status_plata !== 'achitat' && r.canal !== 'airbnb' && r.camera_semnalata !== 'NEALOCAT')
@@ -41,23 +42,25 @@ export async function GET(req: NextRequest) {
   // avansurile de incasat (avans_cerut, „până la data” avans_termen) cu termenul azi sau trecut, inca neprimite integral,
   // pe rezervari ne-anulate care nu s-au terminat; query separat: fara migrarea avans_cerut doar se sare peste ele
   const { data: dav } = await supabase.from('rezervari')
-    .select('id,nume_client,data_checkin,avans,avans_cerut,avans_termen,status_plata,camera_semnalata,apartament:apartamente(nume,nota)')
+    .select('id,nume_client,data_checkin,moneda,avans,avans_cerut,avans_termen,status_plata,camera_semnalata,apartament:apartamente(nume,nota)')
     .neq('status_rezervare', 'anulata').gt('avans_cerut', 0).lte('avans_termen', azi).gt('data_checkout', azi).limit(500)
   // cine e deja cazat / soseste azi apare mai sus cu tot restul -> nu se numara de doua ori
   const dejaInLista = new Set(deIncasat.map(x => x.r.id))
   const avansuri = (dav || []).filter((r: any) => !dejaInLista.has(r.id) && r.status_plata !== 'achitat' && r.camera_semnalata !== 'NEALOCAT')
     .map((r: any) => ({ r, lipsa: Math.round((Number(r.avans_cerut) - (Number(r.avans) || 0)) * 100) / 100 })).filter(x => x.lipsa > 0)
     .sort((a, b) => String(a.r.avans_termen).localeCompare(String(b.r.avans_termen)))
+  const mon = (r: any) => r?.moneda && String(r.moneda).toUpperCase() !== 'RON' ? String(r.moneda).toUpperCase() : 'lei'
   const ziLuna = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`
-  const linieAvans = (x: typeof avansuri[number]) => `${x.r.apartament?.nota || x.r.apartament?.nume || '?'} · ${x.r.nume_client} — avans ${lei(x.lipsa)} lei, ${x.r.avans_termen === azi ? 'termen azi' : `termen depășit (${ziLuna(x.r.avans_termen)})`}`
+  const linieAvans = (x: typeof avansuri[number]) => `${x.r.apartament?.nota || x.r.apartament?.nume || '?'} · ${x.r.nume_client} — avans ${lei(x.lipsa)} ${mon(x.r)}, ${x.r.avans_termen === azi ? 'termen azi' : `termen depășit (${ziLuna(x.r.avans_termen)})`}`
 
   if (!deIncasat.length && !avansuri.length) {
     if (simulare) return NextResponse.json({ ok: true, simulare: true, n: 0, dejaTrimisAzi: !!deja })
     await supabase.from('setari').upsert({ cheie, valoare: JSON.stringify({ n: 0, la: new Date().toISOString() }) }, { onConflict: 'cheie' })
     return NextResponse.json({ ok: true, n: 0 })
   }
-  const total = deIncasat.reduce((s, x) => s + x.rest, 0) + avansuri.reduce((s, x) => s + x.lipsa, 0)
-  const linie = (x: typeof deIncasat[number]) => `${x.r.apartament?.nota || x.r.apartament?.nume || '?'} · ${x.r.nume_client} — ${lei(x.rest)} lei${Number(x.r.avans) > 0 ? ' (rest după avans)' : ''}${x.sosesteAzi ? ', sosește azi' : ', cazat'}`
+  // totalul in lei: rezervarile in valuta se trec la cursul BNR (fiecare rand ramane scris in moneda lui)
+  const total = (await Promise.all([...deIncasat.map(async x => x.rest * await cursRezervareServer(x.r)), ...avansuri.map(async x => x.lipsa * await cursRezervareServer(x.r))])).reduce((s, v) => s + v, 0)
+  const linie = (x: typeof deIncasat[number]) => `${x.r.apartament?.nota || x.r.apartament?.nume || '?'} · ${x.r.nume_client} — ${lei(x.rest)} ${mon(x.r)}${Number(x.r.avans) > 0 ? ' (rest după avans)' : ''}${x.sosesteAzi ? ', sosește azi' : ', cazat'}`
   const n = deIncasat.length + avansuri.length
   const titlu = `💰 De încasat azi: ${n} ${n === 1 ? 'rezervare' : 'rezervări'} · ${lei(total)} lei`
   const linii = [...deIncasat.map(linie), ...avansuri.map(linieAvans)]
