@@ -60,7 +60,8 @@ const METODE_AVANS = ['Transfer bancar', 'Numerar', 'Card', 'Revolut', 'Altă me
 const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber', decontat: 'green' }
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
-export const JUDETE = ['Alba', 'Arad', 'Arges', 'Bacau', 'Bihor', 'Bistrita-Nasaud', 'Botosani', 'Braila', 'Brasov', 'Bucuresti', 'Buzau', 'Calarasi', 'Caras-Severin', 'Cluj', 'Constanta', 'Covasna', 'Dambovita', 'Dolj', 'Galati', 'Giurgiu', 'Gorj', 'Harghita', 'Hunedoara', 'Ialomita', 'Iasi', 'Ilfov', 'Maramures', 'Mehedinti', 'Mures', 'Neamt', 'Olt', 'Prahova', 'Salaj', 'Satu Mare', 'Sibiu', 'Suceava', 'Teleorman', 'Timis', 'Tulcea', 'Valcea', 'Vaslui', 'Vrancea']
+import { JUDETE } from '@/lib/judete'
+export { JUDETE }
 // pj = factura pe firma (cerut direct: „factură pe PJ - adăugăm CUI și primim toată informația”), datele din ANAF
 export type ClientFactura = { tara: string; judet: string; localitate: string; adresa: string; pj?: boolean; cui?: string; firma?: string; regCom?: string; platitorTva?: boolean }
 export const CLIENT_GOL: ClientFactura = { tara: 'Romania', judet: '', localitate: '', adresa: '', pj: false, cui: '', firma: '', regCom: '', platitorTva: false }

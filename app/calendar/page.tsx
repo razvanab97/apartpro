@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/Layout'
 import { ChevronLeft, ChevronRight, MessageCircle, X, Plus, Check, Loader, Key, CheckCircle2, LogOut, FileText, Pencil } from 'lucide-react'
 import RezervareEditor from '@/components/RezervareEditor'
 import ConfirmareClient from '@/components/ConfirmareClient'
+import OfertaLink, { type OfertaInitiala } from '@/components/OfertaLink'
 import NealocatePanel from '@/components/NealocatePanel'
 import Unire5sdInfo from '@/components/Unire5sd'
 import { RangeCalendar } from '@/components/PriceCalc'
@@ -140,6 +141,8 @@ export default function CalendarPage() {
   // zilele blocate de proprietari din calendarul lor (/p/<token>) - vezi lib/blocariProprietar.ts
   const [blocari, setBlocari]   = useState<Blocare[]>([])
   const [apts, setApts]         = useState<Apt[]>([])
+  // rezervare prin link (components/OfertaLink.tsx): null = inchis, {} = doar lista / oferta goala
+  const [oferta, setOferta] = useState<OfertaInitiala|'lista'|null>(null)
   const [loading, setLoading]   = useState(true)
   const [cereScrollAzi, setCereScrollAzi] = useState(0)
   // „Alege data” (cerut direct: „să putem selecta o dată din oricare lună și să vedem cum stăm în perioada aceea; calendarul
@@ -559,6 +562,7 @@ export default function CalendarPage() {
         {/* „Vezi azi” (cerut direct: „un buton sus, Vezi azi, să ne ducă în dreptul zilei din calendar, cu bara de jos
             deja setată, să vedem cum stăm”) - trece pe luna curenta si deruleaza grila orizontal pana la ziua de azi */}
         <button data-vezi-azi onClick={()=>{setYear(todayYear);setMonth(todayMon);clearSel();setScrollTinta(null);setPerioada(null);setCereScrollAzi(n=>n+1)}} title="Du-te la ziua de azi" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:'rgba(74,222,128,0.14)',border:'1px solid rgba(74,222,128,0.45)',color:'#4ADE80',cursor:'pointer',whiteSpace:'nowrap' }}>📍 Vezi azi</button>
+        <button data-oferta-btn onClick={()=>setOferta('lista')} title="Trimite clientului o ofertă prin link — o completează și confirmă singur" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:'rgba(56,189,248,0.12)',border:'1px solid rgba(56,189,248,0.45)',color:'#7DD3FC',cursor:'pointer',whiteSpace:'nowrap' }}>🔗 Ofertă prin link</button>
         <div ref={pickerRef} style={{ position:'relative' }}>
           <button data-alege-data onClick={()=>setPickerData(o=>!o)} title="Alege o zi sau o perioadă din orice lună" style={{ fontSize:12,fontWeight:700,padding:'6px 14px',borderRadius:7,background:perioada?'rgba(167,139,250,0.2)':'rgba(167,139,250,0.12)',border:'1px solid rgba(167,139,250,0.45)',color:'#C4B5FD',cursor:'pointer',whiteSpace:'nowrap' }}>📅 Alege data</button>
           {pickerData&&(
@@ -1080,6 +1084,8 @@ export default function CalendarPage() {
                     style={{ width:'100%',background:'rgba(20,38,65,0.8)',border:'1px solid rgba(100,160,255,0.2)',borderRadius:8,color:'rgba(214,228,244,0.9)',fontSize:13,padding:'8px 10px',outline:'none',resize:'vertical',fontFamily:'inherit',boxSizing:'border-box' }}/>
                 </div>
 
+                <button data-oferta-din-rez onClick={()=>setOferta({ aptId:newRez.aptId, checkin:newRez.checkin, checkout:newRez.checkout, total:newRez.pret, moneda:newRez.moneda, persoane:newRez.persoane, nume:newRez.nume, telefon:newRez.telefon })}
+                  style={{ width:'100%',padding:'9px',marginBottom:8,borderRadius:10,border:'1px solid rgba(56,189,248,0.4)',background:'rgba(56,189,248,0.08)',color:'#7DD3FC',fontSize:13,fontWeight:700,cursor:'pointer' }}>🔗 Trimite ofertă prin link — clientul completează datele</button>
                 <button onClick={saveRez} disabled={saving || !newRez.aptId || !newRez.nume || !newRez.checkin || !newRez.checkout}
                   style={{ width:'100%',padding:'11px',borderRadius:10,border:'none',background:saveOk?'rgba(74,222,128,0.8)':'rgba(124,58,237,0.8)',color:'#fff',fontSize:14,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,transition:'all .2s',opacity:(!newRez.aptId||!newRez.nume||!newRez.checkin||!newRez.checkout)&&!saving?0.5:1 }}>
                   {saving ? <Loader size={16} style={{ animation:'spin 1s linear infinite' }}/> : saveOk ? <><Check size={16}/>Salvat!</> : <><Plus size={16}/>Salvează rezervarea</>}
@@ -1217,6 +1223,7 @@ Echipa AB Homes Iași`)}
       )}
 
       {confirmareId&&<ConfirmareClient rezervareId={confirmareId} onClose={()=>setConfirmareId(null)}/>}
+      {oferta&&<OfertaLink apts={apts} initial={oferta==='lista'?undefined:oferta} onClose={()=>{ setOferta(null); load() }}/>}
       {/* Editare - formularul complet de rezervare (comun cu pagina Rezervari) */}
       {editId&&(
         <RezervareEditor rezervareId={editId} onClose={()=>setEditId(null)} onSaved={load}

@@ -73,7 +73,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function bgSync() {
       try {
-        if (localStorage.getItem('sync_auto') !== '1' || location.pathname.startsWith('/ghid/') || eGazdaGhid(location.hostname)) return
+        if (localStorage.getItem('sync_auto') !== '1' || location.pathname.startsWith('/ghid/') || location.pathname.startsWith('/o/') || eGazdaGhid(location.hostname)) return
         const last = parseInt(localStorage.getItem('sync_last') || '0')
         if (last && Date.now() - last < 1790000) return
         localStorage.setItem('sync_last', Date.now().toString())
@@ -98,6 +98,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   if (pathname?.startsWith('/p/')) return <>{children}</>
   // formularul public de sugestii pentru oaspeti - fara interfata de admin
   if (pathname === '/sugestii') return <>{children}</>
+  // oferta de rezervare trimisa clientului (/o/<token>, link public) - fara interfata de admin
+  if (pathname?.startsWith('/o/')) return <>{children}</>
   if (typeof window !== 'undefined' && !isStaff) { try { localStorage.setItem('apartpro_admin', '1') } catch {} }
 
   return (

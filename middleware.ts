@@ -4,8 +4,8 @@ import { eGazdaGhid } from '@/lib/gazdeGhid'
 // Adresa pentru oaspeti (cerut direct: „să nu apară apartpro.work în link, ca poate ajunge în sistemul nostru dacă
 // șterge terminația”). Pe ea se servesc DOAR ghidurile: ghid.abhomesiasi.ro/GS08 -> pagina ghidului; orice alta
 // pagina (Dashboard, rezervari, /admin, proxy-ul bazei de date...) nu exista acolo. In plus: calendarul proprietarilor
-// (/p/<token> + API-ul lui) si formularul de sugestii (/sugestii + /api/sugestii), ca linkul trimis proprietarilor sa nu fie nici el pe apartpro.work.
-const STATIC_PERMIS = /^\/(_next\/|favicon\.ico$|manifest\.json$|tema-luminoasa\.js$|logo\.jpg$|icon-\d+\.png$|api\/ghid\/[^/]+$|api\/sugestii$|sugestii\/?$|api\/proprietar\/[A-Za-z0-9-]+$|p\/[A-Za-z0-9-]+\/?$)/
+// (/p/<token> + API-ul lui) si formularul de sugestii (/sugestii + /api/sugestii) si oferta de rezervare (/o/<token> + /api/oferta/<token>), ca linkul trimis proprietarilor sa nu fie nici el pe apartpro.work.
+const STATIC_PERMIS = /^\/(_next\/|favicon\.ico$|manifest\.json$|tema-luminoasa\.js$|logo\.jpg$|icon-\d+\.png$|api\/ghid\/[^/]+$|api\/sugestii$|sugestii\/?$|api\/proprietar\/[A-Za-z0-9-]+$|p\/[A-Za-z0-9-]+\/?$|api\/oferta\/[A-Za-z0-9_-]+$|o\/[A-Za-z0-9_-]+\/?$)/
 
 function gazdaOaspeti(req: NextRequest) {
   const { pathname } = req.nextUrl
