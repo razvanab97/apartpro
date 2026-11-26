@@ -377,7 +377,8 @@ export default function SyncPage() {
 
   return (
     <>
-      <PageHeader title="Sync 5starDesk" subtitle={mainTab==='sync' ? 'Import automat rezervări din PMS' : 'Import date din Excel'}/>
+      <PageHeader title="Sync 5starDesk" subtitle={mainTab==='sync' ? 'Import automat rezervări din PMS' : 'Import date din Excel'}
+        actions={<a data-pms-test-link href="/pms-5stardesk" title="Conexiunea PMS Connect cu 5starDesk - mod test, în paralel cu sincronizarea de aici" style={{ fontSize:12,fontWeight:700,padding:'6px 12px',borderRadius:8,border:'1px solid rgba(251,191,36,0.45)',background:'rgba(251,191,36,0.1)',color:'#FBBF24',textDecoration:'none',whiteSpace:'nowrap' }}>🧪 PMS Connect (test)</a>}/>
       <div style={{display:'flex', gap:4, padding:'0 20px', borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
         <button style={mainTabStyle(mainTab==='sync')} onClick={()=>setMainTab('sync')}>🔄 Sync 5starDesk</button>
         <button style={mainTabStyle(mainTab==='import')} onClick={()=>setMainTab('import')}>📥 Import Excel</button>
