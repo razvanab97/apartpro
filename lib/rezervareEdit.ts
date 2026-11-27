@@ -92,8 +92,8 @@ export async function salveazaRezervare(editing: any, apartamente: Apartament[])
   if (invalid) return invalid
   const payload = payloadRezervare(editing, apartamente)
   const { error } = editing.id
-    ? await supabase.from('rezervari').update(payload).eq('id', editing.id)
-    : await supabase.from('rezervari').insert(payload)
+    ? await supabase.from('rezervari').update(payload).setHeader('x-sursa', 'manual').eq('id', editing.id)
+    : await supabase.from('rezervari').insert(payload).setHeader('x-sursa', 'manual')
   if (error && /avans_cerut|avans_termen/i.test(error.message)) return 'Avansul de încasat nu se poate salva încă: rulează în Supabase migrarea (coloanele avans_cerut, avans_termen)'
   if (error && /avans/i.test(error.message)) return 'Avansul nu se poate salva încă: rulează în Supabase migrarea pentru avans (coloanele avans, avans_data, avans_metoda)'
   return error ? error.message : null

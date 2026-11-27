@@ -64,7 +64,7 @@ export default function DublareRezervare({ rezervare, apartamente, onCreata, onC
     setLucrez(true); setEroare(null)
     try {
       const rand = rezervareDublata(rezervare, { apartament_id: aptId, proprietar_id: apt?.proprietar_id || null, checkin: ci, checkout: co, total: total === '' ? 0 : Number(String(total).replace(',', '.')) || 0, moneda })
-      const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(rand, apartamente)).select('id').single()
+      const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(rand, apartamente)).setHeader('x-sursa', 'dublare').select('id').single()
       if (error || !data) { setEroare(error?.message || 'Nu s-a putut crea'); return }
       await onCreata(data.id)
     } finally { setLucrez(false) }

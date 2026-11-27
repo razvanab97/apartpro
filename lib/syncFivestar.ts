@@ -57,7 +57,7 @@ async function eliminaDubluriProaspete(idExtern: string): Promise<number> {
   if (randuri.length < 2) return 0
   const prag = Date.now() - 10 * 60 * 1000
   const deSters = randuri.slice(1).filter((r:any) => new Date(r.created_at).getTime() > prag).map((r:any) => r.id)
-  if (deSters.length) await supabase.from('rezervari').delete().in('id', deSters)
+  if (deSters.length) await supabase.from('rezervari').delete().setHeader('x-sursa', 'sync5sd').in('id', deSters)
   return deSters.length
 }
 
@@ -279,7 +279,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
       if (statusNou === 'finalizata' && e.status_rezervare === 'confirmata') upd.status_rezervare = 'finalizata'
       if (telefon && !e.telefon_client) upd.telefon_client = String(telefon)
       if (nrPersoane && !e.nr_persoane) upd.nr_persoane = nrPersoane
-      if (Object.keys(upd).length) await supabase.from('rezervari').update(upd).eq('id', e.id)
+      if (Object.keys(upd).length) await supabase.from('rezervari').update(upd).setHeader('x-sursa', 'sync5sd').eq('id', e.id)
       await salveazaUnire(e.id, instantaneu)
       if (statusNou === 'anulata' && e.status_rezervare !== 'anulata') res.logs.push({ type:'info', msg: `⚠ ${numeClient} (${checkin}) — anulată în 5starDesk, dar originala din apartpro rămâne activă — verifică` })
       res.skipped++
@@ -298,8 +298,8 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
         if (nrPersoane && !orig.nr_persoane) upd.nr_persoane = nrPersoane
         // pe alt apartament in 5starDesk -> nu se muta, doar se semnaleaza (Sync → „Camere semnalate”)
         if (aptId && orig.apartament_id !== aptId && notaApt(aptId)) { upd.camera_semnalata = notaApt(aptId); upd.camera_semnalata_la = new Date().toISOString() }
-        const { error: uErr } = await supabase.from('rezervari').update(upd).eq('id', orig.id)
-        if (uErr) { const { camera_semnalata, camera_semnalata_la, ...fara } = upd; await supabase.from('rezervari').update(fara).eq('id', orig.id) }
+        const { error: uErr } = await supabase.from('rezervari').update(upd).setHeader('x-sursa', 'sync5sd').eq('id', orig.id)
+        if (uErr) { const { camera_semnalata, camera_semnalata_la, ...fara } = upd; await supabase.from('rezervari').update(fara).setHeader('x-sursa', 'sync5sd').eq('id', orig.id) }
         await salveazaUnire(orig.id, instantaneu)
         ;(res.rezolvate ||= []).push(idExtern)
         res.skipped++
@@ -440,13 +440,13 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
         updates.valoare_bruta = totalPret
       }
       if (Object.keys(updates).length > 0) {
-        const { error: updErr } = await supabase.from('rezervari').update(updates).eq('id', existing[0].id)
+        const { error: updErr } = await supabase.from('rezervari').update(updates).setHeader('x-sursa', 'sync5sd').eq('id', existing[0].id)
         if (updErr) {
           // Cel mai probabil camera_semnalata/camera_semnalata_la nu exista inca (pana la
           // migrare) - reincearca fara ele, ca actualizarea de baza sa nu se blocheze.
           const { camera_semnalata, camera_semnalata_la, ...fallbackUpdates } = updates
           if (Object.keys(fallbackUpdates).length > 0) {
-            await supabase.from('rezervari').update(fallbackUpdates).eq('id', existing[0].id)
+            await supabase.from('rezervari').update(fallbackUpdates).setHeader('x-sursa', 'sync5sd').eq('id', existing[0].id)
           }
         }
       }
@@ -482,7 +482,7 @@ export async function processOneBooking(b: any, aptByNota: Record<string,string>
         status_plata: totalPret > 0 ? 'achitat' : 'neplatit',
         status_decont: 'nedecontat',
         observatii: [b.tip_camera || b.numar_camera, idExtern, b.status_rezervare].filter(Boolean).join(' | ') || null,
-      }))
+      })).setHeader('x-sursa', 'sync5sd')
       if (error) { res.errors++; res.logs.push({ type:'err', msg: `${numeClient}: ${error.message}` }) }
       else {
         if (idExternValid) {
@@ -673,7 +673,7 @@ export async function incarcaNealocate(): Promise<Nealocata[]> {
 export async function alocaNealocata(n: Nealocata, aptId: string): Promise<string|null> {
   const marcaj = { camera_semnalata: 'ALOCAT_MANUAL', camera_semnalata_la: new Date().toISOString() }
   if (n.rid) {
-    const { error } = await supabase.from('rezervari').update({ apartament_id: aptId, ...marcaj }).eq('id', n.rid)
+    const { error } = await supabase.from('rezervari').update({ apartament_id: aptId, ...marcaj }).setHeader('x-sursa', 'sync5sd').eq('id', n.rid)
     return error ? error.message : null
   }
   const { error } = await supabase.from('rezervari').insert(cuComisionImplicit({
@@ -681,7 +681,7 @@ export async function alocaNealocata(n: Nealocata, aptId: string): Promise<strin
     suma_incasata: n.pret, valoare_bruta: n.pret, moneda: 'RON', telefon_client: n.telefon, nr_persoane: n.nrPersoane,
     status_rezervare: n.statusNou, status_plata: n.pret > 0 ? 'achitat' : 'neplatit', status_decont: 'nedecontat',
     observatii: ['nealocată 5SD', n.id5sd, n.status5sd].filter(Boolean).join(' | '), ...marcaj,
-  }))
+  })).setHeader('x-sursa', 'sync5sd')
   if (error) return error.message
   await eliminaDubluriProaspete(n.id5sd)
   return null

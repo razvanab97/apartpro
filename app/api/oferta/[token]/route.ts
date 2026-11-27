@@ -82,7 +82,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const { error: e1 } = await supabase.from('setari').upsert({ cheie: cheieOferta(token), valoare: JSON.stringify({ ...o, stare: 'confirmata', confirmat_la: acum }) }, { onConflict: 'cheie' })
   if (e1) return NextResponse.json({ ok: false, error: t('Nu am putut salva. Încercați din nou.', 'Could not save. Please try again.') }, { status: 500 })
   const rand = payloadRezervare(rezervareDinOferta(o, d, apt), [apt])
-  const { data: nou, error } = await supabase.from('rezervari').insert(rand).select('id').single()
+  const { data: nou, error } = await supabase.from('rezervari').insert(rand).setHeader('x-sursa', 'oferta').select('id').single()
   if (error || !nou) {
     await supabase.from('setari').upsert({ cheie: cheieOferta(token), valoare: JSON.stringify(o) }, { onConflict: 'cheie' })
     return NextResponse.json({ ok: false, error: t('Nu am putut înregistra rezervarea. Încercați din nou sau contactați-ne.', 'Could not register the booking. Please try again or contact us.') }, { status: 500 })

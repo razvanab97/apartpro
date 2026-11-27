@@ -5,7 +5,7 @@
 // in ordinea datelor (seria RH trebuie sa fie cronologica). Ce lipseste se completeaza o data in rezervare - si se invata.
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { aziRo, CHEIE_DATA_EMITERE, type ClientFactura } from '@/components/RezervareModal'
+import { aziRo, CHEIE_DATA_EMITERE, deschideTabRezervare, type ClientFactura } from '@/components/RezervareModal'
 import { propune, normTel, normNume, ZILE_DUPA_CHECKOUT, type Invatat, type Propunere } from '@/lib/invatareFactura'
 
 type Stare = { etapa?: 'trimit' | 'ok' | 'eroare'; mesaj?: string }
@@ -147,7 +147,7 @@ export default function FacturiGata({ rezervari, modalDeschis, onDeschide, onRel
                     <input type="checkbox" aria-label={`Emite factura pentru ${r.nume_client}`} disabled={gal || emit || st?.etapa === 'ok'} checked={!gal && st?.etapa !== 'ok' && bifat(r.id, p)} onChange={e => setBife(b => ({ ...b, [r.id]: e.target.checked }))} style={{ width: 16, height: 16, flexShrink: 0 }} />
                     <div style={{ flex: '1 1 260px', minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                        <button type="button" onClick={() => { onDeschide(r); setTimeout(() => document.querySelector('[data-sectiune-factura]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350) }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(123,200,255,0.45)', textUnderlineOffset: 3 }}>{r.nume_client}</button>
+                        <button type="button" onClick={() => { onDeschide(r); setTimeout(() => deschideTabRezervare('factura'), 350) }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(123,200,255,0.45)', textUnderlineOffset: 3 }}>{r.nume_client}</button>
                         <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>{r.cod_rezervare_platforma}</span>
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
@@ -162,7 +162,7 @@ export default function FacturiGata({ rezervari, modalDeschis, onDeschide, onRel
                       <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: p.suma > 0 ? 'var(--green)' : '#FBBF24' }}>{p.suma > 0 ? `${fmt(p.suma)} RON` : '—'}</div>
                       <div style={{ fontSize: 11, color: p.mutata ? '#FBBF24' : 'var(--text3)' }}>{st?.etapa === 'trimit' ? 'se emite…' : `data ${zz(p.dataEmitere)}`}</div>
                     </div>
-                    {gal && <button type="button" onClick={() => { onDeschide(r); setTimeout(() => document.querySelector('[data-sectiune-factura]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350) }} style={btn({ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', color: '#FBBF24' })}>Completează</button>}
+                    {gal && <button type="button" onClick={() => { onDeschide(r); setTimeout(() => deschideTabRezervare('factura'), 350) }} style={btn({ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', color: '#FBBF24' })}>Completează</button>}
                   </div>
                 )
               })}

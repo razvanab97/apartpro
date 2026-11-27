@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase, normalizeWaPhone, pretRezervareText, CANALE_LABEL, STATUS_REZERVARE_LABEL, STATUS_PLATA_LABEL, STATUS_DECONT_LABEL, STATUS_FACTURARE_LABEL, numVal, numInput, type Apartament } from '@/lib/supabase'
-import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle, Phone, MessageCircle, Globe, Handshake, CircleDot } from 'lucide-react'
+import { X, Minus, Plus, Hash, ChevronDown, FileText, ExternalLink, Loader2, Moon, AlertTriangle, Phone, MessageCircle, Globe, Handshake, CircleDot, CalendarDays, Wallet, Receipt, History } from 'lucide-react'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { localitatiJudet, loadExtraLocs } from '@/lib/locatii-romania'
 import { TARI, oraseTara, taraOblio } from '@/lib/tariOrase'
@@ -10,7 +10,12 @@ import DublareRezervare from '@/components/DublareRezervare'
 import DocumentConfirmare from '@/components/DocumentConfirmare'
 import { MONEDE_REZ, CAMPURI_BANI, cursAzi } from '@/lib/moneda'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
+import { evenimente, sursaText, type IntrareIstoric } from '@/lib/istoricRezervare'
 
+// A treia refacere (cerut direct: „așează puțin diferit această pagină și cu mai mult sens, e foarte încărcat și greu de
+// urmărit”): taburi - Rezervare (perioada, oaspete, observatii) · Bani (pret, avans, comision, costuri, decont) · Factură ·
+// Istoric (modificarile, din `rezervari_istoric`) - si in dreapta un rezumat mereu vizibil (sumele + statusurile).
+// Pe telefon rezumatul vine sub tab. Toate taburile raman montate (doar ascunse), ca starea si salvarea automata sa nu se piarda.
 // Formularul de rezervare (nou/editare). A doua refacere, la cerere ("in continuare e greu de lucrat"):
 // pe desktop doua coloane - stanga ce se completeaza (rezervare, oaspete, cod platforma, observatii),
 // dreapta un panou fix cu banii, decontul, statusurile si factura, ca totul sa se vada fara derulare.
@@ -157,6 +162,11 @@ function Fold({ title, value, open, onToggle, children }: { title: string; value
   )
 }
 
+export type TabRez = 'rezervare' | 'bani' | 'factura' | 'istoric'
+// alte pagini deschid fereastra direct pe un tab (ex. „Completează” factura): dupa deschidere
+export const deschideTabRezervare = (t: TabRez) => window.dispatchEvent(new CustomEvent('rz:tab', { detail: t }))
+const candIst = (la: string) => new Date(la).toLocaleString('ro-RO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Bucharest' })
+
 export default function RezervareModal({ open, editing, setEditing, apartamente, onAptChange, recalcComisionPlatforma, calcul, saving, onSave, onClose, onReload, extra }: Props) {
   const totalCosturi = COSTURI.reduce((s, [k]) => s + (Number(editing?.[k]) || 0), 0)
   const comision = (Number(editing?.comision_platforma_valoare) || 0) + (Number(editing?.tva_comision_platforma) || 0)
@@ -233,6 +243,13 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   // ultima factura din seria RH (din Oblio): nu se poate emite cu data mai veche
   const [ultimaFact, setUltimaFact] = useState<{ stare: 'incarc' | 'ok' | 'eroare'; data?: string; numar?: string; eroare?: string }>({ stare: 'incarc' })
   const [ultimaCerere, setUltimaCerere] = useState(0)
+  const [tab, setTab] = useState<TabRez>('rezervare')
+  useEffect(() => { const f = (e: Event) => { const t = (e as CustomEvent).detail; if (['rezervare', 'bani', 'factura', 'istoric'].includes(t)) setTab(t) }; window.addEventListener('rz:tab', f); return () => window.removeEventListener('rz:tab', f) }, [])
+  // pretul pe noapte de baza (nerotunjit) - ramane fix cand se schimba datele, chiar daca o clipa perioada e invalida
+  const pretBaza = useRef<number>(0)
+  // istoricul modificarilor (trigger in Postgres -> rezervari_istoric); 'lipsa' = SQL-ul nu a fost rulat inca
+  const [ist, setIst] = useState<{ stare: 'incarc' | 'ok' | 'lipsa' | 'eroare'; intrari: IntrareIstoric[]; mesaj?: string }>({ stare: 'incarc', intrari: [] })
+  const [istCerere, setIstCerere] = useState(0)
 
   // La fiecare deschidere: randurile pliabile pornesc deschise doar daca au valori; se retine starea
   // salvata a rezervarii (factura se emite din datele SALVATE, deci modificarile nesalvate o blocheaza)
@@ -257,6 +274,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
       setFactura({ etapa: 'idle' })
       setClientFact(CLIENT_GOL); setClientSalvat(JSON.stringify(CLIENT_GOL)); setAltaTara(false); setFirmaStare({}); setDataEmitere(aziRo())
       setAuto({ stare: 'idle' })
+      setTab('rezervare'); pretBaza.current = 0
     }
   }
 
@@ -285,6 +303,20 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     })
     return () => { anulat = true }
   }, [open, editing?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open || !editing?.id) { setIst({ stare: 'ok', intrari: [] }); return }
+    let viu = true
+    Promise.resolve(supabase.from('rezervari_istoric').select('id,rezervare_id,la,tip,sursa,modificari').eq('rezervare_id', editing.id).order('la', { ascending: false }).limit(300))
+      .then(({ data, error }) => {
+        if (!viu) return
+        if (error) setIst({ stare: /rezervari_istoric|does not exist|schema cache/i.test(error.message) ? 'lipsa' : 'eroare', intrari: [], mesaj: error.message })
+        else setIst({ stare: 'ok', intrari: (data || []) as IntrareIstoric[] })
+      }).catch(e => { if (viu) setIst({ stare: 'eroare', intrari: [], mesaj: String(e?.message || e) }) })
+    return () => { viu = false }
+  }, [open, editing?.id, istCerere])
+  // dupa fiecare salvare automata istoricul se reciteste (trigger-ul a scris deja randul nou)
+  useEffect(() => { if (auto.stare === 'salvat') setIstCerere(x => x + 1) }, [auto.stare, auto.ora])
 
   // ultima factura RH + data emiterii propusa - si la rezervarile noi, nesalvate inca
   useEffect(() => {
@@ -419,13 +451,17 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const pePerNoapte = nopti > 0 ? (Number(editing.valoare_bruta) || 0) / nopti : 0
   const noptiIntre = (ci: string, co: string) => ci && co ? Math.max(0, Math.round((new Date(co).getTime() - new Date(ci).getTime()) / 86400000)) : 0
   const total = (pret: number, n: number) => Math.round(pret * n * 100) / 100
-  // Schimbarea datelor: daca pretul pe noapte a fost scris de mana, totalul se actualizeaza cu noile nopti
+  // Schimbarea datelor (cerut direct: „dacă scădem perioada de check-in / check-out să scadă, să crească automat și suma,
+  // nu să se împartă toată suma la zile mai puține sau mai multe”): pretul pe NOAPTE ramane fix si totalul = pret × noptile noi
+  // (pretul scris de mana, altfel totalul / noptile de dinainte, nerotunjit - 500 / 3 nopti × 4 = 666,67, nu 666,68)
   const setDate = (patch: { data_checkin?: string; data_checkout?: string }) => {
     set(patch)
-    if (pretNoapte !== null && Number(pretNoapte) > 0) {
-      const n = noptiIntre(patch.data_checkin ?? editing.data_checkin, patch.data_checkout ?? editing.data_checkout)
-      recalcComisionPlatforma(total(Number(pretNoapte), n), editing.comision_platforma_procent)
-    }
+    const brut = Number(editing.valoare_bruta) || 0
+    const baza = pretNoapte !== null && Number(pretNoapte) > 0 ? Number(pretNoapte) : nopti > 0 && brut > 0 ? brut / nopti : pretBaza.current
+    if (!(baza > 0)) return
+    pretBaza.current = baza
+    const n = noptiIntre(patch.data_checkin ?? editing.data_checkin, patch.data_checkout ?? editing.data_checkout)
+    if (n > 0) recalcComisionPlatforma(total(baza, n), editing.comision_platforma_procent)
   }
   const pretAfisat = pretNoapte !== null ? pretNoapte : (pePerNoapte > 0 ? Math.round(pePerNoapte * 100) / 100 : '')
 
@@ -530,10 +566,15 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     }
   }
 
+  const numeApt = (id: any) => { const a: any = apartamente.find(x => x.id === id); return a ? (a.nota ? `${a.nota} · ${String(a.nume).replace(/\s*by AB HOMES\s*/i, '')}` : a.nume) : id ? 'alt apartament' : '—' }
+  const evIst = ist.stare === 'ok' ? evenimente(ist.intrari, numeApt, moneda) : []
+  const nrIst = evIst.filter(e => e.tip !== 'creata').length
+
   // ce fac Enter / Enter dublu cu starea de acum (efectul de taste citeste mereu valorile curente de aici)
   tasta.current = {
     enter: () => { if (!saving && factura.etapa !== 'trimit') void salveazaTot() },
     dublu: () => {
+      setTab('factura')
       if (factura.etapa === 'trimit') return
       if (editing.factura_numar) { setFactura({ etapa: 'idle', info: `Factura ${editing.factura_serie || ''} ${editing.factura_numar} e deja emisă` }); return }
       // singura piedica = modificari inca nesalvate automat: se salveaza acum, apoi se emite
@@ -569,10 +610,20 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
           <button type="button" onClick={() => void inchide()} aria-label="Închide" className="rz-x"><X size={16} /></button>
         </header>
 
+        <nav className="rz-tabs" role="tablist" aria-label="Secțiuni rezervare">
+          {([['rezervare', 'Rezervare', <CalendarDays key="i" size={14} />], ['bani', 'Bani', <Wallet key="i" size={14} />], ['factura', 'Factură', <Receipt key="i" size={14} />], ['istoric', 'Istoric', <History key="i" size={14} />]] as [TabRez, string, ReactNode][]).map(([k, l, ic]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} data-tab-btn={k} className="rz-tab" onClick={() => setTab(k)}>
+              {ic}{l}
+              {k === 'factura' && (editing.factura_numar ? <span className="rz-tab-dot" style={{ background: C.green }} title="Facturată" /> : editing.status_facturare === 'de_facturat' ? <span className="rz-tab-dot" style={{ background: C.amber }} title="De facturat" /> : null)}
+              {k === 'istoric' && nrIst > 0 && <span className="rz-tab-n">{nrIst}</span>}
+            </button>
+          ))}
+        </nav>
+
         <div className="rz-body">
-          {/* ── Stanga: ce se completeaza ── */}
           <div className="rz-main">
-            <Group title="Rezervare" first>
+            <section data-tab="rezervare" hidden={tab !== 'rezervare'}>
+            <Group title="Perioadă și apartament" first>
               <div className="rz-grid">
                 <div>
                   <Label>Apartament *</Label>
@@ -635,11 +686,10 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             </Group>
 
             {extra && <Group title="Mesaje și acțiuni">{extra(editing)}</Group>}
-          </div>
+            </section>
 
-          {/* ── Dreapta: bani, decont, statusuri, factura ── */}
-          <aside className="rz-aside">
-            <Group title="Încasări" first>
+            <section data-tab="bani" hidden={tab !== 'bani'}>
+            <Group title="Preț și încasări" first>
               <Label right={
                 <select data-moneda-rez value={moneda} onChange={e => {
                   const la = e.target.value
@@ -688,15 +738,6 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 </button>
               )}
               <div className="rz-grid rz-2" style={{ marginTop: 12 }}>
-                <div data-suma-facturare>
-                  <Label>Sumă de facturat</Label>
-                  <Money value={sumaFact} suffix={moneda} onChange={v => setSumaFact(v)} />
-                  <div style={{ fontSize: 11, marginTop: 4, color: Number(sumaFact) > 0 && Number(sumaFact) !== Number(editing.valoare_bruta) ? C.amber : C.faint }}>
-                    {moneda !== 'RON' && <div data-factura-lei style={{ color: '#9FD7FF', marginBottom: 2 }}>Factura se emite în lei, la cursul BNR din data emiterii</div>}
-                    {!(Number(sumaFact) > 0) ? `gol = se facturează totalul (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda})`
-                      : Number(sumaFact) !== Number(editing.valoare_bruta) ? `diferă de total (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda}) cu ${fmt(Math.round((Number(sumaFact) - (Number(editing.valoare_bruta) || 0)) * 100) / 100)}` : 'egală cu totalul rezervării'}
-                  </div>
-                </div>
                 <div><Label>Taxă curățenie</Label><Money value={editing.taxa_curatenie_incasata} suffix={moneda} onChange={v => set({ taxa_curatenie_incasata: v })} /></div>
               </div>
               {/* Avans (cerut direct: „la rezervări să avem și o secțiune unde se trece avansul”): suma, data, cum s-a plătit,
@@ -794,16 +835,23 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               </Group>
             )}
 
-            <Group title="Statusuri">
-              <div className="rz-status">
-                <span>Rezervare</span><Segmented value={editing.status_rezervare} options={STATUS_REZERVARE_LABEL} tones={TON_REZ} onChange={v => set({ status_rezervare: v })} />
-                <span>Plată</span><Segmented value={editing.status_plata} options={STATUS_PLATA_LABEL} tones={TON_PLATA} onChange={v => set({ status_plata: v })} />
-                <span>Decont</span><Segmented value={editing.status_decont} options={STATUS_DECONT_LABEL} tones={TON_DECONT} onChange={v => set({ status_decont: v })} />
-                <span>Facturare</span><Segmented value={editing.status_facturare || 'nefacturat'} options={STATUS_FACTURARE_LABEL} tones={TON_FACT} onChange={v => set({ status_facturare: v })} />
+            </section>
+
+            <section data-tab="factura" hidden={tab !== 'factura'}>
+            <div data-sectiune-factura style={{ scrollMarginTop: 8 }} />
+            <Group title="Sumă de facturat" first>
+              <div style={{ maxWidth: 320 }}>
+                <div data-suma-facturare>
+                  <Label>Sumă de facturat</Label>
+                  <Money value={sumaFact} suffix={moneda} onChange={v => setSumaFact(v)} />
+                  <div style={{ fontSize: 11, marginTop: 4, color: Number(sumaFact) > 0 && Number(sumaFact) !== Number(editing.valoare_bruta) ? C.amber : C.faint }}>
+                    {moneda !== 'RON' && <div data-factura-lei style={{ color: '#9FD7FF', marginBottom: 2 }}>Factura se emite în lei, la cursul BNR din data emiterii</div>}
+                    {!(Number(sumaFact) > 0) ? `gol = se facturează totalul (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda})`
+                      : Number(sumaFact) !== Number(editing.valoare_bruta) ? `diferă de total (${fmt(Number(editing.valoare_bruta) || 0)} ${moneda}) cu ${fmt(Math.round((Number(sumaFact) - (Number(editing.valoare_bruta) || 0)) * 100) / 100)}` : 'egală cu totalul rezervării'}
+                  </div>
+                </div>
               </div>
             </Group>
-
-            <div data-sectiune-factura style={{ scrollMarginTop: 8 }} />
             <Group title="Factură">
               {editing.factura_numar ? (
                 <div className="rz-invoice">
@@ -933,6 +981,63 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               {factura.eroare && <div className="rz-msg rz-msg-err"><AlertTriangle size={13} /> {factura.eroare}</div>}
               {factura.info && <div className="rz-msg">{factura.info}</div>}
             </Group>
+            </section>
+
+            <section data-tab="istoric" hidden={tab !== 'istoric'} data-istoric>
+              <Group title="Istoric modificări" first>
+                {!editing.id ? <div className="rz-note">Istoricul începe după ce salvezi rezervarea.</div>
+                  : ist.stare === 'lipsa' ? <div className="rz-note" data-istoric-inactiv>Istoricul nu e pornit încă. Trebuie rulat o singură dată SQL-ul „rezervari_istoric” în Supabase. De atunci încolo apare aici orice modificare: din fereastra rezervării, din calendar, de la Asistent sau din sincronizarea 5starDesk.</div>
+                  : ist.stare === 'eroare' ? <div className="rz-msg rz-msg-err"><AlertTriangle size={13} /> Istoricul nu s-a putut citi: {ist.mesaj}</div>
+                  : ist.stare === 'incarc' ? <div className="rz-note"><Loader2 size={12} className="rz-spin" /> Se încarcă…</div>
+                  : <>
+                    {arePending() && <div className="rz-note" style={{ marginBottom: 10 }}>Modificările de acum apar aici imediat după salvarea automată.</div>}
+                    {evIst.length > 0 && <ol className="rz-tl">
+                      {evIst.map((e, i) => (
+                        <li key={e.la + i} data-ist-ev={e.tip}>
+                          <div className="rz-tl-h"><b>{candIst(e.la)}</b><span>{sursaText(e.sursa)}</span></div>
+                          {e.randuri.map((r, j) => <div key={j} className={`rz-tl-r rz-tl-${r.ton}`}><span aria-hidden>{r.icon}</span><span>{r.text}</span></div>)}
+                        </li>
+                      ))}
+                    </ol>}
+                    {!evIst.some(e => e.tip === 'creata') && <div className="rz-note" style={{ marginTop: evIst.length ? 12 : 0 }}>
+                      {editing.created_at ? `Rezervare creată pe ${candIst(editing.created_at)}. ` : ''}{evIst.length ? 'Modificările de dinainte de pornirea istoricului nu sunt înregistrate.' : 'Nicio modificare înregistrată de la pornirea istoricului.'}
+                    </div>}
+                  </>}
+              </Group>
+            </section>
+          </div>
+
+          {/* ── Dreapta: rezumat mereu vizibil (sumele + statusurile) ── */}
+          <aside className="rz-aside" data-rezumat>
+            <Group title="Rezumat" first>
+              <div className="rz-rows">
+                <div><span>Total{nopti > 0 && Number(editing.valoare_bruta) > 0 ? ` · ${nopti} × ${fmt(pePerNoapte)}` : ''}</span><b data-rezumat-total>{fmt(Number(editing.valoare_bruta) || 0)} {moneda}</b></div>
+                {Number(editing.taxa_curatenie_incasata) > 0 && <div><span>Taxă curățenie</span><b>{fmt(Number(editing.taxa_curatenie_incasata))} {moneda}</b></div>}
+                {Number(editing.avans) > 0 && <div><span>Avans încasat</span><b style={{ color: C.green }}>{fmt(Number(editing.avans))} {moneda}</b></div>}
+                {Number(editing.avans) > 0 && <div><span>Rest de plată</span><b style={{ color: (Number(editing.valoare_bruta) || 0) - Number(editing.avans) > 0 ? C.amber : C.green }}>{fmt(Math.max(0, (Number(editing.valoare_bruta) || 0) - Number(editing.avans)))} {moneda}</b></div>}
+                {Number(editing.avans_cerut) > Number(editing.avans || 0) && <div><span>Avans de primit</span><b style={{ color: C.amber }}>{fmt(Number(editing.avans_cerut) - (Number(editing.avans) || 0))} {moneda}</b></div>}
+                {comision > 0 && <div><span>Comision platformă</span><b style={{ color: C.red }}>−{fmt(comision)} {moneda}</b></div>}
+                {totalCosturi > 0 && <div><span>Costuri</span><b style={{ color: C.red }}>−{fmt(totalCosturi)} {moneda}</b></div>}
+              </div>
+              {editing.apartament_id && calcul && (
+                <div className="rz-total" style={{ marginTop: 10 }}>
+                  <span>De virat proprietarului{editing.platit_proprietar ? ' · ✓ plătit' : ''}</span>
+                  <b>{fmt(calcul.suma_proprietar)} {moneda}</b>
+                </div>
+              )}
+              {tab !== 'bani' && <button type="button" className="rz-link" onClick={() => setTab('bani')}>Editează sumele →</button>}
+            </Group>
+            <Group title="Stare">
+              <div className="rz-status">
+                <span>Rezervare</span><Segmented value={editing.status_rezervare} options={STATUS_REZERVARE_LABEL} tones={TON_REZ} onChange={v => set({ status_rezervare: v })} />
+                <span>Plată</span><Segmented value={editing.status_plata} options={STATUS_PLATA_LABEL} tones={TON_PLATA} onChange={v => set({ status_plata: v })} />
+                <span>Decont</span><Segmented value={editing.status_decont} options={STATUS_DECONT_LABEL} tones={TON_DECONT} onChange={v => set({ status_decont: v })} />
+                <span>Facturare</span><Segmented value={editing.status_facturare || 'nefacturat'} options={STATUS_FACTURARE_LABEL} tones={TON_FACT} onChange={v => set({ status_facturare: v })} />
+              </div>
+              {editing.factura_numar
+                ? <div className="rz-note" style={{ marginTop: 10 }}>🧾 Factura <b style={{ color: C.text }}>{editing.factura_serie} {editing.factura_numar}</b></div>
+                : tab !== 'factura' && editing.canal === 'airbnb' && <button type="button" className="rz-link" onClick={() => setTab('factura')}>Emite factura →</button>}
+            </Group>
           </aside>
         </div>
 
@@ -946,28 +1051,28 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 : 'Modificările se salvează automat'}
             </span>
           ) : <span className="rz-hint">Esc închide · Enter salvează · Enter ×2 emite factura</span>}
-          {/* confirmare pentru client (poza / PDF) - doar pentru rezervari salvate */}
+          {/* actiunile secundare (trimise proprietarului / clientului, dublare) - acelasi stil discret, grupate */}
+          <div className="rz-acts">
           {editing.apartament_id && telProp && (
             telProp.tel
-              ? <a className="rz-btn" href={`https://wa.me/${normalizeWaPhone(telProp.tel!)}?text=${encodeURIComponent(msgPropietar())}`} target="_blank" rel="noreferrer"
+              ? <a href={`https://wa.me/${normalizeWaPhone(telProp.tel!)}?text=${encodeURIComponent(msgPropietar())}`} target="_blank" rel="noreferrer"
                   title={`Trimite proprietarului (${telProp.nume}) confirmarea rezervării pe WhatsApp`}
-                  style={{ padding: '10px 16px', borderColor: 'rgba(74,222,128,0.45)', color: '#4ADE80', background: 'rgba(74,222,128,0.08)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>🏠 Confirmare proprietar</a>
-              : <span className="rz-btn" title={`${telProp.nume || 'Proprietarul'} nu are telefon salvat — completează-l în Proprietari`} style={{ padding: '10px 16px', opacity: 0.45, cursor: 'default' }}>🏠 Proprietar fără telefon</span>
+                  className="rz-btn rz-act">🏠 Proprietar</a>
+              : <span className="rz-btn rz-act" title={`${telProp.nume || 'Proprietarul'} nu are telefon salvat — completează-l în Proprietari`} style={{ opacity: 0.45, cursor: 'default' }}>🏠 Proprietar fără telefon</span>
           )}
           {editing.id && (
-            <button data-dubleaza type="button" className="rz-btn" onClick={async () => { if (arePending()) await salveazaAuto(); setDublare(true) }}
+            <button data-dubleaza type="button" onClick={async () => { if (arePending()) await salveazaAuto(); setDublare(true) }}
               title="Creează o rezervare nouă pentru același client — alegi doar apartamentul și perioada"
-              style={{ padding: '10px 16px', borderColor: 'rgba(123,200,255,0.4)', color: '#7BC8FF', background: 'rgba(77,163,255,0.08)' }}>⧉ Dublează</button>
+              className="rz-btn rz-act">⧉ Dublează</button>
           )}
           {editing.id && (
-            <button type="button" className="rz-btn" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului"
-              style={{ padding: '10px 16px', borderColor: 'rgba(167,139,250,0.45)', color: '#C4B5FD', background: 'rgba(139,92,246,0.1)' }}>✦ Confirmare client</button>
+            <button type="button" className="rz-btn rz-act" onClick={() => setConfirmare(true)} title="Poză / PDF cu confirmarea rezervării, de trimis clientului">✦ Confirmare client</button>
           )}
           {editing.id && (
-            <button data-document-btn type="button" className="rz-btn" onClick={async () => { if (arePending()) await salveazaAuto(); setDocumentConf(true) }}
-              title="Document A4 (PDF) de confirmare a rezervării — alegi ce informații apar"
-              style={{ padding: '10px 16px', borderColor: 'rgba(94,234,212,0.4)', color: '#5EEAD4', background: 'rgba(45,212,191,0.08)' }}>📄 Document</button>
+            <button data-document-btn type="button" className="rz-btn rz-act" onClick={async () => { if (arePending()) await salveazaAuto(); setDocumentConf(true) }}
+              title="Document A4 (PDF) de confirmare a rezervării — alegi ce informații apar">📄 Document</button>
           )}
+          </div>
           <button type="button" className="rz-btn" onClick={() => void inchide()} style={{ padding: '10px 18px' }}>{editing.id ? 'Închide' : 'Anulează'}</button>
           <button type="button" className="rz-btn rz-btn-primary" onClick={salveazaTot} disabled={saving}>
             {saving ? <><Loader2 size={14} className="rz-spin" /> Se salvează…</> : 'Salvează rezervarea'}
@@ -1000,8 +1105,34 @@ export const CSS = `
 .rz-x:hover{color:${C.text};border-color:rgba(159,215,255,0.3)}
 .rz-pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
 .rz-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.rz-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
-.rz-main{overflow-y:auto;padding:20px 22px 24px}
+.rz-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px}
+.rz-main{overflow-y:auto;padding:20px 26px 28px}
+.rz-main > section{max-width:680px}
+.rz-tabs{display:flex;gap:2px;padding:0 18px;border-bottom:1px solid ${C.line};overflow-x:auto;scrollbar-width:none}
+.rz-tab{display:inline-flex;align-items:center;gap:7px;padding:11px 14px 10px;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;
+  background:transparent;color:${C.muted};font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.rz-tab:hover{color:${C.text}}
+.rz-tab[aria-selected=true]{color:${C.text};border-bottom-color:#4DA3FF}
+.rz-tab:focus-visible{outline:2px solid #4DA3FF;outline-offset:-2px}
+.rz-tab-dot{width:7px;height:7px;border-radius:50%}
+.rz-tab-n{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:rgba(77,163,255,0.16);color:${C.blue}}
+.rz-note{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;line-height:1.5;color:${C.muted}}
+.rz-link{margin-top:10px;padding:0;border:none;background:none;color:${C.blue};font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.rz-link:hover{text-decoration:underline}
+.rz-tl{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid ${C.line};display:flex;flex-direction:column;gap:14px}
+.rz-tl li{position:relative}
+.rz-tl li::before{content:'';position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:#0D1A2B;border:2px solid rgba(77,163,255,0.6)}
+.rz-tl-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:4px;font-size:12px;color:${C.faint}}
+.rz-tl-h b{font-weight:600;color:${C.text2};font-variant-numeric:tabular-nums}
+.rz-tl-r{display:flex;gap:8px;font-size:13px;line-height:1.45;color:${C.text};padding:2px 0}
+.rz-tl-r > span:first-child{width:16px;flex-shrink:0;text-align:center;color:${C.faint}}
+.rz-tl-sus > span:first-child,.rz-tl-bun > span:first-child{color:${C.green}}
+.rz-tl-jos > span:first-child{color:${C.amber}}
+.rz-tl-rau{color:${C.red}}
+.rz-tl-rau > span:first-child{color:${C.red}}
+.rz-acts:empty{display:none}
+.rz-acts{display:flex;flex-wrap:wrap;gap:6px;margin-right:auto;padding-left:12px;border-left:1px solid ${C.line}}
+.rz .rz-act{padding:8px 11px;font-size:12.5px;font-weight:600;text-decoration:none;color:${C.text2};background:rgba(255,255,255,0.03)}
 .rz-aside{overflow-y:auto;padding:20px 22px 24px;background:${C.aside};border-left:1px solid ${C.line}}
 .rz-group{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${C.blue};margin-bottom:12px}
 .rz-lbl{font-size:11.5px;font-weight:500;color:${C.muted}}
@@ -1033,7 +1164,8 @@ export const CSS = `
 .rz-seg button{flex:1;min-width:max-content;padding:6px 9px;border:none;border-radius:7px;background:transparent;color:${C.muted};
   font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:all .12s}
 .rz-seg button:hover{color:${C.text}}
-.rz-status{display:grid;grid-template-columns:72px minmax(0,1fr);gap:8px 10px;align-items:center}
+.rz-status{display:grid;grid-template-columns:1fr;gap:4px;align-items:center}
+.rz-status > span:not(:first-child){margin-top:6px}
 .rz-status > span{font-size:12px;color:${C.muted}}
 .rz-rows{display:flex;flex-direction:column;gap:6px;font-size:13px}
 .rz-rows > div{display:flex;justify-content:space-between;gap:10px;color:${C.text2}}
@@ -1041,6 +1173,8 @@ export const CSS = `
 .rz-total{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;padding:11px 13px;border-radius:10px;
   background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);font-size:13px;color:${C.text}}
 .rz-total b{font-size:17px;font-weight:800;color:${C.green};font-variant-numeric:tabular-nums}
+.rz-aside .rz-total{flex-direction:column;align-items:flex-start;gap:2px}
+.rz-aside .rz-total b{font-size:20px;white-space:nowrap}
 .rz-check{display:flex !important;align-items:center;gap:8px;margin:10px 0 0 !important;font-size:13px !important;color:${C.text2} !important;cursor:pointer}
 .rz .rz-check input{width:16px;height:16px;padding:0;accent-color:#22C55E}
 .rz-invoice{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);font-size:13px}
@@ -1048,8 +1182,8 @@ export const CSS = `
 .rz-sug{padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:rgba(214,228,244,0.75);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .rz-sug:hover{background:rgba(77,163,255,0.1);border-color:rgba(77,163,255,0.4);color:#CFE4FF}
 .rz-sug[aria-pressed=true]{background:rgba(77,163,255,0.18);border-color:#4DA3FF;color:#CFE4FF}
-.rz-canale{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.rz-canal{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.025);color:rgba(214,228,244,0.62);font-family:inherit;font-size:13px;font-weight:650;cursor:pointer;text-align:left;transition:background .15s,border-color .15s,color .15s,transform .1s}
+.rz-canale{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.rz-canal{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 9px;border-radius:10px;border:1px solid rgba(255,255,255,0.09);background:rgba(255,255,255,0.025);color:rgba(214,228,244,0.62);font-family:inherit;font-size:13px;font-weight:650;cursor:pointer;text-align:left;transition:background .15s,border-color .15s,color .15s,transform .1s}
 .rz-canal span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rz-canal:hover{background:rgba(255,255,255,0.05);color:rgba(232,240,250,0.9)}
 .rz-canal:active{transform:scale(.98)}
@@ -1066,8 +1200,9 @@ export const CSS = `
 .rz-msg-err{color:${C.red}}
 .rz-spin{animation:spin 1s linear infinite}
 .rz-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid ${C.line};background:rgba(6,14,26,0.7)}
-.rz-auto{margin-right:auto;display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;min-width:0}
+.rz-auto{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;min-width:0}
 .rz-hint{margin-right:auto;font-size:11px;color:${C.faint}}
+.rz-seg button{padding:6px 6px}
 @media (max-width:900px){
   .rz{padding:0;align-items:flex-end}
   .rz-panel{height:96dvh;border-radius:18px 18px 0 0}
@@ -1075,7 +1210,12 @@ export const CSS = `
   .rz-main,.rz-aside{overflow:visible;padding:16px}
   .rz-aside{border-left:none;border-top:1px solid ${C.line}}
   .rz-head{padding:14px 16px}
-  .rz-foot{padding:10px 16px}
+  .rz-foot{padding:10px 16px;flex-wrap:wrap}
+  .rz-acts{order:-1;width:100%;margin:0;padding:0;border:none}
+  .rz-auto{width:100%}
+  .rz-tabs{padding:0 8px}
+  .rz .rz-mini{width:auto !important;font-size:13px !important}
+  .rz-tab{padding:10px 11px 9px}
   .rz-hint{display:none}
   .rz-btn-primary{flex:1;min-width:0}
 }

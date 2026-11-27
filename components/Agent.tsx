@@ -51,7 +51,7 @@ async function executaCard(c: Card, fortat: boolean): Promise<{ text: string; un
     if (!fortat) { const ov = await ocupat(p.apartament_id, p.data_checkin, p.data_checkout); if (ov.length) throw new Error('Apartamentul s-a ocupat între timp: ' + ov.map((o: any) => o.nume_client).join(', ')) }
     const apts = await incarcaApts()
     const editing = { ...p, moneda: p.moneda || 'RON', status_rezervare: 'confirmata', status_decont: 'nedecontat', status_facturare: 'nefacturat' }
-    const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(editing, apts)).select('id').single()
+    const { data, error } = await supabase.from('rezervari').insert(payloadRezervare(editing, apts)).setHeader('x-sursa', 'asistent').select('id').single()
     if (error) throw new Error(error.message)
     return { text: `rezervare creată [[rez:${data.id}|${p.nume_client} · ${p.data_checkin} → ${p.data_checkout}]]`, undo: { tip: 'creare', id: data.id } }
   }
@@ -70,7 +70,7 @@ async function executaCard(c: Card, fortat: boolean): Promise<{ text: string; un
   if (c.actiune === 'anulare') {
     const prev = { status_rezervare: r.status_rezervare, observatii: r.observatii }
     const obs = [r.observatii, `Anulată de Asistent${p.motiv ? ': ' + p.motiv : ''} (${new Date().toLocaleDateString('ro-RO')})`].filter(Boolean).join('\n')
-    const { error } = await supabase.from('rezervari').update({ status_rezervare: 'anulata', observatii: obs }).eq('id', r.id)
+    const { error } = await supabase.from('rezervari').update({ status_rezervare: 'anulata', observatii: obs }).setHeader('x-sursa', 'asistent').eq('id', r.id)
     if (error) throw new Error(error.message)
     return { text: `rezervare anulată [[rez:${r.id}|${r.nume_client}]]`, undo: { tip: 'camp', id: r.id, prev } }
   }
@@ -96,13 +96,13 @@ async function executaCard(c: Card, fortat: boolean): Promise<{ text: string; un
 
 async function anuleazaActiune(u: any) {
   if (u.tip === 'creare') {
-    const { error } = await supabase.from('rezervari').update({ status_rezervare: 'anulata', observatii: 'Creată din greșeală de Asistent — anulată' }).eq('id', u.id)
+    const { error } = await supabase.from('rezervari').update({ status_rezervare: 'anulata', observatii: 'Creată din greșeală de Asistent — anulată' }).setHeader('x-sursa', 'asistent').eq('id', u.id)
     if (error) throw new Error(error.message)
     return
   }
   if (u.tip === 'eliberare') { await anuleazaEliberat(u.apartament_id, u.data, u.prev); return }
   if (u.tip === 'task') { const { error } = await supabase.from('taskuri').delete().eq('id', u.id); if (error) throw new Error(error.message); return }
-  if (u.tip === 'camp') { const { error } = await supabase.from('rezervari').update(u.prev).eq('id', u.id); if (error) throw new Error(error.message); return }
+  if (u.tip === 'camp') { const { error } = await supabase.from('rezervari').update(u.prev).setHeader('x-sursa', 'asistent').eq('id', u.id); if (error) throw new Error(error.message); return }
   const [{ data: r }, apts] = await Promise.all([supabase.from('rezervari').select(SELECT_REZERVARE).eq('id', u.id).single(), incarcaApts()])
   if (!r) throw new Error('Rezervarea nu mai există')
   let ed: any = { ...r, ...u.prev }

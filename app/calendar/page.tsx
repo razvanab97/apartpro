@@ -382,7 +382,7 @@ export default function CalendarPage() {
       status_plata: newRez.pret ? 'achitat' : 'neachitat',
       status_decont: 'nedecontat',
       observatii: [`${nrRez}${newRez.cnp?' | CNP: '+newRez.cnp:''}`, newRez.notite.trim()].filter(Boolean).join(' | '),
-    }).select().single()
+    }).setHeader('x-sursa', 'calendar').select().single()
 
     setSaving(false)
     if(error){
@@ -398,7 +398,7 @@ export default function CalendarPage() {
 
   async function cancelRez(r:any){
     if(!confirm(`Anulezi rezervarea lui ${r.nume_client}? Se eliberează perioada în calendar.`)) return
-    const { error } = await supabase.from('rezervari').update({ status_rezervare:'anulata' }).eq('id', r.id)
+    const { error } = await supabase.from('rezervari').update({ status_rezervare:'anulata' }).setHeader('x-sursa', 'calendar').eq('id', r.id)
     if(!error){ setEditId(null); setTooltip(null); await load() }
     else alert('Eroare: '+error.message)
   }
