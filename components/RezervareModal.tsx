@@ -11,6 +11,7 @@ import DocumentConfirmare from '@/components/DocumentConfirmare'
 import { MONEDE_REZ, CAMPURI_BANI, cursAzi } from '@/lib/moneda'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
 import { evenimente, sursaText, type IntrareIstoric } from '@/lib/istoricRezervare'
+import WhatsappRezervare from '@/components/WhatsappRezervare'
 
 // A treia refacere (cerut direct: „așează puțin diferit această pagină și cu mai mult sens, e foarte încărcat și greu de
 // urmărit”): taburi - Rezervare (perioada, oaspete, observatii) · Bani (pret, avans, comision, costuri, decont) · Factură ·
@@ -162,7 +163,7 @@ function Fold({ title, value, open, onToggle, children }: { title: string; value
   )
 }
 
-export type TabRez = 'rezervare' | 'bani' | 'factura' | 'istoric'
+export type TabRez = 'rezervare' | 'bani' | 'factura' | 'whatsapp' | 'istoric'
 // alte pagini deschid fereastra direct pe un tab (ex. „Completează” factura): dupa deschidere
 export const deschideTabRezervare = (t: TabRez) => window.dispatchEvent(new CustomEvent('rz:tab', { detail: t }))
 const candIst = (la: string) => new Date(la).toLocaleString('ro-RO', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Bucharest' })
@@ -244,7 +245,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
   const [ultimaFact, setUltimaFact] = useState<{ stare: 'incarc' | 'ok' | 'eroare'; data?: string; numar?: string; eroare?: string }>({ stare: 'incarc' })
   const [ultimaCerere, setUltimaCerere] = useState(0)
   const [tab, setTab] = useState<TabRez>('rezervare')
-  useEffect(() => { const f = (e: Event) => { const t = (e as CustomEvent).detail; if (['rezervare', 'bani', 'factura', 'istoric'].includes(t)) setTab(t) }; window.addEventListener('rz:tab', f); return () => window.removeEventListener('rz:tab', f) }, [])
+  useEffect(() => { const f = (e: Event) => { const t = (e as CustomEvent).detail; if (['rezervare', 'bani', 'factura', 'whatsapp', 'istoric'].includes(t)) setTab(t) }; window.addEventListener('rz:tab', f); return () => window.removeEventListener('rz:tab', f) }, [])
   // pretul pe noapte de baza (nerotunjit) - ramane fix cand se schimba datele, chiar daca o clipa perioada e invalida
   const pretBaza = useRef<number>(0)
   // istoricul modificarilor (trigger in Postgres -> rezervari_istoric); 'lipsa' = SQL-ul nu a fost rulat inca
@@ -446,6 +447,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
     ? Math.max(0, Math.round((new Date(editing.data_checkout).getTime() - new Date(editing.data_checkin).getTime()) / 86400000))
     : 0
   const moneda = editing.moneda || 'RON'
+  const telWa = (() => { const n = normalizeWaPhone(String(editing.telefon_client || '')); return n.replace(/\D/g, '').length >= 8 ? n : '' })()
   const cod = COD_CANAL[editing.canal] || { label: 'Cod rezervare platformă', ph: 'nr. rezervării de la platformă' }
   const procentAdmin = Number((apt as any)?.comision_procent || 20)
   const pePerNoapte = nopti > 0 ? (Number(editing.valoare_bruta) || 0) / nopti : 0
@@ -611,7 +613,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
         </header>
 
         <nav className="rz-tabs" role="tablist" aria-label="Secțiuni rezervare">
-          {([['rezervare', 'Rezervare', <CalendarDays key="i" size={14} />], ['bani', 'Bani', <Wallet key="i" size={14} />], ['factura', 'Factură', <Receipt key="i" size={14} />], ['istoric', 'Istoric', <History key="i" size={14} />]] as [TabRez, string, ReactNode][]).map(([k, l, ic]) => (
+          {([['rezervare', 'Rezervare', <CalendarDays key="i" size={14} />], ['bani', 'Bani', <Wallet key="i" size={14} />], ['factura', 'Factură', <Receipt key="i" size={14} />], ['whatsapp', 'WhatsApp', <MessageCircle key="i" size={14} />], ['istoric', 'Istoric', <History key="i" size={14} />]] as [TabRez, string, ReactNode][]).map(([k, l, ic]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} data-tab-btn={k} className="rz-tab" onClick={() => setTab(k)}>
               {ic}{l}
               {k === 'factura' && (editing.factura_numar ? <span className="rz-tab-dot" style={{ background: C.green }} title="Facturată" /> : editing.status_facturare === 'de_facturat' ? <span className="rz-tab-dot" style={{ background: C.amber }} title="De facturat" /> : null)}
@@ -667,7 +669,16 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             <Group title="Oaspete">
               <div className="rz-grid rz-2">
                 <div><Label>Nume client *</Label><input value={editing.nume_client || ''} onChange={e => set({ nume_client: e.target.value })} placeholder="Prenume Nume" /></div>
-                <div><Label>Telefon</Label><input type="tel" value={editing.telefon_client || ''} onChange={e => set({ telefon_client: e.target.value })} placeholder="+40 7xx xxx xxx" /></div>
+                <div>
+                  <Label right={telWa ? <button type="button" className="rz-link" style={{ margin: 0, fontSize: 11.5 }} onClick={() => setTab('whatsapp')}>Mesaje WhatsApp →</button> : undefined}>Telefon</Label>
+                  {/* buton WhatsApp langa numar (cerut direct: „să avem buton de WhatsApp pentru numărul de telefon”) - deschide chatul */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input data-telefon-client type="tel" value={editing.telefon_client || ''} onChange={e => set({ telefon_client: e.target.value })} placeholder="+40 7xx xxx xxx" style={{ flex: 1, minWidth: 0 }} />
+                    {telWa
+                      ? <a data-wa-telefon href={`https://wa.me/${telWa}`} target="_blank" rel="noreferrer" title="Deschide chatul pe WhatsApp" aria-label="WhatsApp" className="rz-wa"><MessageCircle size={17} /></a>
+                      : <span className="rz-wa" aria-hidden style={{ opacity: 0.3, cursor: 'default' }} title="Scrie numărul ca să poți deschide WhatsApp"><MessageCircle size={17} /></span>}
+                  </div>
+                </div>
                 <div><Label>Email</Label><input type="email" value={editing.email_client || ''} onChange={e => set({ email_client: e.target.value })} placeholder="email@..." /></div>
                 <div>
                   <Label right={!editing.cod_rezervare_platforma && editing.canal === 'airbnb' ? <span style={{ fontSize: 11, color: C.amber }}>necesar pe factură</span> : undefined}>{cod.label}</Label>
@@ -685,7 +696,7 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
               <textarea value={editing.observatii || ''} onChange={e => set({ observatii: e.target.value })} rows={2} placeholder="Notițe interne..." style={{ resize: 'vertical' }} />
             </Group>
 
-            {extra && <Group title="Mesaje și acțiuni">{extra(editing)}</Group>}
+            {extra && <Group title="Acțiuni">{extra(editing)}</Group>}
             </section>
 
             <section data-tab="bani" hidden={tab !== 'bani'}>
@@ -983,6 +994,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
             </Group>
             </section>
 
+            <section data-tab="whatsapp" hidden={tab !== 'whatsapp'}>
+              <Group title="WhatsApp" first>
+                <WhatsappRezervare rezervare={editing} activ={tab === 'whatsapp'} onMergiLaTelefon={() => { setTab('rezervare'); setTimeout(() => (document.querySelector('[data-telefon-client]') as HTMLInputElement | null)?.focus(), 50) }} />
+              </Group>
+            </section>
+
             <section data-tab="istoric" hidden={tab !== 'istoric'} data-istoric>
               <Group title="Istoric modificări" first>
                 {!editing.id ? <div className="rz-note">Istoricul începe după ce salvezi rezervarea.</div>
@@ -1131,6 +1148,8 @@ export const CSS = `
 .rz-tl-rau{color:${C.red}}
 .rz-tl-rau > span:first-child{color:${C.red}}
 .rz-acts:empty{display:none}
+.rz-wa{width:38px;height:38px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:#25D366;color:#fff;border:1px solid #25D366;text-decoration:none}
+.rz-wa:hover{background:#3BE07A}
 .rz-acts{display:flex;flex-wrap:wrap;gap:6px;margin-right:auto;padding-left:12px;border-left:1px solid ${C.line}}
 .rz .rz-act{padding:8px 11px;font-size:12.5px;font-weight:600;text-decoration:none;color:${C.text2};background:rgba(255,255,255,0.03)}
 .rz-aside{overflow-y:auto;padding:20px 22px 24px;background:${C.aside};border-left:1px solid ${C.line}}
