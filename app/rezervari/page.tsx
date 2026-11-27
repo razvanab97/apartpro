@@ -12,6 +12,7 @@ import CoadaFacturare from '@/components/CoadaFacturare'
 import { citesteCoada } from '@/lib/coadaAirbnb'
 import { cuApartament, cuComision, decont, salveazaRezervare } from '@/lib/rezervareEdit'
 import { inLei, laLei } from '@/lib/moneda'
+import { CULORI_REZ, culoareRez } from '@/lib/culoareRezervare'
 
 // formateaza local (YYYY-MM-DD) - .toISOString() poate muta data cu o zi pentru fuse est de UTC (ex: Romania)
 function toYMD(d: Date): string {
@@ -472,6 +473,7 @@ export default function RezervariPage() {
                         />
                       </td>
                       <td>
+                        {culoareRez(r) && <span data-culoare-lista={culoareRez(r)} title={CULORI_REZ[culoareRez(r)!].sens} style={{display:'inline-block',width:9,height:9,borderRadius:3,background:CULORI_REZ[culoareRez(r)!].bg,marginRight:6,verticalAlign:'middle'}}/>}
                         <span style={{color:'var(--text)',fontWeight:500}}>{r.nume_client}</span>
                         <br/>
                         <span style={{fontSize:11,color:'var(--text3)'}}>

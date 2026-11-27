@@ -12,6 +12,7 @@ import { MONEDE_REZ, CAMPURI_BANI, cursAzi } from '@/lib/moneda'
 import { salveazaRezervare, cuCanal, payloadRezervare, validareRezervare, SELECT_REZERVARE } from '@/lib/rezervareEdit'
 import { evenimente, sursaText, type IntrareIstoric } from '@/lib/istoricRezervare'
 import WhatsappRezervare from '@/components/WhatsappRezervare'
+import { CULOARE_OPTIUNI, CULORI_REZ, ePrivata, culoareRez } from '@/lib/culoareRezervare'
 
 // A treia refacere (cerut direct: „așează puțin diferit această pagină și cu mai mult sens, e foarte încărcat și greu de
 // urmărit”): taburi - Rezervare (perioada, oaspete, observatii) · Bani (pret, avans, comision, costuri, decont) · Factură ·
@@ -63,6 +64,7 @@ const TONE: Record<string, { c: string; bg: string; b: string }> = {
 const TON_REZ: Record<string, string> = { cerere: 'amber', confirmata: 'green', anulata: 'red', finalizata: 'blue' }
 const TON_PLATA: Record<string, string> = { neplatit: 'red', avans: 'amber', achitat: 'green' }
 const METODE_AVANS = ['Transfer bancar', 'Numerar', 'Card', 'Revolut', 'Altă metodă']
+const TON_CULOARE: Record<string, string> = { '': 'gray', rosu: 'red', galben: 'amber' }
 const TON_DECONT: Record<string, string> = { nedecontat: 'gray', inclus: 'amber', decontat: 'green' }
 // Domiciliul clientului pe factura (cerut direct: „pentru facturare și pentru a ajunge în SPV, la clienți să ajungă și
 // județul și localitatea de domiciliu”) - date REALE ale oaspetelui (ex. profilul Airbnb „Locuiește în …”), nu inventate
@@ -1051,6 +1053,12 @@ export default function RezervareModal({ open, editing, setEditing, apartamente,
                 <span>Decont</span><Segmented value={editing.status_decont} options={STATUS_DECONT_LABEL} tones={TON_DECONT} onChange={v => set({ status_decont: v })} />
                 <span>Facturare</span><Segmented value={editing.status_facturare || 'nefacturat'} options={STATUS_FACTURARE_LABEL} tones={TON_FACT} onChange={v => set({ status_facturare: v })} />
               </div>
+              {/* culoarea in calendar, doar la rezervarile private (pe Airbnb / Booking ramane culoarea platformei) */}
+              {ePrivata(editing.canal) && <div data-culoare-rez style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>Culoare în calendar</div>
+                <Segmented value={culoareRez(editing) || ''} options={CULOARE_OPTIUNI} tones={TON_CULOARE} onChange={v => set({ culoare: v || null })} />
+                {culoareRez(editing) && <div className="rz-note" style={{ marginTop: 6 }}>{CULORI_REZ[culoareRez(editing)!].sens}</div>}
+              </div>}
               {editing.factura_numar
                 ? <div className="rz-note" style={{ marginTop: 10 }}>🧾 Factura <b style={{ color: C.text }}>{editing.factura_serie} {editing.factura_numar}</b></div>
                 : tab !== 'factura' && editing.canal === 'airbnb' && <button type="button" className="rz-link" onClick={() => setTab('factura')}>Emite factura →</button>}

@@ -80,6 +80,8 @@ export function payloadRezervare(editing: any, apartamente: Apartament[]) {
     const ac = Math.round((Number(editing.avans_cerut) || 0) * 100) / 100
     Object.assign(payload, { avans_cerut: ac > 0 ? ac : null, avans_termen: ac > 0 ? (editing.avans_termen || null) : null })
   }
+  // culoarea din calendar (coloana culoare): trimisa doar daca e pusa, ca fara migrare sa nu blocheze; pe platforme nu se aplica
+  if ('culoare' in editing) payload.culoare = ['airbnb', 'booking'].includes(String(payload.canal || '').toLowerCase()) ? null : (editing.culoare === 'rosu' || editing.culoare === 'galben' ? editing.culoare : null)
   // rezervare Airbnb noua -> „De facturat”
   if (!editing.id && payload.canal === 'airbnb' && (!payload.status_facturare || payload.status_facturare === 'nefacturat')) payload.status_facturare = 'de_facturat'
   for (const k of ['id', 'apartament', 'proprietar', 'nr_nopti', 'created_at', 'updated_at', 'rezervare_id']) delete payload[k]
@@ -94,6 +96,7 @@ export async function salveazaRezervare(editing: any, apartamente: Apartament[])
   const { error } = editing.id
     ? await supabase.from('rezervari').update(payload).setHeader('x-sursa', 'manual').eq('id', editing.id)
     : await supabase.from('rezervari').insert(payload).setHeader('x-sursa', 'manual')
+  if (error && /culoare/i.test(error.message)) return 'Culoarea nu se poate salva încă: rulează în Supabase migrarea pentru culoare (coloana culoare)'
   if (error && /avans_cerut|avans_termen/i.test(error.message)) return 'Avansul de încasat nu se poate salva încă: rulează în Supabase migrarea (coloanele avans_cerut, avans_termen)'
   if (error && /avans/i.test(error.message)) return 'Avansul nu se poate salva încă: rulează în Supabase migrarea pentru avans (coloanele avans, avans_data, avans_metoda)'
   return error ? error.message : null

@@ -15,6 +15,7 @@ import { RangeCalendar } from '@/components/PriceCalc'
 import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { inLei, laLei, eValuta, MONEDE_REZ } from '@/lib/moneda'
+import { CULORI_REZ, culoareRez, ePrivata, type CuloareRez } from '@/lib/culoareRezervare'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
@@ -22,6 +23,7 @@ type Rez = {
   canal: string; status_rezervare: string; nr_nopti?: number; nr_persoane?: number
   suma_incasata?: number; moneda?: string; observatii?: string
   suma_proprietar?: number; platit_proprietar?: boolean; suma_platita_proprietar?: number
+  culoare?: string | null
   apartament?: any
 }
 type Apt = { id: string; nume: string; nota: string | null }
@@ -36,6 +38,11 @@ const CANAL_STYLE: Record<string,{bg:string}> = {
   intern:   { bg:'#7C3AED' },
 }
 const cs = (canal:string) => CANAL_STYLE[canal?.toLowerCase()] || CANAL_STYLE.direct
+// culoarea barei: cea pusa de mana pe rezervarile private (rosu = mutata, galben = are de platit), altfel a canalului
+function csR(r?: Rez | null): { bg:string; text:string; sub:string; icon:string } {
+  const c = culoareRez(r)
+  return c ? CULORI_REZ[c] : { bg: cs(r?.canal||'direct').bg, text:'#fff', sub:'rgba(255,255,255,0.6)', icon:'' }
+}
 
 const MONTHS = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie']
 const DAYS_RO = ['Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă','Duminică']
@@ -90,6 +97,9 @@ export default function CalendarPage() {
   const [selApt, setSelApt]     = useState('')
   const [viewMode, setViewMode] = useState<'rez'|'sume'>('rez')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
+  const [culoareSalvez, setCuloareSalvez] = useState(false)
+  const [culoareEroare, setCuloareEroare] = useState<string|null>(null)
+  useEffect(()=>{ setCuloareEroare(null) },[tooltip?.rez.id])
   // asistentul stie ce rezervare ai deschis in calendar
   useEffect(()=>{ if(tooltip?.rez?.id) window.dispatchEvent(new CustomEvent('agent:context',{detail:{rezervare_id:tooltip.rez.id,rezervare_nume:`${tooltip.rez.nume_client||''} · ${tooltip.rez.data_checkin} → ${tooltip.rez.data_checkout}`}})) },[tooltip?.rez?.id])
   const [calcSel, setCalcSel]   = useState<Map<string,Rez>>(new Map())
@@ -285,6 +295,17 @@ export default function CalendarPage() {
       await load()
       setTimeout(()=>{ setSaveOk(false); setPanel(null); clearSel(); setLastNrRez(null); setLastSaved(null) }, 4000)
     }
+  }
+
+  // culoarea rezervarii private (rosu = mutata, galben = are de platit), schimbata din fereastra mica
+  async function schimbaCuloare(r:Rez, culoare:CuloareRez|null){
+    if((r.culoare||null)===culoare) return
+    setCuloareSalvez(true); setCuloareEroare(null)
+    const { error } = await supabase.from('rezervari').update({ culoare }).setHeader('x-sursa', 'calendar').eq('id', r.id)
+    setCuloareSalvez(false)
+    if(error){ setCuloareEroare(/culoare/i.test(error.message) ? 'Rulează întâi în Supabase migrarea pentru culoare (coloana culoare).' : error.message); return }
+    setRezAll(prev=>prev.map(x=>x.id===r.id?{...x,culoare}:x))
+    setTooltip(t=>t&&t.rez.id===r.id?{...t,rez:{...t.rez,culoare}}:t)
   }
 
   async function cancelRez(r:any){
@@ -501,6 +522,11 @@ export default function CalendarPage() {
               <div style={{ width:14,height:10,borderRadius:3,background:cs(k).bg }}/>{k==='intern'?'Intern':k.charAt(0).toUpperCase()+k.slice(1)}
             </div>
           ))}
+          {(Object.keys(CULORI_REZ) as CuloareRez[]).map(k=>(
+            <div key={k} data-legenda-culoare={k} title={CULORI_REZ[k].sens} style={{ display:'flex',alignItems:'center',gap:5,fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' }}>
+              <div style={{ width:14,height:10,borderRadius:3,background:CULORI_REZ[k].bg }}/>{CULORI_REZ[k].scurt}
+            </div>
+          ))}
           <div style={{ width:1,height:20,background:'rgba(159,215,255,0.1)' }}/>
           {isCurrentMonth && (
             <span style={{ fontSize:12,color:'rgba(159,215,255,0.5)' }}>
@@ -610,7 +636,7 @@ export default function CalendarPage() {
                     const isStart = r && (r.data_checkin===ds || d===1)
                     const nextR   = d<zileVizibile ? getRez(apt.id,d+1) : null
                     const isEnd   = r && nextR?.id!==r.id
-                    const style   = cs(rOrTail?.canal||'direct')
+                    const style   = csR(rOrTail)
 
                     let cellBg = 'transparent'
                     if(inSel)    cellBg = 'rgba(124,58,237,0.2)'
@@ -649,7 +675,7 @@ export default function CalendarPage() {
                             else break
                           }
                           return(
-                            <div data-rez="1"
+                            <div data-rez="1" data-culoare={culoareRez(r)||undefined} title={culoareRez(r)?CULORI_REZ[culoareRez(r)!].sens:undefined}
                               onClick={e=>{
                                 e.stopPropagation()
                                 setCalcSel(prev=>{const n=new Map(prev);n.has(r.id)?n.delete(r.id):n.set(r.id,r);return n})
@@ -664,12 +690,12 @@ export default function CalendarPage() {
                                     const net=netAprox(brut,r.canal)
                                     const isPlatf=esteplatforma(r.canal)
                                     return <>
-                                      <span style={{ fontSize:14, fontWeight:800, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{brut.toLocaleString('ro-RO')} RON</span>
-                                      {isPlatf && <span style={{ fontSize:10, color:'rgba(255,255,220,0.75)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, fontFamily:'monospace' }}>≈{net.toLocaleString('ro-RO')} net</span>}
-                                      <span style={{ fontSize:10, color:'rgba(255,255,255,0.6)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:1 }}>{r.nr_nopti||'?'}n · {r.canal}</span>
+                                      <span style={{ fontSize:14, fontWeight:800, color:style.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', fontFamily:'monospace', lineHeight:1.2 }}>{brut.toLocaleString('ro-RO')} RON</span>
+                                      {isPlatf && <span style={{ fontSize:10, color:style.sub, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, fontFamily:'monospace' }}>≈{net.toLocaleString('ro-RO')} net</span>}
+                                      <span style={{ fontSize:10, color:style.sub, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', lineHeight:1.2, marginTop:1 }}>{style.icon?`${style.icon} `:''}{r.nr_nopti||'?'}n · {r.canal}</span>
                                     </>
                                   })()
-                                : <span style={{ fontSize:13, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nume_client}</span>
+                                : <span style={{ fontSize:13, fontWeight:700, color:style.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{style.icon&&<b style={{ marginRight:5 }}>{style.icon}</b>}{r.nume_client}</span>
                               }
                             </div>
                           )
@@ -690,14 +716,14 @@ export default function CalendarPage() {
 
                         {/* Coada rezervare cross-luna: checkout exact pe ziua 1 */}
                         {tail && (()=>{
-                          const tailStyle = cs(tail.canal||'direct')
+                          const tailStyle = csR(tail)
                           return (
                             <div data-rez="1"
                               onClick={e=>{ e.stopPropagation(); if(viewMode==='rez') setTooltip(t=>t?.rez.id===tail.id?null:{rez:tail,x:e.clientX,y:e.clientY}) }}
                               style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:0, width:COL_W/2-2, background:tailStyle.bg, borderRadius:'0 6px 6px 0', display:'flex', alignItems:'center', justifyContent:'flex-end', paddingRight:4, overflow:'hidden', cursor:'pointer', zIndex:4, opacity:0.7 }}
                               onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.2)')}
                               onMouseLeave={e=>(e.currentTarget.style.filter='')}>
-                              <span style={{ fontSize:9, color:'rgba(255,255,255,0.8)', whiteSpace:'nowrap' }}>CO</span>
+                              <span style={{ fontSize:9, color:tailStyle.text, whiteSpace:'nowrap' }}>CO</span>
                             </div>
                           )
                         })()}
@@ -784,7 +810,7 @@ export default function CalendarPage() {
                   {dayInfoApts.busy.map(({apt,r})=>{
                     const phone=r.telefon_client||''
                     return(
-                      <div key={apt.id} style={{ padding:'10px',borderRadius:8,background:`${cs(r.canal).bg}22`,border:`1px solid ${cs(r.canal).bg}55`,marginBottom:7 }}>
+                      <div key={apt.id} style={{ padding:'10px',borderRadius:8,background:`${csR(r).bg}22`,border:`1px solid ${csR(r).bg}55`,marginBottom:7 }}>
                         <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:4 }}>
                           {apt.nota&&<span style={{ fontSize:10,fontWeight:700,color:'#4DA3FF',background:'rgba(77,163,255,0.15)',padding:'2px 6px',borderRadius:4,fontFamily:'monospace' }}>{apt.nota}</span>}
                           <span style={{ fontSize:12,color:'rgba(214,228,244,0.8)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{apt.nume}</span>
@@ -1025,7 +1051,7 @@ Echipa AB Homes Iași`)}
 
       {/* Tooltip — card informativ despre rezervare (nu editarea, aia e alt buton mai jos) */}
       {tooltip && (
-        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.max(12,Math.min(tooltip.y-10,window.innerHeight-560)), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${cs(tooltip.rez.canal).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)', maxHeight:'calc(100vh - 24px)', overflowY:'auto' as const }}>
+        <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.max(12,Math.min(tooltip.y-10,window.innerHeight-560)), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${csR(tooltip.rez).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)', maxHeight:'calc(100vh - 24px)', overflowY:'auto' as const }}>
           <div style={{ display:'flex',alignItems:'flex-start',gap:8,marginBottom:6 }}>
             <div style={{ flex:1,minWidth:0,fontSize:17,fontWeight:700,color:'#fff' }}>{tooltip.rez.nume_client}</div>
             <button onClick={()=>{ setEditId(tooltip.rez.id); setTooltip(null) }} title="Editează rezervarea"
@@ -1066,6 +1092,27 @@ Echipa AB Homes Iași`)}
             <div style={{ width:10,height:10,borderRadius:3,background:cs(tooltip.rez.canal).bg,flexShrink:0 }}/>
             <span style={{ fontSize:12,color:'rgba(214,228,244,0.6)',textTransform:'capitalize' }}>{tooltip.rez.canal}</span>
           </div>
+
+          {/* culoarea din calendar, schimbata direct de aici (doar rezervari private) */}
+          {ePrivata(tooltip.rez.canal) && (
+            <div data-culoare-rapida style={{ marginBottom:10 }}>
+              <div style={{ display:'flex',gap:6 }}>
+                {([['',"Normală"],['rosu','Mutată'],['galben','De plată']] as const).map(([k,l])=>{
+                  const on=(culoareRez(tooltip.rez)||'')===k
+                  const c=k?CULORI_REZ[k]:null
+                  return (
+                    <button key={k||'normal'} type="button" data-culoare-btn={k||'normal'} aria-pressed={on} disabled={culoareSalvez} onClick={()=>schimbaCuloare(tooltip.rez,k||null)}
+                      style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,padding:'6px 4px',borderRadius:7,fontSize:11,fontWeight:on?700:500,cursor:'pointer',
+                        border:`1px solid ${on?(c?c.bg:'rgba(203,213,225,0.6)'):'rgba(159,215,255,0.15)'}`,background:on?(c?`${c.bg}33`:'rgba(148,163,184,0.16)'):'transparent',color:on?'#fff':'rgba(214,228,244,0.6)' }}>
+                      <span style={{ width:9,height:9,borderRadius:3,background:c?c.bg:cs(tooltip.rez.canal).bg,flexShrink:0 }}/>{l}
+                    </button>
+                  )
+                })}
+              </div>
+              {culoareRez(tooltip.rez) && <div style={{ fontSize:11,color:'rgba(214,228,244,0.55)',marginTop:5 }}>{CULORI_REZ[culoareRez(tooltip.rez)!].sens}</div>}
+              {culoareEroare && <div style={{ fontSize:11,color:'#F87171',marginTop:5 }}>{culoareEroare}</div>}
+            </div>
+          )}
 
           {tooltip.rez.telefon_client&&(
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:8,padding:'8px 10px',background:'rgba(255,255,255,0.03)',borderRadius:7 }}>

@@ -92,6 +92,10 @@ export function descrie(m: Record<string, [any, any]>, apt: (id: any) => string 
     const [a, b] = m[k]
     r.push({ icon: '●', text: `${NUME_STATUS[k]}: ${STATUS[k][a] || a || '—'} → ${STATUS[k][b] || b || '—'}`, ton: k === 'status_rezervare' && b === 'anulata' ? 'rau' : (b === 'confirmata' || b === 'achitat' || b === 'decontat' || b === 'facturata') ? 'bun' : 'neutru' })
   }
+  if ('culoare' in m) {
+    const CUL: Record<string, string> = { rosu: 'Roșu (mutată de la altă locație)', galben: 'Galben (are de plătit)' }
+    r.push({ icon: '🎨', text: `Culoare în calendar: ${CUL[m.culoare[0]] || 'normală'} → ${CUL[m.culoare[1]] || 'normală'}`, ton: 'neutru' })
+  }
   if ('platit_proprietar' in m) r.push({ icon: '●', text: m.platit_proprietar[1] ? 'Marcată plătită către proprietar' : 'Debifat „plătit către proprietar”', ton: m.platit_proprietar[1] ? 'bun' : 'neutru' })
   if ('factura_numar' in m) r.push(gol(m.factura_numar[1]) ? { icon: '↩', text: `Factura ${m.factura_numar[0]} scoasă de pe rezervare (stornare)`, ton: 'rau' } : { icon: '🧾', text: `Factură emisă: ${m.factura_numar[1]}`, ton: 'bun' })
   for (const [k, et] of Object.entries(TEXT)) if (k in m) {
@@ -117,4 +121,4 @@ export function evenimente(intrari: IntrareIstoric[], apt?: (id: any) => string,
 // SQL-ul (dat in chat, rulat manual in Supabase) - pastrat aici ca referinta pentru lista de campuri urmarite
 export const CAMPURI_URMARITE = ['apartament_id', 'data_checkin', 'data_checkout', 'nr_persoane', 'canal', 'moneda', 'valoare_bruta', 'suma_incasata',
   'taxa_curatenie_incasata', 'avans', 'avans_cerut', 'avans_termen', 'comision_platforma_valoare', 'status_rezervare', 'status_plata', 'status_decont',
-  'status_facturare', 'platit_proprietar', 'suma_platita_proprietar', 'factura_numar', 'nume_client', 'telefon_client', 'email_client', 'cod_rezervare_platforma', 'observatii']
+  'status_facturare', 'platit_proprietar', 'suma_platita_proprietar', 'factura_numar', 'nume_client', 'telefon_client', 'email_client', 'cod_rezervare_platforma', 'observatii', 'culoare']
