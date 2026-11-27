@@ -66,8 +66,12 @@ export default function RezervariPage() {
   const [pendinteAirbnb, setPendinteAirbnb] = useState<number | null>(null)
   // cate facturi Airbnb asteapta in coada (ultima numaratoare salvata; se recalculeaza la deschiderea cozii)
   useEffect(() => { if (!coadaAirbnb && !importAirbnb) citesteCoada().then(c => setPendinteAirbnb(c.randuri.length ? c.pendinte ?? null : 0)).catch(() => {}) }, [coadaAirbnb, importAirbnb])
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  // Interval implicit (cerut direct: „rezervările care apar în prima parte să fie după data de check-in prestabilită - azi și
+  // următoarele 14 zile - și cele dinainte când selectăm noi datele”): check-in de azi pana in 14 zile; „Toate” il scoate
+  const implicit = useMemo(() => { const t = new Date(), p = new Date(t); p.setDate(p.getDate() + 14); return { de: toYMD(t), pana: toYMD(p) } }, [])
+  const [dateFrom, setDateFrom] = useState(implicit.de)
+  const [dateTo, setDateTo] = useState(implicit.pana)
+  const eImplicit = dateFrom === implicit.de && dateTo === implicit.pana
   // Ordinea listei: implicit cronologic (cele mai vechi primele); click pe „Check-in” o inverseaza
   const [sortCrescator, setSortCrescator] = useState(true)
   function comutaSort() { setSortCrescator(v => !v) }
@@ -213,8 +217,10 @@ export default function RezervariPage() {
     // potrivire pe codul rezervarii -> se arata indiferent de intervalul de date (altfel ar parea ca lipseste si s-ar factura din nou)
     const peCod = q.length >= 4 && (String(r.cod_rezervare_platforma || '').toLowerCase().includes(q) || String(r.observatii || '').toLowerCase().includes(q))
     if (q && !peCod && !r.nume_client?.toLowerCase().includes(q) && !r.telefon_client?.includes(searchNume.trim())) return false
-    if (!peCod && dateFrom && r.data_checkin < dateFrom) return false
-    if (!peCod && dateTo && r.data_checkin > dateTo) return false
+    // cautarea dupa nume / telefon cu intervalul implicit cauta in tot istoricul (altfel ar ascunde rezervarile vechi ale clientului)
+    const faraDate = peCod || (!!q && eImplicit)
+    if (!faraDate && dateFrom && r.data_checkin < dateFrom) return false
+    if (!faraDate && dateTo && r.data_checkin > dateTo) return false
     return true
   }).sort((a, b) => {
     // Ordine cronologica (cerut direct: "foarte dezordonate"): dupa check-in, apoi check-out,
@@ -317,7 +323,7 @@ export default function RezervariPage() {
         {/* Ce e incarcat: luna trecuta + curenta + viitoare; istoricul la cerere */}
         {!vechiIncarcate && (
           <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12,padding:'8px 12px',borderRadius:10,background:'rgba(77,163,255,0.06)',border:'1px solid rgba(77,163,255,0.15)',fontSize:12,color:'rgba(159,215,255,0.7)'}}>
-            <span style={{flex:1,minWidth:200}}>Afișez rezervările din <b style={{color:'#E8F4FF'}}>{LUNI[Number(deLa.slice(5, 7))]} {deLa.slice(0, 4)}</b> încoace (luna trecută, cea curentă și cele viitoare). Căutarea după nume / telefon caută și în istoric.</span>
+            <span style={{flex:1,minWidth:200}}>Afișez rezervările din <b style={{color:'#E8F4FF'}}>{LUNI[Number(deLa.slice(5, 7))]} {deLa.slice(0, 4)}</b> încoace (luna trecută, cea curentă și cele viitoare). Lista arată implicit check-in-urile de azi și din următoarele 14 zile — alege alte date (sau „Toate”) pentru restul. Căutarea după nume / telefon caută și în istoric.</span>
             <button onClick={incarcaVechi} disabled={incarcVechi} style={{padding:'6px 12px',borderRadius:8,border:'1px solid rgba(77,163,255,0.35)',background:'rgba(77,163,255,0.1)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:incarcVechi?'wait':'pointer'}}>
               {incarcVechi ? 'Se încarcă…' : 'Încarcă și mai vechi'}
             </button>
@@ -354,19 +360,21 @@ export default function RezervariPage() {
           {/* Quick presets */}
           <div style={{display:'flex',gap:4}}>
             {[
+              {label:'Azi + 14 zile', fn:()=>{setDateFrom(implicit.de);setDateTo(implicit.pana)}},
               {label:'Azi', fn:()=>{const t=new Date().toISOString().split('T')[0];setDateFrom(t);setDateTo(t)}},
               {label:'7 zile', fn:()=>{const t=new Date();const from=new Date(t);from.setDate(from.getDate()-7);setDateFrom(from.toISOString().split('T')[0]);setDateTo(t.toISOString().split('T')[0])}},
               {label:'Luna', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth(),1);const to=new Date(t.getFullYear(),t.getMonth()+1,0);setDateFrom(toYMD(from));setDateTo(toYMD(to))}},
               {label:'Luna trecută', fn:()=>{const t=new Date();const from=new Date(t.getFullYear(),t.getMonth()-1,1);const to=new Date(t.getFullYear(),t.getMonth(),0);setDateFrom(toYMD(from));setDateTo(toYMD(to))}},
               {label:'An', fn:()=>{const y=new Date().getFullYear();setDateFrom(`${y}-01-01`);setDateTo(`${y}-12-31`)}},
+              {label:'Toate', fn:()=>{setDateFrom('');setDateTo('')}},
             ].map(({label,fn})=>(
               <button key={label} onClick={fn} style={{fontSize:11,padding:'4px 9px',borderRadius:6,background:'rgba(77,163,255,0.1)',border:'1px solid rgba(159,215,255,0.12)',color:'rgba(159,215,255,0.6)',cursor:'pointer',whiteSpace:'nowrap',transition:'all 0.12s'}}>
                 {label}
               </button>
             ))}
           </div>
-          {(filterCanal||filterStatus||filterApt||dateFrom||dateTo||searchNume) && (
-            <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('');setDateFrom('');setDateTo('')}}>✕ Reset</Button>
+          {(filterCanal||filterStatus||filterApt||!eImplicit||searchNume) && (
+            <Button variant="ghost" size="sm" onClick={()=>{setFilterCanal('');setFilterStatus('');setFilterApt('');setDateFrom(implicit.de);setDateTo(implicit.pana)}}>✕ Reset</Button>
           )}
         </div>
 
