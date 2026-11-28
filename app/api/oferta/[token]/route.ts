@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { payloadRezervare } from '@/lib/rezervareEdit'
-import { CHEIE_BLOCARI, parseBlocari } from '@/lib/blocariProprietar'
+import { CHEI_BLOCARE, blocariDinSetari } from '@/lib/mentenanta'
 import { cheieOferta, TOKEN_RE, stareEfectiva, valideazaClient, rezervareDinOferta, clientFacturaDinOferta, conflicte, noptiOferta, type Oferta } from '@/lib/ofertaLink'
 import { adaugaInbox } from '@/lib/reamintiri'
 import { eGazdaGhid } from '@/lib/gazdeGhid'
@@ -69,9 +69,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   // perioada inca libera? (intre trimiterea ofertei si confirmare poate intra alta rezervare)
   const [{ data: rez }, { data: bl }] = await Promise.all([
     supabase.from('rezervari').select('data_checkin,data_checkout,status_rezervare,camera_semnalata').eq('apartament_id', o.apartament_id).lt('data_checkin', o.checkout).gt('data_checkout', o.checkin),
-    supabase.from('setari').select('valoare').eq('cheie', CHEIE_BLOCARI).maybeSingle(),
+    supabase.from('setari').select('cheie,valoare').in('cheie', CHEI_BLOCARE),
   ])
-  const c = conflicte(o.checkin, o.checkout, (rez || []) as any[], parseBlocari(bl?.valoare).filter(x => x.apt === o.apartament_id))
+  const c = conflicte(o.checkin, o.checkout, (rez || []) as any[], blocariDinSetari(bl).filter(x => x.apt === o.apartament_id))
   if (!c.liber) {
     await anunta(req, '⚠ Ofertă prin link — perioada nu mai e liberă', `${d.nume} a încercat să confirme ${scurt(apt.nume)} ${ziRO(o.checkin)} – ${ziRO(o.checkout)}, dar perioada e ocupată. Sună-l: ${d.telefon}`, '/calendar')
     return NextResponse.json({ ok: false, error: t('Ne pare rău, între timp perioada a fost rezervată. V-am anunțat echipa și vă vom contacta imediat.', 'Sorry, the period has just been booked. Our team has been notified and will contact you shortly.') }, { status: 409 })

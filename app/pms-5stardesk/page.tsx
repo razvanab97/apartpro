@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { PageHeader } from '@/components/Layout'
 import { Card } from '@/components/ui'
-import { CHEIE_BLOCARI, parseBlocari } from '@/lib/blocariProprietar'
+import { CHEI_BLOCARE, blocariDinSetari } from '@/lib/mentenanta'
 import { roomTypes, allocation, rates, cerere, compara, scurt, plusZile, apartamenteActive, CHEIE_JURNAL, type Rezervare5sd } from '@/lib/pms5sd'
 
 // 5starDesk PMS Connect - pagina de TEST (vezi lib/pms5sd.ts). Nu trimite nimic si nu scrie nicio rezervare: arata ce am
@@ -30,10 +30,10 @@ export default function Pms5sdTest() {
       fetch('/api/pms-5stardesk', { cache: 'no-store' }).then(x => x.json()).catch(() => null),
       supabase.from('apartamente').select('id,nume,status,pret_standard,capacitate_max').order('nume'),
       supabase.from('rezervari').select('id,apartament_id,data_checkin,data_checkout,status_rezervare,camera_semnalata,observatii,nume_client').gte('data_checkout', plusZile(azi, -120)),
-      supabase.from('setari').select('valoare').eq('cheie', CHEIE_BLOCARI).maybeSingle(),
+      supabase.from('setari').select('cheie,valoare').in('cheie', CHEI_BLOCARE),
       supabase.from('setari').select('valoare').eq('cheie', CHEIE_JURNAL).maybeSingle(),
     ])
-    setStare(s); setApts(a.data || []); setRez(r.data || []); setBl(parseBlocari(b.data?.valoare))
+    setStare(s); setApts(a.data || []); setRez(r.data || []); setBl(blocariDinSetari(b.data) as any)  // blocari proprietari + mentenante active
     try { const v = JSON.parse(j.data?.valoare || '[]'); setJur(Array.isArray(v) ? v : []) } catch { setJur([]) }
     setIncarcat(true)
   }

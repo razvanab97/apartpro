@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { MONEDE_REZ } from '@/lib/moneda'
 import { GHID_BAZA } from '@/lib/gazdeGhid'
-import { CHEIE_BLOCARI, parseBlocari } from '@/lib/blocariProprietar'
+import { CHEI_BLOCARE, blocariDinSetari } from '@/lib/mentenanta'
 import { PREFIX_OFERTA, cheieOferta, tokenNou, noptiOferta, stareEfectiva, conflicte, type Oferta } from '@/lib/ofertaLink'
 
 // Rezervare prin link (vezi lib/ofertaLink.ts): creezi oferta (apartament, perioada, persoane, pret, valabilitate),
@@ -58,10 +58,10 @@ export default function OfertaLink({ apts, initial, onClose }: { apts: Apt[]; in
     let anulat = false
     Promise.all([
       supabase.from('rezervari').select('data_checkin,data_checkout,status_rezervare,camera_semnalata').eq('apartament_id', f.aptId).lt('data_checkin', f.checkout).gt('data_checkout', f.checkin),
-      supabase.from('setari').select('valoare').eq('cheie', CHEIE_BLOCARI).maybeSingle(),
+      supabase.from('setari').select('cheie,valoare').in('cheie', CHEI_BLOCARE),
     ]).then(([{ data: r }, { data: b }]) => {
       if (anulat) return
-      const c = conflicte(f.checkin, f.checkout, (r || []) as any[], parseBlocari(b?.valoare).filter(x => x.apt === f.aptId))
+      const c = conflicte(f.checkin, f.checkout, (r || []) as any[], blocariDinSetari(b).filter(x => x.apt === f.aptId))
       const oferte = (lista || []).filter(o => o.apartament_id === f.aptId && stareEfectiva(o) === 'trimisa' && o.checkin < f.checkout && o.checkout > f.checkin).length
       setDisp({ ...c, oferte })
     })

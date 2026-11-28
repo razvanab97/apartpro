@@ -16,6 +16,7 @@ import AvertismentNealocate from '@/components/AvertismentNealocate'
 import { ConnectionError } from '@/components/ui'
 import { inLei, laLei, eValuta, MONEDE_REZ } from '@/lib/moneda'
 import { CULORI_REZ, culoareRez, ePrivata, type CuloareRez } from '@/lib/culoareRezervare'
+import { CHEIE_MENTENANTA, parseMentenanta, active as mentActive, inMentenanta, type Mentenanta } from '@/lib/mentenanta'
 
 type Rez = {
   id: string; nume_client: string; telefon_client?: string
@@ -78,6 +79,14 @@ export default function CalendarPage() {
   const [rezAll, setRezAll]     = useState<Rez[]>([])
   // zilele blocate de proprietari din calendarul lor (/p/<token>) - vezi lib/blocariProprietar.ts
   const [blocari, setBlocari]   = useState<Blocare[]>([])
+  // mentenanta (blocare din calendar pana la „Mentenanță rezolvată”, cu informatii)
+  const [mentenante, setMentenante] = useState<Mentenanta[]>([])
+  const [mentForm, setMentForm] = useState<{aptId:string;de_la:string;pana_la:string;nota:string}|null>(null)
+  const [mentSel, setMentSel] = useState<{id:string;x:number;y:number}|null>(null)
+  const [mentNota, setMentNota] = useState('')
+  const [mentStergere, setMentStergere] = useState(false)
+  const [mentSalvez, setMentSalvez] = useState(false)
+  const [mentEroare, setMentEroare] = useState<string|null>(null)
   const [apts, setApts]         = useState<Apt[]>([])
   // rezervare prin link (components/OfertaLink.tsx): null = inchis, {} = doar lista / oferta goala
   const [oferta, setOferta] = useState<OfertaInitiala|'lista'|null>(null)
@@ -117,7 +126,7 @@ export default function CalendarPage() {
   const [isDragging, setIsDragging] = useState(false)
 
   // panel lateral
-  const [panel, setPanel] = useState<'info'|'new'|null>(null)
+  const [panel, setPanel] = useState<'info'|'new'|'mentenanta'|null>(null)
   const [panelDay, setPanelDay] = useState<number|null>(null)
   const [newRez, setNewRez] = useState({ aptId:'', nume:'', telefon:'', pret:'', moneda:'RON', checkin:'', checkout:'', cnp:'', notite:'', persoane:'' })
   const [, setCursGata] = useState(0)
@@ -202,6 +211,7 @@ export default function CalendarPage() {
       const start = isoDate(year, month, 1)
       const end   = isoDate(year, month, daysInMonth(year, month) + ZILE_EXTRA)
       supabase.from('setari').select('valoare').eq('cheie', CHEIE_BLOCARI).maybeSingle().then(({ data }) => setBlocari(parseBlocari(data?.valoare)), () => {})
+      supabase.from('setari').select('valoare').eq('cheie', CHEIE_MENTENANTA).maybeSingle().then(({ data }) => setMentenante(parseMentenanta(data?.valoare)), () => {})
       const [{ data: a }, { data: r }] = await Promise.all([
         supabase.from('apartamente').select('id,nume,nota').eq('status','activ').order('nota'),
         // select('*') pe rezervari (nu lista explicita) - platit_proprietar/suma_platita_proprietar
@@ -313,6 +323,35 @@ export default function CalendarPage() {
     setRezAll(prev=>prev.map(x=>x.id===r.id?{...x,culoare}:x))
     setTooltip(t=>t&&t.rez.id===r.id?{...t,rez:{...t.rez,culoare}}:t)
   }
+
+  // ── Mentenanta: lista se reciteste din baza inainte de fiecare scriere (sa nu se piarda o modificare facuta din alt loc)
+  async function scrieMentenante(f:(l:Mentenanta[])=>Mentenanta[]):Promise<boolean>{
+    setMentSalvez(true); setMentEroare(null)
+    const { data, error:e1 } = await supabase.from('setari').select('valoare').eq('cheie', CHEIE_MENTENANTA).maybeSingle()
+    if(e1){ setMentSalvez(false); setMentEroare(e1.message); return false }
+    const noua=f(parseMentenanta(data?.valoare))
+    const { error } = await supabase.from('setari').upsert({ cheie:CHEIE_MENTENANTA, valoare:JSON.stringify(noua) }, { onConflict:'cheie' })
+    setMentSalvez(false)
+    if(error){ setMentEroare(error.message); return false }
+    setMentenante(noua); return true
+  }
+  function deschideMentenanta(){
+    if(!newRez.aptId||!newRez.checkin||!newRez.checkout) return
+    // checkout -> ultima noapte blocata (noptile sunt inclusiv)
+    const ultima=isoDate(+newRez.checkout.slice(0,4),+newRez.checkout.slice(5,7)-1,+newRez.checkout.slice(8,10)-1)
+    setMentForm({ aptId:newRez.aptId, de_la:newRez.checkin, pana_la:ultima, nota:'' }); setMentEroare(null); setPanel('mentenanta')
+  }
+  async function salveazaMentenanta(){
+    if(!mentForm||!mentForm.aptId||!mentForm.de_la||!mentForm.pana_la) return
+    if(mentForm.pana_la<mentForm.de_la){ setMentEroare('Ultima noapte nu poate fi înainte de prima.'); return }
+    const m:Mentenanta={ id:`m_${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`, apt:mentForm.aptId, de_la:mentForm.de_la, pana_la:mentForm.pana_la, nota:mentForm.nota.trim(), creat_la:new Date().toISOString(), rezolvata_la:null }
+    if(await scrieMentenante(l=>[...l,m])){ setMentForm(null); clearSel() }
+  }
+  async function rezolvaMentenanta(id:string){ if(await scrieMentenante(l=>l.map(x=>x.id===id?{...x,rezolvata_la:new Date().toISOString()}:x))) setMentSel(null) }
+  async function salveazaNotaMentenanta(id:string){ await scrieMentenante(l=>l.map(x=>x.id===id?{...x,nota:mentNota.trim()}:x)) }
+  async function stergeMentenanta(id:string){ if(await scrieMentenante(l=>l.filter(x=>x.id!==id))) setMentSel(null) }
+  const mentActiveLista = mentActive(mentenante)
+  const rezSuprapuse = (aptId:string, de:string, pana:string) => rezAll.filter(r=>r.apartament?.id===aptId && r.data_checkin<=pana && r.data_checkout>de)
 
   async function cancelRez(r:any){
     if(!confirm(`Anulezi rezervarea lui ${r.nume_client}? Se eliberează perioada în calendar.`)) return
@@ -535,6 +574,9 @@ export default function CalendarPage() {
               <div style={{ width:14,height:10,borderRadius:3,background:cs(k).bg }}/>{k==='intern'?'Intern':k.charAt(0).toUpperCase()+k.slice(1)}
             </div>
           ))}
+          <div data-legenda-mentenanta style={{ display:'flex',alignItems:'center',gap:5,fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' }}>
+            <div style={{ width:14,height:10,borderRadius:3,background:'repeating-linear-gradient(135deg,rgba(148,163,184,0.6) 0 3px,rgba(239,68,68,0.5) 3px 6px)' }}/>Mentenanță
+          </div>
           {(Object.keys(CULORI_REZ) as CuloareRez[]).map(k=>(
             <div key={k} data-legenda-culoare={k} title={CULORI_REZ[k].sens} style={{ display:'flex',alignItems:'center',gap:5,fontSize:11,color:'rgba(159,215,255,0.45)',whiteSpace:'nowrap' }}>
               <div style={{ width:14,height:10,borderRadius:3,background:CULORI_REZ[k].bg }}/>{CULORI_REZ[k].scurt}
@@ -576,7 +618,7 @@ export default function CalendarPage() {
 
         {/* ── Grid ── */}
         <div ref={gridRef} data-grila-calendar style={{ flex:1, overflowX:'auto', overflowY:'auto', userSelect:'none' }}
-          onClick={e=>{ if(!(e.target as HTMLElement).closest('[data-rez]')) setTooltip(null) }}>
+          onClick={e=>{ if(!(e.target as HTMLElement).closest('[data-rez]')) setTooltip(null); if(!(e.target as HTMLElement).closest('[data-mentenanta]')) setMentSel(null) }}>
           <div style={{ minWidth: LABEL_W + zileVizibile*COL_W + (viewMode==='sume'?90:0) }}>
 
             {/* Day headers */}
@@ -715,6 +757,25 @@ export default function CalendarPage() {
                           )
                         })()}
 
+                        {/* Mentenanta (blocare pana la „rezolvata”) - hasurat gri-rosu cu 🔧, click = detalii / rezolvata */}
+                        {!r && (()=>{
+                          const m = mentActiveLista.find(x => x.apt===apt.id && inMentenanta(x, ds))
+                          if (!m) return null
+                          // o singura bara, ca rezervarile: se deseneaza doar in prima zi vizibila (sau dupa o rezervare)
+                          const inM=(dd:number)=>dd>=1&&dd<=zileVizibile&&inMentenanta(m,isoDate(year,month,dd))&&!getRez(apt.id,dd)
+                          if (inM(d-1)) return null
+                          let span=0; while(inM(d+span)) span++
+                          const inceput = true, sfarsit = true
+                          return (
+                            <div data-mentenanta={m.id} title={`🔧 Mentenanță: ${m.de_la} → ${m.pana_la}${m.nota?` · ${m.nota}`:''}`}
+                              onMouseDown={e=>e.stopPropagation()}
+                              onClick={e=>{ e.stopPropagation(); setTooltip(null); setMentNota(m.nota||''); setMentStergere(false); setMentEroare(null); setMentSel(v=>v?.id===m.id?null:{id:m.id,x:e.clientX,y:e.clientY}) }}
+                              style={{ position:'absolute', top:8, bottom:8, left:4, width:span*COL_W-8, borderRadius:8, background:'repeating-linear-gradient(135deg,rgba(148,163,184,0.34) 0 6px,rgba(239,68,68,0.16) 6px 12px)', border:'1px solid rgba(248,113,113,0.65)', display:'flex', alignItems:'center', paddingLeft:6, overflow:'hidden', zIndex:3, cursor:'pointer' }}>
+                              {inceput && sfarsit && <span style={{ fontSize:11, fontWeight:700, color:'#FECACA', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>🔧 Mentenanță{m.nota?` · ${m.nota}`:''}</span>}
+                            </div>
+                          )
+                        })()}
+
                         {/* Zi blocata de proprietar (din calendarul lui) - hasurat portocaliu, cu numele la inceputul perioadei */}
                         {!r && (()=>{
                           const b = blocari.find(x => x.apt===apt.id && blocataIn(x, ds))
@@ -791,11 +852,11 @@ export default function CalendarPage() {
         {/* Info pe zi = panou lateral; Rezervare noua = popup centrat peste calendar (cerut direct:
             "mai in stanga, mai mult ca pop up decat ca zona prestabilita") */}
         {panel && (
-          <div style={panel==='new'
+          <div style={panel==='new'||panel==='mentenanta'
               ? { position:'fixed', inset:0, zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding:16, background:'rgba(4,10,20,0.62)', backdropFilter:'blur(6px)', WebkitBackdropFilter:'blur(6px)' }
               : { width:260, flexShrink:0, borderLeft:'1px solid rgba(159,215,255,0.1)', background:'rgba(8,18,36,0.95)', overflowY:'auto', display:'flex', flexDirection:'column' }}
             onMouseUp={()=>setIsDragging(false)}
-            onClick={e=>{ if(panel==='new' && e.target===e.currentTarget){ setPanel(null); clearSel() } }}>
+            onClick={e=>{ if((panel==='new'||panel==='mentenanta') && e.target===e.currentTarget){ setPanel(null); setMentForm(null); clearSel() } }}>
 
             {/* ── PANEL: Zi info ── */}
             {panel==='info' && panelDay && dayInfoApts && (
@@ -844,6 +905,37 @@ export default function CalendarPage() {
             )}
 
             {/* ── PANEL: Rezervare nouă ── */}
+            {panel==='mentenanta' && mentForm && (()=>{
+              const aptM=apts.find(a=>a.id===mentForm.aptId)
+              const nopti=mentForm.pana_la>=mentForm.de_la ? nightsBetween(mentForm.de_la,mentForm.pana_la)+1 : 0
+              const supr=rezSuprapuse(mentForm.aptId, mentForm.de_la, mentForm.pana_la)
+              const lbl={ fontSize:11,color:'rgba(159,215,255,0.55)',marginBottom:4,display:'block' } as const
+              return (
+              <div data-panou-mentenanta style={{ padding:'20px 22px', width:440, maxWidth:'100%', maxHeight:'92vh', overflowY:'auto', display:'flex', flexDirection:'column', gap:12, background:'#0D1A2B', border:'1px solid rgba(248,113,113,0.35)', borderRadius:16, boxShadow:'0 30px 80px rgba(0,0,0,0.6)' }}>
+                <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:15,fontWeight:700,color:'#FCA5A5' }}>🔧 Blocare pentru mentenanță</div>
+                    <div style={{ fontSize:12,color:'rgba(214,228,244,0.7)',marginTop:3 }}>{aptM?.nota?`${aptM.nota} · `:''}{aptM?.nume||'—'}</div>
+                  </div>
+                  <button onClick={()=>{ setPanel(null); setMentForm(null); clearSel() }} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',display:'flex' }}><X size={15}/></button>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <label><span style={lbl}>Prima noapte</span><input data-ment-de type="date" value={mentForm.de_la} onChange={e=>setMentForm(f=>f&&{...f,de_la:e.target.value})} style={{ width:'100%',colorScheme:'dark' }}/></label>
+                  <label><span style={lbl}>Ultima noapte</span><input data-ment-pana type="date" value={mentForm.pana_la} min={mentForm.de_la} onChange={e=>setMentForm(f=>f&&{...f,pana_la:e.target.value})} style={{ width:'100%',colorScheme:'dark' }}/></label>
+                </div>
+                <div style={{ fontSize:12,color:'rgba(214,228,244,0.6)' }}>{nopti>0?`${nopti} ${nopti===1?'noapte blocată':'nopți blocate'} · liber din nou din ${isoDate(+mentForm.pana_la.slice(0,4),+mentForm.pana_la.slice(5,7)-1,+mentForm.pana_la.slice(8,10)+1).split('-').reverse().join('.')} (sau mai devreme, la „Mentenanță rezolvată”)`:'—'}</div>
+                <label><span style={lbl}>Informații (ce e de reparat, cine vine, piese, cost…)</span>
+                  <textarea data-ment-nota value={mentForm.nota} onChange={e=>setMentForm(f=>f&&{...f,nota:e.target.value})} rows={4} placeholder="ex. Țeavă spartă la baie - vine instalatorul joi la 10" style={{ width:'100%',resize:'vertical',fontSize:13 }}/></label>
+                {supr.length>0 && <div data-ment-suprapus style={{ fontSize:12,color:'#FCD34D',padding:'8px 10px',borderRadius:8,background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.3)' }}>⚠ În aceste zile există {supr.length===1?'o rezervare':`${supr.length} rezervări`}: {supr.map(r=>`${r.nume_client} (${r.data_checkin.slice(8,10)}.${r.data_checkin.slice(5,7)}–${r.data_checkout.slice(8,10)}.${r.data_checkout.slice(5,7)})`).join(', ')}. Blocarea nu le anulează.</div>}
+                <div style={{ fontSize:11.5,color:'rgba(159,215,255,0.5)',lineHeight:1.45 }}>Pe Booking / Airbnb blocarea pleacă automat prin 5starDesk când PMS Connect trece din test în activ. Până atunci, blochează zilele și în 5starDesk.</div>
+                {mentEroare && <div style={{ fontSize:12,color:'#F87171' }}>{mentEroare}</div>}
+                <div style={{ display:'flex',gap:8 }}>
+                  <button type="button" onClick={()=>{ setPanel('new'); setMentForm(null) }} style={{ flex:1,padding:'10px',borderRadius:8,border:'1px solid rgba(159,215,255,0.2)',background:'transparent',color:'rgba(214,228,244,0.75)',fontSize:13,cursor:'pointer' }}>← Rezervare</button>
+                  <button type="button" data-ment-salveaza disabled={mentSalvez||nopti<=0} onClick={salveazaMentenanta} style={{ flex:2,padding:'10px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#DC2626,#B91C1C)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',opacity:mentSalvez||nopti<=0?0.6:1 }}>{mentSalvez?'Se salvează…':'🔧 Blochează pentru mentenanță'}</button>
+                </div>
+              </div>
+            )})()}
+
             {panel==='new' && (
               <div style={{ padding:'20px 22px', width:480, maxWidth:'100%', maxHeight:'92vh', overflowY:'auto', display:'flex', flexDirection:'column', background:'#0D1A2B', border:'1px solid rgba(167,139,250,0.3)', borderRadius:16, boxShadow:'0 30px 80px rgba(0,0,0,0.55)', animation:'fadeIn .16s ease' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
@@ -853,6 +945,12 @@ export default function CalendarPage() {
                   </div>
                   <button onClick={()=>{ setPanel(null); clearSel() }} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',display:'flex' }}><X size={15}/></button>
                 </div>
+
+                {/* aceleasi zile selectate -> blocare pentru mentenanta in loc de rezervare */}
+                <button type="button" data-spre-mentenanta onClick={deschideMentenanta}
+                  style={{ marginBottom:12,width:'100%',padding:'9px',borderRadius:8,border:'1px solid rgba(248,113,113,0.4)',background:'rgba(239,68,68,0.08)',color:'#FCA5A5',fontSize:12.5,fontWeight:700,cursor:'pointer' }}>
+                  🔧 Blochează aceste zile pentru mentenanță
+                </button>
 
                 {/* Import din screenshot (Airbnb/Booking) */}
                 <div style={{ marginBottom:14,padding:'10px',borderRadius:9,border:'1px dashed rgba(167,139,250,0.35)',background:'rgba(167,139,250,0.05)' }}>
@@ -1065,6 +1163,33 @@ Echipa AB Homes Iași`)}
       </div>
 
       {/* Tooltip — card informativ despre rezervare (nu editarea, aia e alt buton mai jos) */}
+      {mentSel && (()=>{
+        const m=mentenante.find(x=>x.id===mentSel.id); if(!m) return null
+        const aptM=apts.find(a=>a.id===m.apt)
+        const nopti=nightsBetween(m.de_la,m.pana_la)+1
+        const zi=(z:string)=>z.split('-').reverse().join('.')
+        return (
+          <div data-mentenanta-detalii data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.max(8,Math.min(mentSel.x+14,window.innerWidth-308)), top:Math.max(12,Math.min(mentSel.y-10,window.innerHeight-440)), zIndex:100, width:300, maxWidth:'calc(100vw - 16px)', background:'rgba(8,18,36,0.98)', border:'1px solid rgba(248,113,113,0.35)', borderTop:'3px solid #DC2626', borderRadius:12, padding:'16px 18px', boxShadow:'0 16px 48px rgba(0,0,0,0.6)', display:'flex', flexDirection:'column', gap:10 }}>
+            <div style={{ display:'flex',alignItems:'flex-start',gap:8 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:15,fontWeight:700,color:'#FCA5A5' }}>🔧 Mentenanță</div>
+                <div style={{ fontSize:12,color:'rgba(214,228,244,0.7)',marginTop:2 }}>{aptM?.nota?`${aptM.nota} · `:''}{aptM?.nume||'—'}</div>
+              </div>
+              <button onClick={()=>setMentSel(null)} style={{ background:'none',border:'none',cursor:'pointer',color:'rgba(159,215,255,0.4)',display:'flex' }}><X size={15}/></button>
+            </div>
+            <div style={{ fontSize:12.5,color:'#fff' }}>{zi(m.de_la)} → {zi(m.pana_la)} <span style={{ color:'rgba(159,215,255,0.55)' }}>· {nopti} {nopti===1?'noapte':'nopți'} · pusă {new Date(m.creat_la).toLocaleDateString('ro-RO')}</span></div>
+            <textarea data-ment-nota-edit value={mentNota} onChange={e=>setMentNota(e.target.value)} rows={3} placeholder="Informații despre mentenanță…" style={{ width:'100%',resize:'vertical',fontSize:12.5 }}/>
+            {mentNota.trim()!==(m.nota||'').trim() && <button type="button" data-ment-nota-salveaza disabled={mentSalvez} onClick={()=>salveazaNotaMentenanta(m.id)} style={{ padding:'7px',borderRadius:7,border:'1px solid rgba(77,163,255,0.4)',background:'rgba(77,163,255,0.12)',color:'#7BC8FF',fontSize:12,fontWeight:600,cursor:'pointer' }}>Salvează informațiile</button>}
+            <button type="button" data-ment-rezolvata disabled={mentSalvez} onClick={()=>rezolvaMentenanta(m.id)} style={{ padding:'9px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#16A34A,#15803D)',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer' }}>✓ Mentenanță rezolvată</button>
+            <div style={{ fontSize:11,color:'rgba(159,215,255,0.45)' }}>„Rezolvată” eliberează zilele; mentenanța rămâne în istoric.</div>
+            {mentStergere
+              ? <div style={{ display:'flex',gap:6 }}><button type="button" data-ment-sterge-da onClick={()=>stergeMentenanta(m.id)} style={{ flex:1,padding:'6px',borderRadius:7,border:'1px solid rgba(248,113,113,0.5)',background:'rgba(239,68,68,0.15)',color:'#F87171',fontSize:12,fontWeight:700,cursor:'pointer' }}>Da, șterge</button><button type="button" onClick={()=>setMentStergere(false)} style={{ flex:1,padding:'6px',borderRadius:7,border:'1px solid rgba(159,215,255,0.2)',background:'transparent',color:'rgba(214,228,244,0.7)',fontSize:12,cursor:'pointer' }}>Renunță</button></div>
+              : <button type="button" data-ment-sterge onClick={()=>setMentStergere(true)} style={{ padding:'5px',border:'none',background:'none',color:'rgba(248,113,113,0.7)',fontSize:11.5,cursor:'pointer' }}>Șterge (pusă din greșeală)</button>}
+            {mentEroare && <div style={{ fontSize:12,color:'#F87171' }}>{mentEroare}</div>}
+          </div>
+        )
+      })()}
+
       {hover && !tooltip && !isDragging && (()=>{
         const h=hover.rez, cul=culoareRez(h)
         const w=260, left=Math.min(hover.x+16, window.innerWidth-w-12), top=hover.y+18+150>window.innerHeight ? hover.y-150 : hover.y+18
