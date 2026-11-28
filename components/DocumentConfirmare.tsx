@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, Download, MessageCircle, Mail, Loader2, RotateCcw, Save, Check, ExternalLink } from 'lucide-react'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
-import { SITE, WHATSAPP, codRezervare, nr, noptiIntre, prenumeImplicit, type Limba } from '@/lib/confirmareDesen'
+import { SITE, WHATSAPP, codRezervare, nr, noptiIntre, numeSalutImplicit, type Limba } from '@/lib/confirmareDesen'
 import { documentConfirmarePdf, type DocPdf, type RandPdf } from '@/lib/documentConfirmarePdf'
 
 // Fereastra „📄 Document confirmare” (cerut direct: „ce document de confirmare recomanzi să generăm pentru fiecare
@@ -133,7 +133,7 @@ export default function DocumentConfirmare({ rezervare, apt, onClose }: { rezerv
   const t = L[limba]
   const dataLunga = (iso: string, zi = true) => { if (!iso) return ''; const z = new Date(iso + 'T12:00:00'); return `${z.getDate()} ${t.luni[z.getMonth()]} ${z.getFullYear()}${zi ? ` (${t.zile[z.getDay()]})` : ''}` }
   const bani = (x: number) => fmtSuma(Math.round(x * (factor || 1) * 100) / 100, moneda)
-  const prenume = prenumeImplicit(rezervare.nume_client, rezervare.canal)
+  const prenume = numeSalutImplicit(rezervare.nume_client, rezervare.canal)
 
   // valorile calculate din rezervare (pe limba / moneda aleasa) - suprascrise de ce scrii in panou
   const calculat: Record<string, string> = useMemo(() => ({

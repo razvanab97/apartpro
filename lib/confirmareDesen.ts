@@ -32,14 +32,9 @@ export function codRezervare(r: any) { return String(r.cod_rezervare_platforma |
 export const nr = (v: any) => Math.round((Number(String(v ?? '').replace(',', '.')) || 0) * 100) / 100
 export function fmtBani(v: number, moneda: string) { return v.toLocaleString('ro-RO', { maximumFractionDigits: 2 }) + ' ' + (moneda || 'RON') }
 export const noptiIntre = (ci: string, co: string) => Math.max(1, Math.round((new Date(co + 'T12:00:00').getTime() - new Date(ci + 'T12:00:00').getTime()) / 86400000) || 1)
-// prenumele pentru „Vă mulțumim, …!” (modificabil in panou): rezervarile directe / interne sunt scrise „Nume Prenume”
-// (ex. Solari Victoria → Victoria), cele de pe Airbnb / Booking „Prenume Nume” (ex. Maximilian Ziegler → Maximilian)
-export const prenumeImplicit = (nume: string, canal?: string) => {
-  const c = String(nume || '').trim().split(/\s+/).filter(Boolean)
-  if (c.length < 2) return c[0] || ''
-  const w = ['airbnb', 'booking'].includes(String(canal || '')) ? c[0] : c[c.length - 1]
-  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-}
+// numele pentru „Vă mulțumim, …!” (modificabil in panou): numele complet, cu litere mari (cerut direct: „cu litere mari
+// să fie numele și tot numele și de familie, nu doar prenumele”), ex. „Popescu Petru-Georgian” → „POPESCU PETRU-GEORGIAN”
+export const numeSalutImplicit = (nume: string, _canal?: string) => String(nume || '').trim().replace(/\s+/g, ' ').toLocaleUpperCase('ro-RO')
 
 let fonturiIncarcate: Promise<void> | null = null
 export function incarcaFonturi() {
@@ -160,7 +155,10 @@ export function deseneaza(cv: HTMLCanvasElement, d: DateConfirmare, poza: HTMLIm
   // ── „Vă mulțumim, Victoria!” + subtitlu
   ctx.font = LX(300, 40); ctx.fillStyle = '#C9CCD8'; ctx.fillText(L.multumim, 89, 328)
   const mw = ctx.measureText(L.multumim).width
-  ctx.font = LX(500, 40); ctx.fillStyle = '#F5F5FA'; ctx.fillText(ellipsis(ctx, (d.prenume || '').trim() + '!', W - 89 - mw - 60), 89 + mw, 328)
+  // numele complet poate fi lung: litera se micsoreaza (pana la 26) ca sa incapa, abia apoi se taie cu „…”
+  { const t = (d.prenume || '').trim() + '!', loc = W - 89 - mw - 60; let fs = 40
+    ctx.font = LX(500, fs); while (fs > 26 && ctx.measureText(t).width > loc) { fs -= 1; ctx.font = LX(500, fs) }
+    ctx.fillStyle = '#F5F5FA'; ctx.fillText(ellipsis(ctx, t, loc), 89 + mw, 328) }
   ctx.font = LX(300, 25); ctx.fillStyle = '#E8EAF2'; ctx.fillText(ellipsis(ctx, L.sejur, W - 94 - 60), 94, 368)
 
   // card de sticla: fundal navy semitransparent, gradient fin, bordura luminoasa (gradient), umbra moale

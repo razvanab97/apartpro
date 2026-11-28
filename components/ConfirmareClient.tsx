@@ -11,7 +11,7 @@ import { citesteGhid, incarcaMedia } from '@/lib/ghid'
 // Se deseneaza local pe canvas, la rezolutie dubla (2196×2864) - identic pe orice telefon / browser, fara servicii externe.
 // Observatiile INTERNE ale rezervarii (CNP etc.) nu apar niciodata pe confirmare.
 
-import { SITE, WHATSAPP, T, codRezervare, nr, fmtBani, ziLunaScurt, noptiIntre, prenumeImplicit, incarcaFonturi, deseneaza, type Limba, type DateConfirmare } from '@/lib/confirmareDesen'
+import { SITE, WHATSAPP, T, codRezervare, nr, fmtBani, ziLunaScurt, noptiIntre, numeSalutImplicit, incarcaFonturi, deseneaza, type Limba, type DateConfirmare } from '@/lib/confirmareDesen'
 
 // PDF minim (o pagina, imaginea JPEG pe toata pagina, fara margini) - fara biblioteci
 function pdfDinJpeg(jpeg: Uint8Array, wPx: number, hPx: number): Blob {
@@ -93,7 +93,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
     : rezervare.status_plata === 'avans' ? (nr(rezervare.suma_incasata) < totalImplicit ? nr(rezervare.suma_incasata) : 0)
     : nr(rezervare.suma_incasata) || (rezervare.status_plata === 'achitat' ? totalImplicit : 0)
   const [limba, setLimba] = useState<Limba>('ro')
-  const [prenume, setPrenume] = useState(() => prenumeImplicit(rezervare.nume_client, rezervare.canal))
+  const [prenume, setPrenume] = useState(() => numeSalutImplicit(rezervare.nume_client, rezervare.canal))
   const [oraCi, setOraCi] = useState('15:00')
   const [oraCo, setOraCo] = useState('11:00')
   const [oaspeti, setOaspeti] = useState(String(Number(rezervare.nr_persoane) || 1))
@@ -244,7 +244,7 @@ function ConfirmareClientPanou({ rezervare, apt, onClose }: { rezervare: any; ap
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {et('Prenume („Vă mulțumim, …!”)', <input data-camp="prenume" value={prenume} onChange={e => setPrenume(e.target.value)} style={camp} />)}
+            {et('Nume („Vă mulțumim, …!”)', <input data-camp="prenume" value={prenume} onChange={e => setPrenume(e.target.value)} style={camp} />)}
             {et('Oaspeți', <input data-camp="oaspeti" type="number" min={1} value={oaspeti} onChange={e => setOaspeti(e.target.value)} style={camp} />)}
             {et('Ora check-in', <input data-camp="ora-ci" value={oraCi} onChange={e => setOraCi(e.target.value)} style={camp} />)}
             {et('Ora check-out', <input data-camp="ora-co" value={oraCo} onChange={e => setOraCo(e.target.value)} style={camp} />)}
