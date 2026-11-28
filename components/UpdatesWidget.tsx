@@ -2,10 +2,25 @@
 import { useState } from 'react'
 import { UPDATES } from '@/lib/updates'
 
-export default function UpdatesWidget() {
+// inline = in meniul „Mai mult” de pe telefon (acolo butonul plutitor acoperea continutul paginii, deci e ascuns sub 768px)
+export default function UpdatesWidget({ inline }: { inline?: boolean } = {}) {
   const [open, setOpen] = useState(false)
+  if (inline) return (
+    <div data-updates-inline style={{ borderTop: '1px solid rgba(159,215,255,0.08)', paddingTop: 10 }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(74,222,128,0.3)', background: 'rgba(74,222,128,0.06)', color: '#4ADE80', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+        🔔 {'Update ' + UPDATES.length}<span style={{ marginLeft: 'auto', fontWeight: 400, color: 'rgba(159,215,255,0.5)' }}>{open ? 'ascunde' : 'noutăți'}</span>
+      </button>
+      {open && <div style={{ marginTop: 6, maxHeight: 300, overflowY: 'auto' }}>
+        {UPDATES.slice(0, 15).map((u, i) => (
+          <div key={i} style={{ padding: '7px 4px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 11.5, color: 'rgba(214,228,244,0.75)', lineHeight: 1.4 }}>
+            <b style={{ color: '#4ADE80' }}>{'Update ' + (UPDATES.length - i)}</b> · {u.text}
+          </div>
+        ))}
+      </div>}
+    </div>
+  )
   return (
-    <div style={{ position: 'fixed', bottom: 70, left: 12, zIndex: 150 }}>
+    <div className="upd-flotant" style={{ position: 'fixed', bottom: 70, left: 12, zIndex: 150 }}>
       {open && (
         <div style={{
           position: 'absolute', bottom: 40, left: 0, width: 300, maxHeight: 340, overflowY: 'auto',

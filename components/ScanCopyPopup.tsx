@@ -354,7 +354,7 @@ export default function ScanCopyPopup() {
 
   return (
     <>
-      <div style={{ position: 'fixed', bottom: 152, right: 24, zIndex: 998 }}>
+      <div className="flot-scan" style={{ position: 'fixed', bottom: 152, right: 24, zIndex: 998 }}>
         <button
           onClick={() => setOpen(o => !o)}
           title="Preia rapid o rezervare sau un buletin, pentru orice sistem extern (5starDesk, ERP etc.)"

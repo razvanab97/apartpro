@@ -82,7 +82,9 @@ export default function CalendarPage() {
   // rezervare prin link (components/OfertaLink.tsx): null = inchis, {} = doar lista / oferta goala
   const [oferta, setOferta] = useState<OfertaInitiala|'lista'|null>(null)
   const [loading, setLoading]   = useState(true)
-  const [cereScrollAzi, setCereScrollAzi] = useState(0)
+  // pornit de la 1: la fiecare deschidere a calendarului (si pe telefon) grila sare direct la ziua de azi (cerut direct)
+  const [cereScrollAzi, setCereScrollAzi] = useState(1)
+  const scrollFacut = useRef(false)
   // „Alege data” (cerut direct: „să putem selecta o dată din oricare lună și să vedem cum stăm în perioada aceea; calendarul
   // interactiv, ca cel din calculator”): o zi -> sare acolo; si a doua zi -> perioada marcata + rezumat (libere / ocupare)
   const [scrollTinta, setScrollTinta] = useState<string|null>(null)
@@ -425,17 +427,23 @@ export default function CalendarPage() {
     busy: displayApts.filter(a =>  !!getRez(a.id, panelDay)).map(a=>({ apt:a, r:getRez(a.id,panelDay)! })),
   } : null
 
-  const LABEL_W = 160
+  // pe telefon coloana apartamentelor e ingusta (cod + nume pe doua randuri), ca sa ramana loc pentru zile
+  const mobil   = latEcran>0 && latEcran<760
+  const LABEL_W = mobil ? 100 : 160
   // derulare la ziua de azi: 2 zile inainte raman vizibile, langa coloana cu apartamentele (care e lipita in stanga)
   useEffect(()=>{
     if(!cereScrollAzi) return
+    if(loading || !latEcran) return
     const t=setTimeout(()=>{ const g=gridRef.current; if(!g) return
-      // ziua tinta: cea aleasa in „Alege data” (daca e in luna afisata), altfel azi
-      const zi=scrollTinta&&Number(scrollTinta.slice(0,4))===year&&Number(scrollTinta.slice(5,7))-1===month?Number(scrollTinta.slice(8,10)):todayDay
+      // ziua tinta: cea aleasa in „Alege data” (daca e in luna afisata), altfel azi (doar in luna de azi; alta luna -> de la inceput)
+      const eTinta=scrollTinta&&Number(scrollTinta.slice(0,4))===year&&Number(scrollTinta.slice(5,7))-1===month
+      const eLunaAzi=year===todayYear&&month===todayMon
+      const zi=eTinta?Number(scrollTinta!.slice(8,10)):eLunaAzi?todayDay:1
       const x=Math.max(0,(zi-3)*COL_W)
-      g.scrollTo({left:x,behavior:'smooth'}) },60)
+      // prima deschidere: direct, fara animatie; dupa aceea (Vezi azi / Alege data): derulare lina
+      g.scrollTo({left:x,behavior:scrollFacut.current?'smooth':'auto'}); scrollFacut.current=true },60)
     return ()=>clearTimeout(t)
-  },[cereScrollAzi,month,year,loading])  // eslint-disable-line react-hooks/exhaustive-deps
+  },[cereScrollAzi,month,year,loading,latEcran])  // eslint-disable-line react-hooks/exhaustive-deps
   // inchide calendarul „Alege data” la click in afara lui
   useEffect(()=>{
     if(!pickerData) return
@@ -573,7 +581,7 @@ export default function CalendarPage() {
 
             {/* Day headers */}
             <div style={{ display:'flex', position:'sticky', top:0, zIndex:15, background:'rgba(6,14,26,0.98)', borderBottom:'2px solid rgba(159,215,255,0.1)' }}>
-              <div style={{ width:LABEL_W, flexShrink:0, height:HDR_H, borderRight:'1px solid rgba(159,215,255,0.1)' }}/>
+              <div style={{ width:LABEL_W, flexShrink:0, height:HDR_H, borderRight:'1px solid rgba(159,215,255,0.1)', position:'sticky', left:0, zIndex:16, background:'rgb(6,14,26)' }}/>
 
 
               {Array.from({length:zileVizibile},(_,i)=>{
@@ -621,9 +629,9 @@ export default function CalendarPage() {
                 <div key={apt.id} style={{ display:'flex', borderBottom:'1px solid rgba(159,215,255,0.07)', background:ai%2===0?'rgba(255,255,255,0.015)':'transparent', height:ROW_H }}>
 
                   {/* Label */}
-                  <div style={{ width:LABEL_W, flexShrink:0, height:ROW_H, display:'flex', alignItems:'center', gap:10, padding:'0 14px', borderRight:'1px solid rgba(159,215,255,0.1)', borderLeft:`3px solid ${isOccToday?'rgba(74,222,128,0.6)':'rgba(77,163,255,0.2)'}`, position:'sticky', left:0, background:ai%2===0?'rgba(8,18,36,0.98)':'rgba(6,14,26,0.98)', zIndex:5 }}>
-                    {apt.nota && <span style={{ fontSize:11, fontWeight:700, color:'#4DA3FF', background:'rgba(77,163,255,0.15)', padding:'3px 8px', borderRadius:6, flexShrink:0, fontFamily:'monospace' }}>{apt.nota}</span>}
-                    <span style={{ fontSize:13, fontWeight:500, color:'rgba(214,228,244,0.9)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{apt.nume}</span>
+                  <div title={apt.nume} style={{ width:LABEL_W, flexShrink:0, height:ROW_H, display:'flex', flexDirection:mobil?'column':'row', alignItems:mobil?'flex-start':'center', justifyContent:'center', gap:mobil?3:10, padding:mobil?'0 8px':'0 14px', borderRight:'1px solid rgba(159,215,255,0.1)', borderLeft:`3px solid ${isOccToday?'rgba(74,222,128,0.6)':'rgba(77,163,255,0.2)'}`, position:'sticky', left:0, background:ai%2===0?'rgba(8,18,36,0.98)':'rgba(6,14,26,0.98)', zIndex:5 }}>
+                    {apt.nota && <span style={{ fontSize:mobil?10:11, fontWeight:700, color:'#4DA3FF', background:'rgba(77,163,255,0.15)', padding:mobil?'2px 6px':'3px 8px', borderRadius:6, flexShrink:0, fontFamily:'monospace' }}>{apt.nota}</span>}
+                    <span style={{ fontSize:mobil?11:13, fontWeight:500, color:'rgba(214,228,244,0.9)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{apt.nume}</span>
                   </div>
 
                   {/* Cells */}

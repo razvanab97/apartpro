@@ -197,6 +197,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 </div>
               )
             })}
+            <UpdatesWidget inline/>
           </div>
         </div>
       )}
@@ -247,6 +248,11 @@ export default function Layout({ children }: { children: ReactNode }) {
         .staff-hidden { display: none !important; }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
+          .upd-flotant { display: none !important; }
+          /* butoanele plutitoare (asistent / calculator / scanare) urca deasupra barei de jos, ca sa nu acopere „Mai mult” */
+          body:not(:has([data-staff])) .flot-ag { bottom: 84px !important; right: 14px !important; width: 48px !important; height: 48px !important; }
+          body:not(:has([data-staff])) .flot-calc { bottom: 142px !important; right: 16px !important; }
+          body:not(:has([data-staff])) .flot-scan { bottom: 196px !important; right: 16px !important; }
           .mobile-header { display: flex !important; }
           .mobile-bottom-nav { display: flex !important; }
           .main-content { padding-top: 52px; padding-bottom: 72px; }

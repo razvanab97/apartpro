@@ -91,7 +91,7 @@ export default function PriceCalc() {
 
   return (
     <>
-      <div style={{ position: 'fixed', bottom: 88, right: 24, zIndex: 998 }}>
+      <div className="flot-calc" style={{ position: 'fixed', bottom: 88, right: 24, zIndex: 998 }}>
         <button
           onClick={() => setOpen(o => !o)}
           title="Calculator preț"

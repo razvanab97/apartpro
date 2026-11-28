@@ -381,7 +381,7 @@ export default function Agent() {
       <style>{`.ag-spin{animation:spin 1s linear infinite} @keyframes agPulse{0%,100%{box-shadow:0 0 0 0 rgba(124,155,255,.45)}50%{box-shadow:0 0 0 10px rgba(124,155,255,0)}}
         .ag-panel{position:fixed;bottom:90px;right:24px;width:440px;height:min(680px,calc(100vh - 120px));z-index:1001}
         @media (max-width:640px){.ag-panel{inset:0;width:auto;height:auto;bottom:0;right:0;border-radius:0!important}}`}</style>
-      <button onClick={() => setOpen(o => !o)} title="Asistent AB Homes"
+      <button className="flot-ag" onClick={() => setOpen(o => !o)} title="Asistent AB Homes"
         style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000, width: 54, height: 54, borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center',
           background: 'linear-gradient(135deg,#2563EB,#7C3AED)', color: '#FFFFFF', boxShadow: '0 10px 30px rgba(37,99,235,0.45)', animation: open ? 'none' : 'agPulse 3s ease-in-out infinite' }}>
         {open ? <X size={22} /> : <Sparkles size={23} />}
