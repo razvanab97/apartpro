@@ -98,6 +98,10 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<'rez'|'sume'>('rez')
   const [tooltip, setTooltip]   = useState<{rez:Rez;x:number;y:number}|null>(null)
   const [culoareSalvez, setCuloareSalvez] = useState(false)
+  const [latEcran, setLatEcran] = useState(0)
+  useEffect(()=>{ const f=()=>setLatEcran(window.innerWidth); f(); window.addEventListener('resize',f); return ()=>window.removeEventListener('resize',f) },[])
+  // pop-up mic la trecerea mouse-ului peste rezervare (cerut direct: nume, prenume, telefon si locatie)
+  const [hover, setHover] = useState<{rez:Rez;x:number;y:number}|null>(null)
   const [culoareEroare, setCuloareEroare] = useState<string|null>(null)
   useEffect(()=>{ setCuloareEroare(null) },[tooltip?.rez.id])
   // asistentul stie ce rezervare ai deschis in calendar
@@ -202,7 +206,7 @@ export default function CalendarPage() {
         // sunt coloane noi, care pot sa nu existe inca; o lista explicita ar pica TOATA interogarea
         // principala a calendarului daca migrarea n-a rulat, in loc sa lipseasca doar acele campuri
         supabase.from('rezervari')
-          .select('*,apartament:apartamente!inner(id,nume,nota,mesaj_checkin,mesaj_checkout,proprietar_id,comision_tip,proprietar:proprietari(nume))')
+          .select('*,apartament:apartamente!inner(id,nume,nota,adresa,mesaj_checkin,mesaj_checkout,proprietar_id,comision_tip,proprietar:proprietari(nume))')
           .or('status_rezervare.neq.anulata,status_rezervare.is.null')
           .lte('data_checkin', end).gte('data_checkout', start)
           .order('data_checkin'),
@@ -458,7 +462,8 @@ export default function CalendarPage() {
     return ()=>{anulat=true}
   },[perioada?.start,perioada?.end,apts.length])  // eslint-disable-line react-hooks/exhaustive-deps
   const inPerioada=(ds:string)=>!!perioada&&ds>=perioada.start&&ds<=(perioada.end?isoDate(+perioada.end.slice(0,4),+perioada.end.slice(5,7)-1,+perioada.end.slice(8,10)-1):perioada.start)
-  const COL_W   = 44
+  // zilele mai late pe ecran mare (cerut direct: „puțin mai late secțiunile pe zile, să vedem detalii mai avansate”); pe telefon raman 44
+  const COL_W   = latEcran>0 && latEcran<760 ? 44 : 66
   const ROW_H   = viewMode==='sume' ? 76 : 56
   const HDR_H   = 52
 
@@ -682,8 +687,9 @@ export default function CalendarPage() {
                                 if(viewMode==='rez') setTooltip(t=>t?.rez.id===r.id?null:{rez:r,x:e.clientX,y:e.clientY})
                               }}
                               style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:4, width:span*COL_W-8, background:style.bg, borderRadius:8, display:'flex', flexDirection:'column', alignItems:'flex-start', justifyContent:'center', paddingLeft:12, overflow:'hidden', cursor:'pointer', zIndex:4, outline:calcSel.has(r.id)?'3px solid #fff':'none', opacity:calcSel.size>0&&!calcSel.has(r.id)?0.55:1, transition:'opacity .15s,outline .1s' }}
-                              onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.15)')}
-                              onMouseLeave={e=>(e.currentTarget.style.filter='')}>
+                              onMouseEnter={e=>{ e.currentTarget.style.filter='brightness(1.15)'; if(!isDragging) setHover({rez:r,x:e.clientX,y:e.clientY}) }}
+                              onMouseMove={e=>{ if(!isDragging) setHover({rez:r,x:e.clientX,y:e.clientY}) }}
+                              onMouseLeave={e=>{ e.currentTarget.style.filter=''; setHover(h=>h?.rez.id===r.id?null:h) }}>
                               {viewMode==='sume'
                                 ? (()=>{
                                     const brut=d>days ? proRataMonth(r,year,month+1) : proRataMonth(r,year,month)
@@ -721,8 +727,9 @@ export default function CalendarPage() {
                             <div data-rez="1"
                               onClick={e=>{ e.stopPropagation(); if(viewMode==='rez') setTooltip(t=>t?.rez.id===tail.id?null:{rez:tail,x:e.clientX,y:e.clientY}) }}
                               style={{ position:'absolute', top:viewMode==='sume'?4:8, bottom:viewMode==='sume'?4:8, left:0, width:COL_W/2-2, background:tailStyle.bg, borderRadius:'0 6px 6px 0', display:'flex', alignItems:'center', justifyContent:'flex-end', paddingRight:4, overflow:'hidden', cursor:'pointer', zIndex:4, opacity:0.7 }}
-                              onMouseEnter={e=>(e.currentTarget.style.filter='brightness(1.2)')}
-                              onMouseLeave={e=>(e.currentTarget.style.filter='')}>
+                              onMouseEnter={e=>{ e.currentTarget.style.filter='brightness(1.2)'; setHover({rez:tail,x:e.clientX,y:e.clientY}) }}
+                              onMouseMove={e=>setHover({rez:tail,x:e.clientX,y:e.clientY})}
+                              onMouseLeave={e=>{ e.currentTarget.style.filter=''; setHover(h=>h?.rez.id===tail.id?null:h) }}>
                               <span style={{ fontSize:9, color:tailStyle.text, whiteSpace:'nowrap' }}>CO</span>
                             </div>
                           )
@@ -1050,6 +1057,20 @@ Echipa AB Homes Iași`)}
       </div>
 
       {/* Tooltip — card informativ despre rezervare (nu editarea, aia e alt buton mai jos) */}
+      {hover && !tooltip && !isDragging && (()=>{
+        const h=hover.rez, cul=culoareRez(h)
+        const w=260, left=Math.min(hover.x+16, window.innerWidth-w-12), top=hover.y+18+150>window.innerHeight ? hover.y-150 : hover.y+18
+        return (
+          <div data-hover-rez style={{ position:'fixed', left, top, width:w, zIndex:90, pointerEvents:'none', background:'rgba(8,18,36,0.97)', border:'1px solid rgba(159,215,255,0.2)', borderLeft:`3px solid ${csR(h).bg}`, borderRadius:10, padding:'10px 12px', boxShadow:'0 10px 30px rgba(0,0,0,0.55)', fontSize:12, color:'rgba(214,228,244,0.85)', display:'flex', flexDirection:'column', gap:4 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:'#fff', lineHeight:1.25, wordBreak:'break-word' }}>{h.nume_client||'—'}</div>
+            <div style={{ fontFamily:'monospace' }}>📞 {h.telefon_client||'fără telefon'}</div>
+            <div>📍 <b style={{ color:'#fff', fontWeight:600 }}>{h.apartament?.nume||'—'}</b>{h.apartament?.adresa?<span style={{ color:'rgba(159,215,255,0.55)' }}> · {h.apartament.adresa}</span>:null}</div>
+            <div style={{ color:'rgba(159,215,255,0.55)' }}>{h.data_checkin?.slice(8,10)}.{h.data_checkin?.slice(5,7)} → {h.data_checkout?.slice(8,10)}.{h.data_checkout?.slice(5,7)} · {h.nr_nopti||nightsBetween(h.data_checkin,h.data_checkout)} nopți{h.nr_persoane?` · ${h.nr_persoane} pers.`:''} · {h.canal}</div>
+            {cul && <div style={{ color:CULORI_REZ[cul].bg==='#FACC15'?'#FDE047':'#FCA5A5', fontWeight:600 }}>{CULORI_REZ[cul].icon} {CULORI_REZ[cul].sens}</div>}
+          </div>
+        )
+      })()}
+
       {tooltip && (
         <div data-rez="1" onClick={e=>e.stopPropagation()} style={{ position:'fixed', left:Math.min(tooltip.x+14,window.innerWidth-300), top:Math.max(12,Math.min(tooltip.y-10,window.innerHeight-560)), zIndex:100, background:'rgba(8,18,36,0.98)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', border:'1px solid rgba(159,215,255,0.2)', borderTop:`3px solid ${csR(tooltip.rez).bg}`, borderRadius:12, padding:'18px 20px', width:290, boxShadow:'0 16px 48px rgba(0,0,0,0.6)', maxHeight:'calc(100vh - 24px)', overflowY:'auto' as const }}>
           <div style={{ display:'flex',alignItems:'flex-start',gap:8,marginBottom:6 }}>
