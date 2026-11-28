@@ -45,6 +45,7 @@ const CSS = `
 .gh-copy:hover{background:var(--acc);border-color:var(--acc);color:#fff}
 .gh-copy.ok{background:var(--green);border-color:var(--green);color:#fff}
 .gh-note{margin:10px 2px 0;font-size:13px;color:var(--faint)}
+.gh-q .n{display:block;margin-top:4px;font-size:12.5px;line-height:1.35;color:var(--faint)}
 .gh-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:34px}
 .gh-step{display:grid;grid-template-columns:54px 1fr;gap:16px}
 .gh-num{font-family:var(--disp);font-size:46px;line-height:.9;color:var(--acc);text-align:right}
@@ -151,7 +152,7 @@ export default function GhidView({ g: gTot, fix = true, limbaStart }: { g: Ghid;
             <div className="gh-qgrid">
               {acces.map((a, i) => (
                 <div key={i} className={'gh-q' + (a.cod ? ' cod' : '')}>
-                  <span><span className="l">{t(a.ro, a.en)}</span><span className="v">{a.valoare}</span></span>
+                  <span><span className="l">{t(a.ro, a.en)}</span><span className="v">{a.valoare}</span>{t(a.nota_ro || '', a.nota_en || '') && <span className="n">{t(a.nota_ro || '', a.nota_en || '')}</span>}</span>
                   {btnCopy('a' + i, a.valoare)}
                 </div>
               ))}

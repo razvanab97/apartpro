@@ -19,7 +19,8 @@ export function textDateCheckin(g: any): string {
   for (const a of Array.isArray(g.acces) ? g.acces : []) {
     const v = String(a?.valoare || '').trim(), et = String(a?.ro || '').trim()
     if (!v || !et || a?.ascuns) continue
-    r.push(`${a.cod ? '🔑' : /wi.?fi|parol/i.test(et) ? '📶' : '▪️'} ${et}: *${v}*`)
+    const nota = String(a?.nota_ro || '').trim()
+    r.push(`${a.cod ? '🔑' : /wi.?fi|parol/i.test(et) ? '📶' : '▪️'} ${et}: *${v}*${nota ? ` (${nota.replace(/^\(|\)$/g, '')})` : ''}`)
   }
   const ci = String(g.checkin || '').trim(), co = String(g.checkout || '').trim()
   if (ci || co) r.push(`🕒 ${[ci && `Check-in de la ${ci}`, co && `check-out până la ${co}`].filter(Boolean).join(' · ')}`)

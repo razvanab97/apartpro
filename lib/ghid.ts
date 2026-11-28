@@ -11,7 +11,8 @@ export type Media = { tip: 'img' | 'video'; url: string; ro: string; en: string;
 export type Pas = { titlu_ro: string; titlu_en: string; text_ro: string; text_en: string; nota_ro: string; nota_en: string
   link_url: string; link_ro: string; link_en: string; media: Media[]
   copiaza?: string; ascuns?: boolean }  // copiaza = text cu buton „Copiază” (ex. strada si numarul)
-export type Acces = { ro: string; en: string; valoare: string; cod: boolean; ascuns?: boolean }
+// nota_ro / nota_en: explicatie scurta langa valoare, ex. „luați cartela pentru a o apropia de interfon…” (in mesajul de acces: „Cod locker: *<cod>* (nota)”)
+export type Acces = { ro: string; en: string; valoare: string; cod: boolean; ascuns?: boolean; nota_ro?: string; nota_en?: string }
 // eticheta = titlul scurt al regulii; icon / grup / important sunt optionale (cerut direct: regulile „mai profi scrise,
 // mai bine organizate și așezate în pagină”) - grup: 'sedere' (pe durata șederii) sau 'plecare' (la plecare)
 export type Regula = { eticheta_ro: string; eticheta_en: string; text_ro: string; text_en: string; icon?: string; grup?: 'sedere' | 'plecare'; important?: boolean; ascuns?: boolean }

@@ -129,6 +129,7 @@ export default function EditorGhid() {
     adauga(g!.acces_nota_ro, g!.acces_nota_en, en => set({ acces_nota_en: en }))
     adauga(g!.final_ro, g!.final_en, en => set({ final_en: en }))
     g!.acces.forEach((a, i) => adauga(a.ro, a.en, en => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, en } : y) } : x)))
+    g!.acces.forEach((a, i) => adauga(a.nota_ro || '', a.nota_en || '', en => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, nota_en: en } : y) } : x)))
     g!.reguli.forEach((r, i) => {
       adauga(r.eticheta_ro, r.eticheta_en, en => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, eticheta_en: en } : y) } : x))
       adauga(r.text_ro, r.text_en, en => setG(x => x ? { ...x, reguli: x.reguli.map((y, j) => j === i ? { ...y, text_en: en } : y) } : x))
@@ -189,6 +190,7 @@ export default function EditorGhid() {
           <div key={i} data-ascuns={a.ascuns ? '1' : undefined} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end', opacity: a.ascuns ? 0.45 : 1 }}>
             {camp('Etichetă' + lb, l === 'en' ? a.en : a.ro, v => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, [l]: v } : y) } : x))}
             {camp('Valoare', a.valoare, v => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, valoare: v } : y) } : x), { mono: true })}
+            <div style={{ gridColumn: '1 / -1' }}>{camp('Explicație (opțional, apare în paranteză)' + lb, (l === 'en' ? a.nota_en : a.nota_ro) || '', v => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, [l === 'en' ? 'nota_en' : 'nota_ro']: v } : y) } : x))}</div>
             <div style={{ display: 'flex', gap: 4, paddingBottom: 2 }}>
               <button title="Afișează mare, portocaliu (cod)" onClick={() => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, cod: !y.cod } : y) } : x)} style={{ ...iconBtn, color: a.cod ? '#FF8A3D' : iconBtn.color, borderColor: a.cod ? 'rgba(255,138,61,0.6)' : 'rgba(159,215,255,0.18)' }}><Star size={13} /></button>
               <button data-comuta-ascuns title={a.ascuns ? 'Ascuns pentru clienți — apasă ca să-l arăți' : 'Ascunde de clienți (rămâne aici)'} onClick={() => setG(x => x ? { ...x, acces: x.acces.map((y, j) => j === i ? { ...y, ascuns: !y.ascuns } : y) } : x)} style={{ ...iconBtn, color: a.ascuns ? '#FCD34D' : undefined }}>{a.ascuns ? <EyeOff size={13} /> : <Eye size={13} />}</button>

@@ -6,7 +6,7 @@
 //  2. sabloanele apartamentului (pagina Șabloane mesaje, tabela sabloane_mesaje)
 //  3. „Mesajele mele” - create aici, in setari „wa_mesaje_proprii”, comune pe orice dispozitiv
 // Trimiterea deschide WhatsApp (wa.me) cu textul pregatit - nimic nu pleaca singur.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, normalizeWaPhone } from '@/lib/supabase'
 import { aptCuGhid, cuLinkGhid, type InfoGhid } from '@/lib/ghidLink'
 import { waLink, msgCheckin, msgAcces, msgCheckoutGen, msgConfirmareRezervare, msgGataAcces, completeazaMesaj, citesteMesajeProprii,
@@ -20,7 +20,9 @@ async function copiaza(t: string) { try { await navigator.clipboard.writeText(t)
 
 export default function WhatsappRezervare({ rezervare, activ, onMergiLaTelefon }: { rezervare: any; activ: boolean; onMergiLaTelefon?: () => void }) {
   const aptId: string = rezervare?.apartament_id || ''
-  const [incarcat, setIncarcat] = useState<string | null>(null)
+  // ref, nu state: un setState aici re-randa componenta si cleanup-ul (viu = false) arunca raspunsurile care soseau dupa
+  // (ghidul, datele de check-in, sabloanele apartamentului nu ajungeau niciodata in mesaje)
+  const incarcat = useRef<string | null | undefined>(undefined)
   const [apt, setApt] = useState<any>(null)
   const [setari, setSetari] = useState<Record<string, string>>({})
   const [coApt, setCoApt] = useState<Record<string, string>>({})
@@ -37,8 +39,8 @@ export default function WhatsappRezervare({ rezervare, activ, onMergiLaTelefon }
 
   // se incarca doar cand tabul e deschis (o data pe apartament)
   useEffect(() => {
-    if (!activ || incarcat === aptId) return
-    setIncarcat(aptId)
+    if (!activ || incarcat.current === aptId) return
+    incarcat.current = aptId
     let viu = true
     void supabase.from('setari').select('cheie,valoare').in('cheie', ['checkin_confirmare', 'checkin_acces', CHEIE_MESAJE_PROPRII]).then(({ data }) => {
       if (!viu) return
@@ -54,8 +56,9 @@ export default function WhatsappRezervare({ rezervare, activ, onMergiLaTelefon }
     })
     if (aptId) void supabase.from('apartamente').select('id,nume,nota,mesaj_checkin,mesaj_checkout').eq('id', aptId).maybeSingle().then(({ data }) => { if (viu) setApt(data || null) })
     void aptCuGhid().then(m => { if (viu) setGhid(m) }).catch(() => {})
-    return () => { viu = false }
-  }, [activ, aptId, incarcat])
+    // la iesirea din tab inainte de raspunsuri: se reincarca la urmatoarea deschidere (altfel ar ramane fara date)
+    return () => { viu = false; incarcat.current = undefined }
+  }, [activ, aptId])
 
   const tel = String(rezervare?.telefon_client || '').trim()
   const areTel = normalizeWaPhone(tel).replace(/\D/g, '').length >= 8
